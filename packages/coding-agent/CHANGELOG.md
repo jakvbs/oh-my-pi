@@ -109,6 +109,10 @@
 
 - Fixed single-model task agents ignoring an explicitly configured default retry fallback chain, which left subagents failed after their selected provider became unreachable instead of advancing to the configured fallback model.
 
+### Fixed
+
+- Fixed interactive bash shortcut `cd` commands leaving the OMP session and status-line working directory unchanged.
+
 ## [17.0.3] - 2026-07-17
 
 ### Fixed
