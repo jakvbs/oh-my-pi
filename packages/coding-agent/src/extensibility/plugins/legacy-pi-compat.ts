@@ -80,12 +80,11 @@ function toLegacyPiResolveResult(resolvedPath: string): LegacyPiResolveResult {
 	return { path: resolvedPath };
 }
 
-/** Maps a bundled virtual specifier to Bun's plugin namespace shape. */
+/** Maps a bundled virtual specifier or registry key to Bun's plugin namespace shape. */
 export function resolveBundledVirtualSpecifier(specifier: string): BundledVirtualResolveResult {
-	if (!isBundledVirtualSpecifier(specifier)) {
-		throw new Error(`omp:legacy-pi-shim: not a bundled virtual specifier: ${specifier}`);
-	}
-	const registryKey = specifier.slice(BUNDLED_VIRTUAL_SCHEME.length);
+	const registryKey = isBundledVirtualSpecifier(specifier)
+		? specifier.slice(BUNDLED_VIRTUAL_SCHEME.length)
+		: specifier;
 	if (!registryKey) {
 		throw new Error("omp:legacy-pi-shim: bundled virtual specifier has no registry key");
 	}
@@ -1676,6 +1675,12 @@ export function installLegacyPiSpecifierShim(): void {
 		setup(build) {
 			build.onResolve({ filter: LEGACY_PI_SPECIFIER_FILTER, namespace: "file" }, resolveLegacyPiSpecifier);
 			build.onResolve({ filter: TYPEBOX_SPECIFIER_FILTER, namespace: "file" }, resolveTypeBoxSpecifier);
+			build.onResolve({ filter: /^omp-legacy-pi-bundled:.+$/, namespace: "file" }, args =>
+				resolveBundledVirtualSpecifier(args.path),
+			);
+			build.onResolve({ filter: /.*/, namespace: BUNDLED_VIRTUAL_NAMESPACE }, args =>
+				resolveBundledVirtualSpecifier(args.path),
+			);
 			// Compiled mode serves `omp-legacy-pi-bundled:<key>` imports from
 			// live host module references. No bunfs path leaves this loader.
 			build.onLoad({ filter: /.*/, namespace: BUNDLED_VIRTUAL_NAMESPACE }, async args => {
