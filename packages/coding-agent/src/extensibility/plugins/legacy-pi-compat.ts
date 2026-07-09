@@ -72,6 +72,26 @@ function isBundledVirtualSpecifier(value: string): boolean {
 	return value.startsWith(BUNDLED_VIRTUAL_SCHEME);
 }
 
+function toLegacyPiResolveResult(resolvedPath: string): LegacyPiResolveResult {
+	if (isBundledVirtualSpecifier(resolvedPath)) {
+		const registryKey = resolvedPath.slice(BUNDLED_VIRTUAL_SCHEME.length);
+		return { path: registryKey, namespace: BUNDLED_VIRTUAL_NAMESPACE };
+	}
+	return { path: resolvedPath };
+}
+
+/** Maps a bundled virtual specifier to Bun's plugin namespace shape. */
+export function resolveBundledVirtualSpecifier(specifier: string): BundledVirtualResolveResult {
+	if (!isBundledVirtualSpecifier(specifier)) {
+		throw new Error(`omp:legacy-pi-shim: not a bundled virtual specifier: ${specifier}`);
+	}
+	const registryKey = specifier.slice(BUNDLED_VIRTUAL_SCHEME.length);
+	if (!registryKey) {
+		throw new Error("omp:legacy-pi-shim: bundled virtual specifier has no registry key");
+	}
+	return { path: registryKey, namespace: BUNDLED_VIRTUAL_NAMESPACE };
+}
+
 /**
  * Build a synthetic ES module for one live bundled namespace. Every export
  * reads through the global bridge; no bunfs path or copied package is involved.
@@ -1611,7 +1631,7 @@ function getLoader(path: string): "js" | "jsx" | "ts" | "tsx" {
 	return "js";
 }
 
-function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { path: string } | undefined {
+function resolveLegacyPiSpecifier(args: { path: string; importer: string }): LegacyPiResolveResult | undefined {
 	const remappedSpecifier = remapLegacyPiSpecifier(args.path);
 	if (!remappedSpecifier) {
 		return undefined;
@@ -1620,7 +1640,7 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 	// Primary: resolve the canonical @oh-my-pi/* specifier from the host binary
 	// location. Works in dev mode and in source-link installs.
 	try {
-		return { path: resolveCanonicalPiSpecifier(remappedSpecifier) };
+		return toLegacyPiResolveResult(resolveCanonicalPiSpecifier(remappedSpecifier));
 	} catch {
 		// Fallback for compiled binary mode: the bundled packages live inside
 		// /$bunfs/root and aren't reachable by filesystem resolution. Prefer the
@@ -1630,10 +1650,10 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 		// @earendil-works peer deps.
 		const importerDir = path.dirname(args.importer);
 		try {
-			return { path: Bun.resolveSync(remappedSpecifier, importerDir) };
+			return toLegacyPiResolveResult(Bun.resolveSync(remappedSpecifier, importerDir));
 		} catch {
 			try {
-				return { path: Bun.resolveSync(args.path, importerDir) };
+				return toLegacyPiResolveResult(Bun.resolveSync(args.path, importerDir));
 			} catch {
 				return undefined;
 			}
@@ -1641,8 +1661,8 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 	}
 }
 
-function resolveTypeBoxSpecifier(): { path: string } | undefined {
-	return TYPEBOX_SHIM_PATH ? { path: TYPEBOX_SHIM_PATH } : undefined;
+function resolveTypeBoxSpecifier(): LegacyPiResolveResult | undefined {
+	return TYPEBOX_SHIM_PATH ? toLegacyPiResolveResult(TYPEBOX_SHIM_PATH) : undefined;
 }
 
 export function installLegacyPiSpecifierShim(): void {
