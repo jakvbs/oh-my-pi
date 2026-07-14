@@ -57395,6 +57395,37 @@
 			"maxTokens": 32000,
 			"supportsTools": true
 		},
+		"xai/grok-4.5": {
+			"id": "xai/grok-4.5",
+			"name": "xai/grok-4.5",
+			"api": "openai-completions",
+			"provider": "novita",
+			"baseUrl": "https://api.novita.ai/openai/v1",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 2,
+				"output": 6,
+				"cacheRead": 0.5,
+				"cacheWrite": 0
+			},
+			"contextWindow": 500000,
+			"maxTokens": 500000,
+			"supportsTools": true,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
+		},
 		"xiaomimimo/mimo-v2.5": {
 			"id": "xiaomimimo/mimo-v2.5",
 			"name": "XiaomiMiMo/MiMo-V2.5",
@@ -69193,7 +69224,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 384000,
+			"maxTokens": 65536,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -76552,8 +76583,8 @@
 				"cacheRead": 0.09999999999999999,
 				"cacheWrite": 0
 			},
-			"contextWindow": 202752,
-			"maxTokens": 131072,
+			"contextWindow": 200000,
+			"maxTokens": 16384,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -76769,7 +76800,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 131072,
+			"maxTokens": 128000,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -78105,6 +78136,38 @@
 				],
 				"requiresEffort": true
 			},
+			"compat": {
+				"escapeBuiltinToolNames": true
+			}
+		},
+		"umans-deepseek-v4-pro-dspark": {
+			"id": "umans-deepseek-v4-pro-dspark",
+			"name": "Umans DeepSeek V4 Pro DSpark (experimental)",
+			"api": "anthropic-messages",
+			"provider": "umans",
+			"baseUrl": "https://api.code.umans.ai",
+			"reasoning": true,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			},
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 393216,
+			"maxTokens": 131071,
 			"compat": {
 				"escapeBuiltinToolNames": true
 			}
