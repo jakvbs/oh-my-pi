@@ -91,6 +91,29 @@ describe("isRetriableConnectionError", () => {
 describe("MCPTool.execute retry on connection error", () => {
 	const noop = () => {};
 	const noCtx = {} as Parameters<MCPTool["execute"]>[3];
+	it("serializes structured-only results for model consumption", async () => {
+		const transport = mockTransport(async () => ({
+			content: [],
+			structuredContent: { answer: 42, source: "ttsc-graph" },
+		}));
+		const tool = new MCPTool(makeConnection(transport), TOOL_DEF);
+
+		const result = await tool.execute("call-1", {}, noop, noCtx);
+
+		expect(result.content).toEqual([{ type: "text", text: '{\n  "answer": 42,\n  "source": "ttsc-graph"\n}' }]);
+	});
+
+	it("prefers text content when structured content is also present", async () => {
+		const transport = mockTransport(async () => ({
+			content: [{ type: "text", text: "canonical text" }],
+			structuredContent: { duplicate: true },
+		}));
+		const tool = new MCPTool(makeConnection(transport), TOOL_DEF);
+
+		const result = await tool.execute("call-1", {}, noop, noCtx);
+
+		expect(result.content).toEqual([{ type: "text", text: "canonical text" }]);
+	});
 
 	it("retries once on retriable error when reconnect succeeds", async () => {
 		let callCount = 0;

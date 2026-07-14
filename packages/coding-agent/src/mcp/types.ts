@@ -209,6 +209,7 @@ export type MCPContent = MCPTextContent | MCPImageContent | MCPResourceContent;
 /** tools/call response */
 export interface MCPToolCallResult {
 	content: MCPContent[];
+	structuredContent?: Record<string, unknown>;
 	isError?: boolean;
 }
 

@@ -216,7 +216,9 @@ function buildResult(
 	provider?: string,
 	providerName?: string,
 ): CustomToolResult<MCPToolDetails> {
-	const text = formatMCPContent(result.content);
+	const text =
+		formatMCPContent(result.content) ||
+		(result.structuredContent ? JSON.stringify(result.structuredContent, null, 2) : "");
 	const details: MCPToolDetails = {
 		serverName,
 		mcpToolName,
