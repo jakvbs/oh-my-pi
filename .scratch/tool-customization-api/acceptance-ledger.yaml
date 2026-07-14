@@ -14,7 +14,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'patches a built-in description in the provider-visible session catalog'
@@ -36,7 +36,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'preserves the exact live execution call contract'
@@ -73,7 +73,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'patches a label without changing other metadata or execution'
@@ -98,7 +98,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'accepts an empty metadata patch as a no-op'
@@ -124,7 +124,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'wraps bound class execution inside lifecycle interception'
@@ -150,7 +150,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'overrides supported decorator fields and retains omitted fields'
@@ -189,7 +189,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'wraps bound class execution inside lifecycle interception'
@@ -212,7 +212,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/extensions-runner.test.ts'
                     name: 'applies customized approval before execution through the standard gate'
@@ -238,7 +238,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'composes customizations in registration order'
@@ -264,7 +264,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'customizes the final same-name registered winner'
@@ -294,7 +294,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'applies wrappers once to each fresh session registry'
@@ -317,7 +317,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'warns and skips a missing target'
@@ -345,7 +345,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'isolates a thrown decorator and continues with later customizations'
@@ -376,7 +376,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'isolates invalid decorator results and attempted renames'
@@ -399,7 +399,7 @@ cases:
           status: 'implemented'
           traceability:
               issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
-              commits: ['uncommitted']
+              commits: ['a79225414']
               executableTests:
                   - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
                     name: 'isolates invalid decorator results and attempted renames'

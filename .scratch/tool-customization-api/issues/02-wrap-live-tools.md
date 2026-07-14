@@ -54,7 +54,7 @@ Change: Documented both APIs in `docs/extensions.md`, added the coding-agent cha
 Tests: `bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts` passed (53 tests, 0 failures); `bun run check` in `packages/coding-agent` passed; the acceptance-ledger report shows 13/13 criteria implemented, 0 pending cases, 100% progress.
 Budget: Metadata patching and live decoration remain split between issues 01 and 02. No out-of-scope late registry support was added.
 Finding: Session-level catalog and execution tests are sufficient automated proof; no manual evidence remains pending.
-Decision: Ledger commit traceability is explicitly `uncommitted` because repository rules prohibit committing without a direct user request.
+Decision: Acceptance traceability points to implementation commit `a79225414`.
 Next: Stop; implementation and contract gates are complete.
 
 ### Iteration 2026-07-14 17:24 - real OMP RPC smoke - Outcome
