@@ -3,6 +3,7 @@ Runs commands in a persistent shell session.
 Use ONLY for: single binary call or short pipeline that COMPUTES a fact (`wc -l`, `sort | uniq -c`, `comm`, `diff`).
 {{#if hasLaunch}}Services, watchers, debuggers, REPLs → `hub` (`op:"start"`).{{/if}}
 {{#if hasEval}}Inline scripts, heredocs, shell control flow, `$(…)`, multi-stage pipelines, `&&`-chains, quote/JSON escaping → `eval` cells.{{else}}Inline scripts, heredocs, shell control flow, `$(…)`, multi-stage pipelines, `&&`-chains → purpose-built tool or checked-in script.{{/if}}
+GitHub repository file? MUST use `github` `file_read` when available; otherwise `read`. NEVER use `curl`/`wget`.
 
 <instruction>
 - `cwd` sets working dir (not `cd dir && …`). `env: { NAME: "…" }` for multiline/quote-heavy values; `"$NAME"` to expand.

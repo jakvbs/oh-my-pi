@@ -2,7 +2,8 @@ Read files, directories, archives, SQLite, images, documents, internal resources
 
 <instruction>
 - SHOULD parallelize independent reads.
-- SHOULD use `read` (not browser) for web content; browser only when `read` can't deliver.
+- SHOULD use `read` (not a browser tool) for web content; browser only when `read` can't deliver.
+- GitHub repository file? MUST use `github` `file_read` when available; otherwise `read`. NEVER use `curl`/`wget`.
 </instruction>
 
 ## Selectors — append `:<sel>` to `path` (e.g. `src/foo.ts:50-200`, `src/foo.ts:raw`, `db.sqlite:users:42`)
