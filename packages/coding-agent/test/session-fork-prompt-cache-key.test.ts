@@ -230,4 +230,28 @@ describe("provider prompt-cache key session affinity", () => {
 			authStorage.close();
 		}
 	});
+
+	it("does not inherit fork prompt-cache affinity when --agent selects a Main profile", async () => {
+		using tempDir = TempDir.createSync("@omp-prompt-cache-agent-profile-");
+		const source = await createSourceSessionFixture(tempDir, "parent-cache-session-agent-profile");
+		source.sourceHeader.providerPromptCacheKey = "parent-profile-cache";
+		await Bun.write(source.sourceFile, `${JSON.stringify(source.sourceHeader)}\n`);
+		const forkedManager = await SessionManager.forkFrom(source.sourceFile, source.cwd, source.forkSessionDir);
+		const authStorage = await AuthStorage.create(tempDir.join("agent-profile-auth.db"));
+		try {
+			const options = await buildSessionOptions(
+				parseArgs(["--cwd", source.cwd, "--agent", "reviewer"]),
+				[],
+				forkedManager,
+				new ModelRegistry(authStorage, tempDir.join("agent-profile-models.yml")),
+				Settings.isolated({ "marketplace.autoUpdate": "off" }),
+			);
+
+			expect(forkedManager.getHeader()?.providerPromptCacheKey).toBe("parent-profile-cache");
+			expect(options.providerPromptCacheKey).toBeUndefined();
+			expect(options.providerPromptCacheKeySource).toBeUndefined();
+		} finally {
+			authStorage.close();
+		}
+	});
 });

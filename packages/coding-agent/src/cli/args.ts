@@ -20,6 +20,7 @@ export type Mode = "text" | "json" | "rpc" | "acp" | "rpc-ui";
 export interface Args {
 	cwd?: string;
 	profile?: string;
+	agent?: string;
 	alias?: string;
 	allowHome?: boolean;
 	provider?: string;

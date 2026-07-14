@@ -86,6 +86,7 @@ import {
 	wrapRegisteredTools,
 } from "./extensibility/extensions";
 import {
+	buildSkillPromptMessage,
 	loadSkills as loadSkillsInternal,
 	type Skill,
 	type SkillWarning,
@@ -128,6 +129,7 @@ import {
 	convertToLlm,
 	LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
 	replaceLlmImagesWithText,
+	SKILL_PROMPT_MESSAGE_TYPE,
 	USER_INTERRUPT_LABEL,
 	wrapSteeringForModel,
 } from "./session/messages";
@@ -368,6 +370,13 @@ function applyMCPEnvironment(result: { exaApiKeys: string[] }): void {
 }
 
 // Types
+export class AgentProfileSkillError extends Error {
+	constructor(profileName: string, skillName: string) {
+		super(`Agent profile "${profileName}" requires missing skill "${skillName}".`);
+		this.name = "AgentProfileSkillError";
+	}
+}
+
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: getProjectDir() */
 	cwd?: string;
@@ -476,6 +485,10 @@ export interface CreateAgentSessionOptions {
 
 	/** Skills. Default: discovered from multiple locations */
 	skills?: Skill[];
+	/** Skill names to inject as hidden context before the caller can send first input. */
+	autoloadSkillNames?: string[];
+	/** Selected Main profile name used for actionable autoload-skill startup errors. */
+	agentProfileName?: string;
 	/** Rules. Default: discovered from multiple locations */
 	rules?: Rule[];
 	/** Context files (AGENTS.md content). Default: discovered walking up from cwd */
@@ -1500,6 +1513,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		skills = discovered.skills;
 		skillWarnings = discovered.warnings;
 	}
+	const autoloadSkills = (options.autoloadSkillNames ?? []).map(name => {
+		const skill = skills.find(candidate => candidate.name === name);
+		if (!skill) {
+			throw new AgentProfileSkillError(options.agentProfileName ?? "selected", name);
+		}
+		return skill;
+	});
 
 	// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
 	const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = await logger.time(
@@ -2988,6 +3008,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			titleSystemPrompt: options.titleSystemPrompt,
 		});
 		hasSession = true;
+		for (const skill of autoloadSkills) {
+			const { message } = await buildSkillPromptMessage(skill, "", "autoload");
+			await session.sendCustomMessage(
+				{
+					customType: SKILL_PROMPT_MESSAGE_TYPE,
+					content: message,
+					display: false,
+					details: { name: skill.name, path: skill.filePath },
+				},
+				{ triggerTurn: false },
+			);
+		}
 		if (asyncJobManager) {
 			session.yieldQueue.register<AsyncResultEntry>("async-result", {
 				isStale: entry => asyncJobManager.isDeliverySuppressed(entry.jobId),

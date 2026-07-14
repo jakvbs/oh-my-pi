@@ -22,6 +22,9 @@ export default class Index extends Command {
 	};
 
 	static flags = {
+		agent: Flags.string({
+			description: "Start Main with a discovered agent definition",
+		}),
 		model: Flags.string({
 			description: 'Model to use (fuzzy match: "opus", "gpt-5.2", or "openai/gpt-5.2")',
 		}),

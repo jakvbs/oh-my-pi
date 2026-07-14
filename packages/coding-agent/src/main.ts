@@ -35,6 +35,7 @@ import {
 	DEFAULT_PREWALK_TARGET,
 	expandRoleAlias,
 	getModelMatchPreferences,
+	resolveAgentModelPatterns,
 	resolveCliModel,
 	resolveModelRoleValue,
 	resolveModelScope,
@@ -65,6 +66,7 @@ import type { SubmittedUserInput } from "./modes/types";
 import { createWarpEventBridgeExtension } from "./modes/warp-events";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import {
+	AgentProfileSkillError,
 	type CreateAgentSessionOptions,
 	type CreateAgentSessionResult,
 	createAgentSession,
@@ -79,6 +81,7 @@ import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
+import { discoverAgents, getAgent } from "./task/discovery";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { createTelemetryExportConfig, initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { concreteThinkingLevel, parseConfiguredThinkingLevel } from "./thinking";
@@ -821,6 +824,59 @@ export function applyResolvedSystemPromptInputs(
 	}
 }
 
+export class AgentProfileResolutionError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "AgentProfileResolutionError";
+	}
+}
+
+async function resolveMainAgentDefaults(
+	name: string,
+	cwd: string,
+	activeSettings: Settings,
+): Promise<Partial<CreateAgentSessionOptions>> {
+	const { agents } = await discoverAgents(cwd);
+	const agent = getAgent(agents, name);
+	if (!agent) {
+		const available = agents.map(candidate => candidate.name).sort((a, b) => a.localeCompare(b));
+		throw new AgentProfileResolutionError(`Unknown agent "${name}". Available: ${available.join(", ")}`);
+	}
+	if (activeSettings.get("task.disabledAgents").includes(name)) {
+		throw new AgentProfileResolutionError(
+			`Agent "${name}" is disabled in settings. Enable it via /agents or choose another agent.`,
+		);
+	}
+
+	const defaults: Partial<CreateAgentSessionOptions> = {
+		customSystemPrompt: agent.systemPrompt,
+		agentProfileName: name,
+	};
+	let toolNames = agent.tools?.filter(toolName => toolName !== "yield");
+	if (agent.spawns !== undefined) {
+		toolNames = toolNames ?? [];
+		if (!toolNames.includes("task")) toolNames.push("task");
+		defaults.spawns = agent.spawns === "*" ? "*" : agent.spawns.join(",");
+	}
+	if (toolNames !== undefined) defaults.toolNames = toolNames;
+
+	const settingsModelOverride = activeSettings.get("task.agentModelOverrides")[name];
+	if (settingsModelOverride || agent.model) {
+		const modelPatterns = resolveAgentModelPatterns({
+			settingsOverride: settingsModelOverride,
+			agentModel: agent.model,
+			settings: activeSettings,
+		});
+		if (modelPatterns.length > 0) defaults.modelPattern = modelPatterns;
+	}
+	if (agent.thinkingLevel !== undefined) defaults.thinkingLevel = agent.thinkingLevel;
+	if (agent.autoloadSkills?.length) defaults.autoloadSkillNames = agent.autoloadSkills;
+	if (agent.readSummarize !== undefined) {
+		activeSettings.override("read.summarize.enabled", agent.readSummarize);
+	}
+	return defaults;
+}
+
 /** Builds startup session options from parsed CLI flags, scoped models, and resolved session lineage. */
 export async function buildSessionOptions(
 	parsed: Args,
@@ -829,8 +885,11 @@ export async function buildSessionOptions(
 	modelRegistry: ModelRegistry,
 	activeSettings: Settings,
 ): Promise<CreateAgentSessionOptions> {
+	const cwd = parsed.cwd ?? getProjectDir();
+	const agentDefaults = parsed.agent ? await resolveMainAgentDefaults(parsed.agent, cwd, activeSettings) : {};
 	const options: CreateAgentSessionOptions = {
-		cwd: parsed.cwd ?? getProjectDir(),
+		...agentDefaults,
+		cwd,
 		autoApprove: parsed.autoApprove ?? false,
 	};
 	if (parsed.maxTime !== undefined) {
@@ -838,7 +897,7 @@ export async function buildSessionOptions(
 	}
 
 	// Auto-discover SYSTEM.md if no CLI system prompt provided
-	const systemPromptSource = parsed.systemPrompt ?? discoverSystemPromptFile();
+	const systemPromptSource = parsed.systemPrompt ?? (parsed.agent ? undefined : discoverSystemPromptFile());
 	const appendPromptSource = parsed.appendSystemPrompt ?? discoverAppendSystemPromptFile();
 	const titleSystemPromptSource = discoverTitleSystemPromptFile();
 	const [resolvedSystemPrompt, resolvedAppendPrompt, titleSystemPrompt] = await Promise.all([
@@ -866,6 +925,7 @@ export async function buildSessionOptions(
 			parsed.systemPrompt !== undefined ||
 			parsed.appendSystemPrompt !== undefined ||
 			parsed.tools !== undefined ||
+			parsed.agent !== undefined ||
 			parsed.noTools === true;
 		if (!forkCacheShapeChanged && header?.providerPromptCacheKey) {
 			options.providerPromptCacheKey = header.providerPromptCacheKey;
@@ -896,12 +956,14 @@ export async function buildSessionOptions(
 			if (!parsed.provider && ((resolved.configuredPatterns?.length ?? 0) > 0 || !parsed.model.includes(":"))) {
 				// Model not found in built-in registry — defer resolution to after extensions load
 				// (extensions may register additional providers/models via registerProvider)
+				delete options.model;
 				options.modelPattern = parsed.model;
 			} else {
 				process.stderr.write(`${chalk.red(resolved.error)}\n`);
 				process.exit(1);
 			}
 		} else if (resolved.model) {
+			delete options.modelPattern;
 			options.model = resolved.model;
 			activeSettings.overrideModelRoles({
 				default: resolved.selector ?? `${resolved.model.provider}/${resolved.model.id}`,
@@ -910,7 +972,7 @@ export async function buildSessionOptions(
 				options.thinkingLevel = resolved.thinkingLevel;
 			}
 		}
-	} else if (scopedModels.length > 0 && !parsed.continue && !parsed.resume) {
+	} else if (!options.modelPattern && scopedModels.length > 0 && !parsed.continue && !parsed.resume) {
 		const remembered = activeSettings.getModelRole("default");
 		if (remembered) {
 			const rememberedSpec = resolveModelRoleValue(
@@ -985,6 +1047,7 @@ export async function buildSessionOptions(
 	if (parsed.thinking) {
 		options.thinkingLevel = parsed.thinking;
 	} else if (
+		options.thinkingLevel === undefined &&
 		scopedModels.length > 0 &&
 		scopedModels[0].explicitThinkingLevel === true &&
 		!parsed.continue &&
@@ -1035,6 +1098,7 @@ export async function buildSessionOptions(
 	// Skills
 	if (parsed.noSkills) {
 		options.skills = [];
+		delete options.autoloadSkillNames;
 	} else if (parsed.skills && parsed.skills.length > 0) {
 		// Override includeSkills for this session
 		activeSettings.override("skills.includeSkills", parsed.skills as string[]);
@@ -1351,15 +1415,25 @@ export async function runRootCommand(
 		clearPluginRootsCache: clearPluginRootsAndCaches,
 	});
 
-	const sessionOptions = await logger.time(
-		"buildSessionOptions",
-		buildSessionOptions,
-		parsedArgs,
-		scopedModels,
-		sessionManager,
-		modelRegistry,
-		settingsInstance,
-	);
+	let sessionOptions: CreateAgentSessionOptions;
+	try {
+		sessionOptions = await logger.time(
+			"buildSessionOptions",
+			buildSessionOptions,
+			parsedArgs,
+			scopedModels,
+			sessionManager,
+			modelRegistry,
+			settingsInstance,
+		);
+	} catch (error: unknown) {
+		if (error instanceof AgentProfileResolutionError) {
+			process.stderr.write(`${chalk.red(error.message)}\n`);
+			stopStartupWatchdog();
+			process.exit(1);
+		}
+		throw error;
+	}
 	sessionOptions.authStorage = authStorage;
 	sessionOptions.modelRegistry = modelRegistry;
 	sessionOptions.hasUI = isInteractive || mode === "rpc-ui";
@@ -1389,7 +1463,17 @@ export async function runRootCommand(
 
 	const createAgentSessionImpl = deps.createAgentSession ?? createAgentSession;
 	const createSession = async (options: CreateAgentSessionOptions): Promise<CreateAgentSessionResult> => {
-		const result = await logger.time("createAgentSession", createAgentSessionImpl, options);
+		let result: CreateAgentSessionResult;
+		try {
+			result = await logger.time("createAgentSession", createAgentSessionImpl, options);
+		} catch (error: unknown) {
+			if (error instanceof AgentProfileSkillError) {
+				process.stderr.write(`${chalk.red(error.message)}\n`);
+				stopStartupWatchdog();
+				process.exit(1);
+			}
+			throw error;
+		}
 		// Kick off background model discovery only after createAgentSession finishes its parallel
 		// discovery arms; running these concurrently contends for the event loop and stretches
 		// every parallel arm by ~30ms.
