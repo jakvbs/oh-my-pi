@@ -602,6 +602,7 @@
 ### Added
 
 - Added `omp --agent <name>` to start Main from a discovered agent definition while preserving explicit CLI overrides and rejecting unknown, disabled, or incomplete profiles before the first model request.
+- Added extension APIs for patching live tool descriptions and labels or decorating tool execution, schema, approval, and rendering without reconstructing built-in tools.
 
 ### Fixed
 

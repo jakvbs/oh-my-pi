@@ -19,10 +19,10 @@ For packaged user-facing extension CLIs/features such as `packages/swarm-extensi
 An extension is a TS/JS module exporting a default factory:
 
 ```ts
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI } from '@oh-my-pi/pi-coding-agent';
 
 export default function myExtension(pi: ExtensionAPI) {
-  // register handlers/tools/commands/renderers
+    // register handlers/tools/commands/renderers
 }
 ```
 
@@ -67,42 +67,42 @@ Important constraint from `loader.ts`:
 ## Quick start
 
 ```ts
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI } from '@oh-my-pi/pi-coding-agent';
 
 export default function (pi: ExtensionAPI) {
-  const { z } = pi.zod;
+    const { z } = pi.zod;
 
-  pi.setLabel("Safety + Utilities");
+    pi.setLabel('Safety + Utilities');
 
-  pi.on("session_start", async (_event, ctx) => {
-    ctx.ui.notify(`Extension loaded in ${ctx.cwd}`, "info");
-  });
+    pi.on('session_start', async (_event, ctx) => {
+        ctx.ui.notify(`Extension loaded in ${ctx.cwd}`, 'info');
+    });
 
-  pi.on("tool_call", async (event) => {
-    if (event.toolName === "bash" && event.input.command?.includes("rm -rf")) {
-      return { block: true, reason: "Blocked by extension policy" };
-    }
-  });
+    pi.on('tool_call', async (event) => {
+        if (event.toolName === 'bash' && event.input.command?.includes('rm -rf')) {
+            return { block: true, reason: 'Blocked by extension policy' };
+        }
+    });
 
-  pi.registerTool({
-    name: "hello_extension",
-    label: "Hello Extension",
-    description: "Return a greeting",
-    parameters: z.object({ name: z.string() }),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      return {
-        content: [{ type: "text", text: `Hello, ${params.name}` }],
-        details: { greeted: params.name },
-      };
-    },
-  });
+    pi.registerTool({
+        name: 'hello_extension',
+        label: 'Hello Extension',
+        description: 'Return a greeting',
+        parameters: z.object({ name: z.string() }),
+        async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+            return {
+                content: [{ type: 'text', text: `Hello, ${params.name}` }],
+                details: { greeted: params.name }
+            };
+        }
+    });
 
-  pi.registerCommand("hello-ext", {
-    description: "Show queue state",
-    handler: async (_args, ctx) => {
-      ctx.ui.notify(`pending=${ctx.hasPendingMessages()}`, "info");
-    },
-  });
+    pi.registerCommand('hello-ext', {
+        description: 'Show queue state',
+        handler: async (_args, ctx) => {
+            ctx.ui.notify(`pending=${ctx.hasPendingMessages()}`, 'info');
+        }
+    });
 }
 ```
 
@@ -197,9 +197,7 @@ If you use raw `setInterval`/`setTimeout` or detached promises instead, you own 
 ```ts
 // Pick a model from a different family than the current one (e.g. a cross-family reviewer).
 const current = ctx.models.current();
-const contrasting = ctx.models
-  .list()
-  .find(m => current && ctx.models.family(m) !== ctx.models.family(current));
+const contrasting = ctx.models.list().find((m) => current && ctx.models.family(m) !== ctx.models.family(current));
 ```
 
 ## 3) Command context (`ExtensionCommandContext`)
@@ -297,33 +295,59 @@ Template:
 const { z } = pi.zod;
 
 pi.registerTool({
-  name: "my_tool",
-  label: "My Tool",
-  description: "...",
-  parameters: z.object({}),
-  hidden: false,
-  defaultInactive: false,
-  deferrable: false,
-  async execute(_id, _params, signal, onUpdate, ctx) {
-    if (signal?.aborted) {
-      return { content: [{ type: "text", text: "Cancelled" }] };
+    name: 'my_tool',
+    label: 'My Tool',
+    description: '...',
+    parameters: z.object({}),
+    hidden: false,
+    defaultInactive: false,
+    deferrable: false,
+    async execute(_id, _params, signal, onUpdate, ctx) {
+        if (signal?.aborted) {
+            return { content: [{ type: 'text', text: 'Cancelled' }] };
+        }
+        onUpdate?.({ content: [{ type: 'text', text: 'Working...' }] });
+        return { content: [{ type: 'text', text: 'Done' }], details: {} };
+    },
+    onSession(event, ctx) {
+        // reason: start|switch|branch|tree|shutdown
+    },
+    renderCall(args, options, theme) {
+        // optional TUI render
+    },
+    renderResult(result, options, theme, args) {
+        // optional TUI render
     }
-    onUpdate?.({ content: [{ type: "text", text: "Working..." }] });
-    return { content: [{ type: "text", text: "Done" }], details: {} };
-  },
-  onSession(event, ctx) {
-    // reason: start|switch|branch|tree|shutdown
-  },
-  renderCall(args, options, theme) {
-    // optional TUI render
-  },
-  renderResult(result, options, theme, args) {
-    // optional TUI render
-  },
 });
 ```
 
 `tool_call`/`tool_result` intercept all tools once the registry is wrapped in `sdk.ts`, including built-ins and extension/custom tools. `ToolDefinition` also supports optional `hidden`, `defaultInactive`, `deferrable`, `approval`, `mcpServerName`, `mcpToolName`, `renderCall`, and `renderResult` fields.
+
+### Customizing live tools
+
+Use `patchTool` to change the description or label of a tool already present in the session registry without replacing its execution:
+
+```ts
+pi.patchTool('read', {
+    description: 'Read files using the project-specific retrieval policy.'
+});
+```
+
+Use `wrapTool` when the extension must decorate execution or override schema, strictness, approval, or rendering:
+
+```ts
+pi.wrapTool('read', (original) => ({
+    description: `${original.description}\nAlways prefer the narrowest useful range.`,
+    async execute(toolCallId, params, signal, onUpdate, context) {
+        audit(toolCallId, params);
+        return original.execute(toolCallId, params, signal, onUpdate, context);
+    }
+}));
+```
+
+The decorator receives a read-only view of the current live tool. Its callable fields are already bound to the correct receiver, so class-based tools retain private state. Return only the fields to override; omitted fields remain unchanged. Tool names cannot be changed.
+
+Customizations are deferred until the initial registry is finalized, then applied in extension load and registration order before approval and `tool_call`/`tool_result` interception. A missing target or invalid decorator is reported against the registering extension and leaves the previous valid tool active. This API does not customize tools discovered after session initialization or advisor-only tool pools.
 
 ## UI integration points
 
@@ -383,14 +407,14 @@ For durable extension state:
 Example reconstruction pattern:
 
 ```ts
-pi.on("session_start", async (_event, ctx) => {
-  let latest;
-  for (const entry of ctx.sessionManager.getBranch()) {
-    if (entry.type === "custom" && entry.customType === "my-state") {
-      latest = entry.data;
+pi.on('session_start', async (_event, ctx) => {
+    let latest;
+    for (const entry of ctx.sessionManager.getBranch()) {
+        if (entry.type === 'custom' && entry.customType === 'my-state') {
+            latest = entry.data;
+        }
     }
-  }
-  // restore from latest
+    // restore from latest
 });
 ```
 
@@ -399,8 +423,8 @@ pi.on("session_start", async (_event, ctx) => {
 ## Custom message renderer
 
 ```ts
-pi.registerMessageRenderer("my-type", (message, { expanded }, theme) => {
-  // return pi-tui Component
+pi.registerMessageRenderer('my-type', (message, { expanded }, theme) => {
+    // return pi-tui Component
 });
 ```
 
@@ -409,12 +433,12 @@ Used by interactive rendering when custom messages are displayed.
 ## Assistant thinking renderer
 
 ```ts
-import { Container, Text } from "@oh-my-pi/pi-tui";
+import { Container, Text } from '@oh-my-pi/pi-tui';
 
 pi.registerAssistantThinkingRenderer((context, theme) => {
-  const container = new Container();
-  container.addChild(new Text(theme.fg("dim", `thinking chars: ${context.text.length}`), 1, 0));
-  return container;
+    const container = new Container();
+    container.addChild(new Text(theme.fg('dim', `thinking chars: ${context.text.length}`), 1, 0));
+    return container;
 });
 ```
 

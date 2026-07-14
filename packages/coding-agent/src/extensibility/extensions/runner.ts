@@ -1,8 +1,8 @@
 /**
  * Extension runner - executes extensions and manages their lifecycle.
  */
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@oh-my-pi/pi-ai";
+import type { AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
+import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata, TSchema } from "@oh-my-pi/pi-ai";
 import type { KeyId } from "@oh-my-pi/pi-tui";
 import { logger } from "@oh-my-pi/pi-utils";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -12,6 +12,7 @@ import type { MemoryRuntimeContext } from "../../memory-backend";
 import { type Theme, theme } from "../../modes/theme/theme";
 import type { SessionManager } from "../../session/session-manager";
 import type { BranchHandler, NavigateTreeHandler, NewSessionHandler } from "../session-handler-types";
+import { applyToolProxy } from "../tool-proxy";
 import { ManagedTimers } from "./managed-timers";
 import { createExtensionModelQuery } from "./model-api";
 import type {
@@ -40,8 +41,10 @@ import type {
 	InputEvent,
 	InputEventResult,
 	MessageRenderer,
+	ReadonlyToolHandle,
 	RegisteredCommand,
 	RegisteredTool,
+	RegisteredToolCustomization,
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
 	SessionBeforeBranchResult,
@@ -53,6 +56,7 @@ import type {
 	SessionStopEventResult,
 	ToolCallEvent,
 	ToolCallEventResult,
+	ToolDecoratorPatch,
 	ToolResultEvent,
 	ToolResultEventResult,
 	UserBashEvent,
@@ -190,6 +194,100 @@ export async function emitSessionShutdownEvent(extensionRunner: ExtensionRunner 
 		return true;
 	}
 	return false;
+}
+
+type CustomizableTool = AgentTool<TSchema, unknown, Theme>;
+
+const TOOL_DECORATOR_FIELDS: Record<string, true> = {
+	description: true,
+	label: true,
+	parameters: true,
+	strict: true,
+	approval: true,
+	execute: true,
+	renderCall: true,
+	renderResult: true,
+};
+
+const TOOL_METADATA_FIELDS: Record<string, true> = {
+	description: true,
+	label: true,
+};
+
+function createReadonlyToolHandle(tool: CustomizableTool): ReadonlyToolHandle {
+	const handle = {} as ReadonlyToolHandle;
+	applyToolProxy(tool, handle);
+	return Object.freeze(handle);
+}
+
+function validateToolMetadataPatch(value: unknown): void {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Tool metadata patch must be an object");
+	}
+	for (const key of Object.keys(value)) {
+		if (!TOOL_METADATA_FIELDS[key]) {
+			throw new Error(`Unsupported tool metadata field: ${key}`);
+		}
+	}
+	if ("description" in value && value.description !== undefined && typeof value.description !== "string") {
+		throw new Error("Tool metadata description must be a string");
+	}
+	if ("label" in value && value.label !== undefined && typeof value.label !== "string") {
+		throw new Error("Tool metadata label must be a string");
+	}
+}
+
+function validateToolDecoratorPatch(value: unknown): asserts value is ToolDecoratorPatch {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Tool decorator must return a partial override object");
+	}
+	if ("name" in value) {
+		throw new Error("Tool decorators cannot change a tool name");
+	}
+	for (const key of Object.keys(value)) {
+		if (!TOOL_DECORATOR_FIELDS[key]) {
+			throw new Error(`Unsupported tool decorator field: ${key}`);
+		}
+	}
+	if ("description" in value && value.description !== undefined && typeof value.description !== "string") {
+		throw new Error("Tool decorator description must be a string");
+	}
+	if ("label" in value && value.label !== undefined && typeof value.label !== "string") {
+		throw new Error("Tool decorator label must be a string");
+	}
+	if ("strict" in value && value.strict !== undefined && typeof value.strict !== "boolean") {
+		throw new Error("Tool decorator strict must be a boolean");
+	}
+	for (const key of ["execute", "renderCall", "renderResult"] as const) {
+		const property = Reflect.get(value, key);
+		if (property !== undefined && typeof property !== "function") {
+			throw new Error(`Tool decorator ${key} must be a function`);
+		}
+	}
+}
+
+function customizeTool(tool: CustomizableTool, customization: RegisteredToolCustomization): CustomizableTool {
+	const patch =
+		customization.kind === "patch" ? customization.patch : customization.decorator(createReadonlyToolHandle(tool));
+	if (customization.kind === "patch") {
+		validateToolMetadataPatch(patch);
+	} else {
+		validateToolDecoratorPatch(patch);
+	}
+	const overrides = Object.entries(patch).filter(([, value]) => value !== undefined);
+	if (overrides.length === 0) return tool;
+
+	const customized = {} as CustomizableTool;
+	applyToolProxy(tool, customized);
+	for (const [key, value] of overrides) {
+		Object.defineProperty(customized, key, {
+			value,
+			enumerable: true,
+			configurable: false,
+			writable: false,
+		});
+	}
+	return customized;
 }
 
 const noOpUIContext: ExtensionUIContext = {
@@ -386,6 +484,48 @@ export class ExtensionRunner {
 			}
 		}
 		return tools;
+	}
+
+	/** Get tool customizations in extension load and registration order. */
+	getAllToolCustomizations(): RegisteredToolCustomization[] {
+		const customizations: RegisteredToolCustomization[] = [];
+		for (const ext of this.extensions) {
+			customizations.push(...ext.customizations);
+		}
+		return customizations;
+	}
+
+	/** Apply deferred customizations to a finalized initial live tool registry. */
+	applyToolCustomizations(toolRegistry: Map<string, CustomizableTool>): void {
+		for (const customization of this.getAllToolCustomizations()) {
+			const tool = toolRegistry.get(customization.name);
+			if (!tool) {
+				logger.warn("Extension tool customization target not found", {
+					extensionPath: customization.extensionPath,
+					target: customization.name,
+				});
+				continue;
+			}
+
+			try {
+				const customized = customizeTool(tool, customization);
+				toolRegistry.set(customization.name, customized);
+			} catch (err) {
+				const error = err instanceof Error ? err.message : String(err);
+				const stack = err instanceof Error ? err.stack : undefined;
+				logger.error("Extension tool customization failed", {
+					extensionPath: customization.extensionPath,
+					target: customization.name,
+					error,
+				});
+				this.emitError({
+					extensionPath: customization.extensionPath,
+					event: "tool_customization",
+					error,
+					stack,
+				});
+			}
+		}
 	}
 
 	/**

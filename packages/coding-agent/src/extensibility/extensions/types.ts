@@ -9,6 +9,8 @@
  */
 import type {
 	AgentMessage,
+	AgentTool,
+	AgentToolExecFn,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ThinkingLevel,
@@ -571,6 +573,51 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	) => Component;
 }
 
+/** Metadata fields that can be changed without replacing tool behavior. */
+export interface ToolMetadataPatch {
+	description?: string;
+	label?: string;
+}
+
+/** Read-only view of the current live tool exposed to a decorator. */
+export interface ReadonlyToolHandle {
+	readonly name: string;
+	readonly label: string;
+	readonly description: string;
+	readonly parameters: TSchema;
+	readonly strict?: boolean;
+	readonly approval?: ToolApproval;
+	readonly execute: AgentToolExecFn<TSchema, unknown, Theme>;
+	readonly renderCall?: AgentTool<TSchema, unknown, Theme>["renderCall"];
+	readonly renderResult?: AgentTool<TSchema, unknown, Theme>["renderResult"];
+}
+
+/** Supported partial overrides returned by wrapTool(). */
+export interface ToolDecoratorPatch extends ToolMetadataPatch {
+	parameters?: TSchema;
+	strict?: boolean;
+	approval?: ToolApproval;
+	execute?: AgentToolExecFn<TSchema, unknown, Theme>;
+	renderCall?: AgentTool<TSchema, unknown, Theme>["renderCall"];
+	renderResult?: AgentTool<TSchema, unknown, Theme>["renderResult"];
+}
+
+export interface RegisteredToolPatch {
+	kind: "patch";
+	name: string;
+	patch: ToolMetadataPatch;
+	extensionPath: string;
+}
+
+export interface RegisteredToolDecorator {
+	kind: "wrap";
+	name: string;
+	decorator: (original: ReadonlyToolHandle) => ToolDecoratorPatch;
+	extensionPath: string;
+}
+
+export type RegisteredToolCustomization = RegisteredToolPatch | RegisteredToolDecorator;
+
 // ============================================================================
 // Resource Events
 // ============================================================================
@@ -1129,6 +1176,12 @@ export interface ExtensionAPI {
 	/** Register a tool that the LLM can call. */
 	registerTool<TParams extends TSchema = TSchema, TDetails = unknown>(tool: ToolDefinition<TParams, TDetails>): void;
 
+	/** Change a live tool's model/UI metadata without replacing its execution. */
+	patchTool(name: string, patch: ToolMetadataPatch): void;
+
+	/** Decorate a live tool through a validated partial override. */
+	wrapTool(name: string, decorator: (original: ReadonlyToolHandle) => ToolDecoratorPatch): void;
+
 	// =========================================================================
 	// Command, Shortcut, Flag Registration
 	// =========================================================================
@@ -1467,6 +1520,7 @@ export interface Extension {
 	label?: string;
 	handlers: Map<string, HandlerFn[]>;
 	tools: Map<string, RegisteredTool<any, any>>;
+	customizations: RegisteredToolCustomization[];
 	assistantThinkingRenderers: AssistantThinkingRenderer[];
 	messageRenderers: Map<string, MessageRenderer>;
 	commands: Map<string, RegisteredCommand>;

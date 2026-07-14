@@ -1,0 +1,422 @@
+version: '0.1.0'
+subject: 'extension-tool-customization-api'
+spec: '.scratch/tool-customization-api/SPEC.md'
+
+assumptions:
+    - 'Customization applies to the finalized initial per-session registry before ExtensionToolWrapper is installed.'
+    - 'Late tools inserted after session initialization and advisor-only registries are outside version 0.1.0.'
+    - 'Missing or invalid customization is isolated to that registration and retains the previously valid tool.'
+
+cases:
+    metadata_patching:
+        - name: 'patches built-in description in session catalog'
+          covers: ['AC-001']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'patches a built-in description in the provider-visible session catalog'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool: 'read'
+              originalDescription: 'original read description'
+              extension: 'pi.patchTool("read", { description: "project read policy" })'
+          input:
+              action: 'initialize session'
+          output:
+              registryTool: 'read'
+              description: 'project read policy'
+              toolCountForName: 1
+
+        - name: 'preserves exact execution call contract'
+          covers: ['AC-002']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'preserves the exact live execution call contract'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool: 'stateful probe'
+              originalResult:
+                  content:
+                      - type: 'text'
+                        text: 'probe:7'
+              patch:
+                  description: 'patched probe'
+          input:
+              toolCallId: 'call-17'
+              params:
+                  value: 7
+              signalIdentity: 'signal-A'
+              updateCallbackIdentity: 'callback-A'
+          output:
+              originalInvocationCount: 1
+              observedToolCallId: 'call-17'
+              observedParams:
+                  value: 7
+              observedSignalIdentity: 'signal-A'
+              observedUpdateCallbackIdentity: 'callback-A'
+              result:
+                  content:
+                      - type: 'text'
+                        text: 'probe:7'
+
+        - name: 'patches label only'
+          covers: ['AC-003']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'patches a label without changing other metadata or execution'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'read'
+                  label: 'Read'
+                  description: 'original read description'
+              patch:
+                  label: 'Project Read'
+          input:
+              action: 'initialize and execute tool'
+          output:
+              label: 'Project Read'
+              description: 'original read description'
+              originalInvocationCount: 1
+
+        - name: 'accepts empty metadata patch as no-op'
+          covers: ['AC-004']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/01-customize-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'accepts an empty metadata patch as a no-op'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'read'
+                  label: 'Read'
+                  description: 'original read description'
+              patch: {}
+          input:
+              action: 'initialize session'
+          output:
+              name: 'read'
+              label: 'Read'
+              description: 'original read description'
+              toolCountForName: 1
+
+    live_tool_decoration:
+        - name: 'delegates to bound class-based execution'
+          covers: ['AC-005']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'wraps bound class execution inside lifecycle interception'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool: 'class-based probe with private counter initialized to 40'
+              decorator: 'execute delegates once through original.execute'
+          input:
+              toolCallId: 'call-private-state'
+              params:
+                  increment: 2
+          output:
+              privateCounter: 42
+              delegatedCalls: 1
+              result:
+                  content:
+                      - type: 'text'
+                        text: '42'
+
+        - name: 'overrides supported decorator fields and retains omissions'
+          covers: ['AC-006']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'overrides supported decorator fields and retains omitted fields'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'probe'
+                  label: 'Probe'
+                  description: 'old description'
+                  strict: false
+                  approval: 'exec'
+                  parameters: 'schema-old'
+                  renderCall: 'renderer-old-call'
+                  renderResult: 'renderer-old-result'
+              decoratorPatch:
+                  description: 'new description'
+                  strict: true
+                  approval: 'read'
+                  parameters: 'schema-new'
+                  renderCall: 'renderer-new-call'
+          input:
+              action: 'finalize registry'
+          output:
+              name: 'probe'
+              label: 'Probe'
+              description: 'new description'
+              strict: true
+              approval: 'read'
+              parameters: 'schema-new'
+              renderCall: 'renderer-new-call'
+              renderResult: 'renderer-old-result'
+
+        - name: 'keeps customized execution inside lifecycle interception'
+          covers: ['AC-007']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'wraps bound class execution inside lifecycle interception'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool: 'probe'
+              decorator: 'replace execute with successful result'
+              extensionHandlers: ['tool_call', 'tool_result']
+          input:
+              toolCallId: 'call-hooks'
+              params:
+                  value: 1
+          output:
+              eventOrder: ['tool_call', 'decorated_execute', 'tool_result']
+              resultIsError: false
+
+        - name: 'keeps customized approval inside standard approval gate'
+          covers: ['AC-007']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/extensions-runner.test.ts'
+                    name: 'applies customized approval before execution through the standard gate'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'probe'
+                  approval: 'read'
+              decoratorPatch:
+                  approval: 'exec'
+              approvalMode: 'always-ask'
+          input:
+              toolCallId: 'call-approval'
+              params: {}
+          output:
+              approvalRequested: true
+              executeCallsBeforeApproval: 0
+
+    composition_and_rebuild:
+        - name: 'composes customizations in registration order'
+          covers: ['AC-008']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'composes customizations in registration order'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'read'
+                  description: 'base'
+              registrations:
+                  - 'patch description to first'
+                  - 'decorator appends +second to original.description'
+                  - 'patch label to Project Read'
+          input:
+              action: 'finalize registry'
+          output:
+              description: 'first+second'
+              label: 'Project Read'
+              decoratorObservedDescription: 'first'
+
+        - name: 'customizes final same-name registered winner'
+          covers: ['AC-009']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'customizes the final same-name registered winner'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              builtinTool:
+                  name: 'read'
+                  description: 'builtin'
+                  executeResult: 'builtin-result'
+              registeredTool:
+                  name: 'read'
+                  description: 'extension replacement'
+                  executeResult: 'replacement-result'
+              customization:
+                  description: 'customized replacement'
+          input:
+              action: 'initialize and execute read'
+          output:
+              description: 'customized replacement'
+              result: 'replacement-result'
+              builtinExecuteCalls: 0
+              replacementExecuteCalls: 1
+
+        - name: 'rebuild applies wrapper once to fresh registry'
+          covers: ['AC-010']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'applies wrappers once to each fresh session registry'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              baseDescription: 'base'
+              decorator: 'append +wrapped'
+          input:
+              actions: ['initialize session A', 'dispose session A', 'initialize session B']
+          output:
+              sessionADescription: 'base+wrapped'
+              sessionBDescription: 'base+wrapped'
+              sessionAExecutionWrapperDepth: 1
+              sessionBExecutionWrapperDepth: 1
+
+    invalid_customization:
+        - name: 'warns and skips missing target'
+          covers: ['AC-011']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'warns and skips a missing target'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              registryTools: ['read']
+              registration:
+                  extensionPath: '/extensions/policy.ts'
+                  target: 'missing_tool'
+                  patch:
+                      description: 'unused'
+          input:
+              action: 'finalize registry'
+          output:
+              sessionInitialized: true
+              registryTools: ['read']
+              diagnostics:
+                  - severity: 'warning'
+                    extensionPath: '/extensions/policy.ts'
+                    target: 'missing_tool'
+
+        - name: 'isolates thrown decorator and continues'
+          covers: ['AC-012']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'isolates a thrown decorator and continues with later customizations'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'read'
+                  description: 'base'
+              registrations:
+                  - extensionPath: '/extensions/broken.ts'
+                    behavior: 'throw Error("boom")'
+                  - extensionPath: '/extensions/good.ts'
+                    patch:
+                        description: 'recovered'
+          input:
+              action: 'finalize registry'
+          output:
+              sessionInitialized: true
+              description: 'recovered'
+              diagnostics:
+                  - severity: 'error'
+                    extensionPath: '/extensions/broken.ts'
+                    target: 'read'
+
+        - name: 'isolates invalid decorator result'
+          covers: ['AC-012']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'isolates invalid decorator results and attempted renames'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              tool:
+                  name: 'read'
+                  description: 'base'
+              decoratorResult: null
+          input:
+              action: 'finalize registry'
+          output:
+              sessionInitialized: true
+              description: 'base'
+              errorDiagnosticCount: 1
+
+        - name: 'rejects attempted rename without registry divergence'
+          covers: ['AC-013']
+          status: 'implemented'
+          traceability:
+              issue: '.scratch/tool-customization-api/issues/02-wrap-live-tools.md'
+              commits: ['uncommitted']
+              executableTests:
+                  - file: 'packages/coding-agent/test/sdk-tool-customization.test.ts'
+                    name: 'isolates invalid decorator results and attempted renames'
+              proof:
+                  - 'bun test packages/coding-agent/test/sdk-tool-customization.test.ts packages/coding-agent/test/extensions-runner.test.ts'
+          given:
+              registryTool:
+                  key: 'read'
+                  name: 'read'
+              untypedDecoratorResult:
+                  name: 'project_read'
+                  description: 'renamed'
+          input:
+              action: 'finalize registry'
+          output:
+              registryKeys: ['read']
+              toolNameAtReadKey: 'read'
+              toolAtProjectReadKey: null
+              description: 'base'
+              errorDiagnosticCount: 1

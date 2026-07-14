@@ -2410,6 +2410,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		}
 
+		extensionRunner.applyToolCustomizations(toolRegistry);
+
 		// Wrap every tool with `ExtensionToolWrapper` so the per-tool approval gate runs on every
 		// call site, regardless of whether any user extensions are loaded. See the runner-construction
 		// comment above for the safety invariant this enforces.

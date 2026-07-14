@@ -260,6 +260,43 @@ describe("ExtensionRunner", () => {
 		});
 	});
 
+	describe("tool customization collection", () => {
+		it("collects snapshotted patches and decorators in registration order", async () => {
+			const extCode = `
+				export default function(pi) {
+					const patch = { description: "first" };
+					pi.patchTool("read", patch);
+					patch.description = "mutated after registration";
+					pi.wrapTool("read", original => ({ description: original.description + "+second" }));
+					pi.patchTool("read", { label: "Project Read" });
+				}
+			`;
+			fs.writeFileSync(path.join(extensionsDir, "customize-read.ts"), extCode);
+
+			const result = await loadTestExtensions();
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.runtime,
+				tempDir.path(),
+				sessionManager,
+				modelRegistry,
+			);
+			const customizations = runner.getAllToolCustomizations();
+
+			expect(customizations).toHaveLength(3);
+			expect(customizations.map(customization => customization.kind)).toEqual(["patch", "wrap", "patch"]);
+			expect(customizations.map(customization => customization.name)).toEqual(["read", "read", "read"]);
+			expect(customizations[0]).toMatchObject({
+				kind: "patch",
+				patch: { description: "first" },
+			});
+			expect(customizations[2]).toMatchObject({
+				kind: "patch",
+				patch: { label: "Project Read" },
+			});
+		});
+	});
+
 	describe("command collection", () => {
 		it("collects commands from multiple extensions", async () => {
 			const cmdCode = (name: string) => `
@@ -1431,6 +1468,59 @@ describe("ExtensionRunner", () => {
 				"Deny",
 			]);
 			delete globalState.__approvalEvents;
+		});
+
+		it("applies customized approval before execution through the standard gate", async () => {
+			const extCode = `
+				export default function(pi) {
+					pi.wrapTool("safe_tool", () => ({ approval: "exec" }));
+				}
+			`;
+			fs.writeFileSync(path.join(extensionsDir, "customized-approval.ts"), extCode);
+			const result = await loadTestExtensions();
+			const runner = new ExtensionRunner(
+				result.extensions,
+				result.runtime,
+				tempDir.path(),
+				sessionManager,
+				modelRegistry,
+			);
+			let executions = 0;
+			const safeTool = {
+				name: "safe_tool",
+				label: "Safe Tool",
+				description: "Starts read-only",
+				parameters: Type.Object({}),
+				approval: "read" as const,
+				execute: async () => {
+					executions += 1;
+					return { content: [{ type: "text" as const, text: "ok" }] };
+				},
+			};
+			const registry = new Map<string, AgentTool>([["safe_tool", safeTool]]);
+			runner.applyToolCustomizations(registry);
+			const customized = registry.get("safe_tool");
+			if (!customized) throw new Error("Expected customized tool");
+
+			const select = vi.fn(async () => {
+				expect(executions).toBe(0);
+				return "Approve";
+			});
+			initializeRunner(runner, select);
+			const wrapper = new ExtensionToolWrapper(customized, runner);
+			await wrapper.execute("call-customized-approval", {}, undefined, undefined, {
+				sessionManager,
+				modelRegistry,
+				model: undefined,
+				isIdle: () => true,
+				hasQueuedMessages: () => false,
+				abort: () => {},
+				settings: { get: (key: string) => (key === "tools.approvalMode" ? "always-ask" : {}) } as never,
+			});
+
+			expect(customized.approval).toBe("exec");
+			expect(select).toHaveBeenCalledTimes(1);
+			expect(executions).toBe(1);
 		});
 
 		it("emits resolved false when approval is denied", async () => {

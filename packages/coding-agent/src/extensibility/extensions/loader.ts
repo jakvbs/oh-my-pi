@@ -35,8 +35,11 @@ import type {
 	LoadExtensionsResult,
 	MessageRenderer,
 	ProviderConfig,
+	ReadonlyToolHandle,
 	RegisteredCommand,
+	ToolDecoratorPatch,
 	ToolDefinition,
+	ToolMetadataPatch,
 } from "./types";
 
 installLegacyPiSpecifierShim();
@@ -150,6 +153,24 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 	registerTool<TParams extends TSchema = TSchema, TDetails = unknown>(tool: ToolDefinition<TParams, TDetails>): void {
 		this.extension.tools.set(tool.name, {
 			definition: tool,
+			extensionPath: this.extension.path,
+		});
+	}
+
+	patchTool(name: string, patch: ToolMetadataPatch): void {
+		this.extension.customizations.push({
+			kind: "patch",
+			name,
+			patch: { ...patch },
+			extensionPath: this.extension.path,
+		});
+	}
+
+	wrapTool(name: string, decorator: (original: ReadonlyToolHandle) => ToolDecoratorPatch): void {
+		this.extension.customizations.push({
+			kind: "wrap",
+			name,
+			decorator,
 			extensionPath: this.extension.path,
 		});
 	}
@@ -274,6 +295,7 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 		resolvedPath,
 		handlers: new Map(),
 		tools: new Map(),
+		customizations: [],
 		assistantThinkingRenderers: [],
 		messageRenderers: new Map(),
 		commands: new Map(),
