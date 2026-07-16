@@ -60,6 +60,37 @@ describe("Git commit verification", () => {
 		expect((await $`git rev-parse --verify HEAD`.cwd(cwd).quiet().nothrow()).exitCode).not.toBe(0);
 	});
 
+	it("reviews the working-tree content committed by an unborn selective commit", async () => {
+		const cwd = await createRepository();
+		await stageFile(cwd, "staged version\n");
+		await Bun.write(path.join(cwd, "tracked.txt"), "working-tree version\n");
+		let request: CommitVerificationRequest | undefined;
+		disposers.push(
+			registerCommitVerifier(async candidate => {
+				request = candidate;
+				return { allowed: true, reason: "accepted" };
+			}),
+		);
+
+		await commit(cwd, "test: selective initial", { files: ["tracked.txt"] });
+
+		expect(request?.diff).toContain("+working-tree version");
+		expect(request?.diff).not.toContain("+staged version");
+		expect((await $`git show HEAD:tracked.txt`.cwd(cwd).text()).trim()).toBe("working-tree version");
+	});
+
+	it("times out a verifier that ignores cancellation", async () => {
+		const cwd = await createRepository();
+		await stageFile(cwd, "timeout\n");
+		const never = Promise.withResolvers<never>();
+		disposers.push(registerCommitVerifier(() => never.promise));
+
+		await expect(commit(cwd, "test: timeout", { verificationTimeoutMs: 5 })).rejects.toThrow(
+			"Commit verification timed out",
+		);
+		expect((await $`git rev-parse --verify HEAD`.cwd(cwd).quiet().nothrow()).exitCode).not.toBe(0);
+	});
+
 	it("passes amend intent and immutable diff evidence to the verifier", async () => {
 		const cwd = await createRepository();
 		await stageFile(cwd, "initial\n");

@@ -92,6 +92,7 @@ export interface CommitOptions {
 	readonly author?: CommitAuthor;
 	readonly files?: readonly string[];
 	readonly signal?: AbortSignal;
+	readonly verificationTimeoutMs?: number;
 }
 
 export interface CommitVerificationRequest {
@@ -1359,6 +1360,10 @@ export const stage = {
 // API: commit, push, checkout
 // ════════════════════════════════════════════════════════════════════════════
 
+const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+const DEFAULT_COMMIT_VERIFICATION_TIMEOUT_MS = 30_000;
+
 interface CommitCandidate {
 	fingerprint: string;
 	diff: string;
@@ -1370,7 +1375,7 @@ async function captureCommitCandidate(cwd: string, options: CommitOptions): Prom
 		(await tryText(cwd, ["rev-parse", "--verify", "HEAD"], { readOnly: true, signal: options.signal }))?.trim() ??
 		null;
 	const diffArgs = options.files?.length
-		? ["diff", "--binary", ...(head ? [head] : ["--cached"]), "--", ...options.files]
+		? ["diff", "--binary", head ?? EMPTY_TREE_SHA, "--", ...options.files]
 		: ["diff", "--cached", "--binary"];
 	const diff = await runText(cwd, diffArgs, { readOnly: true, signal: options.signal });
 	const hasher = new Bun.CryptoHasher("sha256");
@@ -1378,6 +1383,32 @@ async function captureCommitCandidate(cwd: string, options: CommitOptions): Prom
 	hasher.update("\0");
 	hasher.update(diff);
 	return { fingerprint: hasher.digest("hex"), diff, head };
+}
+
+async function runCommitVerifier(
+	verifier: CommitVerifier,
+	request: CommitVerificationRequest,
+	signal: AbortSignal | undefined,
+	timeoutMs: number,
+): Promise<CommitVerificationDecision> {
+	const controller = new AbortController();
+	const interrupted = Promise.withResolvers<never>();
+	const abortListener = (): void => interrupted.reject(controller.signal.reason);
+	const relayAbort = (): void => controller.abort(signal?.reason);
+	controller.signal.addEventListener("abort", abortListener, { once: true });
+	if (signal?.aborted) relayAbort();
+	else signal?.addEventListener("abort", relayAbort, { once: true });
+	const timeout = setTimeout(
+		() => controller.abort(new CommitVerificationError(`Commit verification timed out after ${timeoutMs}ms`)),
+		timeoutMs,
+	);
+	try {
+		return await Promise.race([verifier(request, controller.signal), interrupted.promise]);
+	} finally {
+		clearTimeout(timeout);
+		controller.signal.removeEventListener("abort", abortListener);
+		signal?.removeEventListener("abort", relayAbort);
+	}
 }
 
 async function verifyCommitCandidate(cwd: string, message: string, options: CommitOptions): Promise<void> {
@@ -1392,8 +1423,9 @@ async function verifyCommitCandidate(cwd: string, message: string, options: Comm
 		message,
 		options,
 	};
+	const verificationTimeoutMs = options.verificationTimeoutMs ?? DEFAULT_COMMIT_VERIFICATION_TIMEOUT_MS;
 	for (const verifier of commitVerifiers) {
-		const decision = await verifier(request, options.signal);
+		const decision = await runCommitVerifier(verifier, request, options.signal, verificationTimeoutMs);
 		if (!decision.allowed) throw new CommitVerificationError(decision.reason);
 	}
 
