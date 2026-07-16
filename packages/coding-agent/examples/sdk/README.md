@@ -4,20 +4,21 @@ Programmatic usage of omp-coding-agent via `createAgentSession()`.
 
 ## Examples
 
-| File                       | Description                                    |
-| -------------------------- | ---------------------------------------------- |
-| `01-minimal.ts`            | Simplest usage with all defaults               |
-| `02-custom-model.ts`       | Select model and thinking level                |
-| `03-custom-prompt.ts`      | Replace or modify system prompt                |
-| `04-skills.ts`             | Discover, filter, or replace skills            |
-| `05-tools.ts`              | Built-in tools, custom tools                   |
-| `06-hooks.ts`              | Logging, blocking, result modification         |
-| `07-context-files.ts`      | AGENTS.md context files                        |
-| `08-slash-commands.ts`     | File-based slash commands                      |
-| `09-api-keys-and-oauth.ts` | API key resolution, OAuth config               |
-| `10-settings.ts`           | Override compaction, retry, terminal settings  |
-| `11-sessions.ts`           | In-memory, persistent, continue, list sessions |
-| `12-full-control.ts`       | Replace everything, no discovery               |
+| File                           | Description                                    |
+| ------------------------------ | ---------------------------------------------- |
+| `01-minimal.ts`                | Simplest usage with all defaults               |
+| `02-custom-model.ts`           | Select model and thinking level                |
+| `03-custom-prompt.ts`          | Replace or modify system prompt                |
+| `04-skills.ts`                 | Discover, filter, or replace skills            |
+| `05-tools.ts`                  | Built-in tools, custom tools                   |
+| `06-hooks.ts`                  | Logging, blocking, result modification         |
+| `07-context-files.ts`          | AGENTS.md context files                        |
+| `08-slash-commands.ts`         | File-based slash commands                      |
+| `09-api-keys-and-oauth.ts`     | API key resolution, OAuth config               |
+| `10-settings.ts`               | Override compaction, retry, terminal settings  |
+| `11-sessions.ts`               | In-memory, persistent, continue, list sessions |
+| `12-full-control.ts`           | Replace everything, no discovery               |
+| `14-model-routed-code-review/` | Route a review to typed LLM judges via the SDK |
 
 ## Running
 
@@ -29,25 +30,25 @@ npx tsx examples/sdk/01-minimal.ts
 ## Quick Reference
 
 ```typescript
-import { getModel } from "@oh-my-pi/pi-ai";
+import { getModel } from '@oh-my-pi/pi-ai';
 import {
-	AuthStorage,
-	createAgentSession,
-	discoverAuthStorage,
-	discoverModels,
-	discoverSkills,
-	discoverHooks,
-	discoverCustomTools,
-	discoverContextFiles,
-	discoverSlashCommands,
-	loadSettings,
-	buildSystemPrompt,
-	ModelRegistry,
-	SessionManager,
-	BUILTIN_TOOLS,
-	HIDDEN_TOOLS,
-	createTools,
-} from "@oh-my-pi/pi-coding-agent";
+    AuthStorage,
+    createAgentSession,
+    discoverAuthStorage,
+    discoverModels,
+    discoverSkills,
+    discoverHooks,
+    discoverCustomTools,
+    discoverContextFiles,
+    discoverSlashCommands,
+    loadSettings,
+    buildSystemPrompt,
+    ModelRegistry,
+    SessionManager,
+    BUILTIN_TOOLS,
+    HIDDEN_TOOLS,
+    createTools
+} from '@oh-my-pi/pi-coding-agent';
 
 // Auth and models setup
 const authStorage = discoverAuthStorage();
@@ -57,52 +58,52 @@ const modelRegistry = discoverModels(authStorage);
 const { session } = await createAgentSession({ authStorage, modelRegistry });
 
 // Custom model
-const model = getModel("anthropic", "claude-opus-4-5");
-const { session } = await createAgentSession({ model, thinkingLevel: "high", authStorage, modelRegistry });
+const model = getModel('anthropic', 'claude-opus-4-5');
+const { session } = await createAgentSession({ model, thinkingLevel: 'high', authStorage, modelRegistry });
 
 // Modify prompt
 const { session } = await createAgentSession({
-	systemPrompt: (defaultPrompt) => defaultPrompt + "\n\nBe concise.",
-	authStorage,
-	modelRegistry,
+    systemPrompt: (defaultPrompt) => defaultPrompt + '\n\nBe concise.',
+    authStorage,
+    modelRegistry
 });
 
 // Read-only tools
-const { session } = await createAgentSession({ toolNames: ["read", "search", "find"], authStorage, modelRegistry });
+const { session } = await createAgentSession({ toolNames: ['read', 'search', 'find'], authStorage, modelRegistry });
 
 // In-memory
 const { session } = await createAgentSession({
-	sessionManager: SessionManager.inMemory(),
-	authStorage,
-	modelRegistry,
+    sessionManager: SessionManager.inMemory(),
+    authStorage,
+    modelRegistry
 });
 
 // Full control
-const customAuth = await AuthStorage.create("/my/app/agent.db");
-customAuth.setRuntimeApiKey("anthropic", Bun.env.MY_KEY!);
+const customAuth = await AuthStorage.create('/my/app/agent.db');
+customAuth.setRuntimeApiKey('anthropic', Bun.env.MY_KEY!);
 const customRegistry = new ModelRegistry(customAuth);
 
 const { session } = await createAgentSession({
-	model,
-	authStorage: customAuth,
-	modelRegistry: customRegistry,
-	systemPrompt: ["You are helpful."],
-	toolNames: ["read", "bash"],
-	customTools: [{ tool: myTool }],
-	hooks: [{ factory: myHook }],
-	skills: [],
-	contextFiles: [],
-	slashCommands: [],
-	sessionManager: SessionManager.inMemory(),
+    model,
+    authStorage: customAuth,
+    modelRegistry: customRegistry,
+    systemPrompt: ['You are helpful.'],
+    toolNames: ['read', 'bash'],
+    customTools: [{ tool: myTool }],
+    hooks: [{ factory: myHook }],
+    skills: [],
+    contextFiles: [],
+    slashCommands: [],
+    sessionManager: SessionManager.inMemory()
 });
 
 // Run prompts
 session.subscribe((event) => {
-	if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-		process.stdout.write(event.assistantMessageEvent.delta);
-	}
+    if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
+        process.stdout.write(event.assistantMessageEvent.delta);
+    }
 });
-await session.prompt("Hello");
+await session.prompt('Hello');
 ```
 
 ## Resolve preview workflow (AST edit apply/discard)
@@ -115,14 +116,15 @@ await session.prompt("Hello");
 `createAgentSession()` / `createTools()` auto-include `write` whenever a deferrable tool (e.g. `ast_edit`) is present, so the devices are always reachable.
 
 ```typescript
-const tools = await createTools(toolSession, ["ast_edit"]); // write is auto-included
-const writeTool = tools.find(t => t.name === "write")!;
+const tools = await createTools(toolSession, ['ast_edit']); // write is auto-included
+const writeTool = tools.find((t) => t.name === 'write')!;
 
-await writeTool.execute("call-1", {
-  path: "xd://resolve",
-  content: "Preview matches expected replacements",
+await writeTool.execute('call-1', {
+    path: 'xd://resolve',
+    content: 'Preview matches expected replacements'
 });
 ```
+
 ## Options
 
 | Option                      | Default                       | Description                       |
@@ -149,21 +151,21 @@ await writeTool.execute("call-1", {
 
 ```typescript
 session.subscribe((event) => {
-	switch (event.type) {
-		case "message_update":
-			if (event.assistantMessageEvent.type === "text_delta") {
-				process.stdout.write(event.assistantMessageEvent.delta);
-			}
-			break;
-		case "tool_execution_start":
-			console.log(`Tool: ${event.toolName}`);
-			break;
-		case "tool_execution_end":
-			console.log(`Result: ${event.result}`);
-			break;
-		case "agent_end":
-			console.log("Done");
-			break;
-	}
+    switch (event.type) {
+        case 'message_update':
+            if (event.assistantMessageEvent.type === 'text_delta') {
+                process.stdout.write(event.assistantMessageEvent.delta);
+            }
+            break;
+        case 'tool_execution_start':
+            console.log(`Tool: ${event.toolName}`);
+            break;
+        case 'tool_execution_end':
+            console.log(`Result: ${event.result}`);
+            break;
+        case 'agent_end':
+            console.log('Done');
+            break;
+    }
 });
 ```
