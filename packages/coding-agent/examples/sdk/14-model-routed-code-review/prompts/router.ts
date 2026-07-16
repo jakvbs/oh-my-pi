@@ -30,13 +30,15 @@ Reguły routingu:
 
 Format odpowiedzi:
 
-Zakończ terminalnym wywołaniem \`yield\`, przekazując w \`result.data\` obiekt dokładnie w poniższym kształcie. Nie zwracaj wyniku jako tekst ani Markdown:
+Zakończ terminalnym wywołaniem \`yield\`. \`result.data\` musi być jednoelementową tablicą zawierającą poniższy obiekt. Nie zwracaj wyniku jako tekst ani Markdown:
 
-{
-  "selectedGroups": [
-    { "id": "jedna-z-tras-z-katalogu", "reason": "krótkie uzasadnienie" }
-  ]
-}
+[
+  {
+    "selectedGroups": [
+      { "id": "jedna-z-tras-z-katalogu", "reason": "krótkie uzasadnienie" }
+    ]
+  }
+]
 
 
 `;

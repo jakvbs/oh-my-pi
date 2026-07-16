@@ -110,6 +110,7 @@ async function createSdkPromptRunner() {
 	}
 
 	const runPrompt: PromptRunner = async ({ resultSchema, systemPrompt, userPrompt }) => {
+		const terminalSchema = z.array(resultSchema).length(1);
 		const { session } = await createAgentSession({
 			authStorage,
 			contextFiles: [],
@@ -120,8 +121,7 @@ async function createSdkPromptRunner() {
 			extensions: [],
 			model,
 			modelRegistry,
-			// Yield transports the terminal object; Zod below owns contract validation.
-			outputSchema: true,
+			outputSchema: z.toJSONSchema(terminalSchema),
 			preloadedCustomToolPaths: [],
 			requireYieldTool: true,
 			sessionManager: SessionManager.inMemory(),
@@ -133,14 +133,19 @@ async function createSdkPromptRunner() {
 		});
 
 		let yieldDetails: unknown;
+		let successfulYields = 0;
 		const unsubscribe = session.subscribe(event => {
 			if (event.type === "tool_execution_end" && event.toolName === "yield" && !event.isError) {
+				successfulYields++;
 				yieldDetails = event.result.details;
 			}
 		});
 
 		try {
 			await session.prompt(userPrompt);
+			if (successfulYields !== 1) {
+				throw new Error(`SDK session produced ${successfulYields} successful terminal yields`);
+			}
 			if (!yieldDetails || typeof yieldDetails !== "object") {
 				throw new Error("SDK session completed without yielding a result");
 			}
@@ -148,7 +153,11 @@ async function createSdkPromptRunner() {
 			if (result.status !== "success") {
 				throw new Error(`SDK session aborted: ${String(result.error ?? "unknown error")}`);
 			}
-			return resultSchema.parse(result.data);
+			if (result.schemaOverridden === true) {
+				throw new Error("SDK session exhausted yield schema retries");
+			}
+			const [output] = terminalSchema.parse(result.data);
+			return resultSchema.parse(output);
 		} finally {
 			unsubscribe();
 			await session.dispose();
