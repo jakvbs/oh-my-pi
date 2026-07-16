@@ -129,6 +129,10 @@
 
 - Fixed `/login` and `/logout` (plus the setup-wizard sign-in and RPC login) refreshing model discovery with the default all-provider `online-if-uncached` strategy, which reused a fresh authoritative cache row (e.g. an empty dynamic result fetched before login) and never re-ran `fetchDynamicModels` with the just-persisted credential — so newly authenticated models stayed unavailable in-session and stale endpoint/deployment data survived a relogin. Each auth-completion path now awaits a provider-scoped `refreshProvider(providerId, "online")`, leaving unrelated providers untouched ([#5780](https://github.com/can1357/oh-my-pi/issues/5780)).
 
+### Fixed
+
+- Fixed `autoResume` crossing an explicit `/new` boundary: after `/new` a new session's JSONL is created lazily (only once assistant output exists), so exiting before any assistant message left the per-terminal breadcrumb pointing at a not-yet-materialized file. `readTerminalBreadcrumbEntry` rejected the missing target and `continueRecent()` fell back to the most-recent session — the pre-`/new` transcript — processing the next prompt with stale context. `/new` now records a durable `fresh` breadcrumb boundary that `continueRecent()` honors (starting fresh) even when the target is absent, while a genuinely stale/deleted breadcrumb still falls back to the most-recent session ([#5730](https://github.com/can1357/oh-my-pi/issues/5730)).
+
 ## [17.0.1] - 2026-07-16
 
 ### Changed
