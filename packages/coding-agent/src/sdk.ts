@@ -2398,7 +2398,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				builtInRegistryToolNames.add(goalTool.name);
 			}
 		}
+		const extensionToolFallbacks = new Map<string, Tool>();
+		const extensionBuiltInFallbackNames = new Set<string>();
 		for (const tool of wrappedExtensionTools) {
+			const fallback = toolRegistry.get(tool.name);
+			if (fallback) extensionToolFallbacks.set(tool.name, fallback);
+			if (builtInRegistryToolNames.has(tool.name)) extensionBuiltInFallbackNames.add(tool.name);
 			toolRegistry.set(tool.name, tool);
 			builtInRegistryToolNames.delete(tool.name);
 		}
@@ -2417,6 +2422,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// comment above for the safety invariant this enforces.
 		for (const tool of toolRegistry.values()) {
 			toolRegistry.set(tool.name, new ExtensionToolWrapper(tool, extensionRunner));
+		}
+		for (const [name, fallback] of extensionToolFallbacks) {
+			extensionToolFallbacks.set(name, new ExtensionToolWrapper(fallback, extensionRunner));
 		}
 		if (model?.provider === "cursor") {
 			toolRegistry.delete("edit");
@@ -2932,6 +2940,37 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Owned only when this session created the manager; subagents receive a
 		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.
 		const ownedMcpManager = options.mcpManager ? undefined : mcpManager;
+		const reloadExtensions = async (): Promise<LoadExtensionsResult> => {
+			const reloadCwd = sessionManager.getCwd();
+			const paths = await discoverSessionExtensionPaths(options, reloadCwd, settings);
+			toolSession.extensionPaths = paths;
+			const reloaded = await loadExtensions(paths, reloadCwd, eventBus);
+			for (const { path: extensionPath, error } of reloaded.errors) {
+				logger.error("Failed to reload extension", { path: extensionPath, error });
+			}
+			for (let i = 0; i < inlineExtensions.length; i++) {
+				reloaded.extensions.push(
+					await loadExtensionFromFactory(
+						inlineExtensions[i]!,
+						reloadCwd,
+						eventBus,
+						reloaded.runtime,
+						`<inline-${i}>`,
+					),
+				);
+			}
+
+			const activeSources = reloaded.extensions.map(extension => extension.path);
+			modelRegistry.syncExtensionSources(activeSources);
+			for (const sourceId of new Set(activeSources)) modelRegistry.clearSourceRegistrations(sourceId);
+			for (const { name, config, sourceId } of reloaded.runtime.pendingProviderRegistrations) {
+				modelRegistry.registerProvider(name, config, sourceId);
+			}
+			reloaded.runtime.pendingProviderRegistrations = [];
+			await modelRegistry.refreshRuntimeProviders();
+			return reloaded;
+		};
+
 		session = new AgentSession({
 			advisorWatchdogPrompt,
 			advisorContextPrompt,
@@ -2957,6 +2996,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			promptTemplates,
 			slashCommands,
 			extensionRunner,
+			reloadExtensions,
+			extensionToolFallbacks,
+			extensionBuiltInFallbackNames,
 			customCommands: customCommandsResult.commands,
 			skills,
 			skillWarnings,

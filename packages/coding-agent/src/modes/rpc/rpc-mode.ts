@@ -919,6 +919,7 @@ export async function runRpcMode(
 		const projectPath = await resolveActiveProjectRegistryPath(cwd);
 		clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
 		resetCapabilities();
+		await session.reloadExtensions?.();
 		await session.refreshSkills();
 		session.setSlashCommands(await loadSlashCommands({ cwd }));
 		await emitAvailableCommandsUpdate();

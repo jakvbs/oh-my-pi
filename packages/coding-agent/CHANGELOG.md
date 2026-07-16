@@ -303,6 +303,11 @@
 - Added per-advisor on/off toggle (`enabled: false` in `WATCHDOG.yml`): advisors stay in the roster but their runtime is never built — they show `○` in `/advisor status` rather than disappearing. Existing configs are backward-compatible (defaults to `true` when absent).
 - Colored the status line's advisor `++` badge by roster health (green all running, yellow quota-exhausted, red failed, dim paused); per-advisor glyphs (`●`/`○`/`✕`) show in `/advisor status`.
 - Added real provider quota display (usage percent, window, reset timer) to `/advisor status` and the `/advisor configure` preview.
+### Fixed
+
+- Fixed `/reload-plugins` leaving extension handlers and tools stale until restart; live sessions now reload extensions, reconcile extension-owned tools, and rebind existing tool wrappers across interactive, RPC, and ACP modes.
+
+## [17.0.1] - 2026-07-16
 
 ### Changed
 
@@ -599,6 +604,7 @@
 - Fixed Pyright LSP semantic requests hanging during startup.
 - Fixed Codex web search requests for GPT-5.6 Responses-Lite models.
 - Fixed custom model/provider configuration discovery to correctly load ~/.omp/agent/models.yaml when models.yml is absent.
+
 ### Added
 
 - Added `omp --agent <name>` to start Main from a discovered agent definition while preserving explicit CLI overrides and rejecting unknown, disabled, or incomplete profiles before the first model request.

@@ -40,6 +40,7 @@ import type {
 	ExtensionUIContext,
 	InputEvent,
 	InputEventResult,
+	LoadExtensionsResult,
 	MessageRenderer,
 	ReadonlyToolHandle,
 	RegisteredCommand,
@@ -338,6 +339,9 @@ export class ExtensionRunner {
 	#shutdownHandler: ShutdownHandler = () => {};
 	#getMemoryFn?: () => MemoryRuntimeContext | undefined;
 	#commandDiagnostics: Array<{ type: string; message: string; path: string }> = [];
+	#actions: ExtensionActions | undefined;
+	#contextActions: ExtensionContextActions | undefined;
+	#commandContextActions: ExtensionCommandContextActions | undefined;
 	#initialized = false;
 	/**
 	 * Buffer for `credential_disabled` events received via {@link emitCredentialDisabled}
@@ -361,8 +365,8 @@ export class ExtensionRunner {
 	);
 
 	constructor(
-		private readonly extensions: Extension[],
-		private readonly runtime: ExtensionRuntime,
+		private extensions: Extension[],
+		private runtime: ExtensionRuntime,
 		private readonly cwd: string,
 		private readonly sessionManager: SessionManager,
 		private readonly modelRegistry: ModelRegistry,
@@ -380,6 +384,9 @@ export class ExtensionRunner {
 		commandContextActions?: ExtensionCommandContextActions,
 		uiContext?: ExtensionUIContext,
 	): void {
+		this.#actions = actions;
+		this.#contextActions = contextActions;
+		this.#commandContextActions = commandContextActions;
 		// Copy actions into the shared runtime (all extension APIs reference this)
 		this.runtime.sendMessage = actions.sendMessage;
 		this.runtime.sendUserMessage = actions.sendUserMessage;
@@ -432,6 +439,21 @@ export class ExtensionRunner {
 				});
 			}
 		});
+	}
+
+	/** Replace disk-backed extension state while preserving this runner's live session bindings. */
+	async replaceExtensions(result: LoadExtensionsResult): Promise<void> {
+		await this.emit({ type: "session_shutdown" });
+		const flagValues = this.runtime.flagValues;
+		this.extensions = result.extensions;
+		this.runtime = result.runtime;
+		for (const [name, value] of flagValues) {
+			if (ExtensionRunner.aggregateFlags(this.extensions).has(name)) this.runtime.flagValues.set(name, value);
+		}
+		if (this.#actions && this.#contextActions) {
+			this.initialize(this.#actions, this.#contextActions, this.#commandContextActions, this.#uiContext);
+		}
+		await this.emit({ type: "session_start" });
 	}
 
 	/**

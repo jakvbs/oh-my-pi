@@ -219,24 +219,26 @@ import type { TtsrManager, TtsrMatchContext } from "../export/ttsr";
 import type { LoadedCustomCommand } from "../extensibility/custom-commands";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
-import type {
-	ExtensionCommandContext,
-	ExtensionRunner,
-	ExtensionUIContext,
-	MessageEndEvent,
-	MessageStartEvent,
-	MessageUpdateEvent,
-	SessionBeforeBranchResult,
-	SessionBeforeCompactResult,
-	SessionBeforeSwitchResult,
-	SessionBeforeTreeResult,
-	SessionStopEventResult,
-	ToolExecutionEndEvent,
-	ToolExecutionStartEvent,
-	ToolExecutionUpdateEvent,
-	TreePreparation,
-	TurnEndEvent,
-	TurnStartEvent,
+import {
+	type ExtensionCommandContext,
+	type ExtensionRunner,
+	type ExtensionUIContext,
+	type LoadExtensionsResult,
+	type MessageEndEvent,
+	type MessageStartEvent,
+	type MessageUpdateEvent,
+	type SessionBeforeBranchResult,
+	type SessionBeforeCompactResult,
+	type SessionBeforeSwitchResult,
+	type SessionBeforeTreeResult,
+	type SessionStopEventResult,
+	type ToolExecutionEndEvent,
+	type ToolExecutionStartEvent,
+	type ToolExecutionUpdateEvent,
+	type TreePreparation,
+	type TurnEndEvent,
+	type TurnStartEvent,
+	wrapRegisteredTools,
 } from "../extensibility/extensions";
 import { ManagedTimers } from "../extensibility/extensions/managed-timers";
 import { createExtensionModelQuery } from "../extensibility/extensions/model-api";
@@ -896,6 +898,12 @@ export interface AgentSessionConfig {
 	slashCommands?: FileSlashCommand[];
 	/** Extension runner (created in main.ts with wrapped tools) */
 	extensionRunner?: ExtensionRunner;
+	/** Reload disk-backed extensions for the current cwd. */
+	reloadExtensions?: () => Promise<LoadExtensionsResult>;
+	/** Original tools shadowed by extension tools at startup. */
+	extensionToolFallbacks?: ReadonlyMap<string, AgentTool>;
+	/** Shadowed fallback names that originated from built-in tools. */
+	extensionBuiltInFallbackNames?: Iterable<string>;
 	/** Loaded skills (already discovered by SDK) */
 	skills?: Skill[];
 	/** Skill loading warnings (already captured by SDK) */
@@ -2036,6 +2044,10 @@ export class AgentSession {
 	 * created; cleared on dispose alongside the runner's own timers (#5664).
 	 */
 	#fallbackExtensionTimers: ManagedTimers | undefined = undefined;
+	#loadExtensions: (() => Promise<LoadExtensionsResult>) | undefined;
+	#extensionToolNames = new Set<string>();
+	#extensionToolFallbacks = new Map<string, AgentTool>();
+	#extensionBuiltInFallbackNames = new Set<string>();
 	#turnIndex = 0;
 	#messageEndPersistenceTail: Promise<void> = Promise.resolve();
 	#pendingMessageEndPersistence = new Map<string, Promise<void>>();
@@ -2709,6 +2721,12 @@ export class AgentSession {
 		this.#promptTemplates = config.promptTemplates ?? [];
 		this.#slashCommands = config.slashCommands ?? [];
 		this.#extensionRunner = config.extensionRunner;
+		this.#loadExtensions = config.reloadExtensions;
+		this.#extensionToolNames = new Set(
+			config.extensionRunner?.getAllRegisteredTools().map(tool => tool.definition.name) ?? [],
+		);
+		this.#extensionToolFallbacks = new Map(config.extensionToolFallbacks ?? []);
+		this.#extensionBuiltInFallbackNames = new Set(config.extensionBuiltInFallbackNames ?? []);
 		this.#skills = config.skills ?? [];
 		this.#skillWarnings = config.skillWarnings ?? [];
 		this.#customCommands = config.customCommands ?? [];
@@ -7154,6 +7172,53 @@ export class AgentSession {
 	 */
 	getToolByName(name: string): AgentTool | undefined {
 		return this.#toolRegistry.get(name);
+	}
+
+	/** Reload extensions and reconcile their handlers and tools into this live session. */
+	async reloadExtensions(): Promise<void> {
+		if (!this.#extensionRunner || !this.#loadExtensions) return;
+
+		const previousEnabled = this.getEnabledToolNames();
+		const previousExtensionNames = this.#extensionToolNames;
+		const result = await this.#loadExtensions();
+		await this.#extensionRunner.replaceExtensions(result);
+
+		const registeredTools = this.#extensionRunner.getAllRegisteredTools();
+		const nextExtensionNames = new Set(registeredTools.map(tool => tool.definition.name));
+		for (const name of previousExtensionNames) {
+			if (nextExtensionNames.has(name)) continue;
+			const fallback = this.#extensionToolFallbacks.get(name);
+			if (fallback) {
+				this.#toolRegistry.set(name, fallback);
+				if (this.#extensionBuiltInFallbackNames.has(name)) this.#builtInToolNames.add(name);
+			} else {
+				this.#toolRegistry.delete(name);
+			}
+			this.#extensionToolFallbacks.delete(name);
+			this.#extensionBuiltInFallbackNames.delete(name);
+		}
+
+		const wrappedTools = wrapRegisteredTools(registeredTools, this.#extensionRunner);
+		for (let index = 0; index < registeredTools.length; index++) {
+			const registered = registeredTools[index]!;
+			const name = registered.definition.name;
+			if (!previousExtensionNames.has(name)) {
+				const fallback = this.#toolRegistry.get(name);
+				if (fallback) this.#extensionToolFallbacks.set(name, fallback);
+				if (this.#builtInToolNames.has(name)) this.#extensionBuiltInFallbackNames.add(name);
+			}
+			this.#toolRegistry.set(name, this.#wrapRuntimeTool(wrappedTools[index]!));
+			this.#builtInToolNames.delete(name);
+		}
+		this.#extensionToolNames = nextExtensionNames;
+		this.#extensionRunner.applyToolCustomizations(this.#toolRegistry);
+
+		const newlyActive = registeredTools
+			.filter(tool => !tool.definition.defaultInactive)
+			.map(tool => tool.definition.name);
+		await this.#applyActiveToolsByName(
+			[...new Set([...previousEnabled, ...newlyActive])].filter(name => this.#toolRegistry.has(name)),
+		);
 	}
 
 	/** True when the current registry entry for `name` came from a built-in factory. */

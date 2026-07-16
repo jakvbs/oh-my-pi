@@ -2610,9 +2610,10 @@ export async function executeBuiltinSlashCommand(
 			reloadPlugins: async () => {
 				const projectPath = await resolveActiveProjectRegistryPath(ctx.sessionManager.getCwd());
 				clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
+				resetCapabilities();
+				await ctx.session.reloadExtensions?.();
 				await ctx.refreshSkillState();
 				await ctx.refreshSlashCommandState();
-				resetCapabilities();
 			},
 		};
 		const result = await command.handle(parsed, adapted);
