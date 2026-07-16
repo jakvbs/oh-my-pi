@@ -94,7 +94,11 @@ type Judgment = {
 	output: JudgeOutput;
 };
 
-type PromptRunner = (request: { systemPrompt: string; userPrompt: string }) => Promise<unknown>;
+type PromptRunner = <Output>(request: {
+	resultSchema: z.ZodType<Output>;
+	systemPrompt: string;
+	userPrompt: string;
+}) => Promise<Output>;
 
 async function createSdkPromptRunner() {
 	const authStorage = await discoverAuthStorage();
@@ -105,18 +109,21 @@ async function createSdkPromptRunner() {
 		throw new Error("Model openai-codex/gpt-5.6-luna is unavailable or not authenticated");
 	}
 
-	const runPrompt: PromptRunner = async ({ systemPrompt, userPrompt }) => {
+	const runPrompt: PromptRunner = async ({ resultSchema, systemPrompt, userPrompt }) => {
 		const { session } = await createAgentSession({
 			authStorage,
 			contextFiles: [],
 			customTools: [],
+			disableExtensionDiscovery: true,
 			enableLsp: false,
 			enableMCP: false,
-			disableExtensionDiscovery: true,
 			extensions: [],
-			preloadedCustomToolPaths: [],
 			model,
 			modelRegistry,
+			// Yield transports the terminal object; Zod below owns contract validation.
+			outputSchema: true,
+			preloadedCustomToolPaths: [],
+			requireYieldTool: true,
 			sessionManager: SessionManager.inMemory(),
 			skills: [],
 			slashCommands: [],
@@ -125,26 +132,25 @@ async function createSdkPromptRunner() {
 			toolNames: [],
 		});
 
+		let yieldDetails: unknown;
+		const unsubscribe = session.subscribe(event => {
+			if (event.type === "tool_execution_end" && event.toolName === "yield" && !event.isError) {
+				yieldDetails = event.result.details;
+			}
+		});
+
 		try {
 			await session.prompt(userPrompt);
-			const message = session.state.messages.findLast(candidate => candidate.role === "assistant");
-			if (!message || message.role !== "assistant") {
-				throw new Error("SDK session returned no assistant message");
+			if (!yieldDetails || typeof yieldDetails !== "object") {
+				throw new Error("SDK session completed without yielding a result");
 			}
-			const response = message.content
-				.filter(block => block.type === "text")
-				.map(block => block.text)
-				.join("\n")
-				.trim();
-			if (!response) {
-				throw new Error("SDK session returned an empty assistant response");
+			const result = yieldDetails as Record<string, unknown>;
+			if (result.status !== "success") {
+				throw new Error(`SDK session aborted: ${String(result.error ?? "unknown error")}`);
 			}
-			try {
-				return JSON.parse(response);
-			} catch (error) {
-				throw new Error(`SDK session returned invalid JSON: ${response}`, { cause: error });
-			}
+			return resultSchema.parse(result.data);
 		} finally {
+			unsubscribe();
 			await session.dispose();
 		}
 	};
@@ -246,12 +252,11 @@ async function routeReview({
 	runPrompt: PromptRunner;
 	sources: Source[];
 }): Promise<JudgeDefinition[]> {
-	const output = routerOutputSchema.parse(
-		await runPrompt({
-			systemPrompt: routerPrompt,
-			userPrompt: JSON.stringify({ reviewGoal, sources }),
-		}),
-	);
+	const output = await runPrompt({
+		resultSchema: routerOutputSchema,
+		systemPrompt: routerPrompt,
+		userPrompt: JSON.stringify({ reviewGoal, sources }),
+	});
 
 	const selectedIds = new Set(output.selectedGroups.map(group => group.id));
 	return [...selectedIds].map(id => {
@@ -290,12 +295,11 @@ async function runJudge({
 		system,
 	});
 
-	const output = judgeOutputSchema.parse(
-		await runPrompt({
-			systemPrompt: system,
-			userPrompt: JSON.stringify(request),
-		}),
-	);
+	const output = await runPrompt({
+		resultSchema: judgeOutputSchema,
+		systemPrompt: system,
+		userPrompt: JSON.stringify(request),
+	});
 
 	validateJudgeOutput({ evaluationId, group, modelId, output });
 	return {

@@ -164,7 +164,7 @@ Każdy pozostały przypadek daje \`HUMAN_REVIEW\`. Kryterium \`critical\` zawsze
 
 ## 8. Format odpowiedzi
 
-Zwróć wyłącznie JSON zgodny z tym kształtem; bez Markdownu i pól dodatkowych:
+Zakończ terminalnym wywołaniem \`yield\`, przekazując w \`result.data\` JSON zgodny z tym kształtem. Nie zwracaj wyniku jako tekst ani Markdown i nie dodawaj pól:
 
 \`\`\`json
 {

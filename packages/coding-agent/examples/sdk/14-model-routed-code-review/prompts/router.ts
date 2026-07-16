@@ -30,7 +30,7 @@ Reguły routingu:
 
 Format odpowiedzi:
 
-Zwróć wyłącznie poprawny JSON, bez Markdownu i dodatkowego tekstu, dokładnie w kształcie:
+Zakończ terminalnym wywołaniem \`yield\`, przekazując w \`result.data\` obiekt dokładnie w poniższym kształcie. Nie zwracaj wyniku jako tekst ani Markdown:
 
 {
   "selectedGroups": [
