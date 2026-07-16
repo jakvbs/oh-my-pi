@@ -303,6 +303,10 @@
 - Added per-advisor on/off toggle (`enabled: false` in `WATCHDOG.yml`): advisors stay in the roster but their runtime is never built — they show `○` in `/advisor status` rather than disappearing. Existing configs are backward-compatible (defaults to `true` when absent).
 - Colored the status line's advisor `++` badge by roster health (green all running, yellow quota-exhausted, red failed, dim paused); per-advisor glyphs (`●`/`○`/`✕`) show in `/advisor status`.
 - Added real provider quota display (usage percent, window, reset timer) to `/advisor status` and the `/advisor configure` preview.
+### Added
+
+- Added process-local Git commit verification hooks with immutable candidate evidence and stale-candidate protection, allowing extensions to gate every OMP-owned commit path.
+
 ### Fixed
 
 - Fixed `/reload-plugins` leaving extension handlers and tools stale until restart; live sessions now reload extensions, reconcile extension-owned tools, and rebind existing tool wrappers across interactive, RPC, and ACP modes.

@@ -88,9 +88,44 @@ export interface CommitDetails {
 
 export interface CommitOptions {
 	readonly allowEmpty?: boolean;
+	readonly amend?: boolean;
 	readonly author?: CommitAuthor;
 	readonly files?: readonly string[];
 	readonly signal?: AbortSignal;
+}
+
+export interface CommitVerificationRequest {
+	readonly candidateFingerprint: string;
+	readonly cwd: string;
+	readonly diff: string;
+	readonly head: string | null;
+	readonly message: string;
+	readonly options: Readonly<CommitOptions>;
+}
+
+export interface CommitVerificationDecision {
+	readonly allowed: boolean;
+	readonly reason: string;
+}
+
+export type CommitVerifier = (
+	request: CommitVerificationRequest,
+	signal?: AbortSignal,
+) => Promise<CommitVerificationDecision>;
+
+const commitVerifiers = new Set<CommitVerifier>();
+
+/** Register a process-local policy applied to every commit created through this module. */
+export function registerCommitVerifier(verifier: CommitVerifier): () => void {
+	commitVerifiers.add(verifier);
+	return () => commitVerifiers.delete(verifier);
+}
+
+export class CommitVerificationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "CommitVerificationError";
+	}
 }
 
 export interface PushOptions {
@@ -1324,9 +1359,57 @@ export const stage = {
 // API: commit, push, checkout
 // ════════════════════════════════════════════════════════════════════════════
 
+interface CommitCandidate {
+	fingerprint: string;
+	diff: string;
+	head: string | null;
+}
+
+async function captureCommitCandidate(cwd: string, options: CommitOptions): Promise<CommitCandidate> {
+	const head =
+		(await tryText(cwd, ["rev-parse", "--verify", "HEAD"], { readOnly: true, signal: options.signal }))?.trim() ??
+		null;
+	const diffArgs = options.files?.length
+		? ["diff", "--binary", ...(head ? [head] : ["--cached"]), "--", ...options.files]
+		: ["diff", "--cached", "--binary"];
+	const diff = await runText(cwd, diffArgs, { readOnly: true, signal: options.signal });
+	const hasher = new Bun.CryptoHasher("sha256");
+	hasher.update(head ?? "[unborn]");
+	hasher.update("\0");
+	hasher.update(diff);
+	return { fingerprint: hasher.digest("hex"), diff, head };
+}
+
+async function verifyCommitCandidate(cwd: string, message: string, options: CommitOptions): Promise<void> {
+	if (commitVerifiers.size === 0) return;
+
+	const before = await captureCommitCandidate(cwd, options);
+	const request: CommitVerificationRequest = {
+		candidateFingerprint: before.fingerprint,
+		cwd,
+		diff: before.diff,
+		head: before.head,
+		message,
+		options,
+	};
+	for (const verifier of commitVerifiers) {
+		const decision = await verifier(request, options.signal);
+		if (!decision.allowed) throw new CommitVerificationError(decision.reason);
+	}
+
+	const after = await captureCommitCandidate(cwd, options);
+	if (after.fingerprint !== before.fingerprint) {
+		throw new CommitVerificationError(
+			"Commit candidate changed during verification; review the updated changes and retry",
+		);
+	}
+}
+
 /** Create a commit with the given message (passed via stdin). */
 export async function commit(cwd: string, message: string, options: CommitOptions = {}): Promise<GitCommandResult> {
+	await verifyCommitCandidate(cwd, message, options);
 	const args = ["commit", "-F", "-"];
+	if (options.amend) args.push("--amend");
 	if (options.author) {
 		args.push(`--author=${options.author.name} <${options.author.email}>`);
 		if (options.author.date) args.push(`--date=${options.author.date}`);
