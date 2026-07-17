@@ -8,7 +8,9 @@ import {
 	discoverAuthStorage,
 	type ExtensionFactory,
 	ModelRegistry,
+	type SessionAgentDefinition,
 	SessionManager,
+	Settings,
 } from "@oh-my-pi/pi-coding-agent";
 import { z } from "zod";
 import { shutdownAll as shutdownLspClients } from "../../../src/lsp/client";
@@ -17,20 +19,36 @@ import {
 	CONTEXT_TOOL_NAMES,
 	type ContextToolMode,
 	MAX_CONTEXT_TOOL_CALLS,
+	MAX_PLANNER_CONTEXT_TOOL_CALLS,
+	PLANNER_TOOL_NAMES,
 } from "./context-tools";
+import plannerPrompt from "./prompts/planner.md" with { type: "text" };
 import judgeProtocol from "./prompts/protocol.md" with { type: "text" };
 import { judgeDefinitions, judgeDefinitionsById } from "./prompts/registry";
-import { routerPrompt } from "./prompts/router";
+import routerPrompt from "./prompts/router.md" with { type: "text" };
+import scoutPrompt from "./prompts/scout.md" with { type: "text" };
 import type { JudgeDefinition, JudgeType } from "./prompts/types";
-import { buildSemanticSourceCatalog, type SemanticSourceCatalog, type SourceCatalogEntry } from "./semantic-chunks";
+import { buildSemanticSourceCatalog } from "./semantic-chunks";
+import {
+	buildDeterministicSourceIndex,
+	type DeterministicSourceIndex,
+	HARD_MAX_UNIT_TOKENS,
+	type LoadLspSymbols,
+	PREFERRED_MAX_UNIT_TOKENS,
+	type SemanticUnit,
+	type SemanticUnitPlan,
+	semanticUnitPlanSchema,
+	TARGET_UNIT_TOKENS,
+	validateSemanticUnitPlan,
+} from "./semantic-units";
 import { countTextTokens } from "./token-count";
 
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
-const PROMPT_VERSION = "model-routed-code-review/1.4.0";
-const OUTPUT_SCHEMA_VERSION = "judge-output/3.0.0";
-const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/1.0.0";
+const PROMPT_VERSION = "model-routed-code-review/2.0.0";
+const OUTPUT_SCHEMA_VERSION = "judge-output/4.0.0";
+const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/2.0.0";
 const THINKING_LEVEL = ThinkingLevel.Medium;
 const JUDGE_CONCURRENCY = 10;
 
@@ -43,21 +61,30 @@ const judgeGroupIds = new Set(judgeDefinitions.map(group => group.id));
 
 const routerOutputSchema = z
 	.object({
-		selectedGroups: z
+		selectedReviews: z
 			.array(
 				z
 					.object({
-						id: z.string().refine(id => judgeGroupIds.has(id), "Unknown judge group"),
+						unit_id: z.string().min(1),
+						judge_id: z.string().refine(id => judgeGroupIds.has(id), "Unknown judge group"),
 						reason: z.string().min(1),
-						source_ids: z.array(z.string().min(1)),
-						chunk_ids: z.array(z.string().min(1)),
 					})
 					.strict(),
 			)
-			.min(1)
-			.max(judgeDefinitions.length),
+			.min(1),
 	})
 	.strict();
+
+const semanticUnitScout = {
+	name: "scout",
+	description: "Builds complete vertical semantic units from a deterministic AST/LSP source index",
+	tools: ["read", "ast_grep"],
+	model: ["@smol"],
+	thinkingLevel: ThinkingLevel.Medium,
+	readSummarize: false,
+	systemPrompt: scoutPrompt,
+	output: z.toJSONSchema(semanticUnitPlanSchema),
+} satisfies SessionAgentDefinition;
 
 const evidenceSchema = z
 	.object({
@@ -99,9 +126,9 @@ type Source = {
 type LineRange = { startLine: number; endLine: number };
 type SourceView = { source: Source; ranges: LineRange[] };
 
-type RoutedJudgeGroup = JudgeDefinition & {
-	selectedSourceIds: string[];
-	selectedChunkIds: string[];
+type RoutedReview = JudgeDefinition & {
+	unit: SemanticUnit;
+	selectedFragmentIds: string[];
 	routeReason: string;
 };
 
@@ -115,6 +142,7 @@ type VerifiedJudgeOutput = Omit<JudgeOutput, "criterion_results"> & {
 };
 type Judgment = {
 	groupId: string;
+	unitId: string;
 	judgeType: JudgeType;
 	output: VerifiedJudgeOutput;
 	execution: PromptExecutionMetadata;
@@ -122,6 +150,7 @@ type Judgment = {
 
 type JudgeFailure = {
 	groupId: string;
+	unitId: string;
 	judgeType: JudgeType;
 	error: string;
 	execution?: PromptExecutionMetadata;
@@ -135,26 +164,27 @@ type EvidenceIssue = {
 };
 
 type EvidenceFailure = EvidenceIssue & {
+	unitId: string;
 	groupId: string;
 	judgeType: JudgeType;
 };
 
 type GroupResult =
 	| {
+			unitId: string;
 			groupId: string;
 			judgeType: JudgeType;
 			rubricVersion: string;
-			selectedSourceIds: string[];
-			selectedChunkIds: string[];
+			selectedFragmentIds: string[];
 			status: "succeeded";
 			judgment: Judgment;
 	  }
 	| {
+			unitId: string;
 			groupId: string;
 			judgeType: JudgeType;
 			rubricVersion: string;
-			selectedSourceIds: string[];
-			selectedChunkIds: string[];
+			selectedFragmentIds: string[];
 			status: "failed";
 			failure: JudgeFailure;
 			evidenceFailures: EvidenceFailure[];
@@ -214,6 +244,17 @@ export type PromptRunner = <Output>(request: {
 	contextTools?: { mode: ContextToolMode; roots: string[] };
 }) => Promise<PromptResult<Output>>;
 
+const yieldResultEnvelopeSchema = z
+	.object({
+		status: z.string(),
+		error: z.unknown().optional(),
+		schemaOverridden: z.unknown().optional(),
+		data: z.unknown(),
+	})
+	.passthrough();
+const incrementalYieldSchema = z.object({ type: z.array(z.unknown()).min(1) }).passthrough();
+const readResultDetailsSchema = z.object({ resolvedPath: z.string() }).passthrough();
+
 export function validateTerminalYieldResult<Output>({
 	details,
 	incrementalYieldCount,
@@ -231,10 +272,7 @@ export function validateTerminalYieldResult<Output>({
 	if (terminalYieldCount !== 1) {
 		throw new Error(`SDK session produced ${terminalYieldCount} terminal yields`);
 	}
-	if (!details || typeof details !== "object") {
-		throw new Error("SDK session completed without yielding a result");
-	}
-	const result = details as Record<string, unknown>;
+	const result = yieldResultEnvelopeSchema.parse(details);
 	if (result.status !== "success") {
 		throw new Error(`SDK session aborted: ${String(result.error ?? "unknown error")}`);
 	}
@@ -247,8 +285,7 @@ export function validateTerminalYieldResult<Output>({
 }
 
 function isIncrementalYield(details: unknown) {
-	if (!details || typeof details !== "object") return false;
-	return Array.isArray((details as Record<string, unknown>).type);
+	return incrementalYieldSchema.safeParse(details).success;
 }
 
 async function createSdkPromptRunner() {
@@ -264,13 +301,14 @@ async function createSdkPromptRunner() {
 		const startedAt = performance.now();
 		const terminalSchema = z.array(resultSchema).length(1);
 		const mode = contextTools?.mode ?? "none";
-		const enabled = mode === "read_only";
-		const audit = {
+		const enabled = mode !== "none";
+		const plannerEnabled = mode === "semantic_planning";
+		const audit: PromptExecutionMetadata["contextTools"] = {
 			enabled,
-			maxCalls: enabled ? MAX_CONTEXT_TOOL_CALLS : 0,
+			maxCalls: plannerEnabled ? MAX_PLANNER_CONTEXT_TOOL_CALLS + 1 : enabled ? MAX_CONTEXT_TOOL_CALLS : 0,
 			requestedCalls: 0,
 			blockedCalls: 0,
-			callsByTool: {} as Record<string, number>,
+			callsByTool: {},
 		};
 		const contextReadPaths = new Set<string>();
 		const cwd = process.cwd();
@@ -286,6 +324,7 @@ async function createSdkPromptRunner() {
 					input: event.input,
 					mode,
 					roots,
+					taskCallCount: audit.callsByTool.task ?? 0,
 					toolName: event.toolName,
 				});
 				if (!reason) return undefined;
@@ -293,9 +332,18 @@ async function createSdkPromptRunner() {
 				return { block: true, reason };
 			});
 		};
+		const settings = Settings.isolated({
+			"async.enabled": false,
+			"task.batch": false,
+			"task.enableLsp": false,
+			"task.maxConcurrency": 1,
+			"task.maxRecursionDepth": 1,
+		});
 		const { session } = await createAgentSession({
+			agentDefinitions: plannerEnabled ? [semanticUnitScout] : [],
 			authStorage,
 			contextFiles: [],
+			cwd,
 			customTools: [],
 			disableExtensionDiscovery: true,
 			enableLsp: enabled,
@@ -307,24 +355,28 @@ async function createSdkPromptRunner() {
 			preloadedCustomToolPaths: [],
 			requireYieldTool: true,
 			sessionManager: SessionManager.inMemory(),
+			settings,
 			skills: [],
 			slashCommands: [],
+			spawns: plannerEnabled ? "scout" : "",
 			systemPrompt: [systemPrompt],
 			thinkingLevel: THINKING_LEVEL,
-			toolNames: enabled ? [...CONTEXT_TOOL_NAMES] : [],
+			toolNames: plannerEnabled ? [...PLANNER_TOOL_NAMES] : enabled ? [...CONTEXT_TOOL_NAMES] : [],
 		});
 
 		let terminalYieldDetails: unknown;
 		let terminalYieldCount = 0;
 		let incrementalYieldCount = 0;
+		let successfulScoutCalls = 0;
 		const unsubscribe = session.subscribe(event => {
 			if (event.type !== "tool_execution_end" || event.isError) return;
+			if (event.toolName === "task") {
+				successfulScoutCalls++;
+				return;
+			}
 			if (event.toolName === "read") {
-				const details = event.result.details;
-				if (details && typeof details === "object" && "resolvedPath" in details) {
-					const resolvedPath = (details as { resolvedPath?: unknown }).resolvedPath;
-					if (typeof resolvedPath === "string") contextReadPaths.add(resolvedPath);
-				}
+				const details = readResultDetailsSchema.safeParse(event.result.details);
+				if (details.success) contextReadPaths.add(details.data.resolvedPath);
 				return;
 			}
 			if (event.toolName !== "yield") return;
@@ -358,6 +410,9 @@ async function createSdkPromptRunner() {
 
 		try {
 			await session.prompt(userPrompt);
+			if (plannerEnabled && successfulScoutCalls !== 1) {
+				throw new Error(`Semantic planner completed with ${successfulScoutCalls} successful scout calls`);
+			}
 			const output = validateTerminalYieldResult({
 				details: terminalYieldDetails,
 				incrementalYieldCount,
@@ -424,12 +479,14 @@ async function main() {
 
 export async function runReview({
 	filePaths,
+	loadLspSymbols,
 	modelId,
 	reviewGoal,
 	riskLevel,
 	runPrompt,
 }: {
 	filePaths: string[];
+	loadLspSymbols?: LoadLspSymbols;
 	modelId: string;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
@@ -439,67 +496,78 @@ export async function runReview({
 	const startedAtMs = performance.now();
 	const sources = await readSources(filePaths);
 	const semanticCatalog = await buildSemanticSourceCatalog(sources);
+	const sourceIndex = loadLspSymbols
+		? await buildDeterministicSourceIndex(sources, semanticCatalog, loadLspSymbols)
+		: await buildDeterministicSourceIndex(sources, semanticCatalog);
 	const inputFingerprint = createHash("sha256")
 		.update(
 			JSON.stringify({
 				reviewGoal,
 				riskLevel,
+				sourceIndexHash: sourceIndex.hash,
 				sources: sources.map(source => ({ id: source.id, content: source.content })),
 			}),
 		)
 		.digest("hex");
-	const { selectedGroups, execution: routerExecution } = await routeReview({
+	const { plan: semanticPlan, execution: plannerExecution } = await planSemanticUnits({
 		reviewGoal,
 		runPrompt,
-		sourceCatalog: semanticCatalog.sources,
+		sourceIndex,
 	});
-	const settledJudgments = await mapSettledWithConcurrency(selectedGroups, JUDGE_CONCURRENCY, group =>
+	const { selectedReviews, execution: routerExecution } = await routeReview({
+		reviewGoal,
+		runPrompt,
+		semanticPlan,
+	});
+	const settledJudgments = await mapSettledWithConcurrency(selectedReviews, JUDGE_CONCURRENCY, review =>
 		runJudge({
-			group,
+			group: review,
 			reviewGoal,
 			riskLevel,
 			runPrompt,
 			sources,
-			sourceViews: selectSourceViews(group, sources, semanticCatalog),
+			sourceViews: selectSourceViews(review.unit, sources, sourceIndex),
 		}),
 	);
 	const groupResults: GroupResult[] = settledJudgments.map((result, index) => {
-		const group = selectedGroups[index];
-		if (!group) throw new Error("Judge result order is inconsistent");
+		const review = selectedReviews[index];
+		if (!review) throw new Error("Judge result order is inconsistent");
 		if (result.status === "fulfilled") {
 			return {
-				rubricVersion: group.rubricVersion,
-				groupId: group.id,
-				judgeType: group.judgeType,
-				selectedSourceIds: group.selectedSourceIds,
-				selectedChunkIds: group.selectedChunkIds,
+				unitId: review.unit.id,
+				rubricVersion: review.rubricVersion,
+				groupId: review.id,
+				judgeType: review.judgeType,
+				selectedFragmentIds: review.selectedFragmentIds,
 				status: "succeeded",
 				judgment: result.value,
 			};
 		}
 
 		const failure = {
-			groupId: group.id,
+			unitId: review.unit.id,
+			groupId: review.id,
 			...(result.reason instanceof PromptExecutionError || result.reason instanceof EvidenceValidationError
 				? { execution: result.reason.execution }
 				: {}),
-			judgeType: group.judgeType,
+			judgeType: review.judgeType,
 			error: result.reason instanceof Error ? result.reason.message : String(result.reason),
 		};
 		const evidenceFailures =
 			result.reason instanceof EvidenceValidationError
 				? result.reason.issues.map(issue => ({
-						groupId: group.id,
-						judgeType: group.judgeType,
+						unitId: review.unit.id,
+						groupId: review.id,
+						judgeType: review.judgeType,
 						...issue,
 					}))
 				: [];
 		return {
-			rubricVersion: group.rubricVersion,
-			groupId: group.id,
-			judgeType: group.judgeType,
-			selectedSourceIds: group.selectedSourceIds,
-			selectedChunkIds: group.selectedChunkIds,
+			unitId: review.unit.id,
+			rubricVersion: review.rubricVersion,
+			groupId: review.id,
+			judgeType: review.judgeType,
+			selectedFragmentIds: review.selectedFragmentIds,
 			status: "failed",
 			failure,
 			evidenceFailures,
@@ -508,6 +576,7 @@ export async function runReview({
 	const judgments = groupResults.flatMap(result => (result.status === "succeeded" ? [result.judgment] : []));
 	const failures = groupResults.flatMap(result => (result.status === "failed" ? [result.failure] : []));
 	const executions = [
+		plannerExecution,
 		routerExecution,
 		...groupResults.flatMap(result => {
 			if (result.status === "succeeded") return [result.judgment.execution];
@@ -515,11 +584,11 @@ export async function runReview({
 		}),
 	];
 	const tokenUsage = sumTokenUsage(executions.map(execution => execution.tokenUsage));
-
 	const evidenceFailures = groupResults.flatMap(result => (result.status === "failed" ? result.evidenceFailures : []));
 
 	return {
-		selectedGroups: selectedGroups.map(group => group.id),
+		semanticUnits: semanticPlan.units,
+		selectedReviews: selectedReviews.map(review => ({ unitId: review.unit.id, judgeId: review.id })),
 		groupResults,
 		failures,
 		evidenceFailures,
@@ -531,16 +600,23 @@ export async function runReview({
 			thinkingLevel: THINKING_LEVEL,
 			promptVersion: PROMPT_VERSION,
 			outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
-			rubricVersions: Object.fromEntries(selectedGroups.map(group => [group.id, group.rubricVersion])),
+			rubricVersions: Object.fromEntries(
+				selectedReviews.map(review => [`${review.unit.id}:${review.id}`, review.rubricVersion]),
+			),
 			inputFingerprint,
 			tokenUsage,
 			contextTools: aggregateContextToolUsage(executions),
+			planner: plannerExecution,
 			router: routerExecution,
 			semanticContext: {
-				chunkedSourceCount: semanticCatalog.sources.filter(source => source.chunked).length,
-				availableChunkCount: semanticCatalog.chunksById.size,
-				selectedSourceCount: new Set(selectedGroups.flatMap(group => group.selectedSourceIds)).size,
-				selectedChunkCount: new Set(selectedGroups.flatMap(group => group.selectedChunkIds)).size,
+				sourceIndexHash: sourceIndex.hash,
+				sourceCount: sourceIndex.sources.length,
+				fragmentCount: sourceIndex.fragmentsById.size,
+				unitCount: semanticPlan.units.length,
+				maximumUnitTokens: Math.max(...semanticPlan.units.map(unit => unit.estimatedTokens)),
+				uniqueEvidenceTokens: semanticPlan.uniqueEvidenceTokens,
+				plannedEvidenceTokens: semanticPlan.plannedEvidenceTokens,
+				fanOutRatio: semanticPlan.plannedEvidenceTokens / semanticPlan.uniqueEvidenceTokens,
 			},
 		},
 		aggregate: aggregateJudgments(judgments, failures.length, groupResults.length),
@@ -571,74 +647,107 @@ async function readSources(filePaths: string[]): Promise<Source[]> {
 	return sources;
 }
 
-async function routeReview({
+async function planSemanticUnits({
 	reviewGoal,
 	runPrompt,
-	sourceCatalog,
+	sourceIndex,
 }: {
 	reviewGoal: string;
 	runPrompt: PromptRunner;
-	sourceCatalog: SourceCatalogEntry[];
-}): Promise<{ selectedGroups: RoutedJudgeGroup[]; execution: PromptExecutionMetadata }> {
+	sourceIndex: DeterministicSourceIndex;
+}): Promise<{ plan: SemanticUnitPlan; execution: PromptExecutionMetadata }> {
+	const request = {
+		reviewGoal,
+		budgets: {
+			targetUnitTokens: TARGET_UNIT_TOKENS,
+			preferredMaxUnitTokens: PREFERRED_MAX_UNIT_TOKENS,
+			hardMaxUnitTokens: HARD_MAX_UNIT_TOKENS,
+			maxSupportingRatio: 0.3,
+		},
+		sourceIndex: {
+			version: sourceIndex.version,
+			hash: sourceIndex.hash,
+			totalEstimatedTokens: sourceIndex.totalEstimatedTokens,
+			sources: sourceIndex.sources,
+		},
+	};
+	if (countTextTokens(`${plannerPrompt}\n${JSON.stringify(request)}`) > MAX_REQUEST_TOKENS) {
+		throw new Error("Semantic planner request exceeds the context limit");
+	}
+	const { output, execution } = await runPrompt({
+		resultSchema: semanticUnitPlanSchema,
+		systemPrompt: plannerPrompt,
+		userPrompt: JSON.stringify(request),
+		contextTools: {
+			mode: "semantic_planning",
+			roots: [...new Set(sourceIndex.sources.map(source => dirname(source.path)))],
+		},
+	});
+	return { plan: validateSemanticUnitPlan(output, sourceIndex), execution };
+}
+
+async function routeReview({
+	reviewGoal,
+	runPrompt,
+	semanticPlan,
+}: {
+	reviewGoal: string;
+	runPrompt: PromptRunner;
+	semanticPlan: SemanticUnitPlan;
+}): Promise<{ selectedReviews: RoutedReview[]; execution: PromptExecutionMetadata }> {
 	const { output, execution } = await runPrompt({
 		resultSchema: routerOutputSchema,
 		systemPrompt: routerPrompt,
-		userPrompt: JSON.stringify({ reviewGoal, sources: sourceCatalog }),
+		userPrompt: JSON.stringify({ reviewGoal, semanticUnits: semanticPlan.units }),
 	});
 
-	const knownSourceIds = new Set(sourceCatalog.map(source => source.id));
-	const knownChunkIds = new Set(sourceCatalog.flatMap(source => source.chunks.map(chunk => chunk.id)));
-	const seenGroupIds = new Set<string>();
-	const selectedGroups = output.selectedGroups.map(selection => {
-		const group = judgeDefinitionsById.get(selection.id);
-		if (!group) throw new Error(`Router selected an unknown judge group: ${selection.id}`);
-		if (seenGroupIds.has(selection.id)) throw new Error(`Router selected duplicate judge group: ${selection.id}`);
-		seenGroupIds.add(selection.id);
-		const selectedSourceIds = [...new Set(selection.source_ids)];
-		const selectedChunkIds = [...new Set(selection.chunk_ids)];
-		for (const sourceId of selectedSourceIds) {
-			if (!knownSourceIds.has(sourceId)) throw new Error(`Router selected an unknown source: ${sourceId}`);
-		}
-		for (const chunkId of selectedChunkIds) {
-			if (!knownChunkIds.has(chunkId)) throw new Error(`Router selected an unknown chunk: ${chunkId}`);
-		}
-		if (selectedSourceIds.length === 0 && selectedChunkIds.length === 0) {
-			throw new Error(`Router selected no context for judge group: ${selection.id}`);
-		}
+	const unitsById = new Map(semanticPlan.units.map(unit => [unit.id, unit]));
+	const seenReviews = new Set<string>();
+	const routedUnitIds = new Set<string>();
+	const selectedReviews = output.selectedReviews.map(selection => {
+		const unit = unitsById.get(selection.unit_id);
+		if (!unit) throw new Error(`Router selected an unknown semantic unit: ${selection.unit_id}`);
+		const group = judgeDefinitionsById.get(selection.judge_id);
+		if (!group) throw new Error(`Router selected an unknown judge group: ${selection.judge_id}`);
+		const reviewId = `${unit.id}:${group.id}`;
+		if (seenReviews.has(reviewId)) throw new Error(`Router selected duplicate review: ${reviewId}`);
+		seenReviews.add(reviewId);
+		routedUnitIds.add(unit.id);
 		return {
 			...group,
-			selectedSourceIds,
-			selectedChunkIds,
+			unit,
+			selectedFragmentIds: [...unit.primary_fragment_ids, ...unit.supporting_fragment_ids],
 			routeReason: selection.reason,
 		};
 	});
-	return { selectedGroups, execution };
+	for (const unit of semanticPlan.units) {
+		if (!routedUnitIds.has(unit.id)) throw new Error(`Router selected no judge for semantic unit: ${unit.id}`);
+	}
+	return { selectedReviews, execution };
 }
 
-function selectSourceViews(group: RoutedJudgeGroup, sources: Source[], catalog: SemanticSourceCatalog): SourceView[] {
+function selectSourceViews(unit: SemanticUnit, sources: Source[], index: DeterministicSourceIndex): SourceView[] {
 	const rangesBySource = new Map<string, LineRange[]>();
-	const sourceCatalog = new Map(catalog.sources.map(source => [source.id, source]));
+	const indexedSources = new Map(index.sources.map(source => [source.id, source]));
 	const addRange = (sourceId: string, range: LineRange) => {
 		const ranges = rangesBySource.get(sourceId) ?? [];
 		ranges.push(range);
 		rangesBySource.set(sourceId, ranges);
 	};
 
-	for (const sourceId of group.selectedSourceIds) {
-		const source = sources.find(candidate => candidate.id === sourceId);
-		if (!source) throw new Error(`Selected source disappeared: ${sourceId}`);
-		addRange(sourceId, { startLine: 1, endLine: source.content.split("\n").length });
-	}
-	for (const chunkId of group.selectedChunkIds) {
-		const chunk = catalog.chunksById.get(chunkId);
-		if (!chunk) throw new Error(`Selected chunk disappeared: ${chunkId}`);
-		const entry = sourceCatalog.get(chunk.sourceId);
-		if (entry?.preambleEndLine) addRange(chunk.sourceId, { startLine: 1, endLine: entry.preambleEndLine });
-		if (chunk.contextRange) addRange(chunk.sourceId, chunk.contextRange);
-		addRange(chunk.sourceId, { startLine: chunk.startLine, endLine: chunk.endLine });
+	for (const fragmentId of [...unit.primary_fragment_ids, ...unit.supporting_fragment_ids]) {
+		const fragment = index.fragmentsById.get(fragmentId);
+		if (!fragment) throw new Error(`Selected fragment disappeared: ${fragmentId}`);
+		const source = indexedSources.get(fragment.sourceId);
+		if (source?.preambleEndLine) addRange(fragment.sourceId, { startLine: 1, endLine: source.preambleEndLine });
+		if (fragment.contextRange) addRange(fragment.sourceId, fragment.contextRange);
+		addRange(fragment.sourceId, { startLine: fragment.startLine, endLine: fragment.endLine });
 	}
 
-	return sources.flatMap(source => {
+	const orderedSources = [...sources].sort(
+		(left, right) => Number(right.id === unit.owner_source_id) - Number(left.id === unit.owner_source_id),
+	);
+	return orderedSources.flatMap(source => {
 		const ranges = rangesBySource.get(source.id);
 		return ranges ? [{ source, ranges: mergeLineRanges(ranges) }] : [];
 	});
@@ -666,7 +775,7 @@ async function runJudge({
 	sources,
 	sourceViews,
 }: {
-	group: RoutedJudgeGroup;
+	group: RoutedReview;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	runPrompt: PromptRunner;
@@ -697,6 +806,7 @@ async function runJudge({
 		validateJudgeOutput(group, output);
 		return {
 			groupId: group.id,
+			unitId: group.unit.id,
 			judgeType: group.judgeType,
 			output: verifyEvidence(output, [...sources, ...contextSources]),
 			execution,
@@ -714,7 +824,7 @@ function buildJudgeRequest({
 	sourceViews,
 	system,
 }: {
-	group: RoutedJudgeGroup;
+	group: RoutedReview;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	sourceViews: SourceView[];
@@ -731,9 +841,13 @@ function buildJudgeRequest({
 		artifact,
 		rubric: group.criterionIds,
 		allowed_sources: serializedSources.slice(1),
-		context_selection: {
-			source_ids: group.selectedSourceIds,
-			chunk_ids: group.selectedChunkIds,
+		semantic_unit: {
+			id: group.unit.id,
+			behavior: group.unit.behavior,
+			owner_source_id: group.unit.owner_source_id,
+			rationale: group.unit.rationale,
+			primary_fragment_ids: group.unit.primary_fragment_ids,
+			supporting_fragment_ids: group.unit.supporting_fragment_ids,
 		},
 		reference_data: [],
 		deterministic_evidence: [],

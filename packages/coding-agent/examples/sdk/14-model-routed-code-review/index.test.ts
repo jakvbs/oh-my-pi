@@ -5,6 +5,41 @@ import { type PromptRunner, runReview, validateTerminalYieldResult } from "./ind
 import { judgeDefinitions } from "./prompts/registry";
 
 const modelId = "openai-codex/gpt-5.6-luna";
+const plannerRequestSchema = z
+	.object({
+		sourceIndex: z.object({
+			sources: z.array(
+				z.object({
+					id: z.string(),
+					fragments: z.array(z.object({ id: z.string() }).passthrough()),
+				}),
+			),
+		}),
+	})
+	.passthrough();
+const unavailableLsp = async () => ({ status: "unavailable" as const, symbols: "" });
+
+function semanticPlanFromRequest(userPrompt: string) {
+	const request = plannerRequestSchema.parse(JSON.parse(userPrompt));
+	const owner = request.sourceIndex.sources[0];
+	if (!owner) throw new Error("Expected an indexed source");
+	return {
+		units: [
+			{
+				id: "review-scope",
+				behavior: "Review the supplied behavior",
+				owner_source_id: owner.id,
+				primary_fragment_ids: request.sourceIndex.sources.flatMap(source =>
+					source.fragments.map(fragment => fragment.id),
+				),
+				supporting_fragment_ids: [],
+				rationale: "The supplied sources form one review workflow.",
+				supporting_context_reason: null,
+				oversize_reason: null,
+			},
+		],
+	};
+}
 
 describe("runReview", () => {
 	test("limits concurrency and preserves successful judges when one fails", async () => {
@@ -13,53 +48,52 @@ describe("runReview", () => {
 		let activeJudges = 0;
 		let maximumActiveJudges = 0;
 
-		const runPrompt: PromptRunner = async <Output>({
-			contextTools,
-			systemPrompt,
-			userPrompt,
-		}: {
-			resultSchema: ZodType<Output>;
-			systemPrompt: string;
-			userPrompt: string;
-			contextTools?: { mode: "none" | "read_only"; roots: string[] };
-		}) => {
+		const runPrompt: PromptRunner = async ({ contextTools, resultSchema, systemPrompt, userPrompt }) => {
+			if (systemPrompt.includes("# Planner semantic units")) {
+				expect(contextTools?.mode).toBe("semantic_planning");
+				return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
+			}
 			if (systemPrompt.includes("# Router")) {
 				expect(contextTools).toBeUndefined();
-				return promptResult({
-					selectedGroups: judgeDefinitions.map(group => ({
-						id: group.id,
-						reason: "Selected by test",
-						source_ids: ["source-1:index.ts"],
-						chunk_ids: [],
-					})),
-				} as Output);
+				return promptResult(
+					resultSchema.parse({
+						selectedReviews: judgeDefinitions.map(group => ({
+							unit_id: "review-scope",
+							judge_id: group.id,
+							reason: "Selected by test",
+						})),
+					}),
+				);
 			}
 
 			expect(contextTools?.mode).toBe("read_only");
 			expect(contextTools?.roots.length).toBeGreaterThan(0);
-			const request = JSON.parse(userPrompt) as JudgeRequest;
+			const request = judgeRequestSchema.parse(JSON.parse(userPrompt));
 			activeJudges++;
 			maximumActiveJudges = Math.max(maximumActiveJudges, activeJudges);
 			await Bun.sleep(10);
 			activeJudges--;
 			if (request.selected_group === failedGroup.id) throw new Error("simulated judge failure");
 
-			return promptResult({
-				criterion_results: request.rubric.map(criterionId => ({
-					criterion_id: criterionId,
-					verdict: "NOT_APPLICABLE",
-					severity: "minor",
-					confidence: "high",
-					evidence: [],
-					missing_evidence: [],
-					reason: "Not applicable in concurrency test.",
-					suggested_action: null,
-					verification_after_change: null,
-				})),
-			} as Output);
+			return promptResult(
+				resultSchema.parse({
+					criterion_results: request.rubric.map(criterionId => ({
+						criterion_id: criterionId,
+						verdict: "NOT_APPLICABLE",
+						severity: "minor",
+						confidence: "high",
+						evidence: [],
+						missing_evidence: [],
+						reason: "Not applicable in concurrency test.",
+						suggested_action: null,
+						verification_after_change: null,
+					})),
+				}),
+			);
 		};
 
 		const result = await runReview({
+			loadLspSymbols: unavailableLsp,
 			filePaths: [new URL("./index.ts", import.meta.url).pathname],
 			modelId,
 			reviewGoal: "Exercise every judge group.",
@@ -70,6 +104,7 @@ describe("runReview", () => {
 		expect(maximumActiveJudges).toBe(10);
 		expect(result.failures).toEqual([
 			{
+				unitId: "review-scope",
 				groupId: failedGroup.id,
 				judgeType: failedGroup.judgeType,
 				error: "simulated judge failure",
@@ -79,14 +114,14 @@ describe("runReview", () => {
 		expect(result.groupResults.filter(group => group.status === "succeeded")).toHaveLength(
 			judgeDefinitions.length - 1,
 		);
-		expect(result.groupResults.find(group => group.groupId === failedGroup.id)).toEqual({
+		expect(result.groupResults.find(group => group.groupId === failedGroup.id)).toMatchObject({
+			unitId: "review-scope",
 			groupId: failedGroup.id,
 			judgeType: failedGroup.judgeType,
 			rubricVersion: failedGroup.rubricVersion,
 			status: "failed",
-			selectedSourceIds: ["source-1:index.ts"],
-			selectedChunkIds: [],
 			failure: {
+				unitId: "review-scope",
 				groupId: failedGroup.id,
 				judgeType: failedGroup.judgeType,
 				error: "simulated judge failure",
@@ -104,15 +139,15 @@ describe("runReview", () => {
 		expect(result.execution).toMatchObject({
 			modelId,
 			thinkingLevel: "medium",
-			promptVersion: "model-routed-code-review/1.4.0",
-			outputSchemaVersion: "judge-output/3.0.0",
+			promptVersion: "model-routed-code-review/2.0.0",
+			outputSchemaVersion: "judge-output/4.0.0",
 			tokenUsage: {
-				input: 13,
-				output: 26,
+				input: 14,
+				output: 28,
 				reasoning: 0,
 				cacheRead: 0,
 				cacheWrite: 0,
-				totalTokens: 39,
+				totalTokens: 42,
 			},
 		});
 		expect(result.execution.inputFingerprint).toMatch(/^[a-f0-9]{64}$/);
@@ -123,6 +158,7 @@ describe("runReview", () => {
 	test("adds a harness-computed hash to an exact source quote", async () => {
 		const quote = 'import { describe, expect, test } from "bun:test";';
 		const result = await runReview({
+			loadLspSymbols: unavailableLsp,
 			filePaths: [new URL("./index.test.ts", import.meta.url).pathname],
 			modelId,
 			reviewGoal: "Verify one grounded citation.",
@@ -161,6 +197,7 @@ describe("runReview", () => {
 		const group = judgeDefinitions[0];
 		if (!group) throw new Error("Expected at least one judge definition");
 		const result = await runReview({
+			loadLspSymbols: unavailableLsp,
 			filePaths: [new URL("./index.test.ts", import.meta.url).pathname],
 			modelId,
 			reviewGoal: "Reject an ungrounded citation.",
@@ -215,15 +252,13 @@ describe("validateTerminalYieldResult", () => {
 		).toThrow("SDK session exhausted yield schema retries");
 	});
 });
-type JudgeRequest = {
-	selected_group: string;
-	rubric: string[];
-};
+const judgeRequestSchema = z.object({ selected_group: z.string(), rubric: z.array(z.string()) }).passthrough();
 
 function createEvidenceRunner(quote: string): PromptRunner {
 	const group = judgeDefinitions[0];
 	if (!group) throw new Error("Expected at least one judge definition");
 	return async <Output>({
+		resultSchema,
 		systemPrompt,
 		userPrompt,
 	}: {
@@ -231,41 +266,47 @@ function createEvidenceRunner(quote: string): PromptRunner {
 		systemPrompt: string;
 		userPrompt: string;
 	}) => {
-		if (systemPrompt.includes("# Router")) {
-			return promptResult({
-				selectedGroups: [
-					{
-						id: group.id,
-						reason: "Selected by evidence test",
-						source_ids: ["source-1:index.test.ts"],
-						chunk_ids: [],
-					},
-				],
-			} as Output);
+		if (systemPrompt.includes("# Planner semantic units")) {
+			return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
 		}
-		const request = JSON.parse(userPrompt) as JudgeRequest;
-		return promptResult({
-			criterion_results: request.rubric.map(criterionId => ({
-				criterion_id: criterionId,
-				verdict: "NOT_APPLICABLE",
-				severity: "minor",
-				confidence: "high",
-				evidence: [
-					{
-						source_id: "source-1:index.test.ts",
-						start_line: 1,
-						end_line: 1,
-						quote,
-						observation: "The cited import is present.",
-						supports: "applies_when",
-					},
-				],
-				missing_evidence: [],
-				reason: "Not applicable in evidence test.",
-				suggested_action: null,
-				verification_after_change: null,
-			})),
-		} as Output);
+		if (systemPrompt.includes("# Router")) {
+			return promptResult(
+				resultSchema.parse({
+					selectedReviews: [
+						{
+							unit_id: "review-scope",
+							judge_id: group.id,
+							reason: "Selected by evidence test",
+						},
+					],
+				}),
+			);
+		}
+		const request = judgeRequestSchema.parse(JSON.parse(userPrompt));
+		return promptResult(
+			resultSchema.parse({
+				criterion_results: request.rubric.map(criterionId => ({
+					criterion_id: criterionId,
+					verdict: "NOT_APPLICABLE",
+					severity: "minor",
+					confidence: "high",
+					evidence: [
+						{
+							source_id: "source-1:index.test.ts",
+							start_line: 1,
+							end_line: 1,
+							quote,
+							observation: "The cited import is present.",
+							supports: "applies_when",
+						},
+					],
+					missing_evidence: [],
+					reason: "Not applicable in evidence test.",
+					suggested_action: null,
+					verification_after_change: null,
+				})),
+			}),
+		);
 	};
 }
 

@@ -307,6 +307,7 @@
 
 - Added process-local Git commit verification hooks with immutable candidate evidence and stale-candidate protection, allowing extensions to gate every OMP-owned commit path.
 - Added SDK support and an example for registering in-memory agent definitions scoped to one session without writing project agent files.
+- Added deterministic AST/LSP semantic-unit planning with one read-only scout before model-routed SDK code reviews.
 
 ### Changed
 
