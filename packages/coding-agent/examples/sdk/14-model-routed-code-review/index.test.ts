@@ -58,13 +58,20 @@ describe("runReview", () => {
 		let activeJudges = 0;
 		let maximumActiveJudges = 0;
 
-		const runPrompt: PromptRunner = async ({ contextTools, resultSchema, systemPrompt, userPrompt }) => {
+		const runPrompt: PromptRunner = async ({
+			contextTools,
+			resultSchema,
+			systemPrompt,
+			thinkingLevel,
+			userPrompt,
+		}) => {
 			if (systemPrompt.includes("# Planner semantic units")) {
 				expect(contextTools?.mode).toBe("semantic_planning");
 				return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
 			}
 			if (systemPrompt.includes("# Router")) {
 				expect(contextTools).toBeUndefined();
+				expect(thinkingLevel).toBe("xhigh");
 				return promptResult(
 					resultSchema.parse({
 						selectedReviews: judgeDefinitions.map(group => ({
@@ -181,6 +188,7 @@ describe("runReview", () => {
 		expect(result.execution.inputFingerprint).toMatch(/^[a-f0-9]{64}$/);
 		expect(result.execution.durationMs).toBeGreaterThanOrEqual(0);
 		expect(Object.keys(result.execution.rubricVersions)).toHaveLength(judgeDefinitions.length);
+		expect(result.execution.semanticContext.routerThinkingLevel).toBe("xhigh");
 	});
 
 	test("adds a harness-computed hash to an exact source quote", async () => {

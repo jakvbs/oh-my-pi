@@ -54,6 +54,7 @@ const PROMPT_VERSION = "model-routed-code-review/2.0.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/5.0.0";
 const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/2.0.0";
 const THINKING_LEVEL = ThinkingLevel.Medium;
+const ROUTER_THINKING_LEVEL = ThinkingLevel.XHigh;
 const JUDGE_CONCURRENCY = 10;
 
 const verdictSchema = z.enum(["PASS", "FAIL", "NOT_APPLICABLE", "INSUFFICIENT_CONTEXT", "CONFLICTING_EVIDENCE"]);
@@ -266,6 +267,7 @@ export type PromptRunner = <Output>(request: {
 	systemPrompt: string;
 	userPrompt: string;
 	contextTools?: { mode: ContextToolMode; roots: string[] };
+	thinkingLevel?: ThinkingLevel;
 }) => Promise<PromptResult<Output>>;
 
 const yieldResultEnvelopeSchema = z
@@ -321,7 +323,13 @@ async function createSdkPromptRunner() {
 		throw new Error("Model openai-codex/gpt-5.6-luna is unavailable or not authenticated");
 	}
 
-	const runPrompt: PromptRunner = async ({ contextTools, resultSchema, systemPrompt, userPrompt }) => {
+	const runPrompt: PromptRunner = async ({
+		contextTools,
+		resultSchema,
+		systemPrompt,
+		thinkingLevel = THINKING_LEVEL,
+		userPrompt,
+	}) => {
 		const startedAt = performance.now();
 		const terminalSchema = z.array(resultSchema).length(1);
 		const mode = contextTools?.mode ?? "none";
@@ -384,7 +392,7 @@ async function createSdkPromptRunner() {
 			slashCommands: [],
 			spawns: plannerEnabled ? "scout" : "",
 			systemPrompt: [systemPrompt],
-			thinkingLevel: THINKING_LEVEL,
+			thinkingLevel,
 			toolNames: plannerEnabled ? [...PLANNER_TOOL_NAMES] : enabled ? [...CONTEXT_TOOL_NAMES] : [],
 		});
 
@@ -753,6 +761,7 @@ export async function runReview({
 			planner: plannerExecution,
 			router: routerExecution,
 			semanticContext: {
+				routerThinkingLevel: ROUTER_THINKING_LEVEL,
 				sourceIndexHash: sourceIndex.hash,
 				planHash: semanticPlanArtifact?.planHash ?? null,
 				sourceCount: sourceIndex.sources.length,
@@ -853,6 +862,7 @@ async function routeReview({
 		resultSchema: routerOutputSchema,
 		systemPrompt: routerPrompt,
 		userPrompt: JSON.stringify({ reviewGoal, semanticUnits: semanticPlan.units }),
+		thinkingLevel: ROUTER_THINKING_LEVEL,
 	});
 
 	const unitsById = new Map(semanticPlan.units.map(unit => [unit.id, unit]));
