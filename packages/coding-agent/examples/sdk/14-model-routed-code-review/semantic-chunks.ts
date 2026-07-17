@@ -3,8 +3,8 @@ import { extname } from "node:path";
 import { astMatch, summarizeCode } from "@oh-my-pi/pi-natives";
 import { countTextTokens } from "./token-count";
 
-const DEFAULT_CHUNK_THRESHOLD_TOKENS = 12_000;
-const DEFAULT_MAX_CHUNK_TOKENS = 6_000;
+const DEFAULT_CHUNK_THRESHOLD_TOKENS = 2_000;
+const DEFAULT_MAX_CHUNK_TOKENS = 4_000;
 const MAX_OUTLINE_CHARACTERS = 12_000;
 const CALLABLE_PATTERNS = [
 	"function $NAME($$$ARGS) { $$$BODY }",
@@ -13,6 +13,9 @@ const CALLABLE_PATTERNS = [
 	"const $NAME = async ($$$ARGS) => { $$$BODY }",
 	"const $NAME = function($$$ARGS) { $$$BODY }",
 	"class $NAME { $$$BODY }",
+	"test($NAME, $CALLBACK)",
+	"it($NAME, $CALLBACK)",
+	"describe($NAME, $CALLBACK)",
 ];
 
 export type ChunkableSource = {
@@ -35,6 +38,7 @@ export type SourceCatalogEntry = {
 	id: string;
 	estimatedTokens: number;
 	outline: string;
+	imports: string[];
 	chunked: boolean;
 	preambleEndLine?: number;
 	chunks: SemanticChunk[];
@@ -70,9 +74,14 @@ async function buildSourceCatalogEntry(
 		id: source.id,
 		estimatedTokens,
 		outline: buildOutline(source),
+		imports: scanSourceImports(source),
 	};
+	if (estimatedTokens <= threshold) return { ...base, chunked: false, chunks: [] };
+	if (extname(source.path) === ".md") {
+		return buildMarkdownCatalogEntry(source, base, maxChunkTokens);
+	}
 	const language = astLanguage(source.path);
-	if (estimatedTokens <= threshold || !language) return { ...base, chunked: false, chunks: [] };
+	if (!language) return { ...base, chunked: false, chunks: [] };
 
 	const result = await astMatch({
 		source: source.content,
@@ -119,6 +128,31 @@ async function buildSourceCatalogEntry(
 		preambleEndLine: findPreambleEndLine(lines),
 		chunks: nonEmptyChunks,
 	};
+}
+
+function buildMarkdownCatalogEntry(
+	source: ChunkableSource,
+	base: Pick<SourceCatalogEntry, "id" | "estimatedTokens" | "outline">,
+	maxChunkTokens: number,
+): SourceCatalogEntry {
+	const lines = source.content.split("\n");
+	const headingLines = lines.flatMap((line, index) => (/^#{1,3}\s+\S/.test(line) ? [index + 1] : []));
+	if (headingLines.length < 2) return { ...base, chunked: false, chunks: [] };
+
+	const chunks: SemanticChunk[] = [];
+	if (headingLines[0]! > 1) {
+		chunks.push(...splitRange(source, lines, 1, headingLines[0]! - 1, maxChunkTokens, "document preamble"));
+	}
+	for (const [index, startLine] of headingLines.entries()) {
+		const endLine = (headingLines[index + 1] ?? lines.length + 1) - 1;
+		chunks.push(...splitRange(source, lines, startLine, endLine, maxChunkTokens, lines[startLine - 1]!.trim()));
+	}
+	const nonEmptyChunks = chunks.filter(chunk =>
+		lines.slice(chunk.startLine - 1, chunk.endLine).some(line => line.trim().length > 0),
+	);
+	return nonEmptyChunks.length < 2
+		? { ...base, chunked: false, chunks: [] }
+		: { ...base, chunked: true, chunks: nonEmptyChunks };
 }
 
 function splitRange(
@@ -226,6 +260,19 @@ function findPreambleEndLine(lines: string[]) {
 		break;
 	}
 	return endLine;
+}
+
+function scanSourceImports(source: ChunkableSource) {
+	const loader = astLanguage(source.path);
+	if (!loader) return [];
+	try {
+		return new Bun.Transpiler({ loader })
+			.scanImports(source.content)
+			.filter(item => item.kind === "import-statement" || item.kind === "require-call")
+			.map(item => item.path);
+	} catch {
+		return [];
+	}
 }
 
 function astLanguage(path: string) {

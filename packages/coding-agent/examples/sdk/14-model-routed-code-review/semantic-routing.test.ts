@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { type ZodType, z } from "zod";
 import { type PromptRunner, runReview } from "./index";
 import { judgeDefinitions } from "./prompts/registry";
+import { buildSemanticSourceCatalog } from "./semantic-chunks";
 
 const modelId = "openai-codex/gpt-5.6-luna";
 const plannerRequestSchema = z
@@ -20,6 +21,14 @@ const plannerRequestSchema = z
 							estimatedTokens: z.number(),
 						}),
 					),
+				}),
+			),
+			relations: z.array(
+				z.object({
+					fromFragmentId: z.string(),
+					toFragmentId: z.string(),
+					kind: z.string(),
+					strength: z.string(),
 				}),
 			),
 		}),
@@ -43,6 +52,70 @@ const judgeRequestSchema = z
 	.passthrough();
 
 const unavailableLsp = async () => ({ status: "unavailable" as const, symbols: "" });
+
+test("atomizes multi-behavior code, tests, and prompts below the former large-file threshold", async () => {
+	const body = Array.from({ length: 180 }, (_, index) => `	const value${index} = ${index};`).join("\n");
+	const prose = Array.from({ length: 220 }, (_, index) => `Criterion ${index} preserves an observable contract.`).join(
+		"\n",
+	);
+	const catalog = await buildSemanticSourceCatalog([
+		{
+			id: "source-1:workflow.ts",
+			path: "/repo/workflow.ts",
+			content: [
+				"export function alpha() {",
+				body,
+				"}",
+				"export function beta() {",
+				body.replaceAll("value", "other"),
+				"}",
+			].join("\n"),
+		},
+		{
+			id: "source-2:workflow.test.ts",
+			path: "/repo/workflow.test.ts",
+			content: [
+				'import { test } from "bun:test";',
+				'test("alpha contract", () => {',
+				body,
+				"});",
+				'test("beta contract", () => {',
+				body.replaceAll("value", "other"),
+				"});",
+			].join("\n"),
+		},
+		{
+			id: "source-3:rubric.md",
+			path: "/repo/rubric.md",
+			content: ["# Review rubric", "## Alpha policy", prose, "## Beta policy", prose].join("\n"),
+		},
+	]);
+
+	expect(catalog.sources.every(source => source.estimatedTokens < 12_000)).toBe(true);
+	expect(catalog.sources).toEqual([
+		expect.objectContaining({
+			chunked: true,
+			chunks: expect.arrayContaining([
+				expect.objectContaining({ label: expect.stringContaining("alpha") }),
+				expect.objectContaining({ label: expect.stringContaining("beta") }),
+			]),
+		}),
+		expect.objectContaining({
+			chunked: true,
+			chunks: expect.arrayContaining([
+				expect.objectContaining({ label: expect.stringContaining("alpha contract") }),
+				expect.objectContaining({ label: expect.stringContaining("beta contract") }),
+			]),
+		}),
+		expect.objectContaining({
+			chunked: true,
+			chunks: expect.arrayContaining([
+				expect.objectContaining({ label: "## Alpha policy" }),
+				expect.objectContaining({ label: "## Beta policy" }),
+			]),
+		}),
+	]);
+});
 
 test("plans large source as complete semantic units and routes each unit independently", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "model-routed-review-"));
@@ -82,6 +155,9 @@ test("plans large source as complete semantic units and routes each unit indepen
 			if (sourceEntry.fragments.some(fragment => fragment.estimatedTokens > 6_000)) {
 				throw new Error("Source fragment exceeded the native token budget");
 			}
+			expect(request.sourceIndex.relations).toContainEqual(
+				expect.objectContaining({ kind: "same-source-adjacent", strength: "medium" }),
+			);
 			const alphaIds = sourceEntry.fragments
 				.filter(fragment => fragment.label.includes("alpha"))
 				.map(fragment => fragment.id);

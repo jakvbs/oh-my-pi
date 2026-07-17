@@ -22,6 +22,7 @@ import {
 	MAX_PLANNER_CONTEXT_TOOL_CALLS,
 	PLANNER_TOOL_NAMES,
 } from "./context-tools";
+import planRepairPrompt from "./prompts/plan-repair.md" with { type: "text" };
 import plannerPrompt from "./prompts/planner.md" with { type: "text" };
 import judgeProtocol from "./prompts/protocol.md" with { type: "text" };
 import { judgeDefinitions, judgeDefinitionsById } from "./prompts/registry";
@@ -36,21 +37,23 @@ import {
 	type DeterministicSourceIndex,
 	HARD_MAX_UNIT_TOKENS,
 	type LoadLspSymbols,
+	normalizeSemanticUnitPlan,
 	PREFERRED_MAX_UNIT_TOKENS,
+	packSemanticUnitPlan,
 	parseSemanticPlanArtifact,
 	type SemanticPlanArtifact,
 	type SemanticUnit,
 	type SemanticUnitPlan,
 	semanticUnitPlanSchema,
 	TARGET_UNIT_TOKENS,
-	validateSemanticUnitPlan,
 } from "./semantic-units";
 import { countTextTokens } from "./token-count";
 
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
-const PROMPT_VERSION = "model-routed-code-review/2.0.0";
+const MAX_PLAN_REPAIR_ATTEMPTS = 2;
+const PROMPT_VERSION = "model-routed-code-review/3.0.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/5.0.0";
 const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/2.0.0";
 const THINKING_LEVEL = ThinkingLevel.Medium;
@@ -819,6 +822,13 @@ async function planSemanticUnits({
 	runPrompt: PromptRunner;
 	sourceIndex: DeterministicSourceIndex;
 }): Promise<{ plan: SemanticUnitPlan; execution: PromptExecutionMetadata }> {
+	const sourceIndexPayload = {
+		version: sourceIndex.version,
+		hash: sourceIndex.hash,
+		totalEstimatedTokens: sourceIndex.totalEstimatedTokens,
+		sources: sourceIndex.sources,
+		relations: sourceIndex.relations,
+	};
 	const request = {
 		reviewGoal,
 		budgets: {
@@ -827,17 +837,13 @@ async function planSemanticUnits({
 			hardMaxUnitTokens: HARD_MAX_UNIT_TOKENS,
 			maxSupportingRatio: 0.3,
 		},
-		sourceIndex: {
-			version: sourceIndex.version,
-			hash: sourceIndex.hash,
-			totalEstimatedTokens: sourceIndex.totalEstimatedTokens,
-			sources: sourceIndex.sources,
-		},
+		sourceIndex: sourceIndexPayload,
+		requiredPrimaryFragmentIds: [...sourceIndex.fragmentsById.keys()],
 	};
 	if (countTextTokens(`${plannerPrompt}\n${JSON.stringify(request)}`) > MAX_REQUEST_TOKENS) {
 		throw new Error("Semantic planner request exceeds the context limit");
 	}
-	const { output, execution } = await runPrompt({
+	const first = await runPrompt({
 		resultSchema: semanticUnitPlanSchema,
 		systemPrompt: plannerPrompt,
 		userPrompt: JSON.stringify(request),
@@ -846,7 +852,39 @@ async function planSemanticUnits({
 			roots: [...new Set(sourceIndex.sources.map(source => dirname(source.path)))],
 		},
 	});
-	return { plan: validateSemanticUnitPlan(output, sourceIndex), execution };
+	let proposal = first.output;
+	const executions = [first.execution];
+	for (let repairAttempt = 0; ; repairAttempt++) {
+		try {
+			return {
+				plan: packSemanticUnitPlan(proposal, sourceIndex),
+				execution: mergePromptExecutions(executions),
+			};
+		} catch (error) {
+			if (repairAttempt >= MAX_PLAN_REPAIR_ATTEMPTS) {
+				return {
+					plan: packSemanticUnitPlan(normalizeSemanticUnitPlan(proposal, sourceIndex), sourceIndex),
+					execution: mergePromptExecutions(executions),
+				};
+			}
+			const repairRequest = {
+				...request,
+				repairAttempt: repairAttempt + 1,
+				validationError: error instanceof Error ? error.message : String(error),
+				previousProposal: proposal,
+			};
+			if (countTextTokens(`${planRepairPrompt}\n${JSON.stringify(repairRequest)}`) > MAX_REQUEST_TOKENS) {
+				throw new Error("Semantic plan repair request exceeds the context limit", { cause: error });
+			}
+			const repaired = await runPrompt({
+				resultSchema: semanticUnitPlanSchema,
+				systemPrompt: planRepairPrompt,
+				userPrompt: JSON.stringify(repairRequest),
+			});
+			proposal = repaired.output;
+			executions.push(repaired.execution);
+		}
+	}
 }
 
 async function routeReview({
@@ -1120,6 +1158,25 @@ function sumTokenUsage(usages: TokenUsage[]): TokenUsage {
 		}),
 		{ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
 	);
+}
+function mergePromptExecutions(executions: PromptExecutionMetadata[]): PromptExecutionMetadata {
+	const callsByTool: Record<string, number> = {};
+	for (const execution of executions) {
+		for (const [toolName, calls] of Object.entries(execution.contextTools.callsByTool)) {
+			callsByTool[toolName] = (callsByTool[toolName] ?? 0) + calls;
+		}
+	}
+	return {
+		durationMs: executions.reduce((total, execution) => total + execution.durationMs, 0),
+		tokenUsage: sumTokenUsage(executions.map(execution => execution.tokenUsage)),
+		contextTools: {
+			enabled: executions.some(execution => execution.contextTools.enabled),
+			maxCalls: executions.reduce((total, execution) => total + execution.contextTools.maxCalls, 0),
+			requestedCalls: executions.reduce((total, execution) => total + execution.contextTools.requestedCalls, 0),
+			blockedCalls: executions.reduce((total, execution) => total + execution.contextTools.blockedCalls, 0),
+			callsByTool,
+		},
+	};
 }
 
 function aggregateContextToolUsage(executions: PromptExecutionMetadata[]) {

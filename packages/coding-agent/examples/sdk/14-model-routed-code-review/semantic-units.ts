@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import * as path from "node:path";
 import { LspTool, Settings, type ToolSession } from "@oh-my-pi/pi-coding-agent";
 import { z } from "zod";
 import type { ChunkableSource, SemanticChunk, SemanticSourceCatalog } from "./semantic-chunks";
@@ -23,23 +24,31 @@ export type SourceFragment = {
 	hash: string;
 	contextRange?: { startLine: number; endLine: number };
 };
+export type FragmentRelation = {
+	fromFragmentId: string;
+	toFragmentId: string;
+	kind: "same-source-adjacent" | "source-import" | "test-subject";
+	strength: "medium" | "strong";
+};
 
 export type IndexedSource = {
 	id: string;
 	path: string;
 	estimatedTokens: number;
 	outline: string;
+	imports: string[];
 	preambleEndLine?: number;
 	lsp: LspSymbolSnapshot;
 	fragments: SourceFragment[];
 };
 
 export type DeterministicSourceIndex = {
-	version: "semantic-source-index/1.0.0";
+	version: "semantic-source-index/2.0.0";
 	hash: string;
 	totalEstimatedTokens: number;
 	sources: IndexedSource[];
 	fragmentsById: Map<string, SourceFragment>;
+	relations: FragmentRelation[];
 };
 
 export const semanticUnitSchema = z
@@ -170,7 +179,7 @@ export function assertPlanMatchesSourceIndex(artifact: SemanticPlanArtifact, ind
 	if (artifact.sourceIndexHash !== index.hash) {
 		throw new Error("Semantic plan is stale because its sources changed");
 	}
-	const validated = validateSemanticUnitPlan({ units: artifact.units }, index);
+	const validated = packSemanticUnitPlan({ units: artifact.units }, index);
 	if (
 		validated.uniqueEvidenceTokens !== artifact.uniqueEvidenceTokens ||
 		validated.plannedEvidenceTokens !== artifact.plannedEvidenceTokens
@@ -228,26 +237,101 @@ export async function buildDeterministicSourceIndex(
 				estimatedTokens: entry.estimatedTokens,
 				outline: entry.outline,
 				preambleEndLine: entry.preambleEndLine,
+				imports: entry.imports,
 				lsp: await loadLspSymbols(source.path),
 				fragments,
 			} satisfies IndexedSource;
 		}),
 	);
 	const fragments = indexedSources.flatMap(source => source.fragments);
+	const relations = buildFragmentRelations(indexedSources);
 	const serialized = {
-		version: "semantic-source-index/1.0.0",
+		version: "semantic-source-index/2.0.0",
 		sources: indexedSources.map(({ lsp: _lsp, ...source }) => source),
+		relations,
 	};
 	return {
-		version: "semantic-source-index/1.0.0",
+		version: "semantic-source-index/2.0.0",
 		hash: createHash("sha256").update(JSON.stringify(serialized)).digest("hex"),
 		totalEstimatedTokens: indexedSources.reduce((total, source) => total + source.estimatedTokens, 0),
 		sources: indexedSources,
 		fragmentsById: new Map(fragments.map(fragment => [fragment.id, fragment])),
+		relations,
 	};
 }
 
-export function validateSemanticUnitPlan(
+export function normalizeSemanticUnitPlan(
+	proposal: SemanticUnitPlanProposal,
+	index: DeterministicSourceIndex,
+): SemanticUnitPlanProposal {
+	let units = proposal.units.map(unit => ({
+		...unit,
+		primary_fragment_ids: unit.primary_fragment_ids.filter(id => index.fragmentsById.has(id)),
+		supporting_fragment_ids: unit.supporting_fragment_ids.filter(id => index.fragmentsById.has(id)),
+	}));
+	if (units.length === 0) return proposal;
+
+	const claimed = new Set<string>();
+	for (const unit of units) {
+		unit.primary_fragment_ids = unit.primary_fragment_ids.filter(id => {
+			if (claimed.has(id)) return false;
+			claimed.add(id);
+			return true;
+		});
+	}
+	for (const fragment of index.fragmentsById.values()) {
+		if (claimed.has(fragment.id)) continue;
+		const target = selectUnitForFragment(units, fragment, index);
+		target.primary_fragment_ids.push(fragment.id);
+		claimed.add(fragment.id);
+	}
+
+	for (;;) {
+		const owners = new Map(
+			units.flatMap((unit, unitIndex) => unit.primary_fragment_ids.map(id => [id, unitIndex] as const)),
+		);
+		const splitRelation = index.relations.find(
+			relation =>
+				relation.strength === "strong" && owners.get(relation.fromFragmentId) !== owners.get(relation.toFragmentId),
+		);
+		if (!splitRelation) break;
+		const fromIndex = owners.get(splitRelation.fromFragmentId);
+		const toIndex = owners.get(splitRelation.toFragmentId);
+		if (fromIndex === undefined || toIndex === undefined) break;
+		const targetIndex = Math.min(fromIndex, toIndex);
+		const sourceIndex = Math.max(fromIndex, toIndex);
+		const target = units[targetIndex];
+		const source = units[sourceIndex];
+		if (!target || !source) break;
+		target.primary_fragment_ids.push(...source.primary_fragment_ids);
+		target.supporting_fragment_ids.push(...source.supporting_fragment_ids);
+		target.behavior = `${target.behavior}; ${source.behavior}`;
+		target.rationale = `${target.rationale} ${source.rationale}`;
+		target.supporting_context_reason ??= source.supporting_context_reason;
+		target.oversize_reason ??= source.oversize_reason;
+		units.splice(sourceIndex, 1);
+	}
+
+	const sourceIds = new Set(index.sources.map(source => source.id));
+	units = units.filter(unit => unit.primary_fragment_ids.length > 0);
+	for (const unit of units) {
+		unit.primary_fragment_ids = [...new Set(unit.primary_fragment_ids)];
+		const primary = new Set(unit.primary_fragment_ids);
+		unit.supporting_fragment_ids = [
+			...new Set(unit.supporting_fragment_ids.filter(id => index.fragmentsById.has(id) && !primary.has(id))),
+		];
+		const ownerSourceId = resolveSourceId(unit.owner_source_id, sourceIds);
+		if (!unit.primary_fragment_ids.some(id => index.fragmentsById.get(id)?.sourceId === ownerSourceId)) {
+			const owner = unit.primary_fragment_ids
+				.map(id => requireFragment(index, id))
+				.sort((left, right) => right.estimatedTokens - left.estimatedTokens || left.id.localeCompare(right.id))[0];
+			if (owner) unit.owner_source_id = owner.sourceId;
+		}
+	}
+	return { units };
+}
+
+export function packSemanticUnitPlan(
 	proposal: SemanticUnitPlanProposal,
 	index: DeterministicSourceIndex,
 ): SemanticUnitPlan {
@@ -256,6 +340,7 @@ export function validateSemanticUnitPlan(
 	const primaryOwners = new Map<string, string>();
 	const units = proposal.units.map(unit => {
 		if (unitIds.has(unit.id)) throw new Error(`Duplicate semantic unit id: ${unit.id}`);
+		unitIds.add(unit.id);
 		const ownerSourceId = resolveSourceId(unit.owner_source_id, sourceIds);
 		if (!ownerSourceId) throw new Error(`Unknown owner source: ${unit.owner_source_id}`);
 
@@ -303,6 +388,14 @@ export function validateSemanticUnitPlan(
 	for (const fragmentId of index.fragmentsById.keys()) {
 		if (!primaryOwners.has(fragmentId)) throw new Error(`Fragment ${fragmentId} has no primary owner`);
 	}
+	for (const relation of index.relations) {
+		if (relation.strength !== "strong") continue;
+		const fromOwner = primaryOwners.get(relation.fromFragmentId);
+		const toOwner = primaryOwners.get(relation.toFragmentId);
+		if (fromOwner !== toOwner) {
+			throw new Error(`Strong ${relation.kind} relation is split across semantic units: ${fromOwner}, ${toOwner}`);
+		}
+	}
 	return {
 		units,
 		uniqueEvidenceTokens: sumFragmentTokens([...index.fragmentsById.values()]),
@@ -310,10 +403,154 @@ export function validateSemanticUnitPlan(
 	};
 }
 
+function selectUnitForFragment(
+	units: SemanticUnitProposal[],
+	fragment: SourceFragment,
+	index: DeterministicSourceIndex,
+) {
+	const sourceIds = new Set(index.sources.map(source => source.id));
+	const sourcePaths = new Map(index.sources.map(source => [source.id, source.path]));
+	const fragmentSource = index.sources.find(source => source.id === fragment.sourceId);
+	const fragmentDescriptor = `${fragment.label} ${path.basename(fragmentSource?.path ?? "")} ${fragmentSource?.outline.slice(0, 500) ?? ""}`;
+	let selected = units[0]!;
+	let selectedScore = Number.NEGATIVE_INFINITY;
+	let selectedTokens = Number.POSITIVE_INFINITY;
+	for (const unit of units) {
+		const primary = unit.primary_fragment_ids.flatMap(id => {
+			const candidate = index.fragmentsById.get(id);
+			return candidate ? [candidate] : [];
+		});
+		let score = resolveSourceId(unit.owner_source_id, sourceIds) === fragment.sourceId ? 50 : 0;
+		if (labelsShareIdentifier(`${unit.behavior} ${unit.rationale}`, fragmentDescriptor)) score += 15;
+		for (const candidate of primary) {
+			if (candidate.sourceId === fragment.sourceId) score += 30;
+			if (
+				path.dirname(sourcePaths.get(candidate.sourceId) ?? "") ===
+				path.dirname(sourcePaths.get(fragment.sourceId) ?? "")
+			) {
+				score += 3;
+			}
+			if (labelsShareIdentifier(candidate.label, fragment.label)) score += 2;
+		}
+		for (const relation of index.relations) {
+			const relatedId =
+				relation.fromFragmentId === fragment.id
+					? relation.toFragmentId
+					: relation.toFragmentId === fragment.id
+						? relation.fromFragmentId
+						: undefined;
+			if (relatedId && unit.primary_fragment_ids.includes(relatedId)) {
+				score += relation.strength === "strong" ? 100 : 10;
+			}
+		}
+		const tokens = sumFragmentTokens(primary);
+		if (score > selectedScore || (score === selectedScore && tokens < selectedTokens)) {
+			selected = unit;
+			selectedScore = score;
+			selectedTokens = tokens;
+		}
+	}
+	return selected;
+}
+
 function resolveSourceId(candidate: string, sourceIds: Set<string>) {
 	if (sourceIds.has(candidate)) return candidate;
 	const matches = [...sourceIds].filter(sourceId => sourceId.startsWith(`${candidate}:`));
 	return matches.length === 1 ? matches[0] : undefined;
+}
+
+function buildFragmentRelations(sources: IndexedSource[]): FragmentRelation[] {
+	const relations: FragmentRelation[] = [];
+	for (const source of sources) {
+		for (let index = 1; index < source.fragments.length; index++) {
+			const previous = source.fragments[index - 1];
+			const current = source.fragments[index];
+			if (!previous || !current) continue;
+			relations.push({
+				fromFragmentId: previous.id,
+				toFragmentId: current.id,
+				kind: "same-source-adjacent",
+				strength: "medium",
+			});
+		}
+	}
+
+	const sourcesByModulePath = new Map<string, IndexedSource>();
+	for (const source of sources) {
+		sourcesByModulePath.set(source.path, source);
+		sourcesByModulePath.set(source.path.slice(0, -path.extname(source.path).length), source);
+		if (path.basename(source.path, path.extname(source.path)) === "index") {
+			sourcesByModulePath.set(path.dirname(source.path), source);
+		}
+	}
+	for (const source of sources) {
+		const fromFragment = source.fragments[0];
+		if (!fromFragment) continue;
+		for (const specifier of source.imports) {
+			if (!specifier.startsWith(".")) continue;
+			const imported = sourcesByModulePath.get(path.resolve(path.dirname(source.path), specifier));
+			const toFragment = imported?.fragments[0];
+			if (!toFragment || toFragment.id === fromFragment.id) continue;
+			relations.push({
+				fromFragmentId: fromFragment.id,
+				toFragmentId: toFragment.id,
+				kind: "source-import",
+				strength: "medium",
+			});
+		}
+	}
+
+	const implementationsByStem = new Map(
+		sources.filter(source => !isTestPath(source.path)).map(source => [sourceStem(source.path), source] as const),
+	);
+	for (const testSource of sources.filter(source => isTestPath(source.path))) {
+		const implementation = implementationsByStem.get(sourceStem(testSource.path));
+		if (!implementation) continue;
+		for (const testFragment of testSource.fragments) {
+			const implementationFragments =
+				testSource.fragments.length === 1 && implementation.fragments.length === 1
+					? implementation.fragments
+					: implementation.fragments.filter(fragment => labelsShareIdentifier(testFragment.label, fragment.label));
+			for (const implementationFragment of implementationFragments) {
+				relations.push({
+					fromFragmentId: testFragment.id,
+					toFragmentId: implementationFragment.id,
+					kind: "test-subject",
+					strength: "strong",
+				});
+			}
+		}
+	}
+	return relations.sort(
+		(left, right) =>
+			left.fromFragmentId.localeCompare(right.fromFragmentId) ||
+			left.toFragmentId.localeCompare(right.toFragmentId) ||
+			left.kind.localeCompare(right.kind),
+	);
+}
+
+function isTestPath(filePath: string) {
+	return /\.(?:test|spec)\.[^.]+$/.test(path.basename(filePath));
+}
+
+function sourceStem(filePath: string) {
+	const parsed = path.parse(filePath);
+	return path.join(parsed.dir, parsed.name.replace(/\.(?:test|spec)$/, ""));
+}
+
+function labelsShareIdentifier(left: string, right: string) {
+	const identifiers = (value: string) =>
+		new Set(
+			value
+				.toLowerCase()
+				.match(/[a-z_$][a-z0-9_$]{2,}/g)
+				?.filter(
+					identifier =>
+						!["async", "const", "describe", "export", "function", "return", "test"].includes(identifier),
+				),
+		);
+	const leftIdentifiers = identifiers(left);
+	return [...identifiers(right)].some(identifier => leftIdentifiers.has(identifier));
 }
 
 function sourceFragment(chunk: SemanticChunk, content: string): SourceFragment {

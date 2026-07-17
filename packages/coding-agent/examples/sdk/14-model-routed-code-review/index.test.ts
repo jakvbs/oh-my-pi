@@ -174,7 +174,7 @@ describe("runReview", () => {
 		expect(result.execution).toMatchObject({
 			modelId,
 			thinkingLevel: "medium",
-			promptVersion: "model-routed-code-review/2.0.0",
+			promptVersion: "model-routed-code-review/3.0.0",
 			outputSchemaVersion: "judge-output/5.0.0",
 			tokenUsage: {
 				input: 14,
@@ -314,6 +314,60 @@ describe("runReview", () => {
 		expect(result.execution.planner).toBeNull();
 		expect(result.execution.semanticContext.planHash).toBe(prepared.artifact.planHash);
 		expect(result.aggregate.incomplete).toBe(false);
+	});
+
+	test("repairs an invalid semantic partition without spawning another scout", async () => {
+		let plannerCalls = 0;
+		let repairCalls = 0;
+		const runPrompt: PromptRunner = async ({ contextTools, resultSchema, systemPrompt, userPrompt }) => {
+			if (systemPrompt.includes("# Planner semantic units")) {
+				plannerCalls++;
+				const request = plannerRequestSchema.parse(JSON.parse(userPrompt));
+				const owner = request.sourceIndex.sources[0];
+				const fragmentIds = request.sourceIndex.sources.flatMap(source =>
+					source.fragments.map(fragment => fragment.id),
+				);
+				const firstFragment = fragmentIds[0];
+				if (!owner || !firstFragment || fragmentIds.length < 2)
+					throw new Error("Expected multiple indexed fragments");
+				const unit = {
+					id: "duplicate",
+					behavior: "Invalid duplicate unit identity",
+					owner_source_id: owner.id,
+					supporting_fragment_ids: [],
+					rationale: "Exercise host validation.",
+					supporting_context_reason: null,
+					oversize_reason: null,
+				};
+				return promptResult(
+					resultSchema.parse({
+						units: [
+							{ ...unit, primary_fragment_ids: [firstFragment] },
+							{ ...unit, primary_fragment_ids: fragmentIds.slice(1) },
+						],
+					}),
+				);
+			}
+			if (!systemPrompt.includes("# Repair semantic unit plan")) throw new Error("Unexpected prompt");
+			expect(contextTools).toBeUndefined();
+			repairCalls++;
+			return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
+		};
+
+		const prepared = await prepareReviewPlan({
+			filePaths: [new URL("./index.ts", import.meta.url).pathname],
+			loadLspSymbols: unavailableLsp,
+			reviewGoal: "Repair exact source ownership",
+			riskLevel: "high",
+			runPrompt,
+		});
+
+		expect(plannerCalls).toBe(1);
+		expect(repairCalls).toBe(1);
+		expect(prepared.artifact.units.flatMap(unit => unit.primary_fragment_ids)).toHaveLength(
+			prepared.artifact.sources.flatMap(source => source.fragments).length,
+		);
+		expect(prepared.execution.tokenUsage.totalTokens).toBe(6);
 	});
 });
 

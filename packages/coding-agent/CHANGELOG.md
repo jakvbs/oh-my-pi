@@ -314,6 +314,7 @@
 
 - Simplified the model-routed code review SDK example so judge prompts receive a compact evidence contract while deterministic host code owns aggregation, version metadata, and request limits.
 - Raised the model-routed code review example's judge router to `xhigh` thinking while leaving planning and judge sessions at their existing levels.
+- Improved semantic-unit planning with adaptive AST/test/Markdown atomization, deterministic import and test relations, planner-owned final boundaries, exact-cover normalization, and bounded repair passes.
 
 ### Fixed
 
