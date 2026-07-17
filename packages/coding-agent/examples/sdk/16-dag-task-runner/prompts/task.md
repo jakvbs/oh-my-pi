@@ -2,10 +2,8 @@
 Upstream task results (for context — do not re-do this work):
 
 {{#each parents~}}
-
-### {{id}} [{{status}}]
-
-{{output}}
+{{!dag-task-heading}}### {{id}} [{{status}}]
+{{!dag-task-output}}{{output}}
 
 {{/each~}}
 ---
