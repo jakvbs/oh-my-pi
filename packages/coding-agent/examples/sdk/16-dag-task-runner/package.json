@@ -1,0 +1,12 @@
+{
+    "name": "@oh-my-pi/example-dag-task-runner",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "bun index.ts",
+        "init-canvas": "bun index.ts --init-only --dag example-dag.json --canvas-path .canvas/dag-example.canvas.tsx",
+        "example": "bun index.ts --dag example-dag.json --canvas-path .canvas/dag-example.canvas.tsx",
+        "check": "bun --cwd ../../.. check",
+        "test": "bun test"
+    }
+}
