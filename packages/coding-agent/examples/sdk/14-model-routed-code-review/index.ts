@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import * as fs from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
@@ -30,11 +30,15 @@ import scoutPrompt from "./prompts/scout.md" with { type: "text" };
 import type { JudgeDefinition, JudgeType } from "./prompts/types";
 import { buildSemanticSourceCatalog } from "./semantic-chunks";
 import {
+	assertPlanMatchesSourceIndex,
 	buildDeterministicSourceIndex,
+	createSemanticPlanArtifact,
 	type DeterministicSourceIndex,
 	HARD_MAX_UNIT_TOKENS,
 	type LoadLspSymbols,
 	PREFERRED_MAX_UNIT_TOKENS,
+	parseSemanticPlanArtifact,
+	type SemanticPlanArtifact,
 	type SemanticUnit,
 	type SemanticUnitPlan,
 	semanticUnitPlanSchema,
@@ -443,7 +447,7 @@ async function readContextSources(paths: Iterable<string>): Promise<Source[]> {
 	const sources = await Promise.all(
 		[...paths].map(async path => {
 			try {
-				return { id: path, path, content: await readFile(path, "utf8") };
+				return { id: path, path, content: await fs.readFile(path, "utf8") };
 			} catch {
 				return null;
 			}
@@ -452,29 +456,142 @@ async function readContextSources(paths: Iterable<string>): Promise<Source[]> {
 	return sources.filter((source): source is Source => source !== null);
 }
 
-async function main() {
-	const args = process.argv.slice(2);
-	if (args[0] === "--") args.shift();
+const cliCommandSchema = z.discriminatedUnion("command", [
+	z.object({
+		command: z.literal("plan"),
+		outputPath: z.string().min(1),
+		reviewGoal: z.string().min(1),
+		filePaths: z.array(z.string()).min(1),
+	}),
+	z.object({ command: z.literal("review"), planPath: z.string().min(1), outputPath: z.string().min(1) }),
+	z.object({ command: z.literal("run"), reviewGoal: z.string().min(1), filePaths: z.array(z.string()).min(1) }),
+]);
+export type CliCommand = z.infer<typeof cliCommandSchema>;
+
+export function parseCliCommand(rawArgs: string[]): CliCommand {
+	const args = rawArgs[0] === "--" ? rawArgs.slice(1) : [...rawArgs];
+	if (args[0] === "plan") {
+		const { optionValue: outputPath, remaining } = takeRequiredOption(args.slice(1), "--output");
+		const [reviewGoal, ...filePaths] = remaining;
+		return cliCommandSchema.parse({ command: "plan", outputPath, reviewGoal, filePaths });
+	}
+	if (args[0] === "review") {
+		const planOption = takeRequiredOption(args.slice(1), "--plan");
+		const outputOption = takeRequiredOption(planOption.remaining, "--output");
+		if (outputOption.remaining.length > 0)
+			throw new Error(`Unexpected review arguments: ${outputOption.remaining.join(" ")}`);
+		return cliCommandSchema.parse({
+			command: "review",
+			planPath: planOption.optionValue,
+			outputPath: outputOption.optionValue,
+		});
+	}
 	const [reviewGoal, ...filePaths] = args;
-	if (!reviewGoal || filePaths.length === 0) {
+	return cliCommandSchema.parse({ command: "run", reviewGoal, filePaths });
+}
+
+function takeRequiredOption(args: string[], name: string) {
+	const index = args.indexOf(name);
+	const optionValue = index >= 0 ? args[index + 1] : undefined;
+	if (!optionValue || optionValue.startsWith("--")) throw new Error(`Missing required ${name} value`);
+	return { optionValue, remaining: args.filter((_, itemIndex) => itemIndex !== index && itemIndex !== index + 1) };
+}
+
+export async function writeJsonAtomic(outputPath: string, value: unknown) {
+	const absolutePath = resolve(outputPath);
+	const temporaryPath = `${absolutePath}.${process.pid}.${Date.now()}.tmp`;
+	try {
+		await Bun.write(temporaryPath, `${JSON.stringify(value, null, 2)}\n`);
+		await fs.rename(temporaryPath, absolutePath);
+	} catch (error) {
+		await fs.rm(temporaryPath, { force: true });
+		throw error;
+	}
+}
+
+async function loadSemanticPlan(path: string) {
+	return parseSemanticPlanArtifact(await Bun.file(resolve(path)).json());
+}
+
+function writeStdoutJson(value: unknown) {
+	process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function main() {
+	let command: CliCommand;
+	try {
+		command = parseCliCommand(process.argv.slice(2));
+	} catch (error) {
 		throw new Error(
-			'Usage: bun examples/sdk/14-model-routed-code-review/index.ts "<review goal>" <artifact-file> [additional-source ...]',
+			[
+				error instanceof Error ? error.message : String(error),
+				"Usage:",
+				'  bun index.ts plan --output <semantic-plan.json> "<review goal>" <source> [additional-source ...]',
+				"  bun index.ts review --plan <semantic-plan.json> --output <review.json>",
+				'  bun index.ts "<review goal>" <source> [additional-source ...]',
+			].join("\n"),
 		);
 	}
 
 	const { modelId, runPrompt } = await createSdkPromptRunner();
 	try {
+		if (command.command === "plan") {
+			const { artifact } = await prepareReviewPlan({
+				filePaths: command.filePaths,
+				reviewGoal: command.reviewGoal,
+				riskLevel: riskLevelSchema.parse(process.env.RISK_LEVEL ?? "medium"),
+				runPrompt,
+			});
+			await writeJsonAtomic(command.outputPath, artifact);
+			writeStdoutJson({ planPath: resolve(command.outputPath), planHash: artifact.planHash });
+			return;
+		}
+		if (command.command === "review") {
+			const artifact = await loadSemanticPlan(command.planPath);
+			const result = await runReview({
+				filePaths: artifact.sources.map(source => source.path),
+				modelId,
+				reviewGoal: artifact.reviewGoal,
+				riskLevel: artifact.riskLevel,
+				runPrompt,
+				semanticPlanArtifact: artifact,
+			});
+			await writeJsonAtomic(command.outputPath, result);
+			writeStdoutJson({ reportPath: resolve(command.outputPath), planHash: artifact.planHash });
+			return;
+		}
 		const result = await runReview({
-			filePaths,
+			filePaths: command.filePaths,
 			modelId,
-			reviewGoal,
+			reviewGoal: command.reviewGoal,
 			riskLevel: riskLevelSchema.parse(process.env.RISK_LEVEL ?? "medium"),
 			runPrompt,
 		});
-		console.log(JSON.stringify(result, null, 2));
+		writeStdoutJson(result);
 	} finally {
 		await shutdownLspClients();
 	}
+}
+
+export async function prepareReviewPlan({
+	filePaths,
+	loadLspSymbols,
+	reviewGoal,
+	riskLevel,
+	runPrompt,
+}: {
+	filePaths: string[];
+	loadLspSymbols?: LoadLspSymbols;
+	reviewGoal: string;
+	riskLevel: z.infer<typeof riskLevelSchema>;
+	runPrompt: PromptRunner;
+}) {
+	const { sourceIndex } = await buildReviewInputs(filePaths, loadLspSymbols);
+	const { plan, execution } = await planSemanticUnits({ reviewGoal, runPrompt, sourceIndex });
+	return {
+		artifact: createSemanticPlanArtifact({ index: sourceIndex, plan, reviewGoal, riskLevel }),
+		execution,
+	};
 }
 
 export async function runReview({
@@ -484,6 +601,7 @@ export async function runReview({
 	reviewGoal,
 	riskLevel,
 	runPrompt,
+	semanticPlanArtifact,
 }: {
 	filePaths: string[];
 	loadLspSymbols?: LoadLspSymbols;
@@ -491,14 +609,11 @@ export async function runReview({
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	runPrompt: PromptRunner;
+	semanticPlanArtifact?: SemanticPlanArtifact;
 }) {
 	const startedAt = new Date();
 	const startedAtMs = performance.now();
-	const sources = await readSources(filePaths);
-	const semanticCatalog = await buildSemanticSourceCatalog(sources);
-	const sourceIndex = loadLspSymbols
-		? await buildDeterministicSourceIndex(sources, semanticCatalog, loadLspSymbols)
-		: await buildDeterministicSourceIndex(sources, semanticCatalog);
+	const { sources, sourceIndex } = await buildReviewInputs(filePaths, loadLspSymbols);
 	const inputFingerprint = createHash("sha256")
 		.update(
 			JSON.stringify({
@@ -509,11 +624,19 @@ export async function runReview({
 			}),
 		)
 		.digest("hex");
-	const { plan: semanticPlan, execution: plannerExecution } = await planSemanticUnits({
-		reviewGoal,
-		runPrompt,
-		sourceIndex,
-	});
+	let semanticPlan: SemanticUnitPlan;
+	let plannerExecution: PromptExecutionMetadata | null;
+	if (semanticPlanArtifact) {
+		if (semanticPlanArtifact.reviewGoal !== reviewGoal || semanticPlanArtifact.riskLevel !== riskLevel) {
+			throw new Error("Review goal or risk level does not match the persisted semantic plan");
+		}
+		semanticPlan = assertPlanMatchesSourceIndex(semanticPlanArtifact, sourceIndex);
+		plannerExecution = null;
+	} else {
+		const planned = await planSemanticUnits({ reviewGoal, runPrompt, sourceIndex });
+		semanticPlan = planned.plan;
+		plannerExecution = planned.execution;
+	}
 	const { selectedReviews, execution: routerExecution } = await routeReview({
 		reviewGoal,
 		runPrompt,
@@ -576,7 +699,7 @@ export async function runReview({
 	const judgments = groupResults.flatMap(result => (result.status === "succeeded" ? [result.judgment] : []));
 	const failures = groupResults.flatMap(result => (result.status === "failed" ? [result.failure] : []));
 	const executions = [
-		plannerExecution,
+		...(plannerExecution ? [plannerExecution] : []),
 		routerExecution,
 		...groupResults.flatMap(result => {
 			if (result.status === "succeeded") return [result.judgment.execution];
@@ -610,6 +733,7 @@ export async function runReview({
 			router: routerExecution,
 			semanticContext: {
 				sourceIndexHash: sourceIndex.hash,
+				planHash: semanticPlanArtifact?.planHash ?? null,
 				sourceCount: sourceIndex.sources.length,
 				fragmentCount: sourceIndex.fragmentsById.size,
 				unitCount: semanticPlan.units.length,
@@ -622,11 +746,20 @@ export async function runReview({
 		aggregate: aggregateJudgments(judgments, failures.length, groupResults.length),
 	};
 }
+async function buildReviewInputs(filePaths: string[], loadLspSymbols?: LoadLspSymbols) {
+	const sources = await readSources(filePaths);
+	const semanticCatalog = await buildSemanticSourceCatalog(sources);
+	const sourceIndex = loadLspSymbols
+		? await buildDeterministicSourceIndex(sources, semanticCatalog, loadLspSymbols)
+		: await buildDeterministicSourceIndex(sources, semanticCatalog);
+	return { sources, sourceIndex };
+}
+
 async function readSources(filePaths: string[]): Promise<Source[]> {
 	const sources = await Promise.all(
 		filePaths.map(async (filePath, index) => {
 			const absolutePath = resolve(filePath);
-			const content = (await readFile(absolutePath, "utf8")).replace(/\r\n?/g, "\n");
+			const content = (await fs.readFile(absolutePath, "utf8")).replace(/\r\n?/g, "\n");
 			if (content.length > MAX_SOURCE_CHARACTERS) {
 				throw new Error(`${absolutePath} exceeds the per-source context limit`);
 			}

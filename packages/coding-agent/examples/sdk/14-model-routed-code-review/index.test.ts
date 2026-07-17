@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { type ZodType, z } from "zod";
-import { type PromptRunner, runReview, validateTerminalYieldResult } from "./index";
+import {
+	type PromptRunner,
+	parseCliCommand,
+	prepareReviewPlan,
+	runReview,
+	validateTerminalYieldResult,
+	writeJsonAtomic,
+} from "./index";
 import { judgeDefinitions } from "./prompts/registry";
 
 const modelId = "openai-codex/gpt-5.6-luna";
@@ -215,6 +225,98 @@ describe("runReview", () => {
 			error: "quote does not match lines 1-1",
 		});
 		expect(result.incomplete).toBe(true);
+	});
+
+	test("reviews a persisted plan without rerunning the planner", async () => {
+		const group = judgeDefinitions[0];
+		if (!group) throw new Error("Expected a judge definition");
+		let plannerCalls = 0;
+		const runPrompt: PromptRunner = async ({ resultSchema, systemPrompt, userPrompt }) => {
+			if (systemPrompt.includes("# Planner semantic units")) {
+				plannerCalls++;
+				return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
+			}
+			if (systemPrompt.includes("# Router")) {
+				return promptResult(
+					resultSchema.parse({
+						selectedReviews: [
+							{
+								unit_id: "review-scope",
+								judge_id: group.id,
+								reason: "Review the persisted unit",
+							},
+						],
+					}),
+				);
+			}
+			const request = judgeRequestSchema.parse(JSON.parse(userPrompt));
+			return promptResult(
+				resultSchema.parse({
+					criterion_results: request.rubric.map(criterionId => ({
+						criterion_id: criterionId,
+						verdict: "NOT_APPLICABLE",
+						severity: "minor",
+						confidence: "high",
+						evidence: [],
+						missing_evidence: [],
+						reason: "Not applicable in persisted-plan test.",
+						suggested_action: null,
+						verification_after_change: null,
+					})),
+				}),
+			);
+		};
+		const filePaths = [new URL("./context-tools.ts", import.meta.url).pathname];
+		const prepared = await prepareReviewPlan({
+			filePaths,
+			loadLspSymbols: unavailableLsp,
+			reviewGoal: "Review persisted behavior",
+			riskLevel: "low",
+			runPrompt,
+		});
+		const result = await runReview({
+			filePaths,
+			loadLspSymbols: unavailableLsp,
+			modelId,
+			reviewGoal: prepared.artifact.reviewGoal,
+			riskLevel: prepared.artifact.riskLevel,
+			runPrompt,
+			semanticPlanArtifact: prepared.artifact,
+		});
+
+		expect(plannerCalls).toBe(1);
+		expect(result.execution.planner).toBeNull();
+		expect(result.execution.semanticContext.planHash).toBe(prepared.artifact.planHash);
+		expect(result.aggregate.incomplete).toBe(false);
+	});
+});
+
+describe("persistent plan CLI", () => {
+	test("parses separate plan and review stages", () => {
+		expect(parseCliCommand(["plan", "--output", "plan.json", "Review errors", "src/a.ts"])).toEqual({
+			command: "plan",
+			outputPath: "plan.json",
+			reviewGoal: "Review errors",
+			filePaths: ["src/a.ts"],
+		});
+		expect(parseCliCommand(["review", "--output", "report.json", "--plan", "plan.json"])).toEqual({
+			command: "review",
+			planPath: "plan.json",
+			outputPath: "report.json",
+		});
+		expect(() => parseCliCommand(["review", "--plan", "plan.json"])).toThrow("--output");
+	});
+
+	test("atomically writes a complete JSON result", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "semantic-review-output-"));
+		const outputPath = path.join(directory, "nested", "plan.json");
+		try {
+			await writeJsonAtomic(outputPath, { complete: true });
+			expect(await Bun.file(outputPath).json()).toEqual({ complete: true });
+			expect((await fs.readdir(path.dirname(outputPath))).filter(name => name.endsWith(".tmp"))).toEqual([]);
+		} finally {
+			await fs.rm(directory, { recursive: true, force: true });
+		}
 	});
 });
 

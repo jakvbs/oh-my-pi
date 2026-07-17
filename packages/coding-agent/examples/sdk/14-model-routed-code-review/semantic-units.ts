@@ -6,6 +6,7 @@ import type { ChunkableSource, SemanticChunk, SemanticSourceCatalog } from "./se
 export const TARGET_UNIT_TOKENS = 30_000;
 export const PREFERRED_MAX_UNIT_TOKENS = 50_000;
 export const HARD_MAX_UNIT_TOKENS = 80_000;
+export const SEMANTIC_PLAN_SCHEMA_VERSION = "semantic-unit-plan/1.0.0" as const;
 
 export type LspSymbolSnapshot = {
 	status: "available" | "unavailable" | "error";
@@ -19,6 +20,7 @@ export type SourceFragment = {
 	startLine: number;
 	endLine: number;
 	estimatedTokens: number;
+	hash: string;
 	contextRange?: { startLine: number; endLine: number };
 };
 
@@ -59,6 +61,57 @@ export const semanticUnitPlanSchema = z
 	})
 	.strict();
 
+const persistedFragmentSchema = z
+	.object({
+		id: z.string().min(1),
+		sourceId: z.string().min(1),
+		label: z.string().min(1),
+		startLine: z.number().int().positive(),
+		endLine: z.number().int().positive(),
+		estimatedTokens: z.number().int().nonnegative(),
+		hash: z.string().regex(/^[a-f0-9]{64}$/),
+		contextRange: z
+			.object({ startLine: z.number().int().positive(), endLine: z.number().int().positive() })
+			.strict()
+			.optional(),
+	})
+	.strict();
+
+const persistedUnitSchema = semanticUnitSchema.extend({
+	primaryTokens: z.number().int().nonnegative(),
+	supportingTokens: z.number().int().nonnegative(),
+	estimatedTokens: z.number().int().nonnegative(),
+});
+
+const semanticPlanArtifactPayloadSchema = z
+	.object({
+		schemaVersion: z.literal(SEMANTIC_PLAN_SCHEMA_VERSION),
+		createdAt: z.iso.datetime(),
+		reviewGoal: z.string().min(1),
+		riskLevel: z.enum(["low", "medium", "high"]),
+		sourceIndexHash: z.string().regex(/^[a-f0-9]{64}$/),
+		sources: z.array(
+			z
+				.object({
+					id: z.string().min(1),
+					path: z.string().min(1),
+					estimatedTokens: z.number().int().nonnegative(),
+					fragments: z.array(persistedFragmentSchema).min(1),
+				})
+				.strict(),
+		),
+		units: z.array(persistedUnitSchema).min(1),
+		uniqueEvidenceTokens: z.number().int().nonnegative(),
+		plannedEvidenceTokens: z.number().int().nonnegative(),
+	})
+	.strict();
+
+export const semanticPlanArtifactSchema = semanticPlanArtifactPayloadSchema
+	.extend({ planHash: z.string().regex(/^[a-f0-9]{64}$/) })
+	.strict();
+
+export type SemanticPlanArtifact = z.infer<typeof semanticPlanArtifactSchema>;
+
 export type SemanticUnitProposal = z.infer<typeof semanticUnitSchema>;
 export type SemanticUnitPlanProposal = z.infer<typeof semanticUnitPlanSchema>;
 
@@ -73,6 +126,59 @@ export type SemanticUnitPlan = {
 	uniqueEvidenceTokens: number;
 	plannedEvidenceTokens: number;
 };
+
+export function createSemanticPlanArtifact({
+	createdAt = new Date().toISOString(),
+	index,
+	plan,
+	reviewGoal,
+	riskLevel,
+}: {
+	createdAt?: string;
+	index: DeterministicSourceIndex;
+	plan: SemanticUnitPlan;
+	reviewGoal: string;
+	riskLevel: "low" | "medium" | "high";
+}): SemanticPlanArtifact {
+	const payload = semanticPlanArtifactPayloadSchema.parse({
+		schemaVersion: SEMANTIC_PLAN_SCHEMA_VERSION,
+		createdAt,
+		reviewGoal,
+		riskLevel,
+		sourceIndexHash: index.hash,
+		sources: index.sources.map(source => ({
+			id: source.id,
+			path: source.path,
+			estimatedTokens: source.estimatedTokens,
+			fragments: source.fragments,
+		})),
+		units: plan.units,
+		uniqueEvidenceTokens: plan.uniqueEvidenceTokens,
+		plannedEvidenceTokens: plan.plannedEvidenceTokens,
+	});
+	return { ...payload, planHash: hashJson(payload) };
+}
+
+export function parseSemanticPlanArtifact(value: unknown): SemanticPlanArtifact {
+	const artifact = semanticPlanArtifactSchema.parse(value);
+	const { planHash, ...payload } = artifact;
+	if (hashJson(payload) !== planHash) throw new Error("Semantic plan hash does not match its contents");
+	return artifact;
+}
+
+export function assertPlanMatchesSourceIndex(artifact: SemanticPlanArtifact, index: DeterministicSourceIndex) {
+	if (artifact.sourceIndexHash !== index.hash) {
+		throw new Error("Semantic plan is stale because its sources changed");
+	}
+	const validated = validateSemanticUnitPlan({ units: artifact.units }, index);
+	if (
+		validated.uniqueEvidenceTokens !== artifact.uniqueEvidenceTokens ||
+		validated.plannedEvidenceTokens !== artifact.plannedEvidenceTokens
+	) {
+		throw new Error("Semantic plan metrics do not match the current source index");
+	}
+	return validated;
+}
 
 export type LoadLspSymbols = (path: string) => Promise<LspSymbolSnapshot>;
 
@@ -114,7 +220,7 @@ export async function buildDeterministicSourceIndex(
 			const source = sourcesById.get(entry.id);
 			if (!source) throw new Error(`Source catalog entry has no source: ${entry.id}`);
 			const fragments = entry.chunked
-				? entry.chunks.map(chunk => sourceFragment(chunk))
+				? entry.chunks.map(chunk => sourceFragment(chunk, source.content))
 				: [wholeSourceFragment(source, entry.estimatedTokens)];
 			return {
 				id: source.id,
@@ -130,7 +236,7 @@ export async function buildDeterministicSourceIndex(
 	const fragments = indexedSources.flatMap(source => source.fragments);
 	const serialized = {
 		version: "semantic-source-index/1.0.0",
-		sources: indexedSources,
+		sources: indexedSources.map(({ lsp: _lsp, ...source }) => source),
 	};
 	return {
 		version: "semantic-source-index/1.0.0",
@@ -210,8 +316,8 @@ function resolveSourceId(candidate: string, sourceIds: Set<string>) {
 	return matches.length === 1 ? matches[0] : undefined;
 }
 
-function sourceFragment(chunk: SemanticChunk): SourceFragment {
-	return { ...chunk };
+function sourceFragment(chunk: SemanticChunk, content: string): SourceFragment {
+	return { ...chunk, hash: hashSourceRange(content, chunk.startLine, chunk.endLine) };
 }
 
 function wholeSourceFragment(source: ChunkableSource, estimatedTokens: number): SourceFragment {
@@ -226,6 +332,7 @@ function wholeSourceFragment(source: ChunkableSource, estimatedTokens: number): 
 		label: "whole source",
 		startLine: 1,
 		endLine,
+		hash: hashSourceRange(source.content, 1, endLine),
 		estimatedTokens,
 	};
 }
@@ -240,6 +347,21 @@ function requireFragment(index: DeterministicSourceIndex, id: string) {
 	const fragment = index.fragmentsById.get(id);
 	if (!fragment) throw new Error(`Unknown source fragment: ${id}`);
 	return fragment;
+}
+
+function hashSourceRange(content: string, startLine: number, endLine: number) {
+	return createHash("sha256")
+		.update(
+			content
+				.split("\n")
+				.slice(startLine - 1, endLine)
+				.join("\n"),
+		)
+		.digest("hex");
+}
+
+function hashJson(value: unknown) {
+	return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 function sumFragmentTokens(fragments: SourceFragment[]) {

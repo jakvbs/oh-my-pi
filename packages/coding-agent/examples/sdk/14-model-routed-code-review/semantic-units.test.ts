@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import type { SemanticSourceCatalog } from "./semantic-chunks";
-import { buildDeterministicSourceIndex, type LspSymbolSnapshot, validateSemanticUnitPlan } from "./semantic-units";
+import {
+	assertPlanMatchesSourceIndex,
+	buildDeterministicSourceIndex,
+	createSemanticPlanArtifact,
+	type LspSymbolSnapshot,
+	parseSemanticPlanArtifact,
+	validateSemanticUnitPlan,
+} from "./semantic-units";
 
 const sources = [
 	{
@@ -105,4 +112,41 @@ test("validates exact primary ownership and computes unit budgets", async () => 
 			index,
 		),
 	).toThrow("has no primary owner");
+});
+
+test("persists a hash-verified plan without source contents and rejects stale indexes", async () => {
+	const index = await buildDeterministicSourceIndex(sources, catalog, loadLspSymbols);
+	const fragmentIds = [...index.fragmentsById.keys()];
+	const plan = validateSemanticUnitPlan(
+		{
+			units: [
+				{
+					id: "request-workflow",
+					behavior: "Handle one request through the service policy",
+					owner_source_id: sources[0]!.id,
+					primary_fragment_ids: fragmentIds,
+					supporting_fragment_ids: [],
+					rationale: "The handler and service jointly implement one observable workflow.",
+					supporting_context_reason: null,
+					oversize_reason: null,
+				},
+			],
+		},
+		index,
+	);
+	const artifact = createSemanticPlanArtifact({
+		createdAt: "2026-07-17T12:00:00.000Z",
+		index,
+		plan,
+		reviewGoal: "Review request handling",
+		riskLevel: "medium",
+	});
+	const serialized = JSON.stringify(artifact);
+
+	expect(serialized).not.toContain(sources[0]!.content);
+	expect(artifact.planHash).toMatch(/^[a-f0-9]{64}$/);
+	expect(artifact.sources[0]?.fragments[0]?.hash).toMatch(/^[a-f0-9]{64}$/);
+	expect(parseSemanticPlanArtifact(JSON.parse(serialized))).toEqual(artifact);
+	expect(() => parseSemanticPlanArtifact({ ...artifact, reviewGoal: "tampered" })).toThrow("plan hash");
+	expect(() => assertPlanMatchesSourceIndex(artifact, { ...index, hash: "stale" })).toThrow("sources changed");
 });
