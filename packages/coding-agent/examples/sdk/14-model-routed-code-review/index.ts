@@ -17,6 +17,7 @@ const PROMPT_VERSION = "model-routed-code-review/1.0.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/1.0.0";
 const CONTEXT_LIMITS_VERSION = "example-context-limits/1.0.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
+const JUDGE_CONCURRENCY = 10;
 
 const verdictSchema = z.enum(["PASS", "FAIL", "NOT_APPLICABLE", "INSUFFICIENT_CONTEXT", "CONFLICTING_EVIDENCE"]);
 const severitySchema = z.enum(["heuristic", "minor", "major", "critical"]);
@@ -94,7 +95,13 @@ type Judgment = {
 	output: JudgeOutput;
 };
 
-type PromptRunner = <Output>(request: {
+type JudgeFailure = {
+	groupId: string;
+	judgeType: JudgeType;
+	error: string;
+};
+
+export type PromptRunner = <Output>(request: {
 	resultSchema: z.ZodType<Output>;
 	systemPrompt: string;
 	userPrompt: string;
@@ -208,23 +215,39 @@ export async function runReview({
 		runPrompt,
 		sources,
 	});
-	const judgments = await Promise.all(
-		selectedGroups.map(group =>
-			runJudge({
-				group,
-				modelId,
-				reviewGoal,
-				riskLevel,
-				runPrompt,
-				sources,
-			}),
-		),
+	const settledJudgments = await mapSettledWithConcurrency(selectedGroups, JUDGE_CONCURRENCY, group =>
+		runJudge({
+			group,
+			modelId,
+			reviewGoal,
+			riskLevel,
+			runPrompt,
+			sources,
+		}),
 	);
+	const judgments: Judgment[] = [];
+	const failures: JudgeFailure[] = [];
+	for (let index = 0; index < settledJudgments.length; index++) {
+		const result = settledJudgments[index];
+		const group = selectedGroups[index];
+		if (!result || !group) throw new Error("Judge result order is inconsistent");
+		if (result.status === "fulfilled") {
+			judgments.push(result.value);
+		} else {
+			failures.push({
+				groupId: group.id,
+				judgeType: group.judgeType,
+				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+			});
+		}
+	}
 
 	return {
 		selectedGroups: selectedGroups.map(group => group.id),
 		judgments,
-		aggregate: aggregateJudgments(judgments),
+		failures,
+		incomplete: failures.length > 0,
+		aggregate: aggregateJudgments(judgments, failures.length),
 	};
 }
 async function readSources(filePaths: string[]): Promise<Source[]> {
@@ -445,12 +468,14 @@ function validateJudgeOutput({
 	}
 }
 
-function aggregateJudgments(judgments: Judgment[]) {
+function aggregateJudgments(judgments: Judgment[], failureCount: number) {
 	const results = judgments.flatMap(judgment => judgment.output.criterion_results);
 
 	let overallVerdict: "PASS" | "FAIL" | "NEEDS_REVIEW" | "INSUFFICIENT_CONTEXT";
 	if (results.some(result => isSeverity(result, "critical", "major") && result.verdict === "FAIL")) {
 		overallVerdict = "FAIL";
+	} else if (failureCount > 0) {
+		overallVerdict = "INSUFFICIENT_CONTEXT";
 	} else if (
 		results.some(result => isSeverity(result, "critical", "major") && result.verdict === "INSUFFICIENT_CONTEXT")
 	) {
@@ -463,6 +488,8 @@ function aggregateJudgments(judgments: Judgment[]) {
 
 	return {
 		overallVerdict,
+		failureCount,
+		incomplete: failureCount > 0,
 		criterionCount: results.length,
 		counts: Object.fromEntries(
 			verdictSchema.options.map(verdict => [verdict, results.filter(result => result.verdict === verdict).length]),
@@ -481,6 +508,33 @@ function requiresReview(result: CriterionResult) {
 		result.verdict === "FAIL" ||
 		(isSeverity(result, "major", "critical") && result.confidence === "low")
 	);
+}
+
+async function mapSettledWithConcurrency<T, R>(
+	items: readonly T[],
+	concurrency: number,
+	worker: (item: T, index: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+	if (!Number.isInteger(concurrency) || concurrency < 1) {
+		throw new Error("Concurrency must be a positive integer");
+	}
+	const results = new Array<PromiseSettledResult<R>>(items.length);
+	let nextIndex = 0;
+	const runWorker = async () => {
+		while (true) {
+			const index = nextIndex++;
+			if (index >= items.length) return;
+			const item = items[index]!;
+			try {
+				results[index] = { status: "fulfilled", value: await worker(item, index) };
+			} catch (reason) {
+				results[index] = { status: "rejected", reason };
+			}
+		}
+	};
+
+	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runWorker));
+	return results;
 }
 
 function estimateTokens(value: string) {
