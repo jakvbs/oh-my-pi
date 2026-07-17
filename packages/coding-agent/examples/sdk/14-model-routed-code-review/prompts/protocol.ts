@@ -130,7 +130,7 @@ Każdy \`PASS\`, \`FAIL\` i \`CONFLICTING_EVIDENCE\` wymaga co najmniej jednego 
 \`\`\`
 
 Dla \`NOT_APPLICABLE\` podaj dowód niespełnienia \`applies_when\`. Dla \`INSUFFICIENT_CONTEXT\` lista \`missing_evidence\` nazywa dokładnie brakujące dane i sposób, w jaki mogą zmienić werdykt. \`quote\` musi być dokładnym tekstem całego zakresu od \`start_line\` do \`end_line\`, z zachowaniem wcięć i nowych linii; harness weryfikuje go i sam oblicza hash zakresu. Ogólne wrażenie, metryka bez interpretacji albo wiedza spoza dozwolonych źródeł nie są dowodem.
-Źródła są przekazane jako \`content.lines\`; zbuduj \`quote\` przez dokładne połączenie pól \`text\` dla wskazanego, inkluzywnego zakresu jednym znakiem nowej linii. Nie skracaj cytatu do tokenu ani podwyrażenia.
+Źródła są przekazane jako \`content.ranges\`; każdy zakres zawiera oryginalne numery linii i pola \`text\`. Zbuduj \`quote\` przez dokładne połączenie pól \`text\` dla wskazanego, inkluzywnego zakresu jednym znakiem nowej linii. Nie cytuj linii spoza przekazanych zakresów i nie skracaj cytatu do tokenu ani podwyrażenia.
 
 Dla \`CONFLICTING_EVIDENCE\` podaj co najmniej dwa dowody wspierające przeciwne strony oraz nazwij w \`reason\`, dlaczego rubryka ani pierwszeństwo źródeł nie rozstrzygają konfliktu.
 

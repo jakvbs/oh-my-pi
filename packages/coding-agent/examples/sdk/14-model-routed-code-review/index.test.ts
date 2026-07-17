@@ -23,7 +23,12 @@ describe("runReview", () => {
 		}) => {
 			if (systemPrompt.includes("# Router")) {
 				return promptResult({
-					selectedGroups: judgeDefinitions.map(group => ({ id: group.id, reason: "Selected by test" })),
+					selectedGroups: judgeDefinitions.map(group => ({
+						id: group.id,
+						reason: "Selected by test",
+						source_ids: ["source-1:index.ts"],
+						chunk_ids: [],
+					})),
 				} as Output);
 			}
 
@@ -83,6 +88,8 @@ describe("runReview", () => {
 			judgeType: failedGroup.judgeType,
 			rubricVersion: failedGroup.rubricVersion,
 			status: "failed",
+			selectedSourceIds: ["source-1:index.ts"],
+			selectedChunkIds: [],
 			failure: {
 				groupId: failedGroup.id,
 				judgeType: failedGroup.judgeType,
@@ -101,7 +108,7 @@ describe("runReview", () => {
 		expect(result.execution).toMatchObject({
 			modelId,
 			thinkingLevel: "low",
-			promptVersion: "model-routed-code-review/1.1.0",
+			promptVersion: "model-routed-code-review/1.2.0",
 			outputSchemaVersion: "judge-output/2.0.0",
 			tokenUsage: {
 				input: 13,
@@ -234,7 +241,16 @@ function createEvidenceRunner(quote: string): PromptRunner {
 		userPrompt: string;
 	}) => {
 		if (systemPrompt.includes("# Router")) {
-			return promptResult({ selectedGroups: [{ id: group.id, reason: "Selected by evidence test" }] } as Output);
+			return promptResult({
+				selectedGroups: [
+					{
+						id: group.id,
+						reason: "Selected by evidence test",
+						source_ids: ["source-1:index.test.ts"],
+						chunk_ids: [],
+					},
+				],
+			} as Output);
 		}
 		const request = JSON.parse(userPrompt) as JudgeRequest;
 		return promptResult({

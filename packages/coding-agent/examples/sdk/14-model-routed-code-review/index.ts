@@ -9,13 +9,14 @@ import { judgeProtocol } from "./prompts/protocol";
 import { judgeDefinitions, judgeDefinitionsById } from "./prompts/registry";
 import { routerPrompt } from "./prompts/router";
 import type { JudgeDefinition, JudgeType } from "./prompts/types";
+import { buildSemanticSourceCatalog, type SemanticSourceCatalog, type SourceCatalogEntry } from "./semantic-chunks";
 
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
-const PROMPT_VERSION = "model-routed-code-review/1.1.0";
+const PROMPT_VERSION = "model-routed-code-review/1.2.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
-const CONTEXT_LIMITS_VERSION = "example-context-limits/1.0.0";
+const CONTEXT_LIMITS_VERSION = "example-context-limits/2.0.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
 const THINKING_LEVEL = ThinkingLevel.Low;
 const JUDGE_CONCURRENCY = 10;
@@ -35,6 +36,8 @@ const routerOutputSchema = z
 					.object({
 						id: z.string().refine(id => judgeGroupIds.has(id), "Unknown judge group"),
 						reason: z.string().min(1),
+						source_ids: z.array(z.string().min(1)),
+						chunk_ids: z.array(z.string().min(1)),
 					})
 					.strict(),
 			)
@@ -89,6 +92,15 @@ type Source = {
 	content: string;
 };
 
+type LineRange = { startLine: number; endLine: number };
+type SourceView = { source: Source; ranges: LineRange[] };
+
+type RoutedJudgeGroup = JudgeDefinition & {
+	selectedSourceIds: string[];
+	selectedChunkIds: string[];
+	routeReason: string;
+};
+
 type CriterionResult = z.infer<typeof criterionResultSchema>;
 type JudgeOutput = z.infer<typeof judgeOutputSchema>;
 type Evidence = z.infer<typeof evidenceSchema>;
@@ -128,14 +140,18 @@ type GroupResult =
 			groupId: string;
 			judgeType: JudgeType;
 			rubricVersion: string;
+			selectedSourceIds: string[];
+			selectedChunkIds: string[];
 			status: "succeeded";
 			judgment: Judgment;
 	  }
 	| {
 			groupId: string;
 			judgeType: JudgeType;
-			status: "failed";
 			rubricVersion: string;
+			selectedSourceIds: string[];
+			selectedChunkIds: string[];
+			status: "failed";
 			failure: JudgeFailure;
 			evidenceFailures: EvidenceFailure[];
 	  };
@@ -350,6 +366,7 @@ export async function runReview({
 	const startedAt = new Date();
 	const startedAtMs = performance.now();
 	const sources = await readSources(filePaths);
+	const semanticCatalog = await buildSemanticSourceCatalog(sources);
 	const inputFingerprint = createHash("sha256")
 		.update(
 			JSON.stringify({
@@ -362,7 +379,7 @@ export async function runReview({
 	const { selectedGroups, execution: routerExecution } = await routeReview({
 		reviewGoal,
 		runPrompt,
-		sources,
+		sourceCatalog: semanticCatalog.sources,
 	});
 	const settledJudgments = await mapSettledWithConcurrency(selectedGroups, JUDGE_CONCURRENCY, group =>
 		runJudge({
@@ -372,6 +389,7 @@ export async function runReview({
 			riskLevel,
 			runPrompt,
 			sources,
+			sourceViews: selectSourceViews(group, sources, semanticCatalog),
 		}),
 	);
 	const groupResults: GroupResult[] = settledJudgments.map((result, index) => {
@@ -382,6 +400,8 @@ export async function runReview({
 				rubricVersion: group.rubricVersion,
 				groupId: group.id,
 				judgeType: group.judgeType,
+				selectedSourceIds: group.selectedSourceIds,
+				selectedChunkIds: group.selectedChunkIds,
 				status: "succeeded",
 				judgment: result.value,
 			};
@@ -407,6 +427,8 @@ export async function runReview({
 			rubricVersion: group.rubricVersion,
 			groupId: group.id,
 			judgeType: group.judgeType,
+			selectedSourceIds: group.selectedSourceIds,
+			selectedChunkIds: group.selectedChunkIds,
 			status: "failed",
 			failure,
 			evidenceFailures,
@@ -442,6 +464,12 @@ export async function runReview({
 			inputFingerprint,
 			tokenUsage,
 			router: routerExecution,
+			semanticContext: {
+				chunkedSourceCount: semanticCatalog.sources.filter(source => source.chunked).length,
+				availableChunkCount: semanticCatalog.chunksById.size,
+				selectedSourceCount: new Set(selectedGroups.flatMap(group => group.selectedSourceIds)).size,
+				selectedChunkCount: new Set(selectedGroups.flatMap(group => group.selectedChunkIds)).size,
+			},
 		},
 		aggregate: aggregateJudgments(judgments, failures.length, groupResults.length),
 	};
@@ -474,25 +502,88 @@ async function readSources(filePaths: string[]): Promise<Source[]> {
 async function routeReview({
 	reviewGoal,
 	runPrompt,
-	sources,
+	sourceCatalog,
 }: {
 	reviewGoal: string;
 	runPrompt: PromptRunner;
-	sources: Source[];
-}): Promise<{ selectedGroups: JudgeDefinition[]; execution: PromptExecutionMetadata }> {
+	sourceCatalog: SourceCatalogEntry[];
+}): Promise<{ selectedGroups: RoutedJudgeGroup[]; execution: PromptExecutionMetadata }> {
 	const { output, execution } = await runPrompt({
 		resultSchema: routerOutputSchema,
 		systemPrompt: routerPrompt,
-		userPrompt: JSON.stringify({ reviewGoal, sources }),
+		userPrompt: JSON.stringify({ reviewGoal, sources: sourceCatalog }),
 	});
 
-	const selectedIds = new Set(output.selectedGroups.map(group => group.id));
-	const selectedGroups = [...selectedIds].map(id => {
-		const group = judgeDefinitionsById.get(id);
-		if (!group) throw new Error(`Router selected an unknown judge group: ${id}`);
-		return group;
+	const knownSourceIds = new Set(sourceCatalog.map(source => source.id));
+	const knownChunkIds = new Set(sourceCatalog.flatMap(source => source.chunks.map(chunk => chunk.id)));
+	const seenGroupIds = new Set<string>();
+	const selectedGroups = output.selectedGroups.map(selection => {
+		const group = judgeDefinitionsById.get(selection.id);
+		if (!group) throw new Error(`Router selected an unknown judge group: ${selection.id}`);
+		if (seenGroupIds.has(selection.id)) throw new Error(`Router selected duplicate judge group: ${selection.id}`);
+		seenGroupIds.add(selection.id);
+		const selectedSourceIds = [...new Set(selection.source_ids)];
+		const selectedChunkIds = [...new Set(selection.chunk_ids)];
+		for (const sourceId of selectedSourceIds) {
+			if (!knownSourceIds.has(sourceId)) throw new Error(`Router selected an unknown source: ${sourceId}`);
+		}
+		for (const chunkId of selectedChunkIds) {
+			if (!knownChunkIds.has(chunkId)) throw new Error(`Router selected an unknown chunk: ${chunkId}`);
+		}
+		if (selectedSourceIds.length === 0 && selectedChunkIds.length === 0) {
+			throw new Error(`Router selected no context for judge group: ${selection.id}`);
+		}
+		return {
+			...group,
+			selectedSourceIds,
+			selectedChunkIds,
+			routeReason: selection.reason,
+		};
 	});
 	return { selectedGroups, execution };
+}
+
+function selectSourceViews(group: RoutedJudgeGroup, sources: Source[], catalog: SemanticSourceCatalog): SourceView[] {
+	const rangesBySource = new Map<string, LineRange[]>();
+	const sourceCatalog = new Map(catalog.sources.map(source => [source.id, source]));
+	const addRange = (sourceId: string, range: LineRange) => {
+		const ranges = rangesBySource.get(sourceId) ?? [];
+		ranges.push(range);
+		rangesBySource.set(sourceId, ranges);
+	};
+
+	for (const sourceId of group.selectedSourceIds) {
+		const source = sources.find(candidate => candidate.id === sourceId);
+		if (!source) throw new Error(`Selected source disappeared: ${sourceId}`);
+		addRange(sourceId, { startLine: 1, endLine: source.content.split("\n").length });
+	}
+	for (const chunkId of group.selectedChunkIds) {
+		const chunk = catalog.chunksById.get(chunkId);
+		if (!chunk) throw new Error(`Selected chunk disappeared: ${chunkId}`);
+		const entry = sourceCatalog.get(chunk.sourceId);
+		if (entry?.preambleEndLine) addRange(chunk.sourceId, { startLine: 1, endLine: entry.preambleEndLine });
+		if (chunk.contextRange) addRange(chunk.sourceId, chunk.contextRange);
+		addRange(chunk.sourceId, { startLine: chunk.startLine, endLine: chunk.endLine });
+	}
+
+	return sources.flatMap(source => {
+		const ranges = rangesBySource.get(source.id);
+		return ranges ? [{ source, ranges: mergeLineRanges(ranges) }] : [];
+	});
+}
+
+function mergeLineRanges(ranges: LineRange[]) {
+	const sorted = [...ranges].sort((left, right) => left.startLine - right.startLine || left.endLine - right.endLine);
+	const merged: LineRange[] = [];
+	for (const range of sorted) {
+		const previous = merged.at(-1);
+		if (previous && range.startLine <= previous.endLine + 1) {
+			previous.endLine = Math.max(previous.endLine, range.endLine);
+		} else {
+			merged.push({ ...range });
+		}
+	}
+	return merged;
 }
 
 async function runJudge({
@@ -502,13 +593,15 @@ async function runJudge({
 	riskLevel,
 	runPrompt,
 	sources,
+	sourceViews,
 }: {
-	group: JudgeDefinition;
+	group: RoutedJudgeGroup;
 	modelId: string;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	runPrompt: PromptRunner;
 	sources: Source[];
+	sourceViews: SourceView[];
 }): Promise<Judgment> {
 	const evaluationId = randomUUID();
 	const system = `${judgeProtocol}\n\n${group.prompt}`;
@@ -518,7 +611,7 @@ async function runJudge({
 		modelId,
 		reviewGoal,
 		riskLevel,
-		sources,
+		sourceViews,
 		system,
 	});
 
@@ -548,15 +641,15 @@ function buildJudgeRequest({
 	modelId,
 	reviewGoal,
 	riskLevel,
-	sources,
+	sourceViews,
 	system,
 }: {
 	evaluationId: string;
-	group: JudgeDefinition;
+	group: RoutedJudgeGroup;
 	modelId: string;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
-	sources: Source[];
+	sourceViews: SourceView[];
 	system: string;
 }) {
 	const decisionPolicy = {
@@ -580,10 +673,10 @@ function buildJudgeRequest({
 			]),
 		)
 		.digest("hex");
-	const artifact = sources[0];
-	if (!artifact) {
-		throw new Error("A primary artifact is required");
-	}
+	const serializedSources = sourceViews.map(serializeSourceForJudge);
+	const artifact = serializedSources[0];
+	if (!artifact) throw new Error("A primary artifact is required");
+	const sourceTokenCounts = serializedSources.map(source => estimateTokens(JSON.stringify(source)));
 
 	const request = {
 		evaluation_id: evaluationId,
@@ -594,23 +687,27 @@ function buildJudgeRequest({
 		context_limits_version: CONTEXT_LIMITS_VERSION,
 		review_goal: reviewGoal,
 		selected_group: group.id,
-		artifact: serializeSourceForJudge(artifact),
+		artifact,
 		rubric: group.criterionIds,
-		allowed_sources: sources.slice(1).map(serializeSourceForJudge),
+		allowed_sources: serializedSources.slice(1),
+		context_selection: {
+			source_ids: group.selectedSourceIds,
+			chunk_ids: group.selectedChunkIds,
+		},
 		reference_data: [],
 		deterministic_evidence: [],
 		context_limits: {
-			max_artifact_tokens: estimateTokens(artifact.content),
-			max_sources: sources.length,
-			max_tokens_per_source: Math.ceil(MAX_SOURCE_CHARACTERS / 4),
+			max_artifact_tokens: sourceTokenCounts[0] ?? 0,
+			max_sources: sourceViews.length,
+			max_tokens_per_source: Math.max(...sourceTokenCounts),
 			max_reference_items: 0,
 			max_evidence_items: 0,
 			max_total_request_tokens: MAX_REQUEST_TOKENS,
 		},
 		context_manifest: {
-			artifact_tokens: estimateTokens(artifact.content),
-			source_count: sources.length,
-			largest_source_tokens: Math.max(...sources.map(source => estimateTokens(source.content))),
+			artifact_tokens: sourceTokenCounts[0] ?? 0,
+			source_count: sourceViews.length,
+			largest_source_tokens: Math.max(...sourceTokenCounts),
 			reference_count: 0,
 			evidence_count: 0,
 			total_request_tokens: 0,
@@ -633,13 +730,20 @@ function buildJudgeRequest({
 	return request;
 }
 
-function serializeSourceForJudge(source: Source) {
+function serializeSourceForJudge(view: SourceView) {
+	const lines = view.source.content.split("\n");
 	return {
-		id: source.id,
+		id: view.source.id,
 		content: {
-			lines: source.content.split("\n").map((text, index) => ({ number: index + 1, text })),
+			ranges: view.ranges.map(range => ({
+				start_line: range.startLine,
+				end_line: range.endLine,
+				lines: lines
+					.slice(range.startLine - 1, range.endLine)
+					.map((text, index) => ({ number: range.startLine + index, text })),
+			})),
 		},
-		locations: "inclusive line ranges",
+		locations: "inclusive original-source line ranges",
 	};
 }
 
