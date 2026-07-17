@@ -112,7 +112,7 @@ describe("runReview", () => {
 		});
 		expect(result.execution).toMatchObject({
 			modelId,
-			thinkingLevel: "low",
+			thinkingLevel: "medium",
 			promptVersion: "model-routed-code-review/1.3.0",
 			outputSchemaVersion: "judge-output/2.0.0",
 			tokenUsage: {

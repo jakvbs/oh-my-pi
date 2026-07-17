@@ -33,7 +33,7 @@ const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
 const CONTEXT_LIMITS_VERSION = "example-context-limits/2.2.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
 const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/1.0.0";
-const THINKING_LEVEL = ThinkingLevel.Low;
+const THINKING_LEVEL = ThinkingLevel.Medium;
 const JUDGE_CONCURRENCY = 10;
 
 const verdictSchema = z.enum(["PASS", "FAIL", "NOT_APPLICABLE", "INSUFFICIENT_CONTEXT", "CONFLICTING_EVIDENCE"]);
