@@ -36,6 +36,10 @@
 - Fixed Umans PAYG models incorrectly displaying as "Free" in /models by correctly sourcing their published per-token rates.
 - Fixed native moonshot/kimi-k3 capabilities and pricing, ensuring it correctly reflects its official pricing, 1M context window, image input support, reasoning capabilities, and 128k output token limit.
 
+### Fixed
+
+- Fixed the model cache (`models.db`) serializing credential-bearing request headers (`Authorization`, `X-Api-Key`, `api-key`, `cookie`, `proxy-authorization`) written into a model's `headers` — e.g. a runtime/custom provider registered with an `apiKey` + `authHeader` baked `Authorization: Bearer <key>` into every discovered model, which then landed in plaintext SQLite. `writeModelCache` now strips these before persisting; credentials are re-derived on load from AuthStorage / provider config, so non-sensitive transport headers are preserved ([#5780](https://github.com/can1357/oh-my-pi/issues/5780)).
+
 ## [17.0.1] - 2026-07-16
 
 ### Added
