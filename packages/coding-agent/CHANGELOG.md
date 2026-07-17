@@ -306,6 +306,11 @@
 ### Added
 
 - Added process-local Git commit verification hooks with immutable candidate evidence and stale-candidate protection, allowing extensions to gate every OMP-owned commit path.
+- Added an SDK example for safely registering one or more scoped filesystem-backed subagents with automatic session disposal and definition cleanup.
+
+### Changed
+
+- Simplified the model-routed code review SDK example so judge prompts receive a compact evidence contract while deterministic host code owns aggregation, version metadata, and request limits.
 
 ### Fixed
 

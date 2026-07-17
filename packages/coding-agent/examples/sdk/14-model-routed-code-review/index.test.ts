@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { z, type ZodType } from "zod";
-import { runReview, type PromptRunner, validateTerminalYieldResult } from "./index";
+import { type ZodType, z } from "zod";
+import { type PromptRunner, runReview, validateTerminalYieldResult } from "./index";
 import { judgeDefinitions } from "./prompts/registry";
 
 const modelId = "openai-codex/gpt-5.6-luna";
@@ -45,11 +45,6 @@ describe("runReview", () => {
 			if (request.selected_group === failedGroup.id) throw new Error("simulated judge failure");
 
 			return promptResult({
-				evaluation_id: request.evaluation_id,
-				prompt_version: request.prompt_version,
-				rubric_version: request.rubric_version,
-				model_id: request.model_id,
-				output_schema_version: request.output_schema_version,
 				criterion_results: request.rubric.map(criterionId => ({
 					criterion_id: criterionId,
 					verdict: "NOT_APPLICABLE",
@@ -61,10 +56,6 @@ describe("runReview", () => {
 					suggested_action: null,
 					verification_after_change: null,
 				})),
-				overall_verdict: "PASS",
-				automation_decision: "ANALYSIS_ONLY",
-				escalation_required: false,
-				escalation_reasons: [],
 			} as Output);
 		};
 
@@ -113,8 +104,8 @@ describe("runReview", () => {
 		expect(result.execution).toMatchObject({
 			modelId,
 			thinkingLevel: "medium",
-			promptVersion: "model-routed-code-review/1.3.0",
-			outputSchemaVersion: "judge-output/2.0.0",
+			promptVersion: "model-routed-code-review/1.4.0",
+			outputSchemaVersion: "judge-output/3.0.0",
 			tokenUsage: {
 				input: 13,
 				output: 26,
@@ -153,7 +144,7 @@ describe("runReview", () => {
 			incomplete: false,
 		});
 		const groupResult = result.groupResults[0];
-		if (!groupResult || groupResult.status !== "succeeded") throw new Error("Expected successful group result");
+		if (groupResult?.status !== "succeeded") throw new Error("Expected successful group result");
 		const evidence = groupResult.judgment.output.criterion_results[0]?.evidence[0];
 		expect(evidence).toEqual({
 			source_id: "source-1:index.test.ts",
@@ -225,11 +216,6 @@ describe("validateTerminalYieldResult", () => {
 	});
 });
 type JudgeRequest = {
-	evaluation_id: string;
-	prompt_version: string;
-	rubric_version: string;
-	model_id: string;
-	output_schema_version: string;
 	selected_group: string;
 	rubric: string[];
 };
@@ -259,11 +245,6 @@ function createEvidenceRunner(quote: string): PromptRunner {
 		}
 		const request = JSON.parse(userPrompt) as JudgeRequest;
 		return promptResult({
-			evaluation_id: request.evaluation_id,
-			prompt_version: request.prompt_version,
-			rubric_version: request.rubric_version,
-			model_id: request.model_id,
-			output_schema_version: request.output_schema_version,
 			criterion_results: request.rubric.map(criterionId => ({
 				criterion_id: criterionId,
 				verdict: "NOT_APPLICABLE",
@@ -284,10 +265,6 @@ function createEvidenceRunner(quote: string): PromptRunner {
 				suggested_action: null,
 				verification_after_change: null,
 			})),
-			overall_verdict: "PASS",
-			automation_decision: "ANALYSIS_ONLY",
-			escalation_required: false,
-			escalation_reasons: [],
 		} as Output);
 	};
 }

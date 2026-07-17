@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import {
 	createAgentSession,
@@ -6,19 +10,15 @@ import {
 	ModelRegistry,
 	SessionManager,
 } from "@oh-my-pi/pi-coding-agent";
-import { shutdownAll as shutdownLspClients } from "../../../src/lsp/client";
-import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { shutdownAll as shutdownLspClients } from "../../../src/lsp/client";
 import {
 	authorizeContextToolCall,
 	CONTEXT_TOOL_NAMES,
-	MAX_CONTEXT_TOOL_CALLS,
 	type ContextToolMode,
+	MAX_CONTEXT_TOOL_CALLS,
 } from "./context-tools";
-import { judgeProtocol } from "./prompts/protocol";
+import judgeProtocol from "./prompts/protocol.md" with { type: "text" };
 import { judgeDefinitions, judgeDefinitionsById } from "./prompts/registry";
 import { routerPrompt } from "./prompts/router";
 import type { JudgeDefinition, JudgeType } from "./prompts/types";
@@ -28,10 +28,8 @@ import { countTextTokens } from "./token-count";
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
-const PROMPT_VERSION = "model-routed-code-review/1.3.0";
-const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
-const CONTEXT_LIMITS_VERSION = "example-context-limits/2.2.0";
-const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
+const PROMPT_VERSION = "model-routed-code-review/1.4.0";
+const OUTPUT_SCHEMA_VERSION = "judge-output/3.0.0";
 const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/1.0.0";
 const THINKING_LEVEL = ThinkingLevel.Medium;
 const JUDGE_CONCURRENCY = 10;
@@ -88,16 +86,7 @@ const criterionResultSchema = z
 
 const judgeOutputSchema = z
 	.object({
-		evaluation_id: z.string().min(1),
-		prompt_version: z.string().min(1),
-		rubric_version: z.string().min(1),
-		model_id: z.string().min(1),
-		output_schema_version: z.string().min(1),
 		criterion_results: z.array(criterionResultSchema).min(1).max(10),
-		overall_verdict: z.enum(["PASS", "FAIL", "NEEDS_REVIEW", "INSUFFICIENT_CONTEXT"]),
-		automation_decision: z.literal("ANALYSIS_ONLY"),
-		escalation_required: z.boolean(),
-		escalation_reasons: z.array(z.string().min(1)),
 	})
 	.strict();
 
@@ -467,7 +456,6 @@ export async function runReview({
 	const settledJudgments = await mapSettledWithConcurrency(selectedGroups, JUDGE_CONCURRENCY, group =>
 		runJudge({
 			group,
-			modelId,
 			reviewGoal,
 			riskLevel,
 			runPrompt,
@@ -672,7 +660,6 @@ function mergeLineRanges(ranges: LineRange[]) {
 
 async function runJudge({
 	group,
-	modelId,
 	reviewGoal,
 	riskLevel,
 	runPrompt,
@@ -680,19 +667,15 @@ async function runJudge({
 	sourceViews,
 }: {
 	group: RoutedJudgeGroup;
-	modelId: string;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	runPrompt: PromptRunner;
 	sources: Source[];
 	sourceViews: SourceView[];
 }): Promise<Judgment> {
-	const evaluationId = randomUUID();
 	const system = `${judgeProtocol}\n\n${group.prompt}`;
 	const request = buildJudgeRequest({
-		evaluationId,
 		group,
-		modelId,
 		reviewGoal,
 		riskLevel,
 		sourceViews,
@@ -711,7 +694,7 @@ async function runJudge({
 	});
 
 	try {
-		validateJudgeOutput({ evaluationId, group, modelId, output });
+		validateJudgeOutput(group, output);
 		return {
 			groupId: group.id,
 			judgeType: group.judgeType,
@@ -725,57 +708,26 @@ async function runJudge({
 }
 
 function buildJudgeRequest({
-	evaluationId,
 	group,
-	modelId,
 	reviewGoal,
 	riskLevel,
 	sourceViews,
 	system,
 }: {
-	evaluationId: string;
 	group: RoutedJudgeGroup;
-	modelId: string;
 	reviewGoal: string;
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	sourceViews: SourceView[];
 	system: string;
 }) {
-	const decisionPolicy = {
-		version: DECISION_POLICY_VERSION,
-		mode: "analysis_only",
-		calibrated_rules: [],
-		auto_reject_rules: [],
-		calibration_gate_passed: false,
-		reversible_effect: false,
-		human_review_triggers: [],
-	};
-	const fingerprint = createHash("sha256")
-		.update(
-			JSON.stringify([
-				PROMPT_VERSION,
-				group.rubricVersion,
-				modelId,
-				OUTPUT_SCHEMA_VERSION,
-				CONTEXT_LIMITS_VERSION,
-				decisionPolicy.version,
-			]),
-		)
-		.digest("hex");
 	const serializedSources = sourceViews.map(serializeSourceForJudge);
 	const artifact = serializedSources[0];
 	if (!artifact) throw new Error("A primary artifact is required");
-	const sourceTokenCounts = serializedSources.map(source => countTextTokens(JSON.stringify(source)));
 
 	const request = {
-		evaluation_id: evaluationId,
-		prompt_version: PROMPT_VERSION,
-		rubric_version: group.rubricVersion,
-		model_id: modelId,
-		output_schema_version: OUTPUT_SCHEMA_VERSION,
-		context_limits_version: CONTEXT_LIMITS_VERSION,
 		review_goal: reviewGoal,
 		selected_group: group.id,
+		risk_level: riskLevel,
 		artifact,
 		rubric: group.criterionIds,
 		allowed_sources: serializedSources.slice(1),
@@ -784,42 +736,16 @@ function buildJudgeRequest({
 			chunk_ids: group.selectedChunkIds,
 		},
 		reference_data: [],
+		deterministic_evidence: [],
 		context_tools: {
 			policy_version: CONTEXT_TOOL_POLICY_VERSION,
-			enabled: true,
 			allowed_tools: [...CONTEXT_TOOL_NAMES],
 			max_calls: MAX_CONTEXT_TOOL_CALLS,
 			evidence_source_id: "exact local path returned by read",
 		},
-		deterministic_evidence: [],
-		context_limits: {
-			max_artifact_tokens: sourceTokenCounts[0] ?? 0,
-			max_sources: sourceViews.length,
-			max_tokens_per_source: Math.max(...sourceTokenCounts),
-			max_reference_items: 0,
-			max_evidence_items: 0,
-			max_total_request_tokens: MAX_REQUEST_TOKENS,
-		},
-		context_manifest: {
-			artifact_tokens: sourceTokenCounts[0] ?? 0,
-			source_count: sourceViews.length,
-			largest_source_tokens: Math.max(...sourceTokenCounts),
-			reference_count: 0,
-			evidence_count: 0,
-			total_request_tokens: 0,
-		},
-		risk_level: riskLevel,
-		calibration_context: {
-			dataset_version: "example-unvalidated",
-			covered_criterion_ids: [],
-			in_distribution: false,
-			evaluation_fingerprint: fingerprint,
-		},
-		decision_policy: decisionPolicy,
 	};
 
-	request.context_manifest.total_request_tokens = countTextTokens(`${system}\n${JSON.stringify(request)}`);
-	if (request.context_manifest.total_request_tokens > MAX_REQUEST_TOKENS) {
+	if (countTextTokens(`${system}\n${JSON.stringify(request)}`) > MAX_REQUEST_TOKENS) {
 		throw new Error(`Judge request for ${group.id} exceeds the context limit`);
 	}
 
@@ -843,27 +769,7 @@ function serializeSourceForJudge(view: SourceView) {
 	};
 }
 
-function validateJudgeOutput({
-	evaluationId,
-	group,
-	modelId,
-	output,
-}: {
-	evaluationId: string;
-	group: JudgeDefinition;
-	modelId: string;
-	output: JudgeOutput;
-}) {
-	if (
-		output.evaluation_id !== evaluationId ||
-		output.prompt_version !== PROMPT_VERSION ||
-		output.rubric_version !== group.rubricVersion ||
-		output.model_id !== modelId ||
-		output.output_schema_version !== OUTPUT_SCHEMA_VERSION
-	) {
-		throw new Error(`Judge ${group.id} did not echo the evaluation contract`);
-	}
-
+function validateJudgeOutput(group: JudgeDefinition, output: JudgeOutput) {
 	const expectedIds = new Set(group.criterionIds);
 	const actualIds = new Set(output.criterion_results.map(result => result.criterion_id));
 	if (

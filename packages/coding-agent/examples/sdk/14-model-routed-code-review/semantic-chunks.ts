@@ -1,6 +1,6 @@
-import { astMatch, summarizeCode } from "@oh-my-pi/pi-natives";
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
+import { astMatch, summarizeCode } from "@oh-my-pi/pi-natives";
 import { countTextTokens } from "./token-count";
 
 const DEFAULT_CHUNK_THRESHOLD_TOKENS = 12_000;

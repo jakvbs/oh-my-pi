@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ZodType } from "zod";
-import { runReview, type PromptRunner } from "./index";
+import { type PromptRunner, runReview } from "./index";
 import { judgeDefinitions } from "./prompts/registry";
 
 const modelId = "openai-codex/gpt-5.6-luna";
@@ -68,11 +68,6 @@ test("routes a large source to one semantic chunk while preserving original line
 		const evidenceLine = selectedLines[0];
 		if (!evidenceLine) throw new Error("Selected chunk contained no source lines");
 		return promptResult({
-			evaluation_id: request.evaluation_id,
-			prompt_version: request.prompt_version,
-			rubric_version: request.rubric_version,
-			model_id: request.model_id,
-			output_schema_version: request.output_schema_version,
 			criterion_results: request.rubric.map(criterionId => ({
 				criterion_id: criterionId,
 				verdict: "NOT_APPLICABLE",
@@ -93,10 +88,6 @@ test("routes a large source to one semantic chunk while preserving original line
 				suggested_action: null,
 				verification_after_change: null,
 			})),
-			overall_verdict: "PASS",
-			automation_decision: "ANALYSIS_ONLY",
-			escalation_required: false,
-			escalation_reasons: [],
 		} as Output);
 	};
 
@@ -140,11 +131,6 @@ type RouterRequest = {
 };
 
 type JudgeRequest = {
-	evaluation_id: string;
-	prompt_version: string;
-	rubric_version: string;
-	model_id: string;
-	output_schema_version: string;
 	rubric: string[];
 	artifact: {
 		id: string;
