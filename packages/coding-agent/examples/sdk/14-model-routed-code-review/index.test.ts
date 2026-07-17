@@ -14,14 +14,17 @@ describe("runReview", () => {
 		let maximumActiveJudges = 0;
 
 		const runPrompt: PromptRunner = async <Output>({
+			contextTools,
 			systemPrompt,
 			userPrompt,
 		}: {
 			resultSchema: ZodType<Output>;
 			systemPrompt: string;
 			userPrompt: string;
+			contextTools?: { mode: "none" | "read_only"; roots: string[] };
 		}) => {
 			if (systemPrompt.includes("# Router")) {
+				expect(contextTools).toBeUndefined();
 				return promptResult({
 					selectedGroups: judgeDefinitions.map(group => ({
 						id: group.id,
@@ -32,6 +35,8 @@ describe("runReview", () => {
 				} as Output);
 			}
 
+			expect(contextTools?.mode).toBe("read_only");
+			expect(contextTools?.roots.length).toBeGreaterThan(0);
 			const request = JSON.parse(userPrompt) as JudgeRequest;
 			activeJudges++;
 			maximumActiveJudges = Math.max(maximumActiveJudges, activeJudges);
@@ -108,7 +113,7 @@ describe("runReview", () => {
 		expect(result.execution).toMatchObject({
 			modelId,
 			thinkingLevel: "low",
-			promptVersion: "model-routed-code-review/1.2.0",
+			promptVersion: "model-routed-code-review/1.3.0",
 			outputSchemaVersion: "judge-output/2.0.0",
 			tokenUsage: {
 				input: 13,
@@ -292,6 +297,7 @@ function promptResult<Output>(output: Output) {
 		output,
 		execution: {
 			durationMs: 5,
+			contextTools: { enabled: false, maxCalls: 0, requestedCalls: 0, blockedCalls: 0, callsByTool: {} },
 			tokenUsage: {
 				input: 1,
 				output: 2,

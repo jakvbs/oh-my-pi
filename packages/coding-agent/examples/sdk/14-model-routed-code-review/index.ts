@@ -1,10 +1,23 @@
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager } from "@oh-my-pi/pi-coding-agent";
+import {
+	createAgentSession,
+	discoverAuthStorage,
+	type ExtensionFactory,
+	ModelRegistry,
+	SessionManager,
+} from "@oh-my-pi/pi-coding-agent";
+import { shutdownAll as shutdownLspClients } from "../../../src/lsp/client";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import {
+	authorizeContextToolCall,
+	CONTEXT_TOOL_NAMES,
+	MAX_CONTEXT_TOOL_CALLS,
+	type ContextToolMode,
+} from "./context-tools";
 import { judgeProtocol } from "./prompts/protocol";
 import { judgeDefinitions, judgeDefinitionsById } from "./prompts/registry";
 import { routerPrompt } from "./prompts/router";
@@ -15,10 +28,11 @@ import { countTextTokens } from "./token-count";
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
-const PROMPT_VERSION = "model-routed-code-review/1.2.0";
+const PROMPT_VERSION = "model-routed-code-review/1.3.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
-const CONTEXT_LIMITS_VERSION = "example-context-limits/2.1.0";
+const CONTEXT_LIMITS_VERSION = "example-context-limits/2.2.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
+const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/1.0.0";
 const THINKING_LEVEL = ThinkingLevel.Low;
 const JUDGE_CONCURRENCY = 10;
 
@@ -178,11 +192,19 @@ type TokenUsage = {
 type PromptExecutionMetadata = {
 	durationMs: number;
 	tokenUsage: TokenUsage;
+	contextTools: {
+		enabled: boolean;
+		maxCalls: number;
+		requestedCalls: number;
+		blockedCalls: number;
+		callsByTool: Record<string, number>;
+	};
 };
 
 type PromptResult<Output> = {
 	output: Output;
 	execution: PromptExecutionMetadata;
+	contextSources?: Source[];
 };
 
 class PromptExecutionError extends Error {
@@ -200,6 +222,7 @@ export type PromptRunner = <Output>(request: {
 	resultSchema: z.ZodType<Output>;
 	systemPrompt: string;
 	userPrompt: string;
+	contextTools?: { mode: ContextToolMode; roots: string[] };
 }) => Promise<PromptResult<Output>>;
 
 export function validateTerminalYieldResult<Output>({
@@ -248,17 +271,47 @@ async function createSdkPromptRunner() {
 		throw new Error("Model openai-codex/gpt-5.6-luna is unavailable or not authenticated");
 	}
 
-	const runPrompt: PromptRunner = async ({ resultSchema, systemPrompt, userPrompt }) => {
+	const runPrompt: PromptRunner = async ({ contextTools, resultSchema, systemPrompt, userPrompt }) => {
 		const startedAt = performance.now();
 		const terminalSchema = z.array(resultSchema).length(1);
+		const mode = contextTools?.mode ?? "none";
+		const enabled = mode === "read_only";
+		const audit = {
+			enabled,
+			maxCalls: enabled ? MAX_CONTEXT_TOOL_CALLS : 0,
+			requestedCalls: 0,
+			blockedCalls: 0,
+			callsByTool: {} as Record<string, number>,
+		};
+		const contextReadPaths = new Set<string>();
+		const cwd = process.cwd();
+		const roots = [cwd, ...(contextTools?.roots ?? [])];
+		const contextToolGuard: ExtensionFactory = api => {
+			api.on("tool_call", async event => {
+				if (event.toolName === "yield") return undefined;
+				audit.requestedCalls++;
+				audit.callsByTool[event.toolName] = (audit.callsByTool[event.toolName] ?? 0) + 1;
+				const reason = authorizeContextToolCall({
+					callCount: audit.requestedCalls,
+					cwd,
+					input: event.input,
+					mode,
+					roots,
+					toolName: event.toolName,
+				});
+				if (!reason) return undefined;
+				audit.blockedCalls++;
+				return { block: true, reason };
+			});
+		};
 		const { session } = await createAgentSession({
 			authStorage,
 			contextFiles: [],
 			customTools: [],
 			disableExtensionDiscovery: true,
-			enableLsp: false,
+			enableLsp: enabled,
 			enableMCP: false,
-			extensions: [],
+			extensions: [contextToolGuard],
 			model,
 			modelRegistry,
 			outputSchema: z.toJSONSchema(terminalSchema),
@@ -269,14 +322,23 @@ async function createSdkPromptRunner() {
 			slashCommands: [],
 			systemPrompt: [systemPrompt],
 			thinkingLevel: THINKING_LEVEL,
-			toolNames: [],
+			toolNames: enabled ? [...CONTEXT_TOOL_NAMES] : [],
 		});
 
 		let terminalYieldDetails: unknown;
 		let terminalYieldCount = 0;
 		let incrementalYieldCount = 0;
 		const unsubscribe = session.subscribe(event => {
-			if (event.type !== "tool_execution_end" || event.toolName !== "yield" || event.isError) return;
+			if (event.type !== "tool_execution_end" || event.isError) return;
+			if (event.toolName === "read") {
+				const details = event.result.details;
+				if (details && typeof details === "object" && "resolvedPath" in details) {
+					const resolvedPath = (details as { resolvedPath?: unknown }).resolvedPath;
+					if (typeof resolvedPath === "string") contextReadPaths.add(resolvedPath);
+				}
+				return;
+			}
+			if (event.toolName !== "yield") return;
 			if (isIncrementalYield(event.result.details)) {
 				incrementalYieldCount++;
 			} else {
@@ -302,7 +364,7 @@ async function createSdkPromptRunner() {
 				tokenUsage.cacheWrite += message.usage.cacheWrite;
 				tokenUsage.totalTokens += message.usage.totalTokens;
 			}
-			return { durationMs: Math.round(performance.now() - startedAt), tokenUsage };
+			return { contextTools: audit, durationMs: Math.round(performance.now() - startedAt), tokenUsage };
 		};
 
 		try {
@@ -313,7 +375,11 @@ async function createSdkPromptRunner() {
 				resultSchema,
 				terminalYieldCount,
 			});
-			return { output, execution: executionMetadata() };
+			return {
+				output,
+				execution: executionMetadata(),
+				contextSources: await readContextSources(contextReadPaths),
+			};
 		} catch (error) {
 			throw new PromptExecutionError(
 				error instanceof Error ? error.message : String(error),
@@ -329,6 +395,19 @@ async function createSdkPromptRunner() {
 	return { modelId: `${model.provider}/${model.id}`, runPrompt };
 }
 
+async function readContextSources(paths: Iterable<string>): Promise<Source[]> {
+	const sources = await Promise.all(
+		[...paths].map(async path => {
+			try {
+				return { id: path, path, content: await readFile(path, "utf8") };
+			} catch {
+				return null;
+			}
+		}),
+	);
+	return sources.filter((source): source is Source => source !== null);
+}
+
 async function main() {
 	const args = process.argv.slice(2);
 	if (args[0] === "--") args.shift();
@@ -340,15 +419,18 @@ async function main() {
 	}
 
 	const { modelId, runPrompt } = await createSdkPromptRunner();
-	const result = await runReview({
-		filePaths,
-		modelId,
-		reviewGoal,
-		riskLevel: riskLevelSchema.parse(process.env.RISK_LEVEL ?? "medium"),
-		runPrompt,
-	});
-
-	console.log(JSON.stringify(result, null, 2));
+	try {
+		const result = await runReview({
+			filePaths,
+			modelId,
+			reviewGoal,
+			riskLevel: riskLevelSchema.parse(process.env.RISK_LEVEL ?? "medium"),
+			runPrompt,
+		});
+		console.log(JSON.stringify(result, null, 2));
+	} finally {
+		await shutdownLspClients();
+	}
 }
 
 export async function runReview({
@@ -464,6 +546,7 @@ export async function runReview({
 			rubricVersions: Object.fromEntries(selectedGroups.map(group => [group.id, group.rubricVersion])),
 			inputFingerprint,
 			tokenUsage,
+			contextTools: aggregateContextToolUsage(executions),
 			router: routerExecution,
 			semanticContext: {
 				chunkedSourceCount: semanticCatalog.sources.filter(source => source.chunked).length,
@@ -616,10 +699,15 @@ async function runJudge({
 		system,
 	});
 
-	const { output, execution } = await runPrompt({
+	const {
+		output,
+		execution,
+		contextSources = [],
+	} = await runPrompt({
 		resultSchema: judgeOutputSchema,
 		systemPrompt: system,
 		userPrompt: JSON.stringify(request),
+		contextTools: { mode: "read_only", roots: [...new Set(sources.map(source => dirname(source.path)))] },
 	});
 
 	try {
@@ -627,7 +715,7 @@ async function runJudge({
 		return {
 			groupId: group.id,
 			judgeType: group.judgeType,
-			output: verifyEvidence(output, sources),
+			output: verifyEvidence(output, [...sources, ...contextSources]),
 			execution,
 		};
 	} catch (error) {
@@ -696,6 +784,13 @@ function buildJudgeRequest({
 			chunk_ids: group.selectedChunkIds,
 		},
 		reference_data: [],
+		context_tools: {
+			policy_version: CONTEXT_TOOL_POLICY_VERSION,
+			enabled: true,
+			allowed_tools: [...CONTEXT_TOOL_NAMES],
+			max_calls: MAX_CONTEXT_TOOL_CALLS,
+			evidence_source_id: "exact local path returned by read",
+		},
 		deterministic_evidence: [],
 		context_limits: {
 			max_artifact_tokens: sourceTokenCounts[0] ?? 0,
@@ -841,6 +936,20 @@ function sumTokenUsage(usages: TokenUsage[]): TokenUsage {
 		}),
 		{ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
 	);
+}
+
+function aggregateContextToolUsage(executions: PromptExecutionMetadata[]) {
+	const callsByTool: Record<string, number> = {};
+	let requestedCalls = 0;
+	let blockedCalls = 0;
+	for (const execution of executions) {
+		requestedCalls += execution.contextTools.requestedCalls;
+		blockedCalls += execution.contextTools.blockedCalls;
+		for (const [toolName, calls] of Object.entries(execution.contextTools.callsByTool)) {
+			callsByTool[toolName] = (callsByTool[toolName] ?? 0) + calls;
+		}
+	}
+	return { policyVersion: CONTEXT_TOOL_POLICY_VERSION, requestedCalls, blockedCalls, callsByTool };
 }
 
 function aggregateJudgments(judgments: Judgment[], failureCount: number, selectedGroupCount: number) {

@@ -163,6 +163,7 @@ function promptResult<Output>(output: Output) {
 		output,
 		execution: {
 			durationMs: 1,
+			contextTools: { enabled: false, maxCalls: 0, requestedCalls: 0, blockedCalls: 0, callsByTool: {} },
 			tokenUsage: { input: 1, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
 		},
 	};
