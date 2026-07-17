@@ -75,6 +75,9 @@
 ### Fixed
 
 - Isolated the CLIProxyAPI auth-broker import tests from ambient broker configuration so fixture credentials cannot be uploaded to a live broker ([#5782](https://github.com/can1357/oh-my-pi/issues/5782)).
+### Added
+
+- Added `PI_CONFIG_FILES`, a platform-delimited (`:` on Unix, `;` on Windows) environment path-list of settings overlays loaded before `--config` overlays, so wrapper scripts can inject settings without argv surgery ([#5685](https://github.com/can1357/oh-my-pi/issues/5685)).
 
 ## [17.0.1] - 2026-07-16
 
