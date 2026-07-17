@@ -10,13 +10,14 @@ import { judgeDefinitions, judgeDefinitionsById } from "./prompts/registry";
 import { routerPrompt } from "./prompts/router";
 import type { JudgeDefinition, JudgeType } from "./prompts/types";
 import { buildSemanticSourceCatalog, type SemanticSourceCatalog, type SourceCatalogEntry } from "./semantic-chunks";
+import { countTextTokens } from "./token-count";
 
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
 const PROMPT_VERSION = "model-routed-code-review/1.2.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
-const CONTEXT_LIMITS_VERSION = "example-context-limits/2.0.0";
+const CONTEXT_LIMITS_VERSION = "example-context-limits/2.1.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
 const THINKING_LEVEL = ThinkingLevel.Low;
 const JUDGE_CONCURRENCY = 10;
@@ -676,7 +677,7 @@ function buildJudgeRequest({
 	const serializedSources = sourceViews.map(serializeSourceForJudge);
 	const artifact = serializedSources[0];
 	if (!artifact) throw new Error("A primary artifact is required");
-	const sourceTokenCounts = serializedSources.map(source => estimateTokens(JSON.stringify(source)));
+	const sourceTokenCounts = serializedSources.map(source => countTextTokens(JSON.stringify(source)));
 
 	const request = {
 		evaluation_id: evaluationId,
@@ -722,7 +723,7 @@ function buildJudgeRequest({
 		decision_policy: decisionPolicy,
 	};
 
-	request.context_manifest.total_request_tokens = estimateTokens(`${system}\n${JSON.stringify(request)}`);
+	request.context_manifest.total_request_tokens = countTextTokens(`${system}\n${JSON.stringify(request)}`);
 	if (request.context_manifest.total_request_tokens > MAX_REQUEST_TOKENS) {
 		throw new Error(`Judge request for ${group.id} exceeds the context limit`);
 	}
@@ -911,10 +912,6 @@ async function mapSettledWithConcurrency<T, R>(
 
 	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runWorker));
 	return results;
-}
-
-function estimateTokens(value: string) {
-	return Math.ceil(value.length / 4);
 }
 
 const entrypoint = process.argv[1];

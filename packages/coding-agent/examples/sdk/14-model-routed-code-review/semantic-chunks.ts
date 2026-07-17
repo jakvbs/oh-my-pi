@@ -1,6 +1,7 @@
 import { astMatch, summarizeCode } from "@oh-my-pi/pi-natives";
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
+import { countTextTokens } from "./token-count";
 
 const DEFAULT_CHUNK_THRESHOLD_TOKENS = 12_000;
 const DEFAULT_MAX_CHUNK_TOKENS = 6_000;
@@ -64,7 +65,7 @@ async function buildSourceCatalogEntry(
 	threshold: number,
 	maxChunkTokens: number,
 ): Promise<SourceCatalogEntry> {
-	const estimatedTokens = estimateTokens(source.content);
+	const estimatedTokens = countTextTokens(source.content);
 	const base = {
 		id: source.id,
 		estimatedTokens,
@@ -131,17 +132,29 @@ function splitRange(
 ) {
 	const chunks: SemanticChunk[] = [];
 	let chunkStart = startLine;
-	let characters = 0;
-	for (let line = startLine; line <= endLine; line++) {
-		const nextCharacters = (lines[line - 1]?.length ?? 0) + 1;
-		if (line > chunkStart && Math.ceil((characters + nextCharacters) / 4) > maxTokens) {
-			chunks.push(makeChunk(source, lines, chunkStart, line - 1, label, contextRange));
-			chunkStart = line;
-			characters = 0;
+	while (chunkStart <= endLine) {
+		const remainingText = lines.slice(chunkStart - 1, endLine).join("\n");
+		if (countTextTokens(remainingText) <= maxTokens) {
+			chunks.push(makeChunk(source, lines, chunkStart, endLine, label, contextRange));
+			break;
 		}
-		characters += nextCharacters;
+
+		let low = chunkStart;
+		let high = endLine;
+		let bestEnd = chunkStart;
+		while (low <= high) {
+			const candidateEnd = Math.floor((low + high) / 2);
+			const candidate = lines.slice(chunkStart - 1, candidateEnd).join("\n");
+			if (candidateEnd === chunkStart || countTextTokens(candidate) <= maxTokens) {
+				bestEnd = candidateEnd;
+				low = candidateEnd + 1;
+			} else {
+				high = candidateEnd - 1;
+			}
+		}
+		chunks.push(makeChunk(source, lines, chunkStart, bestEnd, label, contextRange));
+		chunkStart = bestEnd + 1;
 	}
-	chunks.push(makeChunk(source, lines, chunkStart, endLine, label, contextRange));
 	return chunks;
 }
 
@@ -164,7 +177,7 @@ function makeChunk(
 		label,
 		startLine,
 		endLine,
-		estimatedTokens: estimateTokens(text),
+		estimatedTokens: countTextTokens(text),
 		...(contextRange && (contextRange.startLine !== startLine || contextRange.endLine !== endLine)
 			? { contextRange }
 			: {}),
@@ -232,8 +245,4 @@ function astLanguage(path: string) {
 		default:
 			return undefined;
 	}
-}
-
-function estimateTokens(text: string) {
-	return Math.max(1, Math.ceil(text.length / 4));
 }

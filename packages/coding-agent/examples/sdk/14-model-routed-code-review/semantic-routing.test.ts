@@ -44,6 +44,9 @@ test("routes a large source to one semantic chunk while preserving original line
 			}
 			const alphaChunk = sourceEntry.chunks.find(chunk => chunk.label.includes("alpha"));
 			if (!alphaChunk) throw new Error("Alpha callable chunk was not cataloged");
+			if (sourceEntry.chunks.some(chunk => chunk.estimatedTokens > 6_000)) {
+				throw new Error("Semantic chunk exceeded the native token budget");
+			}
 			selectedChunkId = alphaChunk.id;
 			return promptResult({
 				selectedGroups: [
@@ -126,7 +129,13 @@ type RouterRequest = {
 	sources: Array<{
 		id: string;
 		chunked: boolean;
-		chunks: Array<{ id: string; label: string; startLine: number; endLine: number }>;
+		chunks: Array<{
+			id: string;
+			label: string;
+			startLine: number;
+			endLine: number;
+			estimatedTokens: number;
+		}>;
 	}>;
 };
 
