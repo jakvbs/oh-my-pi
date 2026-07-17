@@ -306,7 +306,7 @@
 ### Added
 
 - Added process-local Git commit verification hooks with immutable candidate evidence and stale-candidate protection, allowing extensions to gate every OMP-owned commit path.
-- Added an SDK example for safely registering one or more scoped filesystem-backed subagents with automatic session disposal and definition cleanup.
+- Added SDK support and an example for registering in-memory agent definitions scoped to one session without writing project agent files.
 
 ### Changed
 

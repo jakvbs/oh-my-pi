@@ -29,15 +29,20 @@ const taskAgent: AgentDefinition = {
 	source: "bundled",
 };
 
-function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> }): ToolSession {
+function createSession(options: {
+	agentDefinitions?: readonly AgentDefinition[];
+	manager?: AsyncJobManager;
+	settings?: Record<string, unknown>;
+}): ToolSession {
 	return {
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? {}),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
+		getSessionAgentDefinitions: () => options.agentDefinitions ?? [],
 		asyncJobManager: options.manager,
-	} as unknown as ToolSession;
+	};
 }
 
 function getFirstText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -438,5 +443,35 @@ describe("task spawn routing", () => {
 
 		gates.get("Fifth")!.resolve();
 		await Promise.all(jobs.map(job => job.promise));
+	});
+
+	it("keeps in-memory agent definitions scoped to their session", async () => {
+		const sessionAgent: AgentDefinition = {
+			name: "scoped-reviewer",
+			description: "Session-only reviewer",
+			systemPrompt: "Review only this session.",
+			tools: ["read"],
+			source: "project",
+		};
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent],
+			projectAgentsDir: null,
+		});
+		const runSpy = vi.spyOn(executorModule, "runSubprocess").mockResolvedValue(
+			makeResult("ScopedReviewer", {
+				agent: sessionAgent.name,
+				agentSource: sessionAgent.source,
+			}),
+		);
+
+		const scopedTool = await TaskTool.create(
+			createSession({ agentDefinitions: [sessionAgent], settings: { "async.enabled": false } }),
+		);
+		const regularTool = await TaskTool.create(createSession({ settings: { "async.enabled": false } }));
+
+		expect(scopedTool.description).toContain(sessionAgent.name);
+		expect(regularTool.description).not.toContain(sessionAgent.name);
+		await scopedTool.execute("tc-scoped", { agent: sessionAgent.name, task: "Review this change." });
+		expect(runSpy.mock.calls[0]?.[0].agent.systemPrompt).toBe(sessionAgent.systemPrompt);
 	});
 });

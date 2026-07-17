@@ -19,6 +19,7 @@ Programmatic usage of omp-coding-agent via `createAgentSession()`.
 | `11-sessions.ts`               | In-memory, persistent, continue, list sessions |
 | `12-full-control.ts`           | Replace everything, no discovery               |
 | `14-model-routed-code-review/` | Route a review to typed LLM judges via the SDK |
+| `15-scoped-subagents/`         | Register session-scoped in-memory subagents    |
 
 ## Running
 

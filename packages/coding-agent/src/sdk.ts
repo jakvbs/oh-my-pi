@@ -149,7 +149,7 @@ import {
 } from "./system-prompt";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import type { StructuredSubagentSchemaMode } from "./task/types";
+import type { AgentDefinition, StructuredSubagentSchemaMode } from "./task/types";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -377,6 +377,8 @@ export class AgentProfileSkillError extends Error {
 	}
 }
 
+export type SessionAgentDefinition = Omit<AgentDefinition, "source" | "filePath">;
+
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: getProjectDir() */
 	cwd?: string;
@@ -384,6 +386,8 @@ export interface CreateAgentSessionOptions {
 	agentDir?: string;
 	/** Spawns to allow. Default: "*" */
 	spawns?: string;
+	/** In-memory agent definitions available only to this session's task tool. Same-name definitions override discovery. */
+	agentDefinitions?: readonly SessionAgentDefinition[];
 
 	/** Auth storage for credentials. Default: discoverAuthStorage(agentDir) */
 	authStorage?: AuthStorage;
@@ -1635,6 +1639,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const scopedAsyncJobManager = asyncJobManager ?? (options.parentTaskPrefix ? AsyncJobManager.instance() : undefined);
 
 	const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
+	const sessionAgentDefinitions: readonly AgentDefinition[] = (options.agentDefinitions ?? []).map(definition => ({
+		...definition,
+		source: "project",
+	}));
 	const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
 	const resolvedAgentDisplayName =
 		options.agentDisplayName ?? ((options.taskDepth ?? 0) > 0 || options.parentTaskPrefix ? "sub" : "main");
@@ -1713,6 +1721,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			getToolByName: name => session?.getToolByName(name),
 			agentRegistry,
 			getSessionSpawns: () => options.spawns ?? "*",
+			getSessionAgentDefinitions: () => sessionAgentDefinitions,
+
 			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),
 			getActiveModelString,
 			getActiveModel: () => agent?.state.model ?? model,

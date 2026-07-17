@@ -469,6 +469,21 @@ function discoverAgentsForCreate(cwd: string): Promise<DiscoveryResult> {
 	return pending;
 }
 
+function mergeSessionAgentDefinitions(
+	discovered: AgentDefinition[],
+	sessionDefinitions: readonly AgentDefinition[] | undefined,
+) {
+	if (!sessionDefinitions?.length) return discovered;
+	const names = new Set<string>();
+	for (const definition of sessionDefinitions) {
+		if (names.has(definition.name)) {
+			throw new Error(`Session agent definition names must be unique: ${definition.name}`);
+		}
+		names.add(definition.name);
+	}
+	return [...sessionDefinitions, ...discovered.filter(definition => !names.has(definition.name))];
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Tool Class
 // ═══════════════════════════════════════════════════════════════════════════
@@ -616,7 +631,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	 */
 	static async create(session: ToolSession): Promise<TaskTool> {
 		const { agents } = await discoverAgentsForCreate(session.cwd);
-		return new TaskTool(session, agents);
+		return new TaskTool(session, mergeSessionAgentDefinitions(agents, session.getSessionAgentDefinitions?.()));
 	}
 
 	async execute(
@@ -1362,6 +1377,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		launchTiming?: { invokedAt: number; acquiredAt: number },
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		const startTime = Date.now();
+
 		const assignment = (params.task ?? "").trim();
 		const context = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
 		let latestProgress: AgentProgress | undefined;
