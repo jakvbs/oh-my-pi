@@ -7,7 +7,7 @@ description: Decompose a user task into a dependency DAG and execute it with OMP
 
 Author a JSON DAG, create its initial `.canvas.tsx` visualization, run every node through the OMP SDK runner, then summarize the result and relink the canvas. Parent outputs are stitched into child prompts. Live assistant text and task state are written into the canvas throughout execution.
 
-This is a repo-local skill: the runner lives in `packages/coding-agent/examples/sdk/16-dag-task-runner/index.ts` in the oh-my-pi monorepo. `DAG_RUNNER_DIR` may point directly to that directory. Copying only this `SKILL.md` is unsupported because the checked-in runtime is intentionally not duplicated.
+The runner is available either from the oh-my-pi source example or from a generated standalone skill. A generated skill keeps runtime code under `runtime/`; run `bun install` there once. Set `DAG_RUNNER_DIR` to any runtime directory containing `index.ts` to override discovery.
 
 ## When to use
 
@@ -62,9 +62,9 @@ A nontrivial DAG SHOULD contain at least one rank with multiple tasks. The bundl
 
 Write the DAG to a temporary JSON file such as `/tmp/dag-<slug>.json`.
 
-## 2. Create and surface the initial canvas
+## 2. Locate the runtime, install dependencies, and create the initial canvas
 
-Locate the runner without installing another dependency tree:
+OMP discovers packaged project skills from `.omp/skills/` in the working directory and its ancestors. It discovers personal skills from the active agent directory: `~/.omp/agent/skills/` by default, `~/.omp/profiles/<profile>/agent/skills/` for a named profile, or `$PI_CODING_AGENT_DIR/skills/` when that override is set.
 
 ```bash
 resolve_runner_dir() {
@@ -73,22 +73,54 @@ resolve_runner_dir() {
     return 0
   fi
 
+  dir="$PWD"
+  while :; do
+    candidate="$dir/.omp/skills/dag-task-runner/runtime"
+    if [ -f "$candidate/index.ts" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    [ "$dir" = "/" ] && break
+    dir="$(dirname "$dir")"
+  done
+
+  if [ -n "${PI_CODING_AGENT_DIR:-}" ]; then
+    agent_dir="$PI_CODING_AGENT_DIR"
+  else
+    config_dir="${PI_CONFIG_DIR:-.omp}"
+    if [ "${OMP_PROFILE+x}" = x ]; then
+      profile="$OMP_PROFILE"
+    else
+      profile="${PI_PROFILE:-}"
+    fi
+    if [ -n "$profile" ] && [ "$profile" != "default" ]; then
+      agent_dir="$HOME/$config_dir/profiles/$profile/agent"
+    else
+      agent_dir="$HOME/$config_dir/agent"
+    fi
+  fi
+
   git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  for dir in \
+  for candidate in \
+    "$agent_dir/skills/dag-task-runner/runtime" \
     "${git_root:+$git_root/packages/coding-agent/examples/sdk/16-dag-task-runner}" \
     "$PWD/packages/coding-agent/examples/sdk/16-dag-task-runner"
   do
-    if [ -n "$dir" ] && [ -f "$dir/index.ts" ]; then
-      printf '%s\n' "$dir"
+    if [ -n "$candidate" ] && [ -f "$candidate/index.ts" ]; then
+      printf '%s\n' "$candidate"
       return 0
     fi
   done
 
-  echo "Could not find examples/sdk/16-dag-task-runner; set DAG_RUNNER_DIR." >&2
+  echo "Could not find dag-task-runner; install the packaged skill or set DAG_RUNNER_DIR." >&2
   return 1
 }
 
 RUNNER_DIR="$(resolve_runner_dir)"
+if [ -f "$RUNNER_DIR/package.json" ] && [ ! -d "$RUNNER_DIR/node_modules" ]; then
+  (cd "$RUNNER_DIR" && bun install)
+fi
+
 CANVAS_PATH="$HOME/.cursor/projects/<workspace-slug>/canvases/dag-<slug>.canvas.tsx"
 
 bun "$RUNNER_DIR/index.ts" \
@@ -165,6 +197,6 @@ After exit:
 ## Reference
 
 - Runner: `index.ts` in `$RUNNER_DIR`
-- DAG example: `example-dag.json` in `$RUNNER_DIR`
+- DAG example: `example-dag.json` in the source `$RUNNER_DIR`, or `../examples/example-dag.json` beside a packaged runtime
 - Static task prompt: `prompts/task.md` in `$RUNNER_DIR`
-- SDK documentation: repository `docs/sdk.md`
+- SDK documentation: `https://github.com/can1357/oh-my-pi/blob/main/docs/sdk.md`

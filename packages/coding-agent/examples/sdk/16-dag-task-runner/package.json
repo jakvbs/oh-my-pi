@@ -6,6 +6,7 @@
         "dev": "bun index.ts",
         "init-canvas": "bun index.ts --init-only --dag example-dag.json --canvas-path .canvas/dag-example.canvas.tsx",
         "example": "bun run-example.ts",
+        "package-skill": "bun package-skill.ts",
         "check": "bun --cwd ../../.. check",
         "test": "bun test"
     }

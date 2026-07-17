@@ -161,22 +161,75 @@ bun index.ts --init-only \
 
 OMP can then read or link it through `vault://<vault>/runs/dag-example.canvas.tsx` when Obsidian integration is enabled. Obsidian does not execute `cursor/canvas` React files; use Cursor to render the live canvas.
 
-## Skill
+## Package or install the skill
 
-[`skill/SKILL.md`](./skill/SKILL.md) is a repo-local workflow prompt for this example. It resolves the checked-in runtime through `DAG_RUNNER_DIR` or the oh-my-pi repository path. It is not a standalone copyable skill: copying `SKILL.md` without this example directory is unsupported and intentionally does not install or duplicate hand-owned runtime code.
+Generate a self-contained skill at an explicit destination whose final directory name is `dag-task-runner`:
+
+```bash
+bun run package-skill -- /tmp/omp-skills/dag-task-runner
+cd /tmp/omp-skills/dag-task-runner/runtime
+bun install
+bun run check
+bun run init-canvas
+```
+
+The packager copies the hand-owned runtime sources and static prompt; it does not maintain a second source tree. A generated ownership marker permits later syncs to replace only output from this packager. Existing unmarked destinations are refused and never deleted.
+
+OMP's native discovery scans `<ancestor>/.omp/skills/` for project skills and the active agent directory's `skills/` for personal skills. Standard install commands are:
+
+```bash
+# Project or repository scope
+bun run package-skill -- "$PWD/.omp/skills/dag-task-runner"
+(cd "$PWD/.omp/skills/dag-task-runner/runtime" && bun install)
+
+# Default personal scope
+bun run package-skill -- "$HOME/.omp/agent/skills/dag-task-runner"
+(cd "$HOME/.omp/agent/skills/dag-task-runner/runtime" && bun install)
+
+# Named OMP profile
+bun run package-skill -- "$HOME/.omp/profiles/<profile>/agent/skills/dag-task-runner"
+(cd "$HOME/.omp/profiles/<profile>/agent/skills/dag-task-runner/runtime" && bun install)
+```
+
+`PI_CODING_AGENT_DIR` overrides the personal agent directory, and `PI_CONFIG_DIR` changes the default `.omp` personal config root. Set `DAG_RUNNER_DIR` to the generated `runtime/` for a nonstandard explicit destination. [`skill/SKILL.md`](./skill/SKILL.md) resolves repo-local and standard packaged locations and performs a missing `runtime/node_modules` setup before use.
+
+Generated layout:
+
+```text
+dag-task-runner/
+├── .dag-task-runner.generated.json
+├── .gitignore
+├── SKILL.md
+├── examples/
+│   └── example-dag.json
+└── runtime/
+    ├── package.json
+    ├── tsconfig.json
+    ├── text-imports.d.ts
+    ├── index.ts
+    ├── dag.ts
+    ├── run-example.ts
+    ├── canvas-writer.ts
+    └── prompts/task.md
+```
+
+The generated runtime keeps the safe demo contract: `bun run example` still requires `--cwd <existing-scratch-directory>`.
 
 ## Files
 
 ```text
 16-dag-task-runner/
+├── .gitignore
 ├── README.md
 ├── package.json
 ├── tsconfig.json
+├── package-skill.ts
 ├── index.ts
 ├── dag.ts
 ├── run-example.ts
 ├── canvas-writer.ts
 ├── index.test.ts
+├── package-skill.test.ts
 ├── example-dag.json
 ├── prompts/task.md
 └── skill/SKILL.md

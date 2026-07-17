@@ -23,9 +23,25 @@ if (!scratchStats.isDirectory()) {
 	process.exit(2);
 }
 
+const dagCandidates = [
+	path.join(import.meta.dir, "example-dag.json"),
+	path.join(import.meta.dir, "../examples/example-dag.json"),
+];
+let dagPath: string | undefined;
+for (const candidate of dagCandidates) {
+	if (await Bun.file(candidate).exists()) {
+		dagPath = candidate;
+		break;
+	}
+}
+if (!dagPath) {
+	process.stderr.write("[dag-runner] packaged example-dag.json is missing.\n");
+	process.exit(2);
+}
+
 process.exitCode = await runCli([
 	"--dag",
-	path.join(import.meta.dir, "example-dag.json"),
+	dagPath,
 	"--canvas-path",
 	path.join(scratchCwd, "dag-example.canvas.tsx"),
 	...argv,
