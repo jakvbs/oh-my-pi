@@ -120,14 +120,17 @@ Każdy \`PASS\`, \`FAIL\` i \`CONFLICTING_EVIDENCE\` wymaga co najmniej jednego 
 
 \`\`\`json
 {
-    "source_id": "artifact",
-    "location": "lines 10-14",
+    "source_id": "source-1:artifact.ts",
+    "start_line": 10,
+    "end_line": 14,
+    "quote": "Dokładna treść linii 10-14 z zachowaniem wcięć i nowych linii.",
     "observation": "Bezpośrednio obserwowalny fakt, bez werdyktu i domniemanej intencji.",
     "supports": "fail_when[0]"
 }
 \`\`\`
 
-Dla \`NOT_APPLICABLE\` podaj dowód niespełnienia \`applies_when\`. Dla \`INSUFFICIENT_CONTEXT\` lista \`missing_evidence\` nazywa dokładnie brakujące dane i sposób, w jaki mogą zmienić werdykt. Cytat bez lokalizacji, ogólne wrażenie, metryka bez interpretacji albo wiedza spoza dozwolonych źródeł nie są dowodem.
+Dla \`NOT_APPLICABLE\` podaj dowód niespełnienia \`applies_when\`. Dla \`INSUFFICIENT_CONTEXT\` lista \`missing_evidence\` nazywa dokładnie brakujące dane i sposób, w jaki mogą zmienić werdykt. \`quote\` musi być dokładnym tekstem całego zakresu od \`start_line\` do \`end_line\`, z zachowaniem wcięć i nowych linii; harness weryfikuje go i sam oblicza hash zakresu. Ogólne wrażenie, metryka bez interpretacji albo wiedza spoza dozwolonych źródeł nie są dowodem.
+Źródła są przekazane jako \`content.lines\`; zbuduj \`quote\` przez dokładne połączenie pól \`text\` dla wskazanego, inkluzywnego zakresu jednym znakiem nowej linii. Nie skracaj cytatu do tokenu ani podwyrażenia.
 
 Dla \`CONFLICTING_EVIDENCE\` podaj co najmniej dwa dowody wspierające przeciwne strony oraz nazwij w \`reason\`, dlaczego rubryka ani pierwszeństwo źródeł nie rozstrzygają konfliktu.
 
@@ -182,7 +185,9 @@ Zakończ terminalnym wywołaniem \`yield\`. \`result.data\` musi być jednoeleme
             "evidence": [
                 {
                     "source_id": "string",
-                    "location": "string",
+                    "start_line": "positive integer",
+                    "end_line": "positive integer >= start_line",
+                    "quote": "exact source text for the inclusive line range",
                     "observation": "string",
                     "supports": "pass_when[i] | fail_when[i] | applies_when | exceptions[i] | evidence_required[i]"
                 }
@@ -207,7 +212,7 @@ Schema validator oraz walidacja referencyjna muszą również potwierdzić, że:
 - \`escalation_required\` jest wartością boolean i \`escalation_reasons\` jest niepuste dokładnie wtedy, gdy ma wartość \`true\`;
 - wartości \`evaluation_id\`, wszystkich wersji i \`model_id\` są identyczne z wejściem, a fingerprint kalibracji odpowiada bieżącej krotce wersji;
 - każde przekazane ID kryterium występuje dokładnie raz, a inne ID nie występują;
-- \`severity\` odpowiada rubryce, \`source_id\` należy do wejścia, a \`location\` istnieje w wskazanym źródle;
+- \`severity\` odpowiada rubryce, \`source_id\` należy do wejścia, zakres linii mieści się we wskazanym źródle, a \`quote\` dokładnie odpowiada całemu zakresowi; hash cytatu oblicza harness i nie jest zwracany przez judge’a;
 - \`PASS\` ma puste \`missing_evidence\` oraz dowód mapujący się przez \`supports\` na każdy element \`pass_when\` i każde wymaganie z \`evidence_required\`;
 - \`FAIL\` ma co najmniej jeden dowód dla \`fail_when\`, a \`CONFLICTING_EVIDENCE\` dowody dla obu stron; oba mają puste \`missing_evidence\`;
 - \`INSUFFICIENT_CONTEXT\` ma niepuste \`missing_evidence\`, a \`NOT_APPLICABLE\` ma dowód dla \`applies_when\`;

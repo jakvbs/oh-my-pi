@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { ZodType } from "zod";
 import { runReview, type PromptRunner } from "./index";
 import { judgeDefinitions } from "./prompts/registry";
@@ -81,6 +82,53 @@ describe("runReview", () => {
 			incomplete: true,
 		});
 	});
+
+	test("adds a harness-computed hash to an exact source quote", async () => {
+		const quote = 'import { describe, expect, test } from "bun:test";';
+		const result = await runReview({
+			filePaths: [new URL("./index.test.ts", import.meta.url).pathname],
+			modelId,
+			reviewGoal: "Verify one grounded citation.",
+			riskLevel: "low",
+			runPrompt: createEvidenceRunner(quote),
+		});
+
+		expect(result.failures).toEqual([]);
+		const evidence = result.judgments[0]?.output.criterion_results[0]?.evidence[0];
+		expect(evidence).toEqual({
+			source_id: "source-1:index.test.ts",
+			start_line: 1,
+			end_line: 1,
+			quote,
+			observation: "The cited import is present.",
+			supports: "applies_when",
+			hash: createHash("sha256").update(quote).digest("hex"),
+		});
+	});
+
+	test("rejects a fabricated quote and reports evidence failures", async () => {
+		const group = judgeDefinitions[0];
+		if (!group) throw new Error("Expected at least one judge definition");
+		const result = await runReview({
+			filePaths: [new URL("./index.test.ts", import.meta.url).pathname],
+			modelId,
+			reviewGoal: "Reject an ungrounded citation.",
+			riskLevel: "low",
+			runPrompt: createEvidenceRunner("fabricated source text"),
+		});
+
+		expect(result.judgments).toEqual([]);
+		expect(result.failures).toHaveLength(1);
+		expect(result.evidenceFailures).toHaveLength(group.criterionIds.length);
+		expect(result.evidenceFailures[0]).toMatchObject({
+			groupId: group.id,
+			criterionId: group.criterionIds[0],
+			evidenceIndex: 0,
+			sourceId: "source-1:index.test.ts",
+			error: "quote does not match lines 1-1",
+		});
+		expect(result.incomplete).toBe(true);
+	});
 });
 
 type JudgeRequest = {
@@ -92,3 +140,52 @@ type JudgeRequest = {
 	selected_group: string;
 	rubric: string[];
 };
+
+function createEvidenceRunner(quote: string): PromptRunner {
+	const group = judgeDefinitions[0];
+	if (!group) throw new Error("Expected at least one judge definition");
+	return async <Output>({
+		systemPrompt,
+		userPrompt,
+	}: {
+		resultSchema: ZodType<Output>;
+		systemPrompt: string;
+		userPrompt: string;
+	}) => {
+		if (systemPrompt.includes("# Router")) {
+			return { selectedGroups: [{ id: group.id, reason: "Selected by evidence test" }] } as Output;
+		}
+		const request = JSON.parse(userPrompt) as JudgeRequest;
+		return {
+			evaluation_id: request.evaluation_id,
+			prompt_version: request.prompt_version,
+			rubric_version: request.rubric_version,
+			model_id: request.model_id,
+			output_schema_version: request.output_schema_version,
+			criterion_results: request.rubric.map(criterionId => ({
+				criterion_id: criterionId,
+				verdict: "NOT_APPLICABLE",
+				severity: "minor",
+				confidence: "high",
+				evidence: [
+					{
+						source_id: "source-1:index.test.ts",
+						start_line: 1,
+						end_line: 1,
+						quote,
+						observation: "The cited import is present.",
+						supports: "applies_when",
+					},
+				],
+				missing_evidence: [],
+				reason: "Not applicable in evidence test.",
+				suggested_action: null,
+				verification_after_change: null,
+			})),
+			overall_verdict: "PASS",
+			automation_decision: "ANALYSIS_ONLY",
+			escalation_required: false,
+			escalation_reasons: [],
+		} as Output;
+	};
+}

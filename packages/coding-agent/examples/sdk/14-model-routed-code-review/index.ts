@@ -13,8 +13,8 @@ import type { JudgeDefinition, JudgeType } from "./prompts/types";
 const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
-const PROMPT_VERSION = "model-routed-code-review/1.0.0";
-const OUTPUT_SCHEMA_VERSION = "judge-output/1.0.0";
+const PROMPT_VERSION = "model-routed-code-review/1.1.0";
+const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
 const CONTEXT_LIMITS_VERSION = "example-context-limits/1.0.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
 const JUDGE_CONCURRENCY = 10;
@@ -45,7 +45,9 @@ const routerOutputSchema = z
 const evidenceSchema = z
 	.object({
 		source_id: z.string().min(1),
-		location: z.string().min(1),
+		start_line: z.number().int().positive(),
+		end_line: z.number().int().positive(),
+		quote: z.string().min(1),
 		observation: z.string().min(1),
 		supports: z.string().min(1),
 	})
@@ -88,11 +90,17 @@ type Source = {
 
 type CriterionResult = z.infer<typeof criterionResultSchema>;
 type JudgeOutput = z.infer<typeof judgeOutputSchema>;
+type Evidence = z.infer<typeof evidenceSchema>;
+type VerifiedEvidence = Evidence & { hash: string };
+type VerifiedCriterionResult = Omit<CriterionResult, "evidence"> & { evidence: VerifiedEvidence[] };
+type VerifiedJudgeOutput = Omit<JudgeOutput, "criterion_results"> & {
+	criterion_results: VerifiedCriterionResult[];
+};
 
 type Judgment = {
 	groupId: string;
 	judgeType: JudgeType;
-	output: JudgeOutput;
+	output: VerifiedJudgeOutput;
 };
 
 type JudgeFailure = {
@@ -100,6 +108,25 @@ type JudgeFailure = {
 	judgeType: JudgeType;
 	error: string;
 };
+
+type EvidenceIssue = {
+	criterionId: string;
+	evidenceIndex: number;
+	sourceId: string;
+	error: string;
+};
+
+type EvidenceFailure = EvidenceIssue & {
+	groupId: string;
+	judgeType: JudgeType;
+};
+
+class EvidenceValidationError extends Error {
+	constructor(readonly issues: EvidenceIssue[]) {
+		super(issues.map(issue => `${issue.criterionId}[${issue.evidenceIndex}]: ${issue.error}`).join("; "));
+		this.name = "EvidenceValidationError";
+	}
+}
 
 export type PromptRunner = <Output>(request: {
 	resultSchema: z.ZodType<Output>;
@@ -227,6 +254,7 @@ export async function runReview({
 	);
 	const judgments: Judgment[] = [];
 	const failures: JudgeFailure[] = [];
+	const evidenceFailures: EvidenceFailure[] = [];
 	for (let index = 0; index < settledJudgments.length; index++) {
 		const result = settledJudgments[index];
 		const group = selectedGroups[index];
@@ -234,6 +262,15 @@ export async function runReview({
 		if (result.status === "fulfilled") {
 			judgments.push(result.value);
 		} else {
+			if (result.reason instanceof EvidenceValidationError) {
+				evidenceFailures.push(
+					...result.reason.issues.map(issue => ({
+						groupId: group.id,
+						judgeType: group.judgeType,
+						...issue,
+					})),
+				);
+			}
 			failures.push({
 				groupId: group.id,
 				judgeType: group.judgeType,
@@ -246,6 +283,7 @@ export async function runReview({
 		selectedGroups: selectedGroups.map(group => group.id),
 		judgments,
 		failures,
+		evidenceFailures,
 		incomplete: failures.length > 0,
 		aggregate: aggregateJudgments(judgments, failures.length),
 	};
@@ -254,7 +292,7 @@ async function readSources(filePaths: string[]): Promise<Source[]> {
 	const sources = await Promise.all(
 		filePaths.map(async (filePath, index) => {
 			const absolutePath = resolve(filePath);
-			const content = await readFile(absolutePath, "utf8");
+			const content = (await readFile(absolutePath, "utf8")).replace(/\r\n?/g, "\n");
 			if (content.length > MAX_SOURCE_CHARACTERS) {
 				throw new Error(`${absolutePath} exceeds the per-source context limit`);
 			}
@@ -337,7 +375,7 @@ async function runJudge({
 	return {
 		groupId: group.id,
 		judgeType: group.judgeType,
-		output,
+		output: verifyEvidence(output, sources),
 	};
 }
 
@@ -393,13 +431,9 @@ function buildJudgeRequest({
 		context_limits_version: CONTEXT_LIMITS_VERSION,
 		review_goal: reviewGoal,
 		selected_group: group.id,
-		artifact: {
-			id: artifact.id,
-			content: artifact.content,
-			locations: "line ranges",
-		},
+		artifact: serializeSourceForJudge(artifact),
 		rubric: group.criterionIds,
-		allowed_sources: sources.slice(1),
+		allowed_sources: sources.slice(1).map(serializeSourceForJudge),
 		reference_data: [],
 		deterministic_evidence: [],
 		context_limits: {
@@ -436,6 +470,16 @@ function buildJudgeRequest({
 	return request;
 }
 
+function serializeSourceForJudge(source: Source) {
+	return {
+		id: source.id,
+		content: {
+			lines: source.content.split("\n").map((text, index) => ({ number: index + 1, text })),
+		},
+		locations: "inclusive line ranges",
+	};
+}
+
 function validateJudgeOutput({
 	evaluationId,
 	group,
@@ -466,6 +510,55 @@ function validateJudgeOutput({
 	) {
 		throw new Error(`Judge ${group.id} did not return every criterion exactly once`);
 	}
+}
+
+function verifyEvidence(output: JudgeOutput, sources: Source[]): VerifiedJudgeOutput {
+	const sourcesById = new Map(sources.map(source => [source.id, source]));
+	const issues: EvidenceIssue[] = [];
+	const criterionResults: VerifiedCriterionResult[] = [];
+
+	for (const result of output.criterion_results) {
+		const verifiedEvidence: VerifiedEvidence[] = [];
+		for (let evidenceIndex = 0; evidenceIndex < result.evidence.length; evidenceIndex++) {
+			const evidence = result.evidence[evidenceIndex]!;
+			const issue = (error: string) => {
+				issues.push({
+					criterionId: result.criterion_id,
+					evidenceIndex,
+					sourceId: evidence.source_id,
+					error,
+				});
+			};
+			const source = sourcesById.get(evidence.source_id);
+			if (!source) {
+				issue(`unknown source_id ${evidence.source_id}`);
+				continue;
+			}
+			const lines = source.content.split("\n");
+			if (evidence.end_line < evidence.start_line) {
+				issue(`end_line ${evidence.end_line} precedes start_line ${evidence.start_line}`);
+				continue;
+			}
+			if (evidence.end_line > lines.length) {
+				issue(`line range ${evidence.start_line}-${evidence.end_line} exceeds ${lines.length} lines`);
+				continue;
+			}
+			const quotedRange = lines.slice(evidence.start_line - 1, evidence.end_line).join("\n");
+			if (evidence.quote.replace(/\r\n?/g, "\n") !== quotedRange) {
+				issue(`quote does not match lines ${evidence.start_line}-${evidence.end_line}`);
+				continue;
+			}
+			verifiedEvidence.push({
+				...evidence,
+				quote: quotedRange,
+				hash: createHash("sha256").update(quotedRange).digest("hex"),
+			});
+		}
+		criterionResults.push({ ...result, evidence: verifiedEvidence });
+	}
+
+	if (issues.length > 0) throw new EvidenceValidationError(issues);
+	return { ...output, criterion_results: criterionResults };
 }
 
 function aggregateJudgments(judgments: Judgment[], failureCount: number) {
