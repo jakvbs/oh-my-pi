@@ -67,7 +67,6 @@ describe("runReview", () => {
 		});
 
 		expect(maximumActiveJudges).toBe(10);
-		expect(result.judgments).toHaveLength(judgeDefinitions.length - 1);
 		expect(result.failures).toEqual([
 			{
 				groupId: failedGroup.id,
@@ -75,11 +74,28 @@ describe("runReview", () => {
 				error: "simulated judge failure",
 			},
 		]);
+		expect(result.groupResults).toHaveLength(judgeDefinitions.length);
+		expect(result.groupResults.filter(group => group.status === "succeeded")).toHaveLength(
+			judgeDefinitions.length - 1,
+		);
+		expect(result.groupResults.find(group => group.groupId === failedGroup.id)).toEqual({
+			groupId: failedGroup.id,
+			judgeType: failedGroup.judgeType,
+			status: "failed",
+			failure: {
+				groupId: failedGroup.id,
+				judgeType: failedGroup.judgeType,
+				error: "simulated judge failure",
+			},
+			evidenceFailures: [],
+		});
 		expect(result.incomplete).toBe(true);
 		expect(result.aggregate).toMatchObject({
 			overallVerdict: "INSUFFICIENT_CONTEXT",
 			failureCount: 1,
 			incomplete: true,
+			selectedGroupCount: judgeDefinitions.length,
+			completedGroupCount: judgeDefinitions.length - 1,
 		});
 	});
 
@@ -94,7 +110,21 @@ describe("runReview", () => {
 		});
 
 		expect(result.failures).toEqual([]);
-		const evidence = result.judgments[0]?.output.criterion_results[0]?.evidence[0];
+		expect(result.groupResults).toHaveLength(1);
+		expect(result.groupResults[0]).toMatchObject({
+			groupId: judgeDefinitions[0]?.id,
+			status: "succeeded",
+		});
+		expect(result.incomplete).toBe(false);
+		expect(result.aggregate).toMatchObject({
+			failureCount: 0,
+			selectedGroupCount: 1,
+			completedGroupCount: 1,
+			incomplete: false,
+		});
+		const groupResult = result.groupResults[0];
+		if (!groupResult || groupResult.status !== "succeeded") throw new Error("Expected successful group result");
+		const evidence = groupResult.judgment.output.criterion_results[0]?.evidence[0];
 		expect(evidence).toEqual({
 			source_id: "source-1:index.test.ts",
 			start_line: 1,
@@ -117,7 +147,6 @@ describe("runReview", () => {
 			runPrompt: createEvidenceRunner("fabricated source text"),
 		});
 
-		expect(result.judgments).toEqual([]);
 		expect(result.failures).toHaveLength(1);
 		expect(result.evidenceFailures).toHaveLength(group.criterionIds.length);
 		expect(result.evidenceFailures[0]).toMatchObject({

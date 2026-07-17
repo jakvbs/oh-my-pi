@@ -121,6 +121,21 @@ type EvidenceFailure = EvidenceIssue & {
 	judgeType: JudgeType;
 };
 
+type GroupResult =
+	| {
+			groupId: string;
+			judgeType: JudgeType;
+			status: "succeeded";
+			judgment: Judgment;
+	  }
+	| {
+			groupId: string;
+			judgeType: JudgeType;
+			status: "failed";
+			failure: JudgeFailure;
+			evidenceFailures: EvidenceFailure[];
+	  };
+
 class EvidenceValidationError extends Error {
 	constructor(readonly issues: EvidenceIssue[]) {
 		super(issues.map(issue => `${issue.criterionId}[${issue.evidenceIndex}]: ${issue.error}`).join("; "));
@@ -252,40 +267,50 @@ export async function runReview({
 			sources,
 		}),
 	);
-	const judgments: Judgment[] = [];
-	const failures: JudgeFailure[] = [];
-	const evidenceFailures: EvidenceFailure[] = [];
-	for (let index = 0; index < settledJudgments.length; index++) {
-		const result = settledJudgments[index];
+	const groupResults: GroupResult[] = settledJudgments.map((result, index) => {
 		const group = selectedGroups[index];
-		if (!result || !group) throw new Error("Judge result order is inconsistent");
+		if (!group) throw new Error("Judge result order is inconsistent");
 		if (result.status === "fulfilled") {
-			judgments.push(result.value);
-		} else {
-			if (result.reason instanceof EvidenceValidationError) {
-				evidenceFailures.push(
-					...result.reason.issues.map(issue => ({
+			return {
+				groupId: group.id,
+				judgeType: group.judgeType,
+				status: "succeeded",
+				judgment: result.value,
+			};
+		}
+
+		const failure = {
+			groupId: group.id,
+			judgeType: group.judgeType,
+			error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+		};
+		const evidenceFailures =
+			result.reason instanceof EvidenceValidationError
+				? result.reason.issues.map(issue => ({
 						groupId: group.id,
 						judgeType: group.judgeType,
 						...issue,
-					})),
-				);
-			}
-			failures.push({
-				groupId: group.id,
-				judgeType: group.judgeType,
-				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-			});
-		}
-	}
+					}))
+				: [];
+		return {
+			groupId: group.id,
+			judgeType: group.judgeType,
+			status: "failed",
+			failure,
+			evidenceFailures,
+		};
+	});
+	const judgments = groupResults.flatMap(result => (result.status === "succeeded" ? [result.judgment] : []));
+	const failures = groupResults.flatMap(result => (result.status === "failed" ? [result.failure] : []));
+	const evidenceFailures = groupResults.flatMap(result => (result.status === "failed" ? result.evidenceFailures : []));
 
 	return {
 		selectedGroups: selectedGroups.map(group => group.id),
-		judgments,
+		groupResults,
 		failures,
 		evidenceFailures,
 		incomplete: failures.length > 0,
-		aggregate: aggregateJudgments(judgments, failures.length),
+		aggregate: aggregateJudgments(judgments, failures.length, groupResults.length),
 	};
 }
 async function readSources(filePaths: string[]): Promise<Source[]> {
@@ -561,7 +586,7 @@ function verifyEvidence(output: JudgeOutput, sources: Source[]): VerifiedJudgeOu
 	return { ...output, criterion_results: criterionResults };
 }
 
-function aggregateJudgments(judgments: Judgment[], failureCount: number) {
+function aggregateJudgments(judgments: Judgment[], failureCount: number, selectedGroupCount: number) {
 	const results = judgments.flatMap(judgment => judgment.output.criterion_results);
 
 	let overallVerdict: "PASS" | "FAIL" | "NEEDS_REVIEW" | "INSUFFICIENT_CONTEXT";
@@ -583,6 +608,8 @@ function aggregateJudgments(judgments: Judgment[], failureCount: number) {
 		overallVerdict,
 		failureCount,
 		incomplete: failureCount > 0,
+		selectedGroupCount,
+		completedGroupCount: judgments.length,
 		criterionCount: results.length,
 		counts: Object.fromEntries(
 			verdictSchema.options.map(verdict => [verdict, results.filter(result => result.verdict === verdict).length]),
