@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import {
 	type AgentSession,
+	type AgentSessionEvent,
 	createAgentSession,
 	discoverAuthStorage,
 	ModelRegistry,
@@ -49,7 +50,7 @@ export interface RunnerAssistantMessage {
 	stopReason: AssistantMessage["stopReason"];
 }
 
-export type RunnerSessionEvent = { type: "activity" } | { type: "text_delta"; delta: string };
+export type RunnerSessionEvent = { type: "activity" } | { type: "terminal" } | { type: "text_delta"; delta: string };
 
 export interface RunnerSession {
 	readonly isStreaming: boolean;
@@ -84,10 +85,17 @@ export interface ExecutionObserver {
 	onFinalized: () => void;
 }
 
+export interface SdkModelSelection {
+	modelPattern: string;
+	modelPatternAuthFallback: string;
+}
+
 const STREAM_CAP = 4000;
 const DEFAULT_TASK_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_STREAM_PUBLISH_MS = 500;
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const FINALIZATION_GRACE_MS = 15 * 1000;
+const CLEANUP_TIMEOUT_MS = 1000;
 const UPSTREAM_SNIPPET_CAP = 2000;
 const ABORT_SIGNAL_LISTENER_LIMIT = 100;
 const LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = {
@@ -175,6 +183,7 @@ export function buildTaskPrompt(task: RawTask, stateById: ReadonlyMap<string, Ta
 	for (const dependencyId of task.depends_on) {
 		const dependency = stateById.get(dependencyId);
 		if (!dependency) continue;
+
 		const output = dependency.resultText
 			? truncate(dependency.resultText, UPSTREAM_SNIPPET_CAP)
 			: dependency.errorMessage
@@ -183,6 +192,17 @@ export function buildTaskPrompt(task: RawTask, stateById: ReadonlyMap<string, Ta
 		parents.push({ id: dependencyId, status: dependency.status, output });
 	}
 	return renderTaskPrompt({ parents, subtaskPrompt: task.subtask_prompt });
+}
+
+export function sdkModelSelection(model: string, authenticatedFallback: string): SdkModelSelection {
+	return {
+		modelPattern: LEGACY_MODEL_ALIASES[model] ?? model,
+		modelPatternAuthFallback: authenticatedFallback,
+	};
+}
+
+export function sdkSessionEventKind(eventType: AgentSessionEvent["type"]): "activity" | "terminal" {
+	return eventType === "agent_end" ? "terminal" : "activity";
 }
 
 export function terminalAssistantError(
@@ -299,13 +319,23 @@ async function runTask(
 	};
 
 	try {
-		session = await withTimeout(
-			sessionFactory({ cwd, model: taskState.model }),
-			deadline - Date.now(),
-			`Task ${task.id} exceeded deadline of ${formatMs(options.taskTimeoutMs)}`,
-		);
+		const sessionPromise = sessionFactory({ cwd, model: taskState.model });
+		try {
+			session = await withTimeout(
+				sessionPromise,
+				deadline - Date.now(),
+				`Task ${task.id} exceeded deadline of ${formatMs(options.taskTimeoutMs)}`,
+			);
+		} catch (error) {
+			if (error instanceof TimeoutError) observeLateSession(sessionPromise, task.id);
+			throw error;
+		}
 		activityGuard = new ActivityGuard(task.id, deadline, options.streamIdleTimeoutMs);
 		unsubscribe = session.subscribe(event => {
+			if (event.type === "terminal") {
+				activityGuard?.beginFinalizationGrace();
+				return;
+			}
 			activityGuard?.touch();
 			if (event.type !== "text_delta") return;
 			buffer.append(event.delta);
@@ -339,7 +369,10 @@ async function runTask(
 			taskState.status = "FINISHED";
 		}
 	} catch (error) {
-		if (session && error instanceof TimeoutError) await bestEffortAbort(session, task.id);
+		if (session && error instanceof TimeoutError) {
+			await cleanupSession(session, task.id, true);
+			session = undefined;
+		}
 		taskState.finishedAt = Date.now();
 		taskState.durationMs = taskState.finishedAt - (taskState.startedAt ?? taskState.finishedAt);
 		taskState.status = "ERROR";
@@ -350,14 +383,7 @@ async function runTask(
 		activityGuard?.stop();
 		unsubscribe?.();
 		publishIfDue(true);
-		if (session) {
-			if (session.isStreaming) await bestEffortAbort(session, task.id);
-			try {
-				await session.dispose();
-			} catch {
-				// Disposal cannot change an already recorded task result.
-			}
-		}
+		if (session) await cleanupSession(session, task.id, false);
 		writer.schedule(structuredCloneState(state));
 	}
 }
@@ -387,6 +413,23 @@ class ActivityGuard {
 		const timeoutMs = Math.min(remaining, this.idleTimeoutMs);
 		this.#timer = setTimeout(() => {
 			this.#reject(new TimeoutError(streamWaitTimeoutMessage(this.taskId, timeoutMs, this.idleTimeoutMs)));
+		}, timeoutMs);
+	}
+
+	beginFinalizationGrace(): void {
+		this.stop();
+		const remaining = this.deadline - Date.now();
+		if (remaining <= 0) {
+			this.#reject(new TimeoutError(`Task ${this.taskId} exceeded deadline`));
+			return;
+		}
+		const timeoutMs = Math.min(remaining, FINALIZATION_GRACE_MS);
+		this.#timer = setTimeout(() => {
+			this.#reject(
+				new TimeoutError(
+					`Task ${this.taskId} did not finalize within ${formatMs(timeoutMs)} after stream completion`,
+				),
+			);
 		}, timeoutMs);
 	}
 
@@ -428,11 +471,37 @@ function streamWaitTimeoutMessage(taskId: string, timeoutMs: number, idleTimeout
 	return `Task ${taskId} produced no stream events within ${effectiveTimeout}`;
 }
 
-async function bestEffortAbort(session: RunnerSession, taskId: string): Promise<void> {
+function observeLateSession(sessionPromise: Promise<RunnerSession>, taskId: string): void {
+	void sessionPromise
+		.then(session => cleanupSession(session, taskId, true))
+		.catch(error => {
+			logger.warn("DAG runner session factory rejected after its deadline", {
+				taskId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		});
+}
+
+async function cleanupSession(session: RunnerSession, taskId: string, forceAbort: boolean): Promise<void> {
+	if (forceAbort || session.isStreaming) {
+		await boundedSessionOperation(() => session.abort(), taskId, "abort");
+	}
+	await boundedSessionOperation(() => session.dispose(), taskId, "dispose");
+}
+
+async function boundedSessionOperation(
+	operation: () => Promise<void>,
+	taskId: string,
+	operationName: "abort" | "dispose",
+): Promise<void> {
 	try {
-		await session.abort();
+		await withTimeout(
+			operation(),
+			CLEANUP_TIMEOUT_MS,
+			`Task ${taskId} ${operationName} exceeded ${formatMs(CLEANUP_TIMEOUT_MS)}`,
+		);
 	} catch (error) {
-		logger.warn("DAG runner failed to abort timed-out task", {
+		logger.warn(`DAG runner failed to ${operationName} task session`, {
 			taskId,
 			error: error instanceof Error ? error.message : String(error),
 		});
@@ -440,23 +509,23 @@ async function bestEffortAbort(session: RunnerSession, taskId: string): Promise<
 }
 
 export class BoundedTextBuffer {
-	private data = "";
-	private droppedChars = 0;
+	#data = "";
+	#droppedChars = 0;
 
 	constructor(private readonly cap: number) {}
 
 	append(chunk: string): void {
 		if (!chunk) return;
-		this.data += chunk;
-		if (this.data.length <= this.cap) return;
-		const overflow = this.data.length - this.cap;
-		this.droppedChars += overflow;
-		this.data = this.data.slice(overflow);
+		this.#data += chunk;
+		if (this.#data.length <= this.cap) return;
+		const overflow = this.#data.length - this.cap;
+		this.#droppedChars += overflow;
+		this.#data = this.#data.slice(overflow);
 	}
 
 	render(): string {
-		if (this.droppedChars === 0) return this.data;
-		return `[...truncated ${this.droppedChars} earlier chars...]\n${this.data}`;
+		if (this.#droppedChars === 0) return this.#data;
+		return `[...truncated ${this.#droppedChars} earlier chars...]\n${this.#data}`;
 	}
 }
 
@@ -525,6 +594,10 @@ class CodingAgentSessionAdapter implements RunnerSession {
 
 	subscribe(listener: (event: RunnerSessionEvent) => void): () => void {
 		return this.#session.subscribe(event => {
+			if (sdkSessionEventKind(event.type) === "terminal") {
+				listener({ type: "terminal" });
+				return;
+			}
 			if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
 				listener({ type: "text_delta", delta: event.assistantMessageEvent.delta });
 				return;
@@ -565,16 +638,18 @@ async function createDefaultSessionFactory(): Promise<{ close: () => void; facto
 	const authStorage = await discoverAuthStorage();
 	const modelRegistry = new ModelRegistry(authStorage);
 	await modelRegistry.refresh();
-	if (modelRegistry.getAvailable().length === 0) {
+	const availableModels = modelRegistry.getAvailable();
+	if (availableModels.length === 0) {
 		authStorage.close();
 		throw new Error("No authenticated models available. Configure OMP credentials before running the DAG.");
 	}
+	const authenticatedFallback = `${availableModels[0].provider}/${availableModels[0].id}`;
 
 	return {
 		close: () => authStorage.close(),
 		factory: async ({ cwd, model }) => {
-			const settings = await Settings.init({ cwd });
-			settings.override("retry.enabled", false);
+			const settings = Settings.isolated({ "retry.enabled": false });
+			const modelSelection = sdkModelSelection(model, authenticatedFallback);
 			const { session } = await createAgentSession({
 				authStorage,
 				cwd,
@@ -582,7 +657,7 @@ async function createDefaultSessionFactory(): Promise<{ close: () => void; facto
 				enableLsp: false,
 				enableMCP: false,
 				hasUI: false,
-				modelPattern: LEGACY_MODEL_ALIASES[model] ?? model,
+				...modelSelection,
 				modelRegistry,
 				sessionManager: SessionManager.inMemory(),
 				settings,

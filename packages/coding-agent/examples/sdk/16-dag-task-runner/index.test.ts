@@ -12,6 +12,8 @@ import {
 	type RunnerAssistantMessage,
 	type RunnerSession,
 	type RunnerSessionEvent,
+	sdkModelSelection,
+	sdkSessionEventKind,
 	terminalAssistantError,
 } from "./index";
 
@@ -19,15 +21,18 @@ class FakeRunnerSession implements RunnerSession {
 	readonly #listeners = new Set<(event: RunnerSessionEvent) => void>();
 	readonly #run: (prompt: string, publish: (event: RunnerSessionEvent) => void) => Promise<RunnerAssistantMessage[]>;
 	readonly #onDispose: () => void;
+	readonly #onAbort: (() => void) | undefined;
 	#messages: RunnerAssistantMessage[] = [];
 	#streaming = false;
 
 	constructor(
 		run: (prompt: string, publish: (event: RunnerSessionEvent) => void) => Promise<RunnerAssistantMessage[]>,
 		onDispose: () => void,
+		onAbort?: () => void,
 	) {
 		this.#run = run;
 		this.#onDispose = onDispose;
+		this.#onAbort = onAbort;
 	}
 
 	get isStreaming(): boolean {
@@ -55,6 +60,7 @@ class FakeRunnerSession implements RunnerSession {
 	}
 
 	async abort(): Promise<void> {
+		this.#onAbort?.();
 		this.#streaming = false;
 	}
 
@@ -163,6 +169,7 @@ test("executes concurrent siblings through the session adapter and cascades prov
 						await rankOneReady.promise;
 					}
 					if (prompt === "ROOT:BAD") {
+						publish({ type: "terminal" });
 						return [
 							{
 								contentText: "",
@@ -176,6 +183,7 @@ test("executes concurrent siblings through the session adapter and cascades prov
 					if (prompt.includes("CHILD")) childPrompt = prompt;
 					const contentText = prompt === "ROOT:A" ? "output-a" : prompt === "ROOT:B" ? "output-b" : "child-output";
 					publish({ type: "text_delta", delta: contentText });
+					publish({ type: "terminal" });
 					return [{ contentText, inputTokens: 1, outputTokens: 1, stopReason: "stop" }];
 				},
 				() => {
@@ -215,6 +223,93 @@ CHILD`,
 	expect(state.tasks[5].errorMessage).toBe("Skipped: upstream task(s) bad-child failed");
 	expect(disposed).toBe(4);
 	expect(await Bun.file(args.canvasPath).text()).toContain('"runOutcome": "FAILED"');
+});
+
+test("applies SDK agent_end finalization grace and bounds timed-out session cleanup", async () => {
+	using tempDir = TempDir.createSync("@omp-dag-terminal-grace-");
+	const neverFinalizes = Promise.withResolvers<RunnerAssistantMessage[]>();
+	let aborted = 0;
+	let disposed = 0;
+	const dag = parseDAG({
+		title: "Terminal grace",
+		tasks: [{ id: "task", depends_on: [], complexity: "LOW", subtask_prompt: "TASK" }],
+	});
+	const state = await executeDAG(
+		dag,
+		{
+			dag: "unused.json",
+			canvasPath: tempDir.join("run.canvas.tsx"),
+			cwd: tempDir.path(),
+			debounceMs: 1,
+			taskTimeoutMs: 40,
+			streamPublishMs: 1,
+			streamIdleTimeoutMs: 1_000,
+			initOnly: false,
+		},
+		() =>
+			Promise.resolve(
+				new FakeRunnerSession(
+					async (_prompt, publish) => {
+						publish({ type: sdkSessionEventKind("agent_end") });
+						return neverFinalizes.promise;
+					},
+					() => {
+						disposed++;
+					},
+					() => {
+						aborted++;
+					},
+				),
+			),
+	);
+
+	expect(state.runOutcome).toBe("FAILED");
+	expect(state.tasks[0].errorMessage).toContain("did not finalize within");
+	expect(state.tasks[0].errorMessage).toContain("after stream completion");
+	expect(aborted).toBe(1);
+	expect(disposed).toBe(1);
+});
+
+test("disposes a session factory result that arrives after the task deadline", async () => {
+	using tempDir = TempDir.createSync("@omp-dag-late-session-");
+	let aborted = 0;
+	let disposed = 0;
+	const lateSession = new FakeRunnerSession(
+		async () => [{ contentText: "unused", inputTokens: 0, outputTokens: 0, stopReason: "stop" }],
+		() => {
+			disposed++;
+		},
+		() => {
+			aborted++;
+		},
+	);
+	const dag = parseDAG({
+		title: "Late session",
+		tasks: [{ id: "task", depends_on: [], complexity: "LOW", subtask_prompt: "TASK" }],
+	});
+	const state = await executeDAG(
+		dag,
+		{
+			dag: "unused.json",
+			canvasPath: tempDir.join("run.canvas.tsx"),
+			cwd: tempDir.path(),
+			debounceMs: 1,
+			taskTimeoutMs: 10,
+			streamPublishMs: 1,
+			streamIdleTimeoutMs: 1_000,
+			initOnly: false,
+		},
+		async () => {
+			await Bun.sleep(30);
+			return lateSession;
+		},
+	);
+	await Bun.sleep(40);
+
+	expect(state.runOutcome).toBe("FAILED");
+	expect(state.tasks[0].errorMessage).toBe("Task task exceeded deadline of 10ms");
+	expect(aborted).toBe(1);
+	expect(disposed).toBe(1);
 });
 
 describe("CLI and output parity", () => {
@@ -267,6 +362,19 @@ describe("CLI and output parity", () => {
 		expect(terminalAssistantError({ errorMessage: "quota exhausted", stopReason: "error" })).toBe("quota exhausted");
 		expect(terminalAssistantError({ stopReason: "aborted" })).toBe("Run aborted");
 		expect(terminalAssistantError({ stopReason: "stop" })).toBeUndefined();
+	});
+
+	test("provides auth-safe model fallback and maps SDK agent_end to terminal grace", () => {
+		expect(sdkModelSelection("composer-2", "anthropic/claude")).toEqual({
+			modelPattern: "@default",
+			modelPatternAuthFallback: "anthropic/claude",
+		});
+		expect(sdkModelSelection("custom/model", "anthropic/claude")).toEqual({
+			modelPattern: "custom/model",
+			modelPatternAuthFallback: "anthropic/claude",
+		});
+		expect(sdkSessionEventKind("agent_end")).toBe("terminal");
+		expect(sdkSessionEventKind("message_update")).toBe("activity");
 	});
 
 	test("retains the newest 4,000 streamed characters with the legacy prefix", () => {

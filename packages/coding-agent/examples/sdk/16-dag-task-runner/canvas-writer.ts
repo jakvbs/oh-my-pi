@@ -59,12 +59,12 @@ export function initialRunState(dag: DAG, modelFor: (c: Complexity) => string): 
  * into one filesystem write — the latest state always wins.
  */
 export class CanvasWriter {
-	private pending: RunState | null = null;
-	private timer: NodeJS.Timeout | null = null;
-	private inFlight: Promise<void> = Promise.resolve();
-	private writeSeq = 0;
-	private lastFailedWriteSeq = 0;
-	private lastWriteError: unknown = null;
+	#pending: RunState | null = null;
+	#timer: NodeJS.Timeout | null = null;
+	#inFlight: Promise<void> = Promise.resolve();
+	#writeSeq = 0;
+	#lastFailedWriteSeq = 0;
+	#lastWriteError: unknown = null;
 
 	constructor(
 		private readonly canvasPath: string,
@@ -72,50 +72,50 @@ export class CanvasWriter {
 	) {}
 
 	schedule(state: RunState): void {
-		this.pending = state;
-		if (this.timer) return;
-		this.timer = setTimeout(() => {
-			this.timer = null;
-			const snapshot = this.pending;
-			this.pending = null;
+		this.#pending = state;
+		if (this.#timer) return;
+		this.#timer = setTimeout(() => {
+			this.#timer = null;
+			const snapshot = this.#pending;
+			this.#pending = null;
 			if (snapshot) {
-				this.enqueueWrite(snapshot);
+				this.#enqueueWrite(snapshot);
 			}
 		}, this.debounceMs);
 	}
 
 	/** Force-flush any pending write and await disk completion. */
 	async flush(): Promise<void> {
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
+		if (this.#timer) {
+			clearTimeout(this.#timer);
+			this.#timer = null;
 		}
-		const snapshot = this.pending;
-		this.pending = null;
-		const targetWriteSeq = snapshot ? this.enqueueWrite(snapshot) : this.writeSeq;
-		await this.inFlight;
-		if (targetWriteSeq > 0 && this.lastFailedWriteSeq === targetWriteSeq) {
-			throw this.lastWriteError;
+		const snapshot = this.#pending;
+		this.#pending = null;
+		const targetWriteSeq = snapshot ? this.#enqueueWrite(snapshot) : this.#writeSeq;
+		await this.#inFlight;
+		if (targetWriteSeq > 0 && this.#lastFailedWriteSeq === targetWriteSeq) {
+			throw this.#lastWriteError;
 		}
 	}
 
-	private enqueueWrite(state: RunState): number {
-		const seq = ++this.writeSeq;
-		this.inFlight = this.inFlight.then(async () => {
+	#enqueueWrite(state: RunState): number {
+		const seq = ++this.#writeSeq;
+		this.#inFlight = this.#inFlight.then(async () => {
 			try {
-				await this.writeNow(state);
-				if (this.lastFailedWriteSeq < seq) {
-					this.lastWriteError = null;
+				await this.#writeNow(state);
+				if (this.#lastFailedWriteSeq < seq) {
+					this.#lastWriteError = null;
 				}
 			} catch (err) {
-				this.lastFailedWriteSeq = seq;
-				this.lastWriteError = err;
+				this.#lastFailedWriteSeq = seq;
+				this.#lastWriteError = err;
 			}
 		});
 		return seq;
 	}
 
-	private async writeNow(state: RunState): Promise<void> {
+	async #writeNow(state: RunState): Promise<void> {
 		const source = renderCanvasSource(state);
 		await fs.mkdir(path.dirname(this.canvasPath), { recursive: true });
 		await Bun.write(this.canvasPath, source);

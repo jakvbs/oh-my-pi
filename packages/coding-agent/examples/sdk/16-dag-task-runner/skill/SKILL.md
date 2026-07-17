@@ -7,7 +7,7 @@ description: Decompose a user task into a dependency DAG and execute it with OMP
 
 Author a JSON DAG, create its initial `.canvas.tsx` visualization, run every node through the OMP SDK runner, then summarize the result and relink the canvas. Parent outputs are stitched into child prompts. Live assistant text and task state are written into the canvas throughout execution.
 
-The runner lives in `packages/coding-agent/examples/sdk/16-dag-task-runner/index.ts` in the oh-my-pi monorepo. `DAG_RUNNER_DIR` may point directly to the `16-dag-task-runner` directory.
+This is a repo-local skill: the runner lives in `packages/coding-agent/examples/sdk/16-dag-task-runner/index.ts` in the oh-my-pi monorepo. `DAG_RUNNER_DIR` may point directly to that directory. Copying only this `SKILL.md` is unsupported because the checked-in runtime is intentionally not duplicated.
 
 ## When to use
 
@@ -128,7 +128,8 @@ The runner:
 7. records result text, duration, and available input/output token counts;
 8. finalizes and flushes success, failure, timeout, and interrupted canvas states.
 
-OMP automatic retries are disabled to preserve the source runner's no-task-retry behavior. Legacy model labels remain visible in the canvas; `composer-2` routes through OMP `@default`, `auto-low` routes through `@smol`, and other values are passed as OMP model patterns.
+OMP automatic retries are disabled through isolated per-session settings. Legacy model labels remain visible in the canvas; `composer-2` routes through OMP `@default`, `auto-low` routes through `@smol`, and other values are passed as OMP model patterns. Every selection also carries an authenticated available-model fallback so a matching but unauthenticated provider cannot block execution when another configured model is usable.
+SDK `agent_end` starts a 15-second post-stream finalization grace. Timed-out or late-created sessions are aborted/disposed through bounded best-effort cleanup so teardown cannot hide the task result.
 
 ### CLI controls
 

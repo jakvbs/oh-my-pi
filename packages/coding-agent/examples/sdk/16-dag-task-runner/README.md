@@ -30,22 +30,22 @@ cd packages/coding-agent/examples/sdk/16-dag-task-runner
 bun run init-canvas
 ```
 
-The generated file is `.canvas/dag-example.canvas.tsx`. Run the six-task example after configuring at least one model through OMP (`/login`, provider environment variables, or the normal OMP credential store):
+The generated file is `.canvas/dag-example.canvas.tsx`. Live execution requires at least one model configured through OMP (`/login`, provider environment variables, or the normal OMP credential store) and an explicit existing scratch directory. The package script refuses to run without `--cwd`, so it cannot overwrite this example's README or create demo files in the source tree:
 
 ```bash
-bun run example
+mkdir -p /tmp/omp-dag-demo
+bun run example -- --cwd /tmp/omp-dag-demo
 ```
 
-Tasks operate in `--cwd`, which defaults to the directory where the command is invoked. Use a scratch directory for the example's generated `todo.mjs`, tests, and README:
+The direct CLI preserves the source runner's optional `--cwd` behavior. When running the destructive six-task demo directly, pass a scratch directory:
 
 ```bash
 EXAMPLE="$PWD/packages/coding-agent/examples/sdk/16-dag-task-runner"
 mkdir -p /tmp/omp-dag-demo
-cd /tmp/omp-dag-demo
 bun "$EXAMPLE/index.ts" \
   --dag "$EXAMPLE/example-dag.json" \
-  --canvas-path "$PWD/dag-example.canvas.tsx" \
-  --cwd "$PWD"
+  --canvas-path "/tmp/omp-dag-demo/dag-example.canvas.tsx" \
+  --cwd /tmp/omp-dag-demo
 ```
 
 Expected scheduling shape:
@@ -100,9 +100,9 @@ The observable model map and canvas labels stay identical to the source runner:
 | `MED`      | `composer-2`            | Resolved through OMP's `@default` role. |
 | `LOW`      | `auto-low`              | Resolved through OMP's `@smol` role.    |
 
-DAG overrides and `--models-file` values are passed directly as OMP model patterns. Precedence is defaults < DAG `models` < `--models-file`. Use selectors available to your OMP installation. The runner awaits model-registry refresh and fails before DAG parsing when normal execution has no authenticated models.
+DAG overrides and `--models-file` values are passed as OMP model patterns. Precedence is defaults < DAG `models` < `--models-file`. The runner awaits model-registry refresh and requires at least one authenticated model. Every requested pattern also receives that authenticated model as the SDK's auth-safe fallback, so an unauthenticated exact provider match cannot defeat otherwise valid configured credentials. The canvas continues to show the retained complexity label.
 
-OMP retry is explicitly disabled for every task session. A provider error or abort in the terminal assistant message becomes `ERROR`; successful terminal messages become `FINISHED`.
+OMP retry is explicitly disabled in isolated per-session settings. A provider error or abort in the terminal assistant message becomes `ERROR`; successful terminal messages become `FINISHED`.
 
 ## CLI
 
@@ -139,7 +139,7 @@ Upstream task results (for context — do not re-do this work):
 
 Each direct parent snippet is capped at 2,000 characters with a final ellipsis. If any direct dependency is `ERROR`, the task is not launched and receives `Skipped: upstream task(s) … failed`; this naturally cascades through later ranks.
 
-A 20-minute deadline covers SDK session creation and the agent turn. Session events reset the five-minute idle timer. Timeouts abort best-effort. All sessions are in-memory and disposed after the task. The canvas writer serializes writes and flushes the latest snapshot, including on SIGINT, SIGTERM, SIGHUP, and runner failures.
+A 20-minute deadline covers SDK session creation and the agent turn. Session events reset the five-minute idle timer; SDK `agent_end` starts the retained 15-second post-stream finalization grace, bounded by the remaining task deadline. Timeouts abort best-effort. Abort and dispose operations are individually bounded so cleanup cannot mask the recorded result, and a session factory that resolves after its deadline is observed and cleaned up. All sessions are in-memory. The canvas writer serializes writes and flushes the latest snapshot, including on SIGINT, SIGTERM, SIGHUP, and runner failures.
 
 ## Canvas and Obsidian
 
@@ -163,7 +163,7 @@ OMP can then read or link it through `vault://<vault>/runs/dag-example.canvas.ts
 
 ## Skill
 
-[`skill/SKILL.md`](./skill/SKILL.md) contains the copyable workflow prompt adapted to this monorepo. It locates this example through `DAG_RUNNER_DIR` or the repository path and uses Bun directly; it does not install a second dependency tree or copy lock/workspace files.
+[`skill/SKILL.md`](./skill/SKILL.md) is a repo-local workflow prompt for this example. It resolves the checked-in runtime through `DAG_RUNNER_DIR` or the oh-my-pi repository path. It is not a standalone copyable skill: copying `SKILL.md` without this example directory is unsupported and intentionally does not install or duplicate hand-owned runtime code.
 
 ## Files
 
@@ -174,6 +174,7 @@ OMP can then read or link it through `vault://<vault>/runs/dag-example.canvas.ts
 ├── tsconfig.json
 ├── index.ts
 ├── dag.ts
+├── run-example.ts
 ├── canvas-writer.ts
 ├── index.test.ts
 ├── example-dag.json
