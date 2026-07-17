@@ -149,6 +149,43 @@ export type PromptRunner = <Output>(request: {
 	userPrompt: string;
 }) => Promise<Output>;
 
+export function validateTerminalYieldResult<Output>({
+	details,
+	incrementalYieldCount,
+	resultSchema,
+	terminalYieldCount,
+}: {
+	details: unknown;
+	incrementalYieldCount: number;
+	resultSchema: z.ZodType<Output>;
+	terminalYieldCount: number;
+}): Output {
+	if (incrementalYieldCount !== 0) {
+		throw new Error(`SDK session produced ${incrementalYieldCount} non-terminal yields`);
+	}
+	if (terminalYieldCount !== 1) {
+		throw new Error(`SDK session produced ${terminalYieldCount} terminal yields`);
+	}
+	if (!details || typeof details !== "object") {
+		throw new Error("SDK session completed without yielding a result");
+	}
+	const result = details as Record<string, unknown>;
+	if (result.status !== "success") {
+		throw new Error(`SDK session aborted: ${String(result.error ?? "unknown error")}`);
+	}
+	const schemaOverridden = result.schemaOverridden ?? false;
+	if (schemaOverridden !== false) {
+		throw new Error("SDK session exhausted yield schema retries");
+	}
+	const [output] = z.array(resultSchema).length(1).parse(result.data);
+	return resultSchema.parse(output);
+}
+
+function isIncrementalYield(details: unknown) {
+	if (!details || typeof details !== "object") return false;
+	return Array.isArray((details as Record<string, unknown>).type);
+}
+
 async function createSdkPromptRunner() {
 	const authStorage = await discoverAuthStorage();
 	const modelRegistry = new ModelRegistry(authStorage);
@@ -181,32 +218,27 @@ async function createSdkPromptRunner() {
 			toolNames: [],
 		});
 
-		let yieldDetails: unknown;
-		let successfulYields = 0;
+		let terminalYieldDetails: unknown;
+		let terminalYieldCount = 0;
+		let incrementalYieldCount = 0;
 		const unsubscribe = session.subscribe(event => {
-			if (event.type === "tool_execution_end" && event.toolName === "yield" && !event.isError) {
-				successfulYields++;
-				yieldDetails = event.result.details;
+			if (event.type !== "tool_execution_end" || event.toolName !== "yield" || event.isError) return;
+			if (isIncrementalYield(event.result.details)) {
+				incrementalYieldCount++;
+			} else {
+				terminalYieldCount++;
+				terminalYieldDetails = event.result.details;
 			}
 		});
 
 		try {
 			await session.prompt(userPrompt);
-			if (successfulYields !== 1) {
-				throw new Error(`SDK session produced ${successfulYields} successful terminal yields`);
-			}
-			if (!yieldDetails || typeof yieldDetails !== "object") {
-				throw new Error("SDK session completed without yielding a result");
-			}
-			const result = yieldDetails as Record<string, unknown>;
-			if (result.status !== "success") {
-				throw new Error(`SDK session aborted: ${String(result.error ?? "unknown error")}`);
-			}
-			if (result.schemaOverridden === true) {
-				throw new Error("SDK session exhausted yield schema retries");
-			}
-			const [output] = terminalSchema.parse(result.data);
-			return resultSchema.parse(output);
+			return validateTerminalYieldResult({
+				details: terminalYieldDetails,
+				incrementalYieldCount,
+				resultSchema,
+				terminalYieldCount,
+			});
 		} finally {
 			unsubscribe();
 			await session.dispose();

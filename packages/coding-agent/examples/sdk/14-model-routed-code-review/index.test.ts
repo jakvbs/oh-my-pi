@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import type { ZodType } from "zod";
-import { runReview, type PromptRunner } from "./index";
+import { z, type ZodType } from "zod";
+import { runReview, type PromptRunner, validateTerminalYieldResult } from "./index";
 import { judgeDefinitions } from "./prompts/registry";
 
 const modelId = "openai-codex/gpt-5.6-luna";
@@ -160,6 +160,40 @@ describe("runReview", () => {
 	});
 });
 
+describe("validateTerminalYieldResult", () => {
+	const resultSchema = z.object({ value: z.string() }).strict();
+	const valid = {
+		details: { status: "success", schemaOverridden: false, data: [{ value: "ok" }] },
+		incrementalYieldCount: 0,
+		resultSchema,
+		terminalYieldCount: 1,
+	};
+
+	test("accepts exactly one schema-valid terminal yield", () => {
+		expect(validateTerminalYieldResult(valid)).toEqual({ value: "ok" });
+	});
+
+	test("rejects missing, duplicate, or incremental terminal results", () => {
+		expect(() => validateTerminalYieldResult({ ...valid, terminalYieldCount: 0 })).toThrow(
+			"SDK session produced 0 terminal yields",
+		);
+		expect(() => validateTerminalYieldResult({ ...valid, terminalYieldCount: 2 })).toThrow(
+			"SDK session produced 2 terminal yields",
+		);
+		expect(() => validateTerminalYieldResult({ ...valid, incrementalYieldCount: 1 })).toThrow(
+			"SDK session produced 1 non-terminal yields",
+		);
+	});
+
+	test("rejects a yield accepted by schema override", () => {
+		expect(() =>
+			validateTerminalYieldResult({
+				...valid,
+				details: { ...valid.details, schemaOverridden: true },
+			}),
+		).toThrow("SDK session exhausted yield schema retries");
+	});
+});
 type JudgeRequest = {
 	evaluation_id: string;
 	prompt_version: string;
