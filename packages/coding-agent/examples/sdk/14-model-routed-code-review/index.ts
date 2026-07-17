@@ -17,6 +17,7 @@ const PROMPT_VERSION = "model-routed-code-review/1.1.0";
 const OUTPUT_SCHEMA_VERSION = "judge-output/2.0.0";
 const CONTEXT_LIMITS_VERSION = "example-context-limits/1.0.0";
 const DECISION_POLICY_VERSION = "analysis-only/1.0.0";
+const THINKING_LEVEL = ThinkingLevel.Low;
 const JUDGE_CONCURRENCY = 10;
 
 const verdictSchema = z.enum(["PASS", "FAIL", "NOT_APPLICABLE", "INSUFFICIENT_CONTEXT", "CONFLICTING_EVIDENCE"]);
@@ -96,17 +97,18 @@ type VerifiedCriterionResult = Omit<CriterionResult, "evidence"> & { evidence: V
 type VerifiedJudgeOutput = Omit<JudgeOutput, "criterion_results"> & {
 	criterion_results: VerifiedCriterionResult[];
 };
-
 type Judgment = {
 	groupId: string;
 	judgeType: JudgeType;
 	output: VerifiedJudgeOutput;
+	execution: PromptExecutionMetadata;
 };
 
 type JudgeFailure = {
 	groupId: string;
 	judgeType: JudgeType;
 	error: string;
+	execution?: PromptExecutionMetadata;
 };
 
 type EvidenceIssue = {
@@ -125,6 +127,7 @@ type GroupResult =
 	| {
 			groupId: string;
 			judgeType: JudgeType;
+			rubricVersion: string;
 			status: "succeeded";
 			judgment: Judgment;
 	  }
@@ -132,14 +135,47 @@ type GroupResult =
 			groupId: string;
 			judgeType: JudgeType;
 			status: "failed";
+			rubricVersion: string;
 			failure: JudgeFailure;
 			evidenceFailures: EvidenceFailure[];
 	  };
 
 class EvidenceValidationError extends Error {
+	execution?: PromptExecutionMetadata;
+
 	constructor(readonly issues: EvidenceIssue[]) {
 		super(issues.map(issue => `${issue.criterionId}[${issue.evidenceIndex}]: ${issue.error}`).join("; "));
 		this.name = "EvidenceValidationError";
+	}
+}
+
+type TokenUsage = {
+	input: number;
+	output: number;
+	reasoning: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+};
+
+type PromptExecutionMetadata = {
+	durationMs: number;
+	tokenUsage: TokenUsage;
+};
+
+type PromptResult<Output> = {
+	output: Output;
+	execution: PromptExecutionMetadata;
+};
+
+class PromptExecutionError extends Error {
+	constructor(
+		message: string,
+		readonly execution: PromptExecutionMetadata,
+		cause: unknown,
+	) {
+		super(message, { cause });
+		this.name = "PromptExecutionError";
 	}
 }
 
@@ -147,7 +183,7 @@ export type PromptRunner = <Output>(request: {
 	resultSchema: z.ZodType<Output>;
 	systemPrompt: string;
 	userPrompt: string;
-}) => Promise<Output>;
+}) => Promise<PromptResult<Output>>;
 
 export function validateTerminalYieldResult<Output>({
 	details,
@@ -196,6 +232,7 @@ async function createSdkPromptRunner() {
 	}
 
 	const runPrompt: PromptRunner = async ({ resultSchema, systemPrompt, userPrompt }) => {
+		const startedAt = performance.now();
 		const terminalSchema = z.array(resultSchema).length(1);
 		const { session } = await createAgentSession({
 			authStorage,
@@ -214,7 +251,7 @@ async function createSdkPromptRunner() {
 			skills: [],
 			slashCommands: [],
 			systemPrompt: [systemPrompt],
-			thinkingLevel: ThinkingLevel.Low,
+			thinkingLevel: THINKING_LEVEL,
 			toolNames: [],
 		});
 
@@ -230,15 +267,42 @@ async function createSdkPromptRunner() {
 				terminalYieldDetails = event.result.details;
 			}
 		});
+		const executionMetadata = (): PromptExecutionMetadata => {
+			const tokenUsage: TokenUsage = {
+				input: 0,
+				output: 0,
+				reasoning: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+			};
+			for (const message of session.state.messages) {
+				if (message.role !== "assistant") continue;
+				tokenUsage.input += message.usage.input;
+				tokenUsage.output += message.usage.output;
+				tokenUsage.reasoning += message.usage.reasoningTokens ?? 0;
+				tokenUsage.cacheRead += message.usage.cacheRead;
+				tokenUsage.cacheWrite += message.usage.cacheWrite;
+				tokenUsage.totalTokens += message.usage.totalTokens;
+			}
+			return { durationMs: Math.round(performance.now() - startedAt), tokenUsage };
+		};
 
 		try {
 			await session.prompt(userPrompt);
-			return validateTerminalYieldResult({
+			const output = validateTerminalYieldResult({
 				details: terminalYieldDetails,
 				incrementalYieldCount,
 				resultSchema,
 				terminalYieldCount,
 			});
+			return { output, execution: executionMetadata() };
+		} catch (error) {
+			throw new PromptExecutionError(
+				error instanceof Error ? error.message : String(error),
+				executionMetadata(),
+				error,
+			);
 		} finally {
 			unsubscribe();
 			await session.dispose();
@@ -283,8 +347,19 @@ export async function runReview({
 	riskLevel: z.infer<typeof riskLevelSchema>;
 	runPrompt: PromptRunner;
 }) {
+	const startedAt = new Date();
+	const startedAtMs = performance.now();
 	const sources = await readSources(filePaths);
-	const selectedGroups = await routeReview({
+	const inputFingerprint = createHash("sha256")
+		.update(
+			JSON.stringify({
+				reviewGoal,
+				riskLevel,
+				sources: sources.map(source => ({ id: source.id, content: source.content })),
+			}),
+		)
+		.digest("hex");
+	const { selectedGroups, execution: routerExecution } = await routeReview({
 		reviewGoal,
 		runPrompt,
 		sources,
@@ -304,6 +379,7 @@ export async function runReview({
 		if (!group) throw new Error("Judge result order is inconsistent");
 		if (result.status === "fulfilled") {
 			return {
+				rubricVersion: group.rubricVersion,
 				groupId: group.id,
 				judgeType: group.judgeType,
 				status: "succeeded",
@@ -313,6 +389,9 @@ export async function runReview({
 
 		const failure = {
 			groupId: group.id,
+			...(result.reason instanceof PromptExecutionError || result.reason instanceof EvidenceValidationError
+				? { execution: result.reason.execution }
+				: {}),
 			judgeType: group.judgeType,
 			error: result.reason instanceof Error ? result.reason.message : String(result.reason),
 		};
@@ -325,6 +404,7 @@ export async function runReview({
 					}))
 				: [];
 		return {
+			rubricVersion: group.rubricVersion,
 			groupId: group.id,
 			judgeType: group.judgeType,
 			status: "failed",
@@ -334,6 +414,15 @@ export async function runReview({
 	});
 	const judgments = groupResults.flatMap(result => (result.status === "succeeded" ? [result.judgment] : []));
 	const failures = groupResults.flatMap(result => (result.status === "failed" ? [result.failure] : []));
+	const executions = [
+		routerExecution,
+		...groupResults.flatMap(result => {
+			if (result.status === "succeeded") return [result.judgment.execution];
+			return result.failure.execution ? [result.failure.execution] : [];
+		}),
+	];
+	const tokenUsage = sumTokenUsage(executions.map(execution => execution.tokenUsage));
+
 	const evidenceFailures = groupResults.flatMap(result => (result.status === "failed" ? result.evidenceFailures : []));
 
 	return {
@@ -342,6 +431,18 @@ export async function runReview({
 		failures,
 		evidenceFailures,
 		incomplete: failures.length > 0,
+		execution: {
+			startedAt: startedAt.toISOString(),
+			durationMs: Math.round(performance.now() - startedAtMs),
+			modelId,
+			thinkingLevel: THINKING_LEVEL,
+			promptVersion: PROMPT_VERSION,
+			outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
+			rubricVersions: Object.fromEntries(selectedGroups.map(group => [group.id, group.rubricVersion])),
+			inputFingerprint,
+			tokenUsage,
+			router: routerExecution,
+		},
 		aggregate: aggregateJudgments(judgments, failures.length, groupResults.length),
 	};
 }
@@ -378,21 +479,20 @@ async function routeReview({
 	reviewGoal: string;
 	runPrompt: PromptRunner;
 	sources: Source[];
-}): Promise<JudgeDefinition[]> {
-	const output = await runPrompt({
+}): Promise<{ selectedGroups: JudgeDefinition[]; execution: PromptExecutionMetadata }> {
+	const { output, execution } = await runPrompt({
 		resultSchema: routerOutputSchema,
 		systemPrompt: routerPrompt,
 		userPrompt: JSON.stringify({ reviewGoal, sources }),
 	});
 
 	const selectedIds = new Set(output.selectedGroups.map(group => group.id));
-	return [...selectedIds].map(id => {
+	const selectedGroups = [...selectedIds].map(id => {
 		const group = judgeDefinitionsById.get(id);
-		if (!group) {
-			throw new Error(`Router selected an unknown judge group: ${id}`);
-		}
+		if (!group) throw new Error(`Router selected an unknown judge group: ${id}`);
 		return group;
 	});
+	return { selectedGroups, execution };
 }
 
 async function runJudge({
@@ -422,18 +522,24 @@ async function runJudge({
 		system,
 	});
 
-	const output = await runPrompt({
+	const { output, execution } = await runPrompt({
 		resultSchema: judgeOutputSchema,
 		systemPrompt: system,
 		userPrompt: JSON.stringify(request),
 	});
 
-	validateJudgeOutput({ evaluationId, group, modelId, output });
-	return {
-		groupId: group.id,
-		judgeType: group.judgeType,
-		output: verifyEvidence(output, sources),
-	};
+	try {
+		validateJudgeOutput({ evaluationId, group, modelId, output });
+		return {
+			groupId: group.id,
+			judgeType: group.judgeType,
+			output: verifyEvidence(output, sources),
+			execution,
+		};
+	} catch (error) {
+		if (error instanceof EvidenceValidationError) error.execution = execution;
+		throw error;
+	}
 }
 
 function buildJudgeRequest({
@@ -616,6 +722,20 @@ function verifyEvidence(output: JudgeOutput, sources: Source[]): VerifiedJudgeOu
 
 	if (issues.length > 0) throw new EvidenceValidationError(issues);
 	return { ...output, criterion_results: criterionResults };
+}
+
+function sumTokenUsage(usages: TokenUsage[]): TokenUsage {
+	return usages.reduce<TokenUsage>(
+		(total, usage) => ({
+			input: total.input + usage.input,
+			output: total.output + usage.output,
+			reasoning: total.reasoning + usage.reasoning,
+			cacheRead: total.cacheRead + usage.cacheRead,
+			cacheWrite: total.cacheWrite + usage.cacheWrite,
+			totalTokens: total.totalTokens + usage.totalTokens,
+		}),
+		{ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+	);
 }
 
 function aggregateJudgments(judgments: Judgment[], failureCount: number, selectedGroupCount: number) {

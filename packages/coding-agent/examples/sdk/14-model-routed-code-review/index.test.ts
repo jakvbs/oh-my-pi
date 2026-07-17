@@ -22,9 +22,9 @@ describe("runReview", () => {
 			userPrompt: string;
 		}) => {
 			if (systemPrompt.includes("# Router")) {
-				return {
+				return promptResult({
 					selectedGroups: judgeDefinitions.map(group => ({ id: group.id, reason: "Selected by test" })),
-				} as Output;
+				} as Output);
 			}
 
 			const request = JSON.parse(userPrompt) as JudgeRequest;
@@ -34,7 +34,7 @@ describe("runReview", () => {
 			activeJudges--;
 			if (request.selected_group === failedGroup.id) throw new Error("simulated judge failure");
 
-			return {
+			return promptResult({
 				evaluation_id: request.evaluation_id,
 				prompt_version: request.prompt_version,
 				rubric_version: request.rubric_version,
@@ -55,7 +55,7 @@ describe("runReview", () => {
 				automation_decision: "ANALYSIS_ONLY",
 				escalation_required: false,
 				escalation_reasons: [],
-			} as Output;
+			} as Output);
 		};
 
 		const result = await runReview({
@@ -81,6 +81,7 @@ describe("runReview", () => {
 		expect(result.groupResults.find(group => group.groupId === failedGroup.id)).toEqual({
 			groupId: failedGroup.id,
 			judgeType: failedGroup.judgeType,
+			rubricVersion: failedGroup.rubricVersion,
 			status: "failed",
 			failure: {
 				groupId: failedGroup.id,
@@ -97,6 +98,23 @@ describe("runReview", () => {
 			selectedGroupCount: judgeDefinitions.length,
 			completedGroupCount: judgeDefinitions.length - 1,
 		});
+		expect(result.execution).toMatchObject({
+			modelId,
+			thinkingLevel: "low",
+			promptVersion: "model-routed-code-review/1.1.0",
+			outputSchemaVersion: "judge-output/2.0.0",
+			tokenUsage: {
+				input: 13,
+				output: 26,
+				reasoning: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 39,
+			},
+		});
+		expect(result.execution.inputFingerprint).toMatch(/^[a-f0-9]{64}$/);
+		expect(result.execution.durationMs).toBeGreaterThanOrEqual(0);
+		expect(Object.keys(result.execution.rubricVersions)).toHaveLength(judgeDefinitions.length);
 	});
 
 	test("adds a harness-computed hash to an exact source quote", async () => {
@@ -216,10 +234,10 @@ function createEvidenceRunner(quote: string): PromptRunner {
 		userPrompt: string;
 	}) => {
 		if (systemPrompt.includes("# Router")) {
-			return { selectedGroups: [{ id: group.id, reason: "Selected by evidence test" }] } as Output;
+			return promptResult({ selectedGroups: [{ id: group.id, reason: "Selected by evidence test" }] } as Output);
 		}
 		const request = JSON.parse(userPrompt) as JudgeRequest;
-		return {
+		return promptResult({
 			evaluation_id: request.evaluation_id,
 			prompt_version: request.prompt_version,
 			rubric_version: request.rubric_version,
@@ -249,6 +267,23 @@ function createEvidenceRunner(quote: string): PromptRunner {
 			automation_decision: "ANALYSIS_ONLY",
 			escalation_required: false,
 			escalation_reasons: [],
-		} as Output;
+		} as Output);
+	};
+}
+
+function promptResult<Output>(output: Output) {
+	return {
+		output,
+		execution: {
+			durationMs: 5,
+			tokenUsage: {
+				input: 1,
+				output: 2,
+				reasoning: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 3,
+			},
+		},
 	};
 }
