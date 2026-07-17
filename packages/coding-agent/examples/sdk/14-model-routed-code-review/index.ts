@@ -51,7 +51,7 @@ const MAX_SOURCE_CHARACTERS = 200_000;
 const MAX_TOTAL_SOURCE_CHARACTERS = 500_000;
 const MAX_REQUEST_TOKENS = 150_000;
 const PROMPT_VERSION = "model-routed-code-review/2.0.0";
-const OUTPUT_SCHEMA_VERSION = "judge-output/4.0.0";
+const OUTPUT_SCHEMA_VERSION = "judge-output/5.0.0";
 const CONTEXT_TOOL_POLICY_VERSION = "read-only-context/2.0.0";
 const THINKING_LEVEL = ThinkingLevel.Medium;
 const JUDGE_CONCURRENCY = 10;
@@ -193,6 +193,26 @@ type GroupResult =
 			failure: JudgeFailure;
 			evidenceFailures: EvidenceFailure[];
 	  };
+
+type UnitVerdict = "PASS" | "FAIL" | "NEEDS_REVIEW" | "INSUFFICIENT_CONTEXT";
+
+type UnitFinding = Omit<VerifiedCriterionResult, "criterion_id"> & {
+	criterionIds: string[];
+	groupIds: string[];
+};
+
+type UnitResult = {
+	unitId: string;
+	behavior: string;
+	overallVerdict: UnitVerdict;
+	selectedJudgeCount: number;
+	completedJudgeCount: number;
+	failureCount: number;
+	incomplete: boolean;
+	conflictCount: number;
+	findings: UnitFinding[];
+	judgeResults: Array<{ groupId: string; judgeType: JudgeType; status: GroupResult["status"] }>;
+};
 
 class EvidenceValidationError extends Error {
 	execution?: PromptExecutionMetadata;
@@ -696,7 +716,7 @@ export async function runReview({
 			evidenceFailures,
 		};
 	});
-	const judgments = groupResults.flatMap(result => (result.status === "succeeded" ? [result.judgment] : []));
+	const unitResults = reduceUnitResults(semanticPlan.units, groupResults);
 	const failures = groupResults.flatMap(result => (result.status === "failed" ? [result.failure] : []));
 	const executions = [
 		...(plannerExecution ? [plannerExecution] : []),
@@ -714,6 +734,7 @@ export async function runReview({
 		selectedReviews: selectedReviews.map(review => ({ unitId: review.unit.id, judgeId: review.id })),
 		groupResults,
 		failures,
+		unitResults,
 		evidenceFailures,
 		incomplete: failures.length > 0,
 		execution: {
@@ -743,7 +764,7 @@ export async function runReview({
 				fanOutRatio: semanticPlan.plannedEvidenceTokens / semanticPlan.uniqueEvidenceTokens,
 			},
 		},
-		aggregate: aggregateJudgments(judgments, failures.length, groupResults.length),
+		aggregate: aggregateUnitResults(unitResults),
 	};
 }
 async function buildReviewInputs(filePaths: string[], loadLspSymbols?: LoadLspSymbols) {
@@ -1105,34 +1126,130 @@ function aggregateContextToolUsage(executions: PromptExecutionMetadata[]) {
 	return { policyVersion: CONTEXT_TOOL_POLICY_VERSION, requestedCalls, blockedCalls, callsByTool };
 }
 
-function aggregateJudgments(judgments: Judgment[], failureCount: number, selectedGroupCount: number) {
-	const results = judgments.flatMap(judgment => judgment.output.criterion_results);
+export function reduceUnitResults(units: SemanticUnit[], groupResults: GroupResult[]): UnitResult[] {
+	const knownUnitIds = new Set(units.map(unit => unit.id));
+	for (const result of groupResults) {
+		if (!knownUnitIds.has(result.unitId))
+			throw new Error(`Judge result references unknown semantic unit: ${result.unitId}`);
+	}
 
-	let overallVerdict: "PASS" | "FAIL" | "NEEDS_REVIEW" | "INSUFFICIENT_CONTEXT";
-	if (results.some(result => isSeverity(result, "critical", "major") && result.verdict === "FAIL")) {
-		overallVerdict = "FAIL";
-	} else if (failureCount > 0) {
-		overallVerdict = "INSUFFICIENT_CONTEXT";
-	} else if (
+	return units.map(unit => {
+		const judgeResults = groupResults.filter(result => result.unitId === unit.id);
+		if (judgeResults.length === 0) throw new Error(`Semantic unit ${unit.id} has no judge results`);
+		const successful = judgeResults.flatMap(result => (result.status === "succeeded" ? [result.judgment] : []));
+		const criterionResults = successful.flatMap(judgment =>
+			judgment.output.criterion_results.map(result => ({ groupId: judgment.groupId, result })),
+		);
+		const findings = deduplicateUnitFindings(criterionResults);
+		const failureCount = judgeResults.length - successful.length;
+		return {
+			unitId: unit.id,
+			behavior: unit.behavior,
+			overallVerdict: reduceUnitVerdict(
+				criterionResults.map(entry => entry.result),
+				failureCount,
+			),
+			selectedJudgeCount: judgeResults.length,
+			completedJudgeCount: successful.length,
+			failureCount,
+			incomplete: failureCount > 0,
+			conflictCount: countUnitConflicts(criterionResults),
+			findings,
+			judgeResults: judgeResults.map(result => ({
+				groupId: result.groupId,
+				judgeType: result.judgeType,
+				status: result.status,
+			})),
+		};
+	});
+}
+
+function deduplicateUnitFindings(results: Array<{ groupId: string; result: VerifiedCriterionResult }>): UnitFinding[] {
+	const findings = new Map<string, UnitFinding>();
+	for (const { groupId, result } of results) {
+		const { criterion_id: criterionId, ...finding } = result;
+		const key = JSON.stringify({
+			criterionId,
+			verdict: finding.verdict,
+			severity: finding.severity,
+			confidence: finding.confidence,
+			evidence: finding.evidence.map(evidence => evidence.hash),
+			missingEvidence: finding.missing_evidence,
+			reason: finding.reason,
+			suggestedAction: finding.suggested_action,
+			verificationAfterChange: finding.verification_after_change,
+		});
+		const existing = findings.get(key);
+		if (existing) {
+			if (!existing.criterionIds.includes(criterionId)) existing.criterionIds.push(criterionId);
+			if (!existing.groupIds.includes(groupId)) existing.groupIds.push(groupId);
+			continue;
+		}
+		findings.set(key, { ...finding, criterionIds: [criterionId], groupIds: [groupId] });
+	}
+	return [...findings.values()];
+}
+
+function countUnitConflicts(results: Array<{ groupId: string; result: VerifiedCriterionResult }>) {
+	const explicitConflicts = results.filter(entry => entry.result.verdict === "CONFLICTING_EVIDENCE").length;
+	const verdictsByCriterion = new Map<string, Set<CriterionResult["verdict"]>>();
+	for (const { result } of results) {
+		const verdicts = verdictsByCriterion.get(result.criterion_id) ?? new Set<CriterionResult["verdict"]>();
+		verdicts.add(result.verdict);
+		verdictsByCriterion.set(result.criterion_id, verdicts);
+	}
+	const crossJudgeConflicts = [...verdictsByCriterion.values()].filter(
+		verdicts => verdicts.has("PASS") && verdicts.has("FAIL"),
+	).length;
+	return explicitConflicts + crossJudgeConflicts;
+}
+
+function reduceUnitVerdict(results: CriterionResult[], failureCount: number): UnitVerdict {
+	if (results.some(result => isSeverity(result, "critical", "major") && result.verdict === "FAIL")) return "FAIL";
+	if (
+		failureCount > 0 ||
 		results.some(result => isSeverity(result, "critical", "major") && result.verdict === "INSUFFICIENT_CONTEXT")
 	) {
+		return "INSUFFICIENT_CONTEXT";
+	}
+	return results.some(requiresReview) ? "NEEDS_REVIEW" : "PASS";
+}
+
+function aggregateUnitResults(unitResults: UnitResult[]) {
+	let overallVerdict: UnitVerdict;
+	if (unitResults.some(unit => unit.overallVerdict === "FAIL")) {
+		overallVerdict = "FAIL";
+	} else if (unitResults.some(unit => unit.overallVerdict === "INSUFFICIENT_CONTEXT")) {
 		overallVerdict = "INSUFFICIENT_CONTEXT";
-	} else if (results.some(requiresReview)) {
+	} else if (unitResults.some(unit => unit.overallVerdict === "NEEDS_REVIEW")) {
 		overallVerdict = "NEEDS_REVIEW";
 	} else {
 		overallVerdict = "PASS";
 	}
-
+	const findings = unitResults.flatMap(unit => unit.findings);
+	const failureCount = unitResults.reduce((total, unit) => total + unit.failureCount, 0);
 	return {
 		overallVerdict,
 		failureCount,
-		incomplete: failureCount > 0,
-		selectedGroupCount,
-		completedGroupCount: judgments.length,
-		criterionCount: results.length,
+		incomplete: unitResults.some(unit => unit.incomplete),
+		selectedUnitCount: unitResults.length,
+		completedUnitCount: unitResults.filter(unit => !unit.incomplete).length,
+		selectedGroupCount: unitResults.reduce((total, unit) => total + unit.selectedJudgeCount, 0),
+		completedGroupCount: unitResults.reduce((total, unit) => total + unit.completedJudgeCount, 0),
+		criterionCount: findings.length,
+		conflictCount: unitResults.reduce((total, unit) => total + unit.conflictCount, 0),
 		counts: Object.fromEntries(
-			verdictSchema.options.map(verdict => [verdict, results.filter(result => result.verdict === verdict).length]),
+			verdictSchema.options.map(verdict => [
+				verdict,
+				findings.filter(finding => finding.verdict === verdict).length,
+			]),
 		),
+		unitCounts: {
+			PASS: unitResults.filter(unit => unit.overallVerdict === "PASS").length,
+			FAIL: unitResults.filter(unit => unit.overallVerdict === "FAIL").length,
+			NEEDS_REVIEW: unitResults.filter(unit => unit.overallVerdict === "NEEDS_REVIEW").length,
+			INSUFFICIENT_CONTEXT: unitResults.filter(unit => unit.overallVerdict === "INSUFFICIENT_CONTEXT").length,
+		},
 	};
 }
 

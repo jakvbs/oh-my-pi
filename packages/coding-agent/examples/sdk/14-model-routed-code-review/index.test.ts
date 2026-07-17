@@ -124,6 +124,16 @@ describe("runReview", () => {
 		expect(result.groupResults.filter(group => group.status === "succeeded")).toHaveLength(
 			judgeDefinitions.length - 1,
 		);
+		expect(result.unitResults).toHaveLength(1);
+		expect(result.unitResults[0]).toMatchObject({
+			unitId: "review-scope",
+			overallVerdict: "INSUFFICIENT_CONTEXT",
+			selectedJudgeCount: judgeDefinitions.length,
+			completedJudgeCount: judgeDefinitions.length - 1,
+			failureCount: 1,
+			incomplete: true,
+		});
+		expect(result.unitResults[0]?.judgeResults).toHaveLength(judgeDefinitions.length);
 		expect(result.groupResults.find(group => group.groupId === failedGroup.id)).toMatchObject({
 			unitId: "review-scope",
 			groupId: failedGroup.id,
@@ -144,13 +154,21 @@ describe("runReview", () => {
 			failureCount: 1,
 			incomplete: true,
 			selectedGroupCount: judgeDefinitions.length,
+			selectedUnitCount: 1,
+			completedUnitCount: 0,
+			unitCounts: {
+				PASS: 0,
+				FAIL: 0,
+				NEEDS_REVIEW: 0,
+				INSUFFICIENT_CONTEXT: 1,
+			},
 			completedGroupCount: judgeDefinitions.length - 1,
 		});
 		expect(result.execution).toMatchObject({
 			modelId,
 			thinkingLevel: "medium",
 			promptVersion: "model-routed-code-review/2.0.0",
-			outputSchemaVersion: "judge-output/4.0.0",
+			outputSchemaVersion: "judge-output/5.0.0",
 			tokenUsage: {
 				input: 14,
 				output: 28,

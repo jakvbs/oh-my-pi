@@ -177,6 +177,13 @@ test("plans large source as complete semantic units and routes each unit indepen
 		});
 		expect(result.semanticUnits).toHaveLength(2);
 		expect(result.groupResults).toHaveLength(2);
+		expect(result.unitResults).toHaveLength(2);
+		expect(result.unitResults.map(unit => unit.unitId)).toEqual(["alpha-workflow", "beta-workflow"]);
+		expect(result.aggregate).toMatchObject({
+			selectedUnitCount: 2,
+			completedUnitCount: 2,
+			unitCounts: { PASS: 2, FAIL: 0, NEEDS_REVIEW: 0, INSUFFICIENT_CONTEXT: 0 },
+		});
 		expect(selectedByUnit.get("alpha-workflow")?.some(line => line.includes("function beta"))).toBe(false);
 		expect(selectedByUnit.get("beta-workflow")?.some(line => line.includes("function alpha"))).toBe(false);
 		expect(result.execution.semanticContext).toMatchObject({
