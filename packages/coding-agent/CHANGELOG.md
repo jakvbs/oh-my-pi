@@ -62,6 +62,10 @@
 
 ## [17.0.3] - 2026-07-17
 
+- Fixed the cmux browser backend failing inside `cmux ssh` sessions by dialing loopback `CMUX_SOCKET_PATH` values over TCP and completing the relay HMAC-SHA256 challenge-response with credentials from the session environment or `~/.cmux/relay/<port>.auth` ([#5788](https://github.com/can1357/oh-my-pi/issues/5788)).
+
+## [17.0.1] - 2026-07-16
+
 ### Changed
 
 - `omp usage` and the in-session `/usage` view now show the Anthropic organization next to the account for org-scoped credentials (with `--redact` masking applied per part in the CLI, falling back to the org id when no display name is available), attribute "no usage data" rows per organization, and match the "in use by this session" marker by organization so only the active subscription is flagged. The OAuth login success message names the account and organization that was stored — a login landing on an unintended subscription is visible immediately.
