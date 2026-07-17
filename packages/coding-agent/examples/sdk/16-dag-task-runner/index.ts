@@ -238,25 +238,56 @@ export async function executeDAG(
 	}
 
 	try {
-		for (let rankIndex = 0; rankIndex < ranks.length; rankIndex++) {
-			const rank = ranks[rankIndex];
-			writeLine(`rank ${rankIndex + 1}/${ranks.length}: ${rank.map(task => task.id).join(", ")}`);
-			await Promise.all(
-				rank.map(task => {
-					const failedDependencies = task.depends_on.filter(
-						dependencyId => stateById.get(dependencyId)?.status === "ERROR",
-					);
-					if (failedDependencies.length > 0) {
-						skipTask(task, stateById, state, writer, failedDependencies);
-						return Promise.resolve();
-					}
-					return runTask(task, stateById, state, writer, args.cwd, sessionFactory, {
+		const unresolvedDependencies = new Map<string, number>();
+		const dependents = new Map<string, RawTask[]>();
+		for (const task of dag.tasks) {
+			unresolvedDependencies.set(task.id, task.depends_on.length);
+			dependents.set(task.id, []);
+		}
+		for (const task of dag.tasks) {
+			for (const dependencyId of task.depends_on) {
+				dependents.get(dependencyId)!.push(task);
+			}
+		}
+
+		const ready = dag.tasks.filter(task => task.depends_on.length === 0);
+		let readyIndex = 0;
+		const running = new Map<string, Promise<RawTask>>();
+		const releaseDependents = (task: RawTask): void => {
+			for (const dependent of dependents.get(task.id)!) {
+				const remaining = unresolvedDependencies.get(dependent.id)! - 1;
+				unresolvedDependencies.set(dependent.id, remaining);
+				if (remaining === 0) ready.push(dependent);
+			}
+		};
+
+		while (readyIndex < ready.length || running.size > 0) {
+			while (readyIndex < ready.length) {
+				const task = ready[readyIndex++];
+				const failedDependencies = task.depends_on.filter(
+					dependencyId => stateById.get(dependencyId)?.status === "ERROR",
+				);
+				if (failedDependencies.length > 0) {
+					skipTask(task, stateById, state, writer, failedDependencies);
+					releaseDependents(task);
+					continue;
+				}
+
+				writeLine(`starting ${task.id}`);
+				running.set(
+					task.id,
+					runTask(task, stateById, state, writer, args.cwd, sessionFactory, {
 						taskTimeoutMs: args.taskTimeoutMs,
 						streamPublishMs: args.streamPublishMs,
 						streamIdleTimeoutMs: args.streamIdleTimeoutMs,
-					});
-				}),
-			);
+					}).then(() => task),
+				);
+			}
+
+			if (running.size === 0) continue;
+			const completedTask = await Promise.race(running.values());
+			running.delete(completedTask.id);
+			releaseDependents(completedTask);
 		}
 
 		state.finishedAt = Date.now();

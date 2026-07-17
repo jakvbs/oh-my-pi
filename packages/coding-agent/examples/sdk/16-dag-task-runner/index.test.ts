@@ -114,6 +114,58 @@ describe("DAG parity", () => {
 	});
 });
 
+test("starts a dependent as soon as its own parents finish", async () => {
+	using tempDir = TempDir.createSync("@omp-dag-node-ready-");
+	const childStarted = Promise.withResolvers<void>();
+	const events: string[] = [];
+	const dag = parseDAG({
+		title: "Node-ready scheduling",
+		tasks: [
+			{ id: "slow-root", depends_on: [], complexity: "LOW", subtask_prompt: "SLOW ROOT" },
+			{ id: "fast-root", depends_on: [], complexity: "LOW", subtask_prompt: "FAST ROOT" },
+			{ id: "child", depends_on: ["fast-root"], complexity: "LOW", subtask_prompt: "CHILD" },
+		],
+	});
+	const sessionFactory = () =>
+		Promise.resolve(
+			new FakeRunnerSession(
+				async prompt => {
+					if (prompt.startsWith("SLOW ROOT")) {
+						events.push("slow:start");
+						await childStarted.promise;
+						events.push("slow:end");
+					} else if (prompt.startsWith("FAST ROOT")) {
+						events.push("fast");
+					} else {
+						expect(prompt).toContain("CHILD");
+						events.push("child:start");
+						childStarted.resolve();
+					}
+					return [{ contentText: "done", inputTokens: 1, outputTokens: 1, stopReason: "stop" }];
+				},
+				() => {},
+			),
+		);
+
+	const state = await executeDAG(
+		dag,
+		{
+			dag: "unused.json",
+			canvasPath: tempDir.join("run.canvas.tsx"),
+			cwd: tempDir.path(),
+			debounceMs: 1,
+			taskTimeoutMs: 500,
+			streamPublishMs: 1,
+			streamIdleTimeoutMs: 500,
+			initOnly: false,
+		},
+		sessionFactory,
+	);
+
+	expect(state.runOutcome).toBe("SUCCESS");
+	expect(events.indexOf("child:start")).toBeLessThan(events.indexOf("slow:end"));
+});
+
 test("executes concurrent siblings through the session adapter and cascades provider failure skips", async () => {
 	using tempDir = TempDir.createSync("@omp-dag-runner-");
 	const rankOneReady = Promise.withResolvers<void>();

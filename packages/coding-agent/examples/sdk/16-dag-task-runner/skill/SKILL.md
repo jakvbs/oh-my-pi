@@ -48,7 +48,7 @@ Rules:
 - `complexity` MUST be `HIGH`, `MED`, or `LOW`.
 - `models` is optional. Precedence is defaults < DAG `models` < `--models-file`.
 - Prompts MUST be standalone. The runner prepends direct-parent results automatically.
-- Same-rank tasks run concurrently. NEVER let siblings write the same file.
+- Tasks whose dependencies are satisfied run concurrently. NEVER let siblings write the same file.
 
 ### Maximize useful width
 
@@ -153,7 +153,7 @@ The runner:
 
 1. refreshes the OMP model registry and fails fast if no authenticated model exists;
 2. validates the DAG and writes the initial all-`PENDING` canvas;
-3. runs Kahn ranks sequentially and siblings concurrently;
+3. starts each task as soon as its own dependencies finish, allowing newly ready descendants to overlap unrelated branches;
 4. streams assistant text into each running task card;
 5. inspects terminal assistant messages so provider failures are not mistaken for success;
 6. skips children of failed parents with an explicit upstream failure message;

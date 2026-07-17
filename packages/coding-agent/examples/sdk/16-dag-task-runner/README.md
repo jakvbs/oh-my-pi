@@ -1,13 +1,13 @@
 # DAG Task Runner
 
-A 1:1 SDK migration of the Cookbook DAG runner. It parses a JSON dependency graph, runs ready tasks concurrently with `@oh-my-pi/pi-coding-agent`, stitches parent results into child prompts, and repeatedly rewrites a self-contained Cursor Canvas visualization.
+An SDK migration of the Cookbook DAG runner. It parses a JSON dependency graph, starts each task as soon as its own dependencies finish, stitches parent results into child prompts, and repeatedly rewrites a self-contained Cursor Canvas visualization.
 
 The visualization remains `.canvas.tsx` rather than being reduced to Markdown or an incompatible Obsidian Canvas JSON shape. That preserves the original graph, cards, status styling, streamed output, scroll restoration, and node navigation. The file can live inside an Obsidian vault and be addressed through OMP's optional `vault://` integration, but rendering the React canvas still requires a Cursor Canvas host.
 
 ## Behavior
 
 - Validates IDs, dependencies, complexity values, model overrides, and cycles.
-- Uses source-order Kahn ranks. Ranks run sequentially; siblings run concurrently.
+- Uses deterministic source-order readiness. Root tasks start together; each dependent starts as soon as all of its own parents finish.
 - Prepends up to 2,000 characters from each direct parent's result to a child prompt.
 - Keeps the newest 4,000 streamed assistant characters per task and publishes at most every 500 ms by default.
 - Marks provider failures recorded in the terminal OMP assistant message as task errors even when `session.prompt()` resolves.
@@ -52,10 +52,12 @@ Expected scheduling shape:
 
 ```text
 [dag-runner] DAG "Build a tiny CLI todo app" — 6 tasks across 4 rank(s)
-[dag-runner] rank 1/4: research-stack, research-cli-conventions
-[dag-runner] rank 2/4: design
-[dag-runner] rank 3/4: implement
-[dag-runner] rank 4/4: tests, docs
+[dag-runner] starting research-stack
+[dag-runner] starting research-cli-conventions
+[dag-runner] starting design
+[dag-runner] starting implement
+[dag-runner] starting tests
+[dag-runner] starting docs
 ```
 
 ## DAG schema
