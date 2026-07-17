@@ -17,6 +17,8 @@ export type TaskStatus = "PENDING" | "RUNNING" | "FINISHED" | "ERROR";
 export interface TaskState {
 	id: string;
 	depends_on: string[];
+	context_from: string[];
+	writes: string[];
 	complexity: Complexity;
 	subtask_prompt: string;
 	status: TaskStatus;
@@ -46,6 +48,8 @@ export function initialRunState(dag: DAG, modelFor: (c: Complexity) => string): 
 		tasks: dag.tasks.map(t => ({
 			id: t.id,
 			depends_on: t.depends_on,
+			context_from: t.context_from,
+			writes: t.writes,
 			complexity: t.complexity,
 			subtask_prompt: t.subtask_prompt,
 			status: "PENDING",
@@ -152,6 +156,8 @@ type Complexity = 'HIGH' | 'MED' | 'LOW';
 interface TaskState {
   id: string;
   depends_on: string[];
+  context_from: string[];
+  writes: string[];
   complexity: Complexity;
   subtask_prompt: string;
   status: TaskStatus;
@@ -290,11 +296,16 @@ function DAGGraph({
   onNodeClick?: (taskId: string) => void;
 }): JSX.Element {
   const theme = useHostTheme();
+  const graphEdges = state.tasks.flatMap((t) =>
+    t.depends_on.map((d) => ({
+      from: d,
+      to: t.id,
+      carriesContext: t.context_from.includes(d),
+    })),
+  );
   const layout = computeDAGLayout({
     nodes: state.tasks.map((t) => ({ id: t.id })),
-    edges: state.tasks.flatMap((t) =>
-      t.depends_on.map((d) => ({ from: d, to: t.id })),
-    ),
+    edges: graphEdges.map(({ from, to }) => ({ from, to })),
     direction: 'vertical',
     nodeWidth: NODE_W,
     nodeHeight: NODE_H,
@@ -385,7 +396,7 @@ function DAGGraph({
           y2={e.targetY}
           stroke={theme.stroke.secondary}
           strokeWidth={1.25}
-          strokeDasharray={e.isBackEdge ? '4 3' : undefined}
+          strokeDasharray={e.isBackEdge || !graphEdges[i]?.carriesContext ? '4 3' : undefined}
           markerEnd="url(#dag-arrow)"
         />
       ))}
@@ -487,6 +498,8 @@ function TaskList({
                 <Text tone="secondary" size="small">
                   Model {t.model}
                   {t.depends_on.length > 0 ? ' · depends on ' + t.depends_on.join(', ') : ''}
+                  {t.context_from.length > 0 ? ' · context from ' + t.context_from.join(', ') : ''}
+                  {t.writes.length > 0 ? ' · writes ' + t.writes.join(', ') : ' · read-only'}
                   {t.durationMs !== undefined ? ' · ' + formatDuration(t.durationMs) : ''}
                   {t.inputTokens !== undefined || t.outputTokens !== undefined
                     ? ' · ' + (t.inputTokens ?? 0) + ' in / ' + (t.outputTokens ?? 0) + ' out tokens'

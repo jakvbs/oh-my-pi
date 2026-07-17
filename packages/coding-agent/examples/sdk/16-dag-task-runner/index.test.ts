@@ -74,14 +74,23 @@ describe("DAG parity", () => {
 		const dag = parseDAG({
 			title: " demo ",
 			tasks: [
-				{ id: "a", depends_on: [], complexity: "LOW", subtask_prompt: "A" },
-				{ id: "b", depends_on: [], complexity: "MED", subtask_prompt: "B" },
-				{ id: "c", depends_on: ["a", "a", "b"], complexity: "HIGH", subtask_prompt: "C" },
+				{ id: "a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
+				{ id: "b", depends_on: [], context_from: [], writes: [], complexity: "MED", subtask_prompt: "B" },
+				{
+					id: "c",
+					depends_on: ["a", "a", "b"],
+					context_from: ["a", "a", "b"],
+					writes: ["out.txt", "out.txt"],
+					complexity: "HIGH",
+					subtask_prompt: "C",
+				},
 			],
 		});
 
 		expect(dag.title).toBe(" demo ");
 		expect(dag.tasks[2].depends_on).toEqual(["a", "b"]);
+		expect(dag.tasks[2].context_from).toEqual(["a", "b"]);
+		expect(dag.tasks[2].writes).toEqual(["out.txt"]);
 		expect(computeRanks(dag).map(rank => rank.map(task => task.id))).toEqual([["a", "b"], ["c"]]);
 	});
 
@@ -89,18 +98,118 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "bad",
-				tasks: [{ id: "a", depends_on: ["missing"], complexity: "LOW", subtask_prompt: "A" }],
+				tasks: [
+					{
+						id: "a",
+						depends_on: ["missing"],
+						context_from: [],
+						writes: [],
+						complexity: "LOW",
+						subtask_prompt: "A",
+					},
+				],
 			}),
 		).toThrow("Task a depends_on unknown id: missing");
 		expect(() =>
 			parseDAG({
 				title: "cycle",
 				tasks: [
-					{ id: "a", depends_on: ["b"], complexity: "LOW", subtask_prompt: "A" },
-					{ id: "b", depends_on: ["a"], complexity: "LOW", subtask_prompt: "B" },
+					{ id: "a", depends_on: ["b"], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
+					{ id: "b", depends_on: ["a"], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "B" },
 				],
 			}),
 		).toThrow("Cycle detected: a -> b -> a");
+	});
+
+	test("requires explicit context and write declarations", () => {
+		expect(() =>
+			parseDAG({
+				title: "missing context",
+				tasks: [{ id: "a", depends_on: [], writes: [], complexity: "LOW", subtask_prompt: "A" }],
+			}),
+		).toThrow("tasks[0].context_from must be an array of strings");
+		expect(() =>
+			parseDAG({
+				title: "missing writes",
+				tasks: [{ id: "a", depends_on: [], context_from: [], complexity: "LOW", subtask_prompt: "A" }],
+			}),
+		).toThrow("tasks[0].writes must be an array of strings");
+	});
+
+	test("requires context sources to be scheduling dependencies", () => {
+		expect(() =>
+			parseDAG({
+				title: "bad context",
+				tasks: [
+					{ id: "a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
+					{
+						id: "b",
+						depends_on: ["a"],
+						context_from: ["other"],
+						writes: [],
+						complexity: "LOW",
+						subtask_prompt: "B",
+					},
+				],
+			}),
+		).toThrow("Task b context_from must be a subset of depends_on: other");
+	});
+
+	test("rejects unsafe or unordered writes while allowing an ordered shared path", () => {
+		expect(() =>
+			parseDAG({
+				title: "unsafe path",
+				tasks: [
+					{
+						id: "a",
+						depends_on: [],
+						context_from: [],
+						writes: ["../outside.txt"],
+						complexity: "LOW",
+						subtask_prompt: "A",
+					},
+				],
+			}),
+		).toThrow('must be "*" or an exact normalized repo-relative path');
+		expect(() =>
+			parseDAG({
+				title: "write conflict",
+				tasks: [
+					{ id: "a", depends_on: [], context_from: [], writes: ["*"], complexity: "LOW", subtask_prompt: "A" },
+					{
+						id: "b",
+						depends_on: [],
+						context_from: [],
+						writes: ["src/shared.ts"],
+						complexity: "LOW",
+						subtask_prompt: "B",
+					},
+				],
+			}),
+		).toThrow("Tasks a and b have unordered overlapping writes: src/shared.ts");
+
+		const ordered = parseDAG({
+			title: "ordered writes",
+			tasks: [
+				{
+					id: "a",
+					depends_on: [],
+					context_from: [],
+					writes: ["src/shared.ts"],
+					complexity: "LOW",
+					subtask_prompt: "A",
+				},
+				{
+					id: "b",
+					depends_on: ["a"],
+					context_from: [],
+					writes: ["src/shared.ts"],
+					complexity: "LOW",
+					subtask_prompt: "B",
+				},
+			],
+		});
+		expect(ordered.tasks[1].writes).toEqual(["src/shared.ts"]);
 	});
 
 	test("merges and trims model overrides with file precedence", () => {
@@ -121,9 +230,30 @@ test("starts a dependent as soon as its own parents finish", async () => {
 	const dag = parseDAG({
 		title: "Node-ready scheduling",
 		tasks: [
-			{ id: "slow-root", depends_on: [], complexity: "LOW", subtask_prompt: "SLOW ROOT" },
-			{ id: "fast-root", depends_on: [], complexity: "LOW", subtask_prompt: "FAST ROOT" },
-			{ id: "child", depends_on: ["fast-root"], complexity: "LOW", subtask_prompt: "CHILD" },
+			{
+				id: "slow-root",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "SLOW ROOT",
+			},
+			{
+				id: "fast-root",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "FAST ROOT",
+			},
+			{
+				id: "child",
+				depends_on: ["fast-root"],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "CHILD",
+			},
 		],
 	});
 	const sessionFactory = () =>
@@ -177,24 +307,37 @@ test("executes concurrent siblings through the session adapter and cascades prov
 	const dag = parseDAG({
 		title: "Adapter contract",
 		tasks: [
-			{ id: "parent-a", depends_on: [], complexity: "LOW", subtask_prompt: "ROOT:A" },
-			{ id: "parent-b", depends_on: [], complexity: "LOW", subtask_prompt: "ROOT:B" },
-			{ id: "bad-parent", depends_on: [], complexity: "LOW", subtask_prompt: "ROOT:BAD" },
+			{ id: "parent-a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "ROOT:A" },
+			{ id: "parent-b", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "ROOT:B" },
+			{
+				id: "bad-parent",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "ROOT:BAD",
+			},
 			{
 				id: "child",
 				depends_on: ["parent-a", "parent-b"],
+				context_from: ["parent-a", "parent-b"],
+				writes: [],
 				complexity: "MED",
 				subtask_prompt: "CHILD",
 			},
 			{
 				id: "bad-child",
 				depends_on: ["bad-parent"],
+				context_from: [],
+				writes: [],
 				complexity: "MED",
 				subtask_prompt: "BAD CHILD",
 			},
 			{
 				id: "bad-grandchild",
 				depends_on: ["bad-child"],
+				context_from: [],
+				writes: [],
 				complexity: "HIGH",
 				subtask_prompt: "BAD GRANDCHILD",
 			},
@@ -284,7 +427,7 @@ test("applies SDK agent_end finalization grace and bounds timed-out session clea
 	let disposed = 0;
 	const dag = parseDAG({
 		title: "Terminal grace",
-		tasks: [{ id: "task", depends_on: [], complexity: "LOW", subtask_prompt: "TASK" }],
+		tasks: [{ id: "task", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "TASK" }],
 	});
 	const state = await executeDAG(
 		dag,
@@ -337,7 +480,7 @@ test("disposes a session factory result that arrives after the task deadline", a
 	);
 	const dag = parseDAG({
 		title: "Late session",
-		tasks: [{ id: "task", depends_on: [], complexity: "LOW", subtask_prompt: "TASK" }],
+		tasks: [{ id: "task", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "TASK" }],
 	});
 	const state = await executeDAG(
 		dag,
@@ -391,12 +534,16 @@ describe("CLI and output parity", () => {
 		const task = {
 			id: "child",
 			depends_on: ["parent"],
+			context_from: ["parent"],
+			writes: [],
 			complexity: "LOW" as const,
 			subtask_prompt: "Do the child task.",
 		};
 		const parent: TaskState = {
 			id: "parent",
 			depends_on: [],
+			context_from: [],
+			writes: [],
 			complexity: "LOW",
 			subtask_prompt: "Parent",
 			status: "FINISHED",
@@ -408,6 +555,7 @@ describe("CLI and output parity", () => {
 		expect(prompt).toBe(
 			`Upstream task results (for context — do not re-do this work):\n\n### parent [FINISHED]\n${"x".repeat(1999)}…\n\n---\n\nDo the child task.`,
 		);
+		expect(buildTaskPrompt({ ...task, context_from: [] }, new Map([["parent", parent]]))).toBe("Do the child task.");
 	});
 
 	test("maps resolved OMP provider failures and aborts to task errors", () => {
@@ -439,13 +587,24 @@ describe("CLI and output parity", () => {
 	test("renders a self-contained canvas with inlined initial state", () => {
 		const dag = parseDAG({
 			title: "Canvas",
-			tasks: [{ id: "a", depends_on: [], complexity: "LOW", subtask_prompt: "A" }],
+			tasks: [
+				{ id: "a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
+				{
+					id: "b",
+					depends_on: ["a"],
+					context_from: [],
+					writes: ["README.md"],
+					complexity: "LOW",
+					subtask_prompt: "B",
+				},
+			],
 		});
 		const source = renderCanvasSource(initialRunState(dag, createModelResolver()));
 
 		expect(source).toContain("const STATE: RunState = {");
-		expect(source).toContain('"status": "PENDING"');
-		expect(source).toContain("computeDAGLayout");
+		expect(source).toContain('"context_from": []');
+		expect(source).toContain('"writes": [');
+		expect(source).toContain("!graphEdges[i]?.carriesContext");
 		expect(source).toContain("export default function DagRun()");
 	});
 });

@@ -1,11 +1,11 @@
 ---
 name: dag-task-runner
-description: Decompose a user task into a dependency DAG and execute it with OMP SDK sessions in topological ranks while rendering live status to a Cursor Canvas artifact. Use for fan-out, parallel subagents, or work naturally expressed as a dependency graph.
+description: Decompose a user task into a dependency DAG and execute it with OMP SDK sessions as soon as each node is ready while rendering live status to a Cursor Canvas artifact. Use for fan-out, parallel subagents, or work naturally expressed as a dependency graph.
 ---
 
 # DAG Task Runner
 
-Author a JSON DAG, create its initial `.canvas.tsx` visualization, run every node through the OMP SDK runner, then summarize the result and relink the canvas. Parent outputs are stitched into child prompts. Live assistant text and task state are written into the canvas throughout execution.
+Author a JSON DAG, create its initial `.canvas.tsx` visualization, run every node through the OMP SDK runner, then summarize the result and relink the canvas. Only parent outputs selected through `context_from` are stitched into child prompts. Live assistant text and task state are written into the canvas throughout execution.
 
 The runner is available either from the oh-my-pi source example or from a generated standalone skill. A generated skill keeps runtime code under `runtime/`; run `bun install` there once. Set `DAG_RUNNER_DIR` to any runtime directory containing `index.ts` to override discovery.
 
@@ -35,6 +35,8 @@ Schema:
         {
             "id": "<unique-id>",
             "depends_on": ["<parent-id>"],
+            "context_from": ["<parent-id>"],
+            "writes": ["<repo-relative-path>"],
             "complexity": "HIGH",
             "subtask_prompt": "<self-contained task prompt>"
         }
@@ -45,18 +47,21 @@ Schema:
 Rules:
 
 - Dependencies MUST reference task IDs in the same file. Cycles and self-dependencies are invalid.
+- `context_from` MUST be an array and a subset of `depends_on`. Use `[]` when dependency completion matters but its reply text does not.
+- `writes` MUST contain exact normalized repo-relative paths. Use `[]` only for tasks that do not write repository files and `["*"]` for an unbounded write scope.
+- Unordered tasks with overlapping `writes` are invalid; `["*"]` overlaps every non-empty write declaration.
 - `complexity` MUST be `HIGH`, `MED`, or `LOW`.
 - `models` is optional. Precedence is defaults < DAG `models` < `--models-file`.
-- Prompts MUST be standalone. The runner prepends direct-parent results automatically.
-- Tasks whose dependencies are satisfied run concurrently. NEVER let siblings write the same file.
+- Prompts MUST be standalone. The runner prepends only results selected by `context_from`.
 
 ### Maximize useful width
 
-1. Default to no dependency. Add one only when the child literally needs the parent's output.
-2. Put independent read-only discovery in a wide first rank.
-3. Put independent tests, docs, or checks after their shared implementation parent rather than chaining them.
-4. Prefer diamonds over lines.
-5. Serialize tasks that would edit the same file.
+1. Default to no dependency. Add one when the child must wait for the parent or should be blocked by its failure.
+2. Add a dependency to `context_from` only when the child needs the parent's reply text; shared filesystem state alone does not require prompt injection.
+3. Put independent read-only discovery in a wide first rank.
+4. Put independent tests, docs, or checks after their shared implementation parent rather than chaining them.
+5. Prefer diamonds over lines.
+6. Declare repository writes and add dependencies to serialize overlapping paths.
 
 A nontrivial DAG SHOULD contain at least one rank with multiple tasks. The bundled `example-dag.json` demonstrates 2 → 1 → 1 → 2 ranks.
 
@@ -152,7 +157,7 @@ bun "$RUNNER_DIR/index.ts" \
 The runner:
 
 1. refreshes the OMP model registry and fails fast if no authenticated model exists;
-2. validates the DAG and writes the initial all-`PENDING` canvas;
+2. validates context sources and write conflicts, then writes the initial all-`PENDING` canvas;
 3. starts each task as soon as its own dependencies finish, allowing newly ready descendants to overlap unrelated branches;
 4. streams assistant text into each running task card;
 5. inspects terminal assistant messages so provider failures are not mistaken for success;
@@ -187,10 +192,10 @@ After exit:
 
 ## Limits and safety
 
-- Siblings share a filesystem and MUST NOT edit the same file concurrently.
-- Each parent contributes at most 2,000 characters to a child prompt.
+- Tasks share a filesystem. Declared unordered write conflicts are rejected, but declarations do not sandbox or enforce actual tool writes.
+- Each selected context source contributes at most 2,000 characters to a child prompt.
 - Each task card retains the newest 4,000 streamed characters.
-- A direct parent in `ERROR` prevents the child from launching; this cascades.
+- Any direct dependency in `ERROR` prevents the child from launching; this cascades.
 - SIGINT, SIGTERM, and SIGHUP mark nonterminal tasks and flush the canvas before exit.
 - The generated `.canvas.tsx` uses `cursor/canvas`; Obsidian can store/address it but does not render it.
 

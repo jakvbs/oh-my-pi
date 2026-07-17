@@ -1,14 +1,14 @@
 # DAG Task Runner
 
-An SDK migration of the Cookbook DAG runner. It parses a JSON dependency graph, starts each task as soon as its own dependencies finish, stitches parent results into child prompts, and repeatedly rewrites a self-contained Cursor Canvas visualization.
+An SDK migration of the Cookbook DAG runner. It parses a JSON dependency graph, starts each task as soon as its own dependencies finish, injects only explicitly selected parent results into child prompts, and repeatedly rewrites a self-contained Cursor Canvas visualization.
 
 The visualization remains `.canvas.tsx` rather than being reduced to Markdown or an incompatible Obsidian Canvas JSON shape. That preserves the original graph, cards, status styling, streamed output, scroll restoration, and node navigation. The file can live inside an Obsidian vault and be addressed through OMP's optional `vault://` integration, but rendering the React canvas still requires a Cursor Canvas host.
 
 ## Behavior
 
-- Validates IDs, dependencies, complexity values, model overrides, and cycles.
+- Validates IDs, dependencies, context sources, declared writes, complexity values, model overrides, and cycles.
 - Uses deterministic source-order readiness. Root tasks start together; each dependent starts as soon as all of its own parents finish.
-- Prepends up to 2,000 characters from each direct parent's result to a child prompt.
+- Prepends up to 2,000 characters from each task named in `context_from`; ordering-only dependencies add no prompt context.
 - Keeps the newest 4,000 streamed assistant characters per task and publishes at most every 500 ms by default.
 - Marks provider failures recorded in the terminal OMP assistant message as task errors even when `session.prompt()` resolves.
 - Disables OMP automatic retries to retain the original runner's no-task-retry behavior.
@@ -74,6 +74,8 @@ Expected scheduling shape:
         {
             "id": "research-stack",
             "depends_on": [],
+            "context_from": [],
+            "writes": [],
             "complexity": "LOW",
             "subtask_prompt": "Sketch the smallest reasonable design …"
         }
@@ -81,16 +83,18 @@ Expected scheduling shape:
 }
 ```
 
-| Field            | Required | Contract                                                                              |
-| ---------------- | -------- | ------------------------------------------------------------------------------------- |
-| `title`          | yes      | Nonblank string. Validation trims only for the blank check; stored text is unchanged. |
-| `id`             | yes      | Unique nonblank task ID.                                                              |
-| `depends_on`     | no       | String IDs; defaults to `[]`; duplicates are removed in insertion order.              |
-| `complexity`     | yes      | Exactly `HIGH`, `MED`, or `LOW`.                                                      |
-| `subtask_prompt` | yes      | Nonblank standalone prompt. Stored text is unchanged.                                 |
-| `models`         | no       | Partial complexity-to-model selector map. Values are trimmed.                         |
+| Field            | Required | Contract                                                                                                      |
+| ---------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `title`          | yes      | Nonblank string. Validation trims only for the blank check; stored text is unchanged.                         |
+| `id`             | yes      | Unique nonblank task ID.                                                                                      |
+| `depends_on`     | no       | Scheduling and failure-propagation IDs; defaults to `[]`; duplicates are removed in insertion order.         |
+| `context_from`   | yes      | IDs whose results enter the prompt; must be a subset of `depends_on`; duplicates are removed.                |
+| `writes`         | yes      | Exact normalized repo-relative paths, `[]` for no repo writes, or `["*"]` for an unbounded write scope.      |
+| `complexity`     | yes      | Exactly `HIGH`, `MED`, or `LOW`.                                                                              |
+| `subtask_prompt` | yes      | Nonblank standalone prompt. Stored text is unchanged.                                                         |
+| `models`         | no       | Partial complexity-to-model selector map. Values are trimmed.                                                 |
 
-Unknown IDs, self-dependencies, duplicate task IDs, and cycles fail before execution. See [`example-dag.json`](./example-dag.json) for the complete 2 → 1 → 1 → 2 example.
+Unknown IDs, self-dependencies, duplicate task IDs, cycles, context sources outside `depends_on`, unsafe write paths, and unordered overlapping writes fail before execution. See [`example-dag.json`](./example-dag.json) for the complete 2 → 1 → 1 → 2 example.
 
 ## Model routing
 
@@ -126,7 +130,7 @@ Unknown flags are ignored, matching the original CLI. Numeric flags accept posit
 
 ## Prompt and failure semantics
 
-Dependent tasks receive this static Handlebars template:
+Tasks with non-empty `context_from` receive this static Handlebars template:
 
 ```text
 Upstream task results (for context — do not re-do this work):
@@ -139,7 +143,7 @@ Upstream task results (for context — do not re-do this work):
 <original subtask prompt>
 ```
 
-Each direct parent snippet is capped at 2,000 characters with a final ellipsis. If any direct dependency is `ERROR`, the task is not launched and receives `Skipped: upstream task(s) … failed`; this naturally cascades through later ranks.
+Each selected context snippet is capped at 2,000 characters with a final ellipsis. If any direct dependency is `ERROR`, the task is not launched and receives `Skipped: upstream task(s) … failed`; this naturally cascades through downstream tasks.
 
 A 20-minute deadline covers SDK session creation and the agent turn. Session events reset the five-minute idle timer; SDK `agent_end` starts the retained 15-second post-stream finalization grace, bounded by the remaining task deadline. Timeouts abort best-effort. Abort and dispose operations are individually bounded so cleanup cannot mask the recorded result, and a session factory that resolves after its deadline is observed and cleaned up. All sessions are in-memory. The canvas writer serializes writes and flushes the latest snapshot, including on SIGINT, SIGTERM, SIGHUP, and runner failures.
 
@@ -147,8 +151,8 @@ A 20-minute deadline covers SDK session creation and the agent turn. Session eve
 
 The generated artifact is the original self-contained React + `cursor/canvas` source with inlined `RunState`. It includes:
 
-- DAG edges and theme-aware task nodes;
-- task prompts, models, durations, token counts, streamed/final results, and errors;
+- solid context-carrying edges, dashed ordering-only edges, and theme-aware task nodes;
+- task prompts, models, declared writes, durations, token counts, streamed/final results, and errors;
 - run counts, outcome, elapsed time, and total tokens;
 - graph-node navigation to expandable task cards;
 - scroll restoration across hot reloads.

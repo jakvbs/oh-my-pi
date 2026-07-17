@@ -4,6 +4,8 @@
  * The DAG file shape is intentionally tiny — see ../examples/example_dag.json.
  */
 
+import * as path from "node:path";
+
 export type Complexity = "HIGH" | "MED" | "LOW";
 export type ModelMap = Record<Complexity, string>;
 export type ModelMapOverride = Partial<ModelMap>;
@@ -11,6 +13,8 @@ export type ModelMapOverride = Partial<ModelMap>;
 export interface RawTask {
 	id: string;
 	depends_on: string[];
+	context_from: string[];
+	writes: string[];
 	complexity: Complexity;
 	subtask_prompt: string;
 }
@@ -58,9 +62,15 @@ export function parseDAG(raw: unknown): DAG {
 				throw new Error(`Task ${t.id} depends on itself.`);
 			}
 		}
+		for (const contextId of t.context_from) {
+			if (!t.depends_on.includes(contextId)) {
+				throw new Error(`Task ${t.id} context_from must be a subset of depends_on: ${contextId}`);
+			}
+		}
 	}
 
 	detectCycle(tasks);
+	validateWriteConflicts(tasks);
 
 	const models = obj.models === undefined ? undefined : validateModelMap(obj.models, "DAG.models");
 
@@ -80,6 +90,14 @@ function validateTask(raw: unknown, index: number): RawTask {
 	if (!isStringArray(depends_on)) {
 		throw new Error(`tasks[${index}].depends_on must be an array of strings.`);
 	}
+	const context_from = t.context_from;
+	if (!isStringArray(context_from)) {
+		throw new Error(`tasks[${index}].context_from must be an array of strings.`);
+	}
+	const writes = t.writes;
+	if (!isStringArray(writes)) {
+		throw new Error(`tasks[${index}].writes must be an array of strings.`);
+	}
 	const complexity = t.complexity;
 	if (!isComplexity(complexity)) {
 		throw new Error(`tasks[${index}].complexity must be one of HIGH | MED | LOW.`);
@@ -91,6 +109,8 @@ function validateTask(raw: unknown, index: number): RawTask {
 	return {
 		id,
 		depends_on: [...new Set(depends_on)],
+		context_from: [...new Set(context_from)],
+		writes: [...new Set(writes.map((write, writeIndex) => validateWritePath(write, index, writeIndex)))],
 		complexity,
 		subtask_prompt,
 	};
@@ -144,6 +164,71 @@ function detectCycle(tasks: RawTask[]): void {
 			}
 		}
 	}
+}
+
+function validateWritePath(value: string, taskIndex: number, writeIndex: number): string {
+	const segments = value.split("/");
+	const isInvalid =
+		value === "" ||
+		value.trim() !== value ||
+		value.includes("\0") ||
+		value.includes("\\") ||
+		path.posix.isAbsolute(value) ||
+		path.win32.isAbsolute(value) ||
+		/^[A-Za-z]:/.test(value) ||
+		value.endsWith("/") ||
+		path.posix.normalize(value) !== value ||
+		segments.some(segment => segment === "." || segment === "..") ||
+		/[*?[\]{}]/.test(value);
+	if (value !== "*" && isInvalid) {
+		throw new Error(
+			`tasks[${taskIndex}].writes[${writeIndex}] must be "*" or an exact normalized repo-relative path.`,
+		);
+	}
+	return value;
+}
+
+function validateWriteConflicts(tasks: RawTask[]): void {
+	const byId = new Map<string, RawTask>();
+	for (const task of tasks) byId.set(task.id, task);
+
+	const ancestorsById = new Map<string, Set<string>>();
+	for (const task of tasks) {
+		const ancestors = new Set<string>();
+		const stack = [...task.depends_on];
+		while (stack.length > 0) {
+			const ancestorId = stack.pop()!;
+			if (ancestors.has(ancestorId)) continue;
+			ancestors.add(ancestorId);
+			stack.push(...byId.get(ancestorId)!.depends_on);
+		}
+		ancestorsById.set(task.id, ancestors);
+	}
+
+	for (let leftIndex = 0; leftIndex < tasks.length; leftIndex++) {
+		const left = tasks[leftIndex];
+		for (let rightIndex = leftIndex + 1; rightIndex < tasks.length; rightIndex++) {
+			const right = tasks[rightIndex];
+			const overlap = overlappingWrite(left.writes, right.writes);
+			if (
+				overlap === undefined ||
+				ancestorsById.get(left.id)!.has(right.id) ||
+				ancestorsById.get(right.id)!.has(left.id)
+			) {
+				continue;
+			}
+			throw new Error(
+				`Tasks ${left.id} and ${right.id} have unordered overlapping writes: ${overlap}. Add a dependency or split their writes.`,
+			);
+		}
+	}
+}
+
+function overlappingWrite(left: readonly string[], right: readonly string[]): string | undefined {
+	if (left.length === 0 || right.length === 0) return undefined;
+	if (left.includes("*")) return right.includes("*") ? "*" : right[0];
+	if (right.includes("*")) return left[0];
+	return left.find(write => right.includes(write));
 }
 
 /**

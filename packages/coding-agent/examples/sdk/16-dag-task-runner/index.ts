@@ -180,7 +180,7 @@ export function defaultCanvasesDir(cwd: string): string {
 
 export function buildTaskPrompt(task: RawTask, stateById: ReadonlyMap<string, TaskState>): string {
 	const parents: PromptParent[] = [];
-	for (const dependencyId of task.depends_on) {
+	for (const dependencyId of task.context_from) {
 		const dependency = stateById.get(dependencyId);
 		if (!dependency) continue;
 
