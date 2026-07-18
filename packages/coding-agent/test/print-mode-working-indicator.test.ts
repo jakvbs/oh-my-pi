@@ -43,6 +43,7 @@ function createDelayedSession(finalMessage: AssistantMessage): DelayedSession {
 
 	const session = {
 		state: { messages },
+		getLastAssistantMessage: () => messages.findLast(message => message.role === "assistant"),
 		sessionManager: {
 			getHeader: () => undefined,
 		},
@@ -154,6 +155,7 @@ describe("print mode working indicator", () => {
 		let subscriber: ((event: AgentSessionEvent) => void) | undefined;
 		const session = {
 			state: { messages },
+			getLastAssistantMessage: () => messages.findLast(message => message.role === "assistant"),
 			sessionManager: { getHeader: () => undefined },
 			extensionRunner: undefined,
 			subscribe: (listener: (event: AgentSessionEvent) => void) => {
@@ -214,6 +216,7 @@ describe("print mode working indicator", () => {
 		});
 		const session = {
 			state: { messages },
+			getLastAssistantMessage: () => messages.findLast(message => message.role === "assistant"),
 			sessionManager: { getHeader: () => undefined },
 			extensionRunner: undefined,
 			subscribe: () => () => {},
