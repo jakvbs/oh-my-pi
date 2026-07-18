@@ -20,6 +20,10 @@
 - Fixed JavaScript/TypeScript debugging by launching vscode-js-debug over TCP, handling recursive `startDebugging` child sessions, synchronizing breakpoints across the session tree, and terminating every child connection ([#5984](https://github.com/can1357/oh-my-pi/issues/5984)).
 - Fixed rich ask options showing preview content only for the highlighted choice; every option now renders its preview inline, with pageable long content and accurate configured paging and cancel hints ([#5988](https://github.com/can1357/oh-my-pi/pull/5988) by [@metaphorics](https://github.com/metaphorics)).
 
+### Fixed
+
+- Fixed legacy pi extensions failing extension validation when importing `getPackageDir` or `getProjectDir` from `@earendil-works/pi-coding-agent` (aliased to the legacy shim). The shim only re-exported `getAgentDir`; the two missing path helpers now resolve — `getProjectDir` from `@oh-my-pi/pi-utils` and `getPackageDir` from omp's canonical package-root helper — so extensions like `@gotgenes/pi-permission-system` install and load ([#5968](https://github.com/can1357/oh-my-pi/issues/5968)).
+
 ## [17.0.4] - 2026-07-18
 
 ### Fixed
