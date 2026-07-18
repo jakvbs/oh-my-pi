@@ -2,9 +2,10 @@
 
 ## [Unreleased]
 
+## [17.0.5] - 2026-07-18
+
 ### Added
 
-- Added native Warp CLI-agent events for rich session status, tool approvals, and completion notifications.
 - Added support for Codex (ChatGPT subscription) in `generate_image` via the `providers.image: "openai-codex"` option, including automatic subscription detection and fallback logic.
 - Added an optional `provider` parameter to `generate_image` to override the global image provider setting for a single request.
 - Added OpenTelemetry log and metric export capabilities alongside existing trace exports, supporting standard OTLP environment variables.
@@ -14,14 +15,12 @@
 
 ### Changed
 
-- Changed the default `astGrep.enabled` setting to `false`.
 - Changed bundled TTSR rules to warn instead of interrupting generation.
 - Renamed the system prompt's project-context section wrapper from `<context>` to `<repo-rules>` to prevent XML tag collisions with in-band tool dialects.
 - Renamed the `/extensions` dashboard tab "Agents (standard)" to "Agent Dirs (.agent/.agents)" to clarify its purpose.
 - Optimized performance by reducing concurrent subagent update CPU usage, skipping unnecessary title generation in non-interactive hosts, and memoizing `convertToLlm` conversions over settled history.
 - Improved the display of `read xd://` calls by rendering them in a compact grouped view instead of full tool-execution cards.
 - Made the hashline seen-line guard opt-in and off by default via `edit.enforceSeenLines`.
-- Batched todo operations with real tool calls to prevent solo todo turns and extra round trips.
 
 ### Fixed
 - Fixed Cursor responses streams stalling after an exec-channel tool completed without automatically recovering. The session now continues from the already-buffered tool result instead of replaying the side-effecting request. ([#5790](https://github.com/can1357/oh-my-pi/issues/5790))
