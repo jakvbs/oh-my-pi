@@ -24,6 +24,7 @@
 - Made the hashline seen-line guard opt-in and off by default via `edit.enforceSeenLines`.
 
 ### Fixed
+- Fixed `plan.defaultOnStartup` being ignored by headless `omp -p` sessions, so the initial prompt now runs in plan mode and the persisted session remains in plan mode for later review ([#6017](https://github.com/can1357/oh-my-pi/issues/6017)).
 
 - Fixed resuming an active plan session replacing its journal-restored model with the current `modelRoles.plan` setting ([#6015](https://github.com/can1357/oh-my-pi/issues/6015)).
 - Fixed `--model <role>` resolving a bare configured `modelRoles` key.
