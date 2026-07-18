@@ -298,10 +298,12 @@
 
 - Added optional opt-in semantic DAG preflight (`--semantic-preflight`, `--review-only`) that reviews the exact validated effective DAG serialization through an isolated tool-free structured yield session before canvas or task execution.
 - Added atomic SDK DAG checkpoints and explicit `--resume`, preserving completed nodes while retrying interrupted or failed work and its downstream against the existing workspace.
+- Added incremental LSP repository symbol maps for directory and glob targets, with top-level and full-detail scopes, content-aware caching, bounded output, and configurable generated-code handling.
 
 ### Changed
 
 - Changed the SDK DAG task runner example to start each task as soon as its dependencies finish instead of waiting for unrelated tasks in the same Kahn rank.
+- Updated the model-routed code review example to the completed artifact lifecycle: editable versioned plan/unit JSON artifacts, independent bounded unit/subset review, typed terminal failures, source/unit fingerprints, and a complete terminal-result aggregation barrier.
 
 ## [17.0.2] - 2026-07-17
 

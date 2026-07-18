@@ -6,7 +6,7 @@ Symbol-aware code intelligence from language servers — navigation, refactors, 
 - `code_actions` — lists by default; apply ONE with `apply: true` + `query` (title substring or index).
 - `rename_file` — moves file AND rewrites all imports/references; applies by default.
 - `diagnostics` — path, glob (`src/**/*.ts`), or `file: "*"` for workspace.
-- `symbols` — `file` lists file symbols; `file: "*"` + `query` searches workspace.
+- `symbols` — file → document outline; directory/glob → bounded repo map. Repo maps default to `scope: "top-level"`; use `"all"` for nested symbols. Tune with `max_symbols`, `max_symbols_per_file`, and `generated_policy: compact|include|exclude`. `file: "*"` + `query` searches workspace.
 - `reload` — restart one server (`file`) or all (`*`); `reload *` re-reads LSP config.
 - `request` — raw: `query` = method, `payload` = JSON params (else auto-built).
 </operations>

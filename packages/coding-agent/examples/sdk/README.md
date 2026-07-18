@@ -18,7 +18,7 @@ Programmatic usage of omp-coding-agent via `createAgentSession()`.
 | `10-settings.ts`               | Override compaction, retry, terminal settings   |
 | `11-sessions.ts`               | In-memory, persistent, continue, list sessions  |
 | `12-full-control.ts`           | Replace everything, no discovery                |
-| `14-model-routed-code-review/` | Persist units, then route typed LLM judges      |
+| `14-model-routed-code-review/` | Plan/unit JSON artifacts, concurrent review, aggregate |
 | `15-scoped-subagents/`         | Register session-scoped in-memory subagents     |
 | `16-dag-task-runner/`          | Execute dependency ranks with live Canvas state |
 
@@ -28,6 +28,20 @@ Programmatic usage of omp-coding-agent via `createAgentSession()`.
 cd packages/coding-agent
 bun examples/sdk/01-minimal.ts
 ```
+
+## Model-routed code review CLI
+
+Example `14-model-routed-code-review` exposes these artifact commands:
+
+```bash
+plan <goal> <files...> --output plan.json
+review-unit <plan.json> <unit-id> --output unit-result.json
+review-units <plan.json> --units <id,...> --output-dir results/
+aggregate <plan.json> --results-dir results/ --output report.json
+run <goal> <files...> [--output report.json]
+```
+
+Edit the plan JSON, then run units independently or concurrently; each unit writes a terminal success or failure artifact. Aggregate only when every unit artifact is present. `run` is the same end-to-end convenience path.
 
 ## Quick Reference
 

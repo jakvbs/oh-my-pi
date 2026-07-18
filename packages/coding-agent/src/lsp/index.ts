@@ -45,6 +45,13 @@ import {
 import { resolveFormatOptions } from "./format-options";
 import { detectLspmux } from "./lspmux";
 import {
+	DEFAULT_REPOSITORY_SYMBOL_LIMIT,
+	DEFAULT_REPOSITORY_SYMBOLS_PER_FILE,
+	formatRepositorySymbolIndex,
+	isRepositorySymbolTarget,
+	RepositorySymbolIndex,
+} from "./repository-symbol-index";
+import {
 	type CodeAction,
 	type CodeActionContext,
 	type Command,
@@ -1549,6 +1556,8 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 	readonly parameters = lspSchema;
 	readonly strict = true;
 
+	readonly #repositorySymbolIndex = new RepositorySymbolIndex();
+
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(lspDescription);
 	}
@@ -1564,7 +1573,20 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		_onUpdate?: AgentToolUpdateCallback<LspToolDetails>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LspToolDetails>> {
-		const { action, file, line, symbol, query, new_name, apply, timeout } = params;
+		const {
+			action,
+			file,
+			line,
+			symbol,
+			query,
+			new_name,
+			apply,
+			timeout,
+			max_symbols,
+			max_symbols_per_file,
+			generated_policy,
+			scope,
+		} = params;
 		const timeoutSec = clampTimeout("lsp", timeout);
 		const timeoutSignal = AbortSignal.timeout(timeoutSec * 1000);
 		const callerSignal = signal;
@@ -2217,6 +2239,57 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		}
 
 		const resolvedFile = file && !isWorkspace ? resolveToCwd(file, this.session.cwd) : null;
+		if (action === "reload") this.#repositorySymbolIndex.clear();
+
+		if (action === "symbols" && file && !isWorkspace && (await isRepositorySymbolTarget(file, this.session.cwd))) {
+			try {
+				const result = await this.#repositorySymbolIndex.build({
+					cwd: this.session.cwd,
+					target: file,
+					maxSymbols: max_symbols ?? DEFAULT_REPOSITORY_SYMBOL_LIMIT,
+					maxSymbolsPerFile: max_symbols_per_file ?? DEFAULT_REPOSITORY_SYMBOLS_PER_FILE,
+					generatedPolicy: generated_policy ?? "compact",
+					scope: scope ?? "top-level",
+					signal,
+					resolveServer: filePath => {
+						const serverInfo = getLspServerForFile(config, filePath);
+						if (!serverInfo) return null;
+						const [name, serverConfig] = serverInfo;
+						const command = serverConfig.resolvedCommand ?? serverConfig.command;
+						return { name, cacheKey: [name, command, ...(serverConfig.args ?? [])].join("\0") };
+					},
+					loadSymbols: async filePath => {
+						const serverInfo = getLspServerForFile(config, filePath);
+						if (!serverInfo) throw new ToolError(`No language server found for ${filePath}`);
+						const [, serverConfig] = serverInfo;
+						const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
+						await ensureFileOpen(client, filePath, signal);
+						return sendRequest(
+							client,
+							"textDocument/documentSymbol",
+							{ textDocument: { uri: fileToUri(filePath) } },
+							signal,
+						);
+					},
+				});
+				return {
+					content: [{ type: "text", text: formatRepositorySymbolIndex(result) }],
+					details: {
+						action,
+						serverName: result.serverNames.join(", "),
+						success: true,
+						request: params,
+					},
+				};
+			} catch (err) {
+				if (err instanceof ToolAbortError || signal.aborted) throw new ToolAbortError();
+				const message = err instanceof Error ? err.message : String(err);
+				return {
+					content: [{ type: "text", text: `Repository symbol index failed: ${message}` }],
+					details: { action, success: false, request: params },
+				};
+			}
+		}
 		if (action === "symbols" && (isWorkspace || !resolvedFile)) {
 			const normalizedQuery = query?.trim();
 			if (!normalizedQuery) {

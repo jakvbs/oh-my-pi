@@ -3,509 +3,1393 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type ZodType, z } from "zod";
+import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import type { ZodType } from "zod";
 import {
+	PLAN_SCHEMA_VERSION,
+	type PlanArtifact,
+	PROMPT_VERSION,
+	type PromptResult,
 	type PromptRunner,
-	parseCliCommand,
-	prepareReviewPlan,
+	type PromptStage,
+	parsePlanArtifact,
+	type ReviewReport,
+	type UnitReviewArtifact,
+	type ValidatedPlan,
+} from "./contracts";
+import {
+	aggregateReview,
+	type Clock,
+	createReviewPlan,
+	type HashFn,
+	reviewUnit,
+	reviewUnits,
 	runReview,
-	validateTerminalYieldResult,
-	writeJsonAtomic,
+	type SourceLoader,
 } from "./index";
-import { judgeDefinitions } from "./prompts/registry";
 
-const modelId = "openai-codex/gpt-5.6-luna";
-const plannerRequestSchema = z
-	.object({
-		sourceIndex: z.object({
-			sources: z.array(
-				z.object({
-					id: z.string(),
-					fragments: z.array(z.object({ id: z.string() }).passthrough()),
-				}),
-			),
-		}),
-	})
-	.passthrough();
-const unavailableLsp = async () => ({ status: "unavailable" as const, symbols: "" });
+const emptyUsage = {
+	input: 1,
+	output: 1,
+	reasoning: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+	totalTokens: 2,
+};
 
-function semanticPlanFromRequest(userPrompt: string) {
-	const request = plannerRequestSchema.parse(JSON.parse(userPrompt));
-	const owner = request.sourceIndex.sources[0];
-	if (!owner) throw new Error("Expected an indexed source");
+const FIXED_START = "2026-01-15T12:00:00.000Z";
+const MODEL_ID = "test-model";
+const THINKING = ThinkingLevel.Medium;
+
+const hash: HashFn = canonical => createHash("sha256").update(canonical).digest("hex");
+
+function createClock(startIso = FIXED_START): Clock & { advance(ms: number): void } {
+	let currentMs = Date.parse(startIso);
 	return {
-		units: [
-			{
-				id: "review-scope",
-				behavior: "Review the supplied behavior",
-				owner_source_id: owner.id,
-				primary_fragment_ids: request.sourceIndex.sources.flatMap(source =>
-					source.fragments.map(fragment => fragment.id),
-				),
-				supporting_fragment_ids: [],
-				rationale: "The supplied sources form one review workflow.",
-				supporting_context_reason: null,
-				oversize_reason: null,
-			},
-		],
-	};
-}
-
-describe("runReview", () => {
-	test("limits concurrency and preserves successful judges when one fails", async () => {
-		const failedGroup = judgeDefinitions[0];
-		if (!failedGroup) throw new Error("Expected at least one judge definition");
-		let activeJudges = 0;
-		let maximumActiveJudges = 0;
-
-		const runPrompt: PromptRunner = async ({
-			contextTools,
-			resultSchema,
-			systemPrompt,
-			thinkingLevel,
-			userPrompt,
-		}) => {
-			if (systemPrompt.includes("# Planner semantic units")) {
-				expect(contextTools?.mode).toBe("semantic_planning");
-				return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
-			}
-			if (systemPrompt.includes("# Router")) {
-				expect(contextTools).toBeUndefined();
-				expect(thinkingLevel).toBe("xhigh");
-				return promptResult(
-					resultSchema.parse({
-						selectedReviews: judgeDefinitions.map(group => ({
-							unit_id: "review-scope",
-							judge_id: group.id,
-							reason: "Selected by test",
-						})),
-					}),
-				);
-			}
-
-			expect(contextTools?.mode).toBe("read_only");
-			expect(contextTools?.roots.length).toBeGreaterThan(0);
-			const request = judgeRequestSchema.parse(JSON.parse(userPrompt));
-			activeJudges++;
-			maximumActiveJudges = Math.max(maximumActiveJudges, activeJudges);
-			await Bun.sleep(10);
-			activeJudges--;
-			if (request.selected_group === failedGroup.id) throw new Error("simulated judge failure");
-
-			return promptResult(
-				resultSchema.parse({
-					criterion_results: request.rubric.map(criterionId => ({
-						criterion_id: criterionId,
-						verdict: "NOT_APPLICABLE",
-						severity: "minor",
-						confidence: "high",
-						evidence: [],
-						missing_evidence: [],
-						reason: "Not applicable in concurrency test.",
-						suggested_action: null,
-						verification_after_change: null,
-					})),
-				}),
-			);
-		};
-
-		const result = await runReview({
-			loadLspSymbols: unavailableLsp,
-			filePaths: [new URL("./index.ts", import.meta.url).pathname],
-			modelId,
-			reviewGoal: "Exercise every judge group.",
-			riskLevel: "low",
-			runPrompt,
-		});
-
-		expect(maximumActiveJudges).toBe(10);
-		expect(result.failures).toEqual([
-			{
-				unitId: "review-scope",
-				groupId: failedGroup.id,
-				judgeType: failedGroup.judgeType,
-				error: "simulated judge failure",
-			},
-		]);
-		expect(result.groupResults).toHaveLength(judgeDefinitions.length);
-		expect(result.groupResults.filter(group => group.status === "succeeded")).toHaveLength(
-			judgeDefinitions.length - 1,
-		);
-		expect(result.unitResults).toHaveLength(1);
-		expect(result.unitResults[0]).toMatchObject({
-			unitId: "review-scope",
-			overallVerdict: "INSUFFICIENT_CONTEXT",
-			selectedJudgeCount: judgeDefinitions.length,
-			completedJudgeCount: judgeDefinitions.length - 1,
-			failureCount: 1,
-			incomplete: true,
-		});
-		expect(result.unitResults[0]?.judgeResults).toHaveLength(judgeDefinitions.length);
-		expect(result.groupResults.find(group => group.groupId === failedGroup.id)).toMatchObject({
-			unitId: "review-scope",
-			groupId: failedGroup.id,
-			judgeType: failedGroup.judgeType,
-			rubricVersion: failedGroup.rubricVersion,
-			status: "failed",
-			failure: {
-				unitId: "review-scope",
-				groupId: failedGroup.id,
-				judgeType: failedGroup.judgeType,
-				error: "simulated judge failure",
-			},
-			evidenceFailures: [],
-		});
-		expect(result.incomplete).toBe(true);
-		expect(result.aggregate).toMatchObject({
-			overallVerdict: "INSUFFICIENT_CONTEXT",
-			failureCount: 1,
-			incomplete: true,
-			selectedGroupCount: judgeDefinitions.length,
-			selectedUnitCount: 1,
-			completedUnitCount: 0,
-			unitCounts: {
-				PASS: 0,
-				FAIL: 0,
-				NEEDS_REVIEW: 0,
-				INSUFFICIENT_CONTEXT: 1,
-			},
-			completedGroupCount: judgeDefinitions.length - 1,
-		});
-		expect(result.execution).toMatchObject({
-			modelId,
-			thinkingLevel: "medium",
-			promptVersion: "model-routed-code-review/3.0.0",
-			outputSchemaVersion: "judge-output/5.0.0",
-			tokenUsage: {
-				input: 14,
-				output: 28,
-				reasoning: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 42,
-			},
-		});
-		expect(result.execution.inputFingerprint).toMatch(/^[a-f0-9]{64}$/);
-		expect(result.execution.durationMs).toBeGreaterThanOrEqual(0);
-		expect(Object.keys(result.execution.rubricVersions)).toHaveLength(judgeDefinitions.length);
-		expect(result.execution.semanticContext.routerThinkingLevel).toBe("xhigh");
-	});
-
-	test("adds a harness-computed hash to an exact source quote", async () => {
-		const quote = 'import { describe, expect, test } from "bun:test";';
-		const result = await runReview({
-			loadLspSymbols: unavailableLsp,
-			filePaths: [new URL("./index.test.ts", import.meta.url).pathname],
-			modelId,
-			reviewGoal: "Verify one grounded citation.",
-			riskLevel: "low",
-			runPrompt: createEvidenceRunner(quote),
-		});
-
-		expect(result.failures).toEqual([]);
-		expect(result.groupResults).toHaveLength(1);
-		expect(result.groupResults[0]).toMatchObject({
-			groupId: judgeDefinitions[0]?.id,
-			status: "succeeded",
-		});
-		expect(result.incomplete).toBe(false);
-		expect(result.aggregate).toMatchObject({
-			failureCount: 0,
-			selectedGroupCount: 1,
-			completedGroupCount: 1,
-			incomplete: false,
-		});
-		const groupResult = result.groupResults[0];
-		if (groupResult?.status !== "succeeded") throw new Error("Expected successful group result");
-		const evidence = groupResult.judgment.output.criterion_results[0]?.evidence[0];
-		expect(evidence).toEqual({
-			source_id: "source-1:index.test.ts",
-			start_line: 1,
-			end_line: 1,
-			quote,
-			observation: "The cited import is present.",
-			supports: "applies_when",
-			hash: createHash("sha256").update(quote).digest("hex"),
-		});
-	});
-
-	test("rejects a fabricated quote and reports evidence failures", async () => {
-		const group = judgeDefinitions[0];
-		if (!group) throw new Error("Expected at least one judge definition");
-		const result = await runReview({
-			loadLspSymbols: unavailableLsp,
-			filePaths: [new URL("./index.test.ts", import.meta.url).pathname],
-			modelId,
-			reviewGoal: "Reject an ungrounded citation.",
-			riskLevel: "low",
-			runPrompt: createEvidenceRunner("fabricated source text"),
-		});
-
-		expect(result.failures).toHaveLength(1);
-		expect(result.evidenceFailures).toHaveLength(group.criterionIds.length);
-		expect(result.evidenceFailures[0]).toMatchObject({
-			groupId: group.id,
-			criterionId: group.criterionIds[0],
-			evidenceIndex: 0,
-			sourceId: "source-1:index.test.ts",
-			error: "quote does not match lines 1-1",
-		});
-		expect(result.incomplete).toBe(true);
-	});
-
-	test("reviews a persisted plan without rerunning the planner", async () => {
-		const group = judgeDefinitions[0];
-		if (!group) throw new Error("Expected a judge definition");
-		let plannerCalls = 0;
-		const runPrompt: PromptRunner = async ({ resultSchema, systemPrompt, userPrompt }) => {
-			if (systemPrompt.includes("# Planner semantic units")) {
-				plannerCalls++;
-				return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
-			}
-			if (systemPrompt.includes("# Router")) {
-				return promptResult(
-					resultSchema.parse({
-						selectedReviews: [
-							{
-								unit_id: "review-scope",
-								judge_id: group.id,
-								reason: "Review the persisted unit",
-							},
-						],
-					}),
-				);
-			}
-			const request = judgeRequestSchema.parse(JSON.parse(userPrompt));
-			return promptResult(
-				resultSchema.parse({
-					criterion_results: request.rubric.map(criterionId => ({
-						criterion_id: criterionId,
-						verdict: "NOT_APPLICABLE",
-						severity: "minor",
-						confidence: "high",
-						evidence: [],
-						missing_evidence: [],
-						reason: "Not applicable in persisted-plan test.",
-						suggested_action: null,
-						verification_after_change: null,
-					})),
-				}),
-			);
-		};
-		const filePaths = [new URL("./context-tools.ts", import.meta.url).pathname];
-		const prepared = await prepareReviewPlan({
-			filePaths,
-			loadLspSymbols: unavailableLsp,
-			reviewGoal: "Review persisted behavior",
-			riskLevel: "low",
-			runPrompt,
-		});
-		const result = await runReview({
-			filePaths,
-			loadLspSymbols: unavailableLsp,
-			modelId,
-			reviewGoal: prepared.artifact.reviewGoal,
-			riskLevel: prepared.artifact.riskLevel,
-			runPrompt,
-			semanticPlanArtifact: prepared.artifact,
-		});
-
-		expect(plannerCalls).toBe(1);
-		expect(result.execution.planner).toBeNull();
-		expect(result.execution.semanticContext.planHash).toBe(prepared.artifact.planHash);
-		expect(result.aggregate.incomplete).toBe(false);
-	});
-
-	test("repairs an invalid semantic partition without spawning another scout", async () => {
-		let plannerCalls = 0;
-		let repairCalls = 0;
-		const runPrompt: PromptRunner = async ({ contextTools, resultSchema, systemPrompt, userPrompt }) => {
-			if (systemPrompt.includes("# Planner semantic units")) {
-				plannerCalls++;
-				const request = plannerRequestSchema.parse(JSON.parse(userPrompt));
-				const owner = request.sourceIndex.sources[0];
-				const fragmentIds = request.sourceIndex.sources.flatMap(source =>
-					source.fragments.map(fragment => fragment.id),
-				);
-				const firstFragment = fragmentIds[0];
-				if (!owner || !firstFragment || fragmentIds.length < 2)
-					throw new Error("Expected multiple indexed fragments");
-				const unit = {
-					id: "duplicate",
-					behavior: "Invalid duplicate unit identity",
-					owner_source_id: owner.id,
-					supporting_fragment_ids: [],
-					rationale: "Exercise host validation.",
-					supporting_context_reason: null,
-					oversize_reason: null,
-				};
-				return promptResult(
-					resultSchema.parse({
-						units: [
-							{ ...unit, primary_fragment_ids: [firstFragment] },
-							{ ...unit, primary_fragment_ids: fragmentIds.slice(1) },
-						],
-					}),
-				);
-			}
-			if (!systemPrompt.includes("# Repair semantic unit plan")) throw new Error("Unexpected prompt");
-			expect(contextTools).toBeUndefined();
-			repairCalls++;
-			return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
-		};
-
-		const prepared = await prepareReviewPlan({
-			filePaths: [new URL("./index.ts", import.meta.url).pathname],
-			loadLspSymbols: unavailableLsp,
-			reviewGoal: "Repair exact source ownership",
-			riskLevel: "high",
-			runPrompt,
-		});
-
-		expect(plannerCalls).toBe(1);
-		expect(repairCalls).toBe(1);
-		expect(prepared.artifact.units.flatMap(unit => unit.primary_fragment_ids)).toHaveLength(
-			prepared.artifact.sources.flatMap(source => source.fragments).length,
-		);
-		expect(prepared.execution.tokenUsage.totalTokens).toBe(6);
-	});
-});
-
-describe("persistent plan CLI", () => {
-	test("parses separate plan and review stages", () => {
-		expect(parseCliCommand(["plan", "--output", "plan.json", "Review errors", "src/a.ts"])).toEqual({
-			command: "plan",
-			outputPath: "plan.json",
-			reviewGoal: "Review errors",
-			filePaths: ["src/a.ts"],
-		});
-		expect(parseCliCommand(["review", "--output", "report.json", "--plan", "plan.json"])).toEqual({
-			command: "review",
-			planPath: "plan.json",
-			outputPath: "report.json",
-		});
-		expect(() => parseCliCommand(["review", "--plan", "plan.json"])).toThrow("--output");
-	});
-
-	test("atomically writes a complete JSON result", async () => {
-		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "semantic-review-output-"));
-		const outputPath = path.join(directory, "nested", "plan.json");
-		try {
-			await writeJsonAtomic(outputPath, { complete: true });
-			expect(await Bun.file(outputPath).json()).toEqual({ complete: true });
-			expect((await fs.readdir(path.dirname(outputPath))).filter(name => name.endsWith(".tmp"))).toEqual([]);
-		} finally {
-			await fs.rm(directory, { recursive: true, force: true });
-		}
-	});
-});
-
-describe("validateTerminalYieldResult", () => {
-	const resultSchema = z.object({ value: z.string() }).strict();
-	const valid = {
-		details: { status: "success", schemaOverridden: false, data: [{ value: "ok" }] },
-		incrementalYieldCount: 0,
-		resultSchema,
-		terminalYieldCount: 1,
-	};
-
-	test("accepts exactly one schema-valid terminal yield", () => {
-		expect(validateTerminalYieldResult(valid)).toEqual({ value: "ok" });
-	});
-
-	test("rejects missing, duplicate, or incremental terminal results", () => {
-		expect(() => validateTerminalYieldResult({ ...valid, terminalYieldCount: 0 })).toThrow(
-			"SDK session produced 0 terminal yields",
-		);
-		expect(() => validateTerminalYieldResult({ ...valid, terminalYieldCount: 2 })).toThrow(
-			"SDK session produced 2 terminal yields",
-		);
-		expect(() => validateTerminalYieldResult({ ...valid, incrementalYieldCount: 1 })).toThrow(
-			"SDK session produced 1 non-terminal yields",
-		);
-	});
-
-	test("rejects a yield accepted by schema override", () => {
-		expect(() =>
-			validateTerminalYieldResult({
-				...valid,
-				details: { ...valid.details, schemaOverridden: true },
-			}),
-		).toThrow("SDK session exhausted yield schema retries");
-	});
-});
-const judgeRequestSchema = z.object({ selected_group: z.string(), rubric: z.array(z.string()) }).passthrough();
-
-function createEvidenceRunner(quote: string): PromptRunner {
-	const group = judgeDefinitions[0];
-	if (!group) throw new Error("Expected at least one judge definition");
-	return async <Output>({
-		resultSchema,
-		systemPrompt,
-		userPrompt,
-	}: {
-		resultSchema: ZodType<Output>;
-		systemPrompt: string;
-		userPrompt: string;
-	}) => {
-		if (systemPrompt.includes("# Planner semantic units")) {
-			return promptResult(resultSchema.parse(semanticPlanFromRequest(userPrompt)));
-		}
-		if (systemPrompt.includes("# Router")) {
-			return promptResult(
-				resultSchema.parse({
-					selectedReviews: [
-						{
-							unit_id: "review-scope",
-							judge_id: group.id,
-							reason: "Selected by evidence test",
-						},
-					],
-				}),
-			);
-		}
-		const request = judgeRequestSchema.parse(JSON.parse(userPrompt));
-		return promptResult(
-			resultSchema.parse({
-				criterion_results: request.rubric.map(criterionId => ({
-					criterion_id: criterionId,
-					verdict: "NOT_APPLICABLE",
-					severity: "minor",
-					confidence: "high",
-					evidence: [
-						{
-							source_id: "source-1:index.test.ts",
-							start_line: 1,
-							end_line: 1,
-							quote,
-							observation: "The cited import is present.",
-							supports: "applies_when",
-						},
-					],
-					missing_evidence: [],
-					reason: "Not applicable in evidence test.",
-					suggested_action: null,
-					verification_after_change: null,
-				})),
-			}),
-		);
-	};
-}
-
-function promptResult<Output>(output: Output) {
-	return {
-		output,
-		execution: {
-			durationMs: 5,
-			contextTools: { enabled: false, maxCalls: 0, requestedCalls: 0, blockedCalls: 0, callsByTool: {} },
-			tokenUsage: {
-				input: 1,
-				output: 2,
-				reasoning: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 3,
-			},
+		now() {
+			return new Date(currentMs).toISOString();
+		},
+		advance(ms: number) {
+			currentMs += ms;
 		},
 	};
 }
+
+function filesystemSourceLoader(): SourceLoader {
+	return {
+		async snapshot(paths) {
+			return await Promise.all(
+				paths.map(async filePath => {
+					const absolutePath = path.resolve(filePath);
+					return {
+						path: absolutePath,
+						content: await fs.readFile(absolutePath, "utf8"),
+					};
+				}),
+			);
+		},
+	};
+}
+
+function promptResult<Output>(
+	resultSchema: ZodType<Output>,
+	stage: PromptStage,
+	value: unknown,
+	contextReadPaths: string[] = [],
+): PromptResult<Output> {
+	return {
+		output: resultSchema.parse(value),
+		execution: {
+			stage,
+			durationMs: 1,
+			tokenUsage: emptyUsage,
+			contextTools: {
+				enabled: stage !== "aggregator",
+				maxCalls: stage === "aggregator" ? 0 : 24,
+				requestedCalls: contextReadPaths.length,
+				blockedCalls: 0,
+				callsByTool: contextReadPaths.length > 0 ? { read: contextReadPaths.length } : {},
+			},
+		},
+		contextReadPaths,
+	};
+}
+
+function extractJsonBlock(userPrompt: string): unknown {
+	const match = /```json\n([\s\S]*?)\n```/.exec(userPrompt);
+	if (!match?.[1]) {
+		throw new Error("Prompt is missing a fenced JSON request block");
+	}
+	return JSON.parse(match[1]);
+}
+
+function reviewerUnitId(userPrompt: string): string {
+	const payload = extractJsonBlock(userPrompt) as { unit?: { id?: string } };
+	const unitId = payload.unit?.id;
+	if (!unitId) {
+		throw new Error("Reviewer prompt is missing unit.id");
+	}
+	return unitId;
+}
+
+async function writeJsonAtomic(destination: string, value: unknown): Promise<void> {
+	await fs.mkdir(path.dirname(destination), { recursive: true });
+	const temporaryPath = path.join(
+		path.dirname(destination),
+		`.${path.basename(destination)}.${process.pid}.${Date.now()}.tmp`,
+	);
+	try {
+		await fs.writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+		await fs.rename(temporaryPath, destination);
+	} catch (error) {
+		await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+		throw error;
+	}
+}
+
+async function withTempWorkspace(
+	files: Record<string, string>,
+	run: (ctx: {
+		cwd: string;
+		paths: Record<string, string>;
+		roots: string[];
+		sourceLoader: SourceLoader;
+		clock: Clock & { advance(ms: number): void };
+	}) => Promise<void>,
+): Promise<void> {
+	const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "model-routed-review-"));
+	const paths: Record<string, string> = {};
+	try {
+		for (const [name, content] of Object.entries(files)) {
+			const filePath = path.join(cwd, name);
+			await fs.mkdir(path.dirname(filePath), { recursive: true });
+			await fs.writeFile(filePath, content, "utf8");
+			paths[name] = filePath;
+		}
+		await run({
+			cwd,
+			paths,
+			roots: [cwd],
+			sourceLoader: filesystemSourceLoader(),
+			clock: createClock(),
+		});
+	} finally {
+		await fs.rm(cwd, { recursive: true, force: true });
+	}
+}
+
+function lineQuote(content: string, startLine: number, endLine = startLine): string {
+	const lines = content.split(/\r?\n/);
+	return lines.slice(startLine - 1, endLine).join("\n");
+}
+
+function plannerUnits(
+	entries: Array<{
+		id: string;
+		filePath: string;
+		title?: string;
+		riskLevel?: "low" | "medium" | "high" | "critical";
+		reviewFocus?: string[];
+	}>,
+) {
+	return entries.map(entry => ({
+		id: entry.id,
+		title: entry.title ?? entry.id,
+		objective: `Review ${entry.id}`,
+		primary_files: [entry.filePath],
+		related_files: [],
+		review_focus: entry.reviewFocus ?? ["correctness"],
+		risk_level: entry.riskLevel ?? "medium",
+		rationale: `Owns ${entry.id}`,
+	}));
+}
+
+function passReview(unitId: string, filePath: string) {
+	return {
+		unit_id: unitId,
+		verdict: "PASS" as const,
+		summary: `${unitId} looks sound`,
+		findings: [],
+		coverage: [{ path: filePath, status: "reviewed" as const, notes: "Read complete implementation" }],
+	};
+}
+
+function findingReview(input: {
+	unitId: string;
+	filePath: string;
+	fileContent: string;
+	findingId: string;
+	severity: "heuristic" | "minor" | "major" | "critical";
+	confidence?: "low" | "medium" | "high";
+	startLine: number;
+	endLine?: number;
+	title?: string;
+}) {
+	const endLine = input.endLine ?? input.startLine;
+	const quote = lineQuote(input.fileContent, input.startLine, endLine);
+	return {
+		unit_id: input.unitId,
+		verdict:
+			input.severity === "major" || input.severity === "critical" ? ("FAIL" as const) : ("NEEDS_REVIEW" as const),
+		summary: `${input.unitId} has a defect`,
+		findings: [
+			{
+				id: input.findingId,
+				title: input.title ?? `${input.unitId} defect`,
+				category: "correctness",
+				severity: input.severity,
+				confidence: input.confidence ?? "high",
+				evidence: [
+					{
+						source_id: input.filePath,
+						start_line: input.startLine,
+						end_line: endLine,
+						quote,
+						observation: "Exact source lines support the finding",
+					},
+				],
+				reason: "Observed defect in the cited lines",
+				suggested_action: "Repair the cited behavior",
+				verification_after_change: "Re-read the cited lines after the fix",
+			},
+		],
+		coverage: [{ path: input.filePath, status: "reviewed" as const, notes: "Read complete implementation" }],
+	};
+}
+
+async function createValidatedPlan(input: {
+	cwd: string;
+	roots: string[];
+	targetFiles: string[];
+	reviewGoal: string;
+	riskLevel?: "low" | "medium" | "high" | "critical";
+	sourceLoader: SourceLoader;
+	clock: Clock;
+	runPrompt: PromptRunner;
+}): Promise<{ artifact: PlanArtifact; plan: ValidatedPlan }> {
+	const created = await createReviewPlan(
+		{
+			reviewGoal: input.reviewGoal,
+			riskLevel: input.riskLevel ?? "medium",
+			targetFiles: input.targetFiles,
+			cwd: input.cwd,
+			roots: input.roots,
+		},
+		{
+			runPrompt: input.runPrompt,
+			sourceLoader: input.sourceLoader,
+			clock: input.clock,
+			hash,
+			thinkingLevel: THINKING,
+		},
+	);
+	expect(created.ok).toBe(true);
+	if (!created.ok) {
+		throw new Error(created.failure.message);
+	}
+
+	const validated = parsePlanArtifact(created.value, {
+		cwd: input.cwd,
+		roots: [...input.roots],
+		targetFiles: [...input.targetFiles],
+		sourceFingerprint: created.value.sourceFingerprint,
+		hash,
+	});
+	expect(validated.ok).toBe(true);
+	if (!validated.ok) {
+		throw new Error(validated.failure.message);
+	}
+
+	return { artifact: created.value, plan: validated.value };
+}
+
+function reportContract(report: ReviewReport) {
+	return {
+		reviewGoal: report.reviewGoal,
+		riskLevel: report.riskLevel,
+		incomplete: report.incomplete,
+		planFingerprint: report.planFingerprint,
+		aggregate: {
+			summary: report.aggregate.summary,
+			counts: report.aggregate.counts,
+			verdict: report.aggregate.verdict,
+		},
+		findings: report.findings.map(finding => ({
+			id: finding.id,
+			sourceFindings: finding.sourceFindings,
+			unitIds: finding.unitIds,
+			title: finding.title,
+			categories: finding.categories,
+			severity: finding.severity,
+			confidence: finding.confidence,
+			reason: finding.reason,
+			suggestedAction: finding.suggestedAction,
+			verificationAfterChange: finding.verificationAfterChange,
+			evidence: finding.evidence.map(item => ({
+				sourceId: item.sourceId,
+				startLine: item.startLine,
+				endLine: item.endLine,
+				quote: item.quote,
+				observation: item.observation,
+				hash: item.hash,
+			})),
+		})),
+		coverageGaps: report.coverageGaps,
+		units: report.units.map(artifact =>
+			artifact.status === "succeeded"
+				? {
+						unitId: artifact.unitId,
+						unitFingerprint: artifact.unitFingerprint,
+						status: artifact.status,
+						verdict: artifact.review.verdict,
+						findingIds: artifact.review.findings.map(finding => finding.id),
+					}
+				: {
+						unitId: artifact.unitId,
+						unitFingerprint: artifact.unitFingerprint,
+						status: artifact.status,
+						failure: {
+							kind: artifact.failure.kind,
+							...(artifact.failure.kind === "invalid_coverage" ||
+							artifact.failure.kind === "invalid_evidence" ||
+							artifact.failure.kind === "prompt_failed"
+								? { message: artifact.failure.message }
+								: {}),
+						},
+					},
+		),
+	};
+}
+
+describe("createReviewPlan", () => {
+	test("yields an editable versioned PlanArtifact without invoking the reviewer", async () => {
+		await withTempWorkspace(
+			{
+				"a.ts": "export const a = 1;\n",
+				"b.ts": "export const b = 2;\n",
+			},
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const stages: PromptStage[] = [];
+				const runPrompt: PromptRunner = async ({ resultSchema, stage }) => {
+					stages.push(stage);
+					if (stage !== "planner") {
+						throw new Error(`Unexpected stage ${stage}`);
+					}
+					return promptResult(resultSchema, stage, {
+						overview: "Two owners",
+						units: plannerUnits([
+							{ id: "unit-a", filePath: paths["a.ts"]!, reviewFocus: ["exports"] },
+							{ id: "unit-b", filePath: paths["b.ts"]!, reviewFocus: ["exports"] },
+						]),
+					});
+				};
+
+				const outcome = await createReviewPlan(
+					{
+						reviewGoal: "Review modules",
+						riskLevel: "high",
+						targetFiles: [paths["a.ts"]!, paths["b.ts"]!],
+						cwd,
+						roots,
+					},
+					{ runPrompt, sourceLoader, clock, hash, thinkingLevel: THINKING },
+				);
+
+				expect(outcome.ok).toBe(true);
+				if (!outcome.ok) {
+					throw new Error(outcome.failure.message);
+				}
+
+				expect(stages).toEqual(["planner"]);
+				expect(outcome.value).toMatchObject({
+					schemaVersion: PLAN_SCHEMA_VERSION,
+					promptVersion: PROMPT_VERSION,
+					reviewGoal: "Review modules",
+					riskLevel: "high",
+					createdAt: FIXED_START,
+				});
+				expect(outcome.value.sourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
+				expect(outcome.value.units.map(unit => unit.id)).toEqual(["unit-a", "unit-b"]);
+
+				outcome.value.units[0]!.reviewFocus = ["edited-focus"];
+				expect(outcome.value.units[0]!.reviewFocus).toEqual(["edited-focus"]);
+			},
+		);
+	});
+});
+
+describe("reviewUnit", () => {
+	test("stable unit id executes exactly one unit review", async () => {
+		await withTempWorkspace(
+			{
+				"a.ts": "export const a = 1;\n",
+				"b.ts": "export const b = 2;\n",
+			},
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const reviewed: string[] = [];
+				const planner: PromptRunner = async ({ resultSchema, stage }) => {
+					expect(stage).toBe("planner");
+					return promptResult(resultSchema, stage, {
+						overview: "Two units",
+						units: plannerUnits([
+							{ id: "unit-a", filePath: paths["a.ts"]! },
+							{ id: "unit-b", filePath: paths["b.ts"]! },
+						]),
+					});
+				};
+				const { plan } = await createValidatedPlan({
+					cwd,
+					roots,
+					targetFiles: [paths["a.ts"]!, paths["b.ts"]!],
+					reviewGoal: "Review modules",
+					sourceLoader,
+					clock,
+					runPrompt: planner,
+				});
+
+				const runPrompt: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+					expect(stage).toBe("reviewer");
+					const unitId = reviewerUnitId(userPrompt);
+					reviewed.push(unitId);
+					return promptResult(resultSchema, stage, passReview(unitId, paths["a.ts"]!), [paths["a.ts"]!]);
+				};
+
+				const artifact = await reviewUnit(
+					{ plan, unitId: "unit-a", cwd, roots },
+					{ runPrompt, sourceLoader, hash, thinkingLevel: THINKING },
+				);
+
+				expect(reviewed).toEqual(["unit-a"]);
+				expect(artifact).toMatchObject({
+					status: "succeeded",
+					unitId: "unit-a",
+					planFingerprint: plan.planFingerprint,
+					unitFingerprint: plan.units[0]!.unitFingerprint,
+				});
+				if (artifact.status !== "succeeded") {
+					throw new Error("expected succeeded artifact");
+				}
+				expect(artifact.review.coverage[0]).toMatchObject({ path: paths["a.ts"], status: "reviewed" });
+			},
+		);
+	});
+
+	test("prompt rejection, invalid coverage, and invalid evidence become terminal failed artifacts", async () => {
+		await withTempWorkspace(
+			{ "source.ts": "export const value = 1;\n" },
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const sourcePath = paths["source.ts"]!;
+				const sourceContent = "export const value = 1;\n";
+				const planner: PromptRunner = async ({ resultSchema, stage }) =>
+					promptResult(resultSchema, stage, {
+						overview: "One unit",
+						units: plannerUnits([{ id: "source", filePath: sourcePath }]),
+					});
+				const { plan } = await createValidatedPlan({
+					cwd,
+					roots,
+					targetFiles: [sourcePath],
+					reviewGoal: "Review source",
+					sourceLoader,
+					clock,
+					runPrompt: planner,
+				});
+
+				const rejected = await reviewUnit(
+					{ plan, unitId: "source", cwd, roots },
+					{
+						runPrompt: async () => {
+							throw new Error("reviewer transport failed");
+						},
+						sourceLoader,
+						hash,
+						thinkingLevel: THINKING,
+					},
+				);
+				expect(rejected).toMatchObject({
+					status: "failed",
+					unitId: "source",
+					failure: { kind: "prompt_failed", stage: "reviewer", message: "reviewer transport failed" },
+				});
+
+				const badCoverage = await reviewUnit(
+					{ plan, unitId: "source", cwd, roots },
+					{
+						runPrompt: async ({ resultSchema, stage }) =>
+							promptResult(resultSchema, stage, passReview("source", sourcePath), []),
+						sourceLoader,
+						hash,
+						thinkingLevel: THINKING,
+					},
+				);
+				expect(badCoverage.status).toBe("failed");
+				if (badCoverage.status !== "failed") {
+					throw new Error("expected failed coverage artifact");
+				}
+				expect(badCoverage.failure.kind).toBe("invalid_coverage");
+
+				const badEvidence = await reviewUnit(
+					{ plan, unitId: "source", cwd, roots },
+					{
+						runPrompt: async ({ resultSchema, stage }) =>
+							promptResult(
+								resultSchema,
+								stage,
+								{
+									unit_id: "source",
+									verdict: "FAIL",
+									summary: "Fabricated",
+									findings: [
+										{
+											id: "fabricated",
+											title: "Fabricated",
+											category: "correctness",
+											severity: "major",
+											confidence: "high",
+											evidence: [
+												{
+													source_id: sourcePath,
+													start_line: 1,
+													end_line: 1,
+													quote: "export const value = 2;",
+													observation: "Does not match disk",
+												},
+											],
+											reason: "Fabricated quote",
+											suggested_action: "None",
+											verification_after_change: "Re-read",
+										},
+									],
+									coverage: [{ path: sourcePath, status: "reviewed", notes: "Read" }],
+								},
+								[sourcePath],
+							),
+						sourceLoader,
+						hash,
+						thinkingLevel: THINKING,
+					},
+				);
+				expect(badEvidence.status).toBe("failed");
+				if (badEvidence.status !== "failed") {
+					throw new Error("expected failed evidence artifact");
+				}
+				expect(badEvidence.failure.kind).toBe("invalid_evidence");
+				expect(lineQuote(sourceContent, 1)).toBe("export const value = 1;");
+			},
+		);
+	});
+
+	test("independent reviewUnit calls share no runtime state", async () => {
+		await withTempWorkspace(
+			{
+				"a.ts": "export const a = 1;\n",
+				"b.ts": "export const b = 2;\n",
+			},
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const planner: PromptRunner = async ({ resultSchema, stage }) =>
+					promptResult(resultSchema, stage, {
+						overview: "Independent",
+						units: plannerUnits([
+							{ id: "unit-a", filePath: paths["a.ts"]! },
+							{ id: "unit-b", filePath: paths["b.ts"]! },
+						]),
+					});
+				const { plan } = await createValidatedPlan({
+					cwd,
+					roots,
+					targetFiles: [paths["a.ts"]!, paths["b.ts"]!],
+					reviewGoal: "Review modules",
+					sourceLoader,
+					clock,
+					runPrompt: planner,
+				});
+
+				const seenA: string[] = [];
+				const seenB: string[] = [];
+				const runnerA: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+					const unitId = reviewerUnitId(userPrompt);
+					seenA.push(unitId);
+					return promptResult(resultSchema, stage, passReview(unitId, paths["a.ts"]!), [paths["a.ts"]!]);
+				};
+				const runnerB: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+					const unitId = reviewerUnitId(userPrompt);
+					seenB.push(unitId);
+					return promptResult(resultSchema, stage, passReview(unitId, paths["b.ts"]!), [paths["b.ts"]!]);
+				};
+
+				const [artifactA, artifactB] = await Promise.all([
+					reviewUnit(
+						{ plan, unitId: "unit-a", cwd, roots },
+						{ runPrompt: runnerA, sourceLoader, hash, thinkingLevel: THINKING },
+					),
+					reviewUnit(
+						{ plan, unitId: "unit-b", cwd, roots },
+						{ runPrompt: runnerB, sourceLoader, hash, thinkingLevel: THINKING },
+					),
+				]);
+
+				expect(seenA).toEqual(["unit-a"]);
+				expect(seenB).toEqual(["unit-b"]);
+				expect(artifactA).toMatchObject({ status: "succeeded", unitId: "unit-a" });
+				expect(artifactB).toMatchObject({ status: "succeeded", unitId: "unit-b" });
+				expect(artifactA.unitFingerprint).not.toBe(artifactB.unitFingerprint);
+			},
+		);
+	});
+});
+
+describe("reviewUnits", () => {
+	test("selected subset executes only requested ids and preserves identity/order", async () => {
+		await withTempWorkspace(
+			{
+				"a.ts": "export const a = 1;\n",
+				"b.ts": "export const b = 2;\n",
+				"c.ts": "export const c = 3;\n",
+			},
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const planner: PromptRunner = async ({ resultSchema, stage }) =>
+					promptResult(resultSchema, stage, {
+						overview: "Three units",
+						units: plannerUnits([
+							{ id: "unit-a", filePath: paths["a.ts"]! },
+							{ id: "unit-b", filePath: paths["b.ts"]! },
+							{ id: "unit-c", filePath: paths["c.ts"]! },
+						]),
+					});
+				const { plan } = await createValidatedPlan({
+					cwd,
+					roots,
+					targetFiles: [paths["a.ts"]!, paths["b.ts"]!, paths["c.ts"]!],
+					reviewGoal: "Review modules",
+					sourceLoader,
+					clock,
+					runPrompt: planner,
+				});
+
+				const reviewed: string[] = [];
+				const runPrompt: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+					expect(stage).toBe("reviewer");
+					const unitId = reviewerUnitId(userPrompt);
+					reviewed.push(unitId);
+					const filePath =
+						unitId === "unit-c" ? paths["c.ts"]! : unitId === "unit-a" ? paths["a.ts"]! : paths["b.ts"]!;
+					return promptResult(resultSchema, stage, passReview(unitId, filePath), [filePath]);
+				};
+
+				const outcome = await reviewUnits(
+					{ plan, unitIds: ["unit-c", "unit-a"], cwd, roots },
+					{ runPrompt, sourceLoader, hash, concurrency: 2, thinkingLevel: THINKING },
+				);
+
+				expect(outcome.ok).toBe(true);
+				if (!outcome.ok) {
+					throw new Error(outcome.failure.message);
+				}
+				expect(outcome.value.map(artifact => artifact.unitId)).toEqual(["unit-c", "unit-a"]);
+				expect(new Set(reviewed)).toEqual(new Set(["unit-c", "unit-a"]));
+				expect(reviewed).toHaveLength(2);
+				expect(outcome.value.every(artifact => artifact.status === "succeeded")).toBe(true);
+			},
+		);
+	});
+
+	test("rejects unknown and duplicate selected unit ids", async () => {
+		await withTempWorkspace(
+			{
+				"a.ts": "export const a = 1;\n",
+				"b.ts": "export const b = 2;\n",
+			},
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const planner: PromptRunner = async ({ resultSchema, stage }) =>
+					promptResult(resultSchema, stage, {
+						overview: "Two units",
+						units: plannerUnits([
+							{ id: "unit-a", filePath: paths["a.ts"]! },
+							{ id: "unit-b", filePath: paths["b.ts"]! },
+						]),
+					});
+				const { plan } = await createValidatedPlan({
+					cwd,
+					roots,
+					targetFiles: [paths["a.ts"]!, paths["b.ts"]!],
+					reviewGoal: "Review modules",
+					sourceLoader,
+					clock,
+					runPrompt: planner,
+				});
+
+				const runPrompt: PromptRunner = async () => {
+					throw new Error("reviewer should not run for invalid selection");
+				};
+
+				const unknown = await reviewUnits(
+					{ plan, unitIds: ["unit-a", "missing"], cwd, roots },
+					{ runPrompt, sourceLoader, hash, concurrency: 2, thinkingLevel: THINKING },
+				);
+				expect(unknown).toEqual({
+					ok: false,
+					failure: {
+						kind: "invalid_unit_result",
+						reason: "unknown_unit",
+						unitId: "missing",
+						message: "Unknown unit id selected: missing",
+					},
+				});
+
+				const duplicates = await reviewUnits(
+					{ plan, unitIds: ["unit-a", "unit-a"], cwd, roots },
+					{ runPrompt, sourceLoader, hash, concurrency: 2, thinkingLevel: THINKING },
+				);
+				expect(duplicates).toEqual({
+					ok: false,
+					failure: {
+						kind: "invalid_unit_result",
+						reason: "duplicate_unit",
+						unitId: "unit-a",
+						message: "Duplicate unit id selected: unit-a",
+					},
+				});
+			},
+		);
+	});
+
+	test("enforces bounded concurrency with Promise.withResolvers and no sleeps", async () => {
+		const fileEntries = Object.fromEntries(
+			Array.from({ length: 6 }, (_, index) => [`file-${index}.ts`, `export const v${index} = ${index};\n`]),
+		);
+		await withTempWorkspace(fileEntries, async ({ cwd, paths, roots, sourceLoader, clock }) => {
+			const units = Object.entries(paths).map(([name, filePath], index) => ({
+				id: `unit-${index}`,
+				filePath,
+				title: name,
+			}));
+			const planner: PromptRunner = async ({ resultSchema, stage }) =>
+				promptResult(resultSchema, stage, {
+					overview: "Many units",
+					units: plannerUnits(units),
+				});
+			const { plan } = await createValidatedPlan({
+				cwd,
+				roots,
+				targetFiles: Object.values(paths),
+				reviewGoal: "Review modules",
+				sourceLoader,
+				clock,
+				runPrompt: planner,
+			});
+
+			const concurrency = 2;
+			let active = 0;
+			let maximumActive = 0;
+			const releaseGate = Promise.withResolvers<void>();
+
+			const runPrompt: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+				expect(stage).toBe("reviewer");
+				const unitId = reviewerUnitId(userPrompt);
+				const unit = units.find(candidate => candidate.id === unitId);
+				if (!unit) {
+					throw new Error(`Unknown unit ${unitId}`);
+				}
+
+				active += 1;
+				maximumActive = Math.max(maximumActive, active);
+				if (active === concurrency) {
+					releaseGate.resolve();
+				}
+				await releaseGate.promise;
+				active -= 1;
+
+				return promptResult(resultSchema, stage, passReview(unitId, unit.filePath), [unit.filePath]);
+			};
+
+			const outcome = await reviewUnits(
+				{ plan, unitIds: plan.units.map(unit => unit.id), cwd, roots },
+				{ runPrompt, sourceLoader, hash, concurrency, thinkingLevel: THINKING },
+			);
+
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) {
+				throw new Error(outcome.failure.message);
+			}
+			expect(maximumActive).toBe(concurrency);
+			expect(outcome.value).toHaveLength(units.length);
+			expect(outcome.value.every(artifact => artifact.status === "succeeded")).toBe(true);
+		});
+	});
+});
+
+describe("aggregateReview", () => {
+	async function twoUnitFixture(
+		run: (fixture: {
+			cwd: string;
+			roots: string[];
+			paths: Record<string, string>;
+			contents: Record<string, string>;
+			sourceLoader: SourceLoader;
+			clock: Clock & { advance(ms: number): void };
+			plan: ValidatedPlan;
+			succeeded: UnitReviewArtifact[];
+			failedEvidence: UnitReviewArtifact;
+		}) => Promise<void>,
+	) {
+		const contents = {
+			"a.ts": "export function divide(a: number, b: number) {\n\treturn a / b;\n}\n",
+			"b.ts": "export const format = (value: number) => String(value);\n",
+		};
+		await withTempWorkspace(contents, async ({ cwd, paths, roots, sourceLoader, clock }) => {
+			const planner: PromptRunner = async ({ resultSchema, stage }) =>
+				promptResult(resultSchema, stage, {
+					overview: "Numeric surface",
+					units: plannerUnits([
+						{ id: "division", filePath: paths["a.ts"]!, riskLevel: "high", reviewFocus: ["zero divisor"] },
+						{ id: "formatting", filePath: paths["b.ts"]!, riskLevel: "low", reviewFocus: ["output contract"] },
+					]),
+				});
+			const { plan } = await createValidatedPlan({
+				cwd,
+				roots,
+				targetFiles: [paths["a.ts"]!, paths["b.ts"]!],
+				reviewGoal: "Review public numeric behavior",
+				riskLevel: "high",
+				sourceLoader,
+				clock,
+				runPrompt: planner,
+			});
+
+			const successRunner: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+				const unitId = reviewerUnitId(userPrompt);
+				if (unitId === "division") {
+					return promptResult(
+						resultSchema,
+						stage,
+						findingReview({
+							unitId,
+							filePath: paths["a.ts"]!,
+							fileContent: contents["a.ts"],
+							findingId: "zero-divisor",
+							severity: "critical",
+							startLine: 2,
+							title: "Division by zero is unchecked",
+						}),
+						[paths["a.ts"]!],
+					);
+				}
+				return promptResult(
+					resultSchema,
+					stage,
+					findingReview({
+						unitId,
+						filePath: paths["b.ts"]!,
+						fileContent: contents["b.ts"],
+						findingId: "string-coercion",
+						severity: "minor",
+						startLine: 1,
+						title: "Format always stringifies",
+					}),
+					[paths["b.ts"]!],
+				);
+			};
+
+			const succeededOutcome = await reviewUnits(
+				{ plan, unitIds: ["division", "formatting"], cwd, roots },
+				{ runPrompt: successRunner, sourceLoader, hash, concurrency: 2, thinkingLevel: THINKING },
+			);
+			expect(succeededOutcome.ok).toBe(true);
+			if (!succeededOutcome.ok) {
+				throw new Error(succeededOutcome.failure.message);
+			}
+
+			const failedEvidence = await reviewUnit(
+				{ plan, unitId: "formatting", cwd, roots },
+				{
+					runPrompt: async ({ resultSchema, stage }) =>
+						promptResult(
+							resultSchema,
+							stage,
+							{
+								unit_id: "formatting",
+								verdict: "FAIL",
+								summary: "Bad evidence",
+								findings: [
+									{
+										id: "bad",
+										title: "Bad",
+										category: "correctness",
+										severity: "major",
+										confidence: "high",
+										evidence: [
+											{
+												source_id: paths["b.ts"]!,
+												start_line: 1,
+												end_line: 1,
+												quote: "not the real source",
+												observation: "Fabricated",
+											},
+										],
+										reason: "Fabricated",
+										suggested_action: "None",
+										verification_after_change: "Re-read",
+									},
+								],
+								coverage: [{ path: paths["b.ts"]!, status: "reviewed", notes: "Read" }],
+							},
+							[paths["b.ts"]!],
+						),
+					sourceLoader,
+					hash,
+					thinkingLevel: THINKING,
+				},
+			);
+			expect(failedEvidence.status).toBe("failed");
+
+			await run({
+				cwd,
+				roots,
+				paths,
+				contents,
+				sourceLoader,
+				clock,
+				plan,
+				succeeded: succeededOutcome.value,
+				failedEvidence,
+			});
+		});
+	}
+
+	test("premature missing results are a typed failure and do not invoke the aggregator", async () => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, clock }) => {
+			let aggregatorCalls = 0;
+			const runPrompt: PromptRunner = async ({ stage }) => {
+				if (stage === "aggregator") {
+					aggregatorCalls += 1;
+				}
+				throw new Error(`Unexpected stage ${stage}`);
+			};
+
+			const outcome = await aggregateReview(
+				{
+					plan,
+					unitReviews: [succeeded[0]!],
+					cwd,
+					startedAt: clock.now(),
+				},
+				{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+			);
+
+			expect(aggregatorCalls).toBe(0);
+			expect(outcome.ok).toBe(false);
+			if (outcome.ok) {
+				throw new Error("expected missing_results failure");
+			}
+			expect(outcome.failure).toMatchObject({
+				kind: "invalid_aggregation",
+				reason: "missing_results",
+			});
+		});
+	});
+
+	test("failed terminal unit results still aggregate with coverage gaps", async () => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, failedEvidence, clock, paths }) => {
+			let aggregatorCalls = 0;
+			const runPrompt: PromptRunner = async ({ resultSchema, stage }) => {
+				expect(stage).toBe("aggregator");
+				aggregatorCalls += 1;
+				return promptResult(resultSchema, stage, {
+					overall_summary: "Formatting review failed validation",
+					ordered_groups: [
+						{
+							finding_refs: [{ unit_id: "division", finding_id: "zero-divisor" }],
+							title: "Define division by zero behavior",
+							reason: "Numeric API has no zero-divisor contract",
+							recommended_action: "Reject zero or return an explicit domain result",
+							verification_after_change: "Assert the selected zero-divisor behavior",
+						},
+					],
+					coverage_gaps: [],
+				});
+			};
+
+			const outcome = await aggregateReview(
+				{
+					plan,
+					unitReviews: [succeeded[0]!, failedEvidence],
+					cwd,
+					startedAt: clock.now(),
+				},
+				{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+			);
+
+			expect(aggregatorCalls).toBe(1);
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) {
+				throw new Error(outcome.failure.message);
+			}
+			expect(outcome.value.incomplete).toBe(true);
+			expect(outcome.value.aggregate.verdict).toBe("INSUFFICIENT_CONTEXT");
+			expect(outcome.value.coverageGaps).toEqual([
+				{
+					unitId: "formatting",
+					path: paths["b.ts"],
+					reason: failedEvidence.status === "failed" ? failedEvidence.failure.message : "",
+				},
+			]);
+			expect(outcome.value.findings).toHaveLength(1);
+		});
+	});
+
+	test("complete results invoke the aggregator once, conserve findings, and keep deterministic severity", async () => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, clock }) => {
+			let aggregatorCalls = 0;
+			const runPrompt: PromptRunner = async ({ resultSchema, stage }) => {
+				expect(stage).toBe("aggregator");
+				aggregatorCalls += 1;
+				return promptResult(resultSchema, stage, {
+					overall_summary: "Critical division defect dominates",
+					ordered_groups: [
+						{
+							finding_refs: [
+								{ unit_id: "division", finding_id: "zero-divisor" },
+								{ unit_id: "formatting", finding_id: "string-coercion" },
+							],
+							title: "Numeric API contracts",
+							reason: "Grouped related public API issues",
+							recommended_action: "Tighten division and formatting contracts",
+							verification_after_change: "Cover zero and formatting edges",
+						},
+					],
+					coverage_gaps: [],
+				});
+			};
+
+			const outcome = await aggregateReview(
+				{
+					plan,
+					unitReviews: succeeded,
+					cwd,
+					startedAt: clock.now(),
+				},
+				{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+			);
+
+			expect(aggregatorCalls).toBe(1);
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) {
+				throw new Error(outcome.failure.message);
+			}
+
+			expect(outcome.value.incomplete).toBe(false);
+			expect(outcome.value.aggregate.verdict).toBe("FAIL");
+			expect(outcome.value.findings).toHaveLength(1);
+			expect(outcome.value.findings[0]).toMatchObject({
+				sourceFindings: ["division/zero-divisor", "formatting/string-coercion"],
+				severity: "critical",
+				confidence: "high",
+			});
+			expect(outcome.value.aggregate.counts.findingCount).toBe(1);
+			expect(outcome.value.aggregate.counts.countsBySeverity.critical).toBe(1);
+			expect(outcome.value.aggregate.counts.countsBySeverity.minor).toBe(0);
+		});
+	});
+
+	test("foreign, stale, duplicate, and unknown unit artifacts fail before the aggregator runs", async () => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, clock }) => {
+			let aggregatorCalls = 0;
+			const runPrompt: PromptRunner = async ({ stage }) => {
+				if (stage === "aggregator") {
+					aggregatorCalls += 1;
+				}
+				throw new Error(`Unexpected stage ${stage}`);
+			};
+
+			const [division, formatting] = succeeded;
+			if (!division || !formatting) {
+				throw new Error("expected two succeeded artifacts");
+			}
+
+			const cases: Array<{ label: string; unitReviews: UnitReviewArtifact[]; reason: string }> = [
+				{
+					label: "foreign",
+					unitReviews: [{ ...division, planFingerprint: "f".repeat(64) }, formatting],
+					reason: "foreign_plan",
+				},
+				{
+					label: "stale",
+					unitReviews: [{ ...division, unitFingerprint: "s".repeat(64) }, formatting],
+					reason: "stale_unit",
+				},
+				{
+					label: "duplicate",
+					unitReviews: [division, { ...division, unitId: "division" }],
+					reason: "duplicate_unit",
+				},
+				{
+					label: "unknown",
+					unitReviews: [division, { ...formatting, unitId: "ghost-unit" }],
+					reason: "unknown_unit",
+				},
+			];
+
+			for (const testCase of cases) {
+				aggregatorCalls = 0;
+				const outcome = await aggregateReview(
+					{
+						plan,
+						unitReviews: testCase.unitReviews,
+						cwd,
+						startedAt: clock.now(),
+					},
+					{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+				);
+				expect(aggregatorCalls, testCase.label).toBe(0);
+				expect(outcome.ok, testCase.label).toBe(false);
+				if (outcome.ok) {
+					throw new Error(`expected ${testCase.label} failure`);
+				}
+				expect(outcome.failure).toMatchObject({
+					kind: "invalid_unit_result",
+					reason: testCase.reason,
+				});
+			}
+		});
+	});
+});
+
+describe("end-to-end lifecycle smoke", () => {
+	test("create, edit, review, aggregate, and match runReview report contract", async () => {
+		const contents = {
+			"divide.ts": "export function divide(a: number, b: number) {\n\treturn a / b;\n}\n",
+			"format.ts": "export const format = (value: number) => String(value);\n",
+		};
+
+		await withTempWorkspace(contents, async ({ cwd, paths, roots, sourceLoader, clock }) => {
+			const dividePath = paths["divide.ts"]!;
+			const formatPath = paths["format.ts"]!;
+			const editedFocus = ["zero divisor", "domain errors"];
+
+			const buildPlannerOutput = (focus: string[]) => ({
+				overview: "Two independent behaviors",
+				units: plannerUnits([
+					{
+						id: "division",
+						filePath: dividePath,
+						riskLevel: "high",
+						reviewFocus: focus,
+						title: "Division",
+					},
+					{
+						id: "formatting",
+						filePath: formatPath,
+						riskLevel: "low",
+						reviewFocus: ["output contract"],
+						title: "Formatting",
+					},
+				]),
+			});
+
+			const buildReviewerOutput = (unitId: string) => {
+				if (unitId === "division") {
+					return {
+						value: findingReview({
+							unitId,
+							filePath: dividePath,
+							fileContent: contents["divide.ts"],
+							findingId: "zero-divisor",
+							severity: "major",
+							startLine: 2,
+							title: "Division by zero is unchecked",
+						}),
+						reads: [dividePath],
+					};
+				}
+				return {
+					value: passReview(unitId, formatPath),
+					reads: [formatPath],
+				};
+			};
+
+			const buildAggregatorOutput = () => ({
+				overall_summary: "One correctness defect",
+				ordered_groups: [
+					{
+						finding_refs: [{ unit_id: "division", finding_id: "zero-divisor" }],
+						title: "Define division by zero behavior",
+						reason: "The numeric API has no zero-divisor contract",
+						recommended_action: "Reject zero or return an explicit domain result",
+						verification_after_change: "Assert the selected zero-divisor behavior",
+					},
+				],
+				coverage_gaps: [],
+			});
+
+			const stages: PromptStage[] = [];
+			const createPlanRunner: PromptRunner = async ({ resultSchema, stage }) => {
+				stages.push(stage);
+				expect(stage).toBe("planner");
+				return promptResult(resultSchema, stage, buildPlannerOutput(["zero divisor"]));
+			};
+
+			const created = await createReviewPlan(
+				{
+					reviewGoal: "Review public numeric behavior",
+					riskLevel: "high",
+					targetFiles: [dividePath, formatPath],
+					cwd,
+					roots,
+				},
+				{ runPrompt: createPlanRunner, sourceLoader, clock, hash, thinkingLevel: THINKING },
+			);
+			expect(created.ok).toBe(true);
+			if (!created.ok) {
+				throw new Error(created.failure.message);
+			}
+			expect(stages).toEqual(["planner"]);
+
+			const artifactDir = path.join(cwd, "artifacts");
+			const planPath = path.join(artifactDir, "plan.json");
+			await writeJsonAtomic(planPath, created.value);
+
+			const editable = JSON.parse(await fs.readFile(planPath, "utf8")) as PlanArtifact;
+			const divisionUnit = editable.units.find(unit => unit.id === "division");
+			expect(divisionUnit).toBeDefined();
+			divisionUnit!.reviewFocus = editedFocus;
+			await writeJsonAtomic(planPath, editable);
+
+			const loadedUnknown: unknown = JSON.parse(await fs.readFile(planPath, "utf8"));
+			const validated = parsePlanArtifact(loadedUnknown, {
+				cwd,
+				roots: [...roots],
+				targetFiles: [dividePath, formatPath],
+				sourceFingerprint: created.value.sourceFingerprint,
+				hash,
+			});
+			expect(validated.ok).toBe(true);
+			if (!validated.ok) {
+				throw new Error(validated.failure.message);
+			}
+			expect(validated.value.units.find(unit => unit.id === "division")?.reviewFocus).toEqual(editedFocus);
+
+			const stagedReviewerCalls: string[] = [];
+			const stagedRunner: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+				if (stage === "reviewer") {
+					const unitId = reviewerUnitId(userPrompt);
+					stagedReviewerCalls.push(unitId);
+					const review = buildReviewerOutput(unitId);
+					return promptResult(resultSchema, stage, review.value, review.reads);
+				}
+				if (stage === "aggregator") {
+					return promptResult(resultSchema, stage, buildAggregatorOutput());
+				}
+				throw new Error(`Unexpected staged stage ${stage}`);
+			};
+
+			const first = await reviewUnit(
+				{ plan: validated.value, unitId: "division", cwd, roots },
+				{ runPrompt: stagedRunner, sourceLoader, hash, thinkingLevel: THINKING },
+			);
+			expect(first).toMatchObject({ status: "succeeded", unitId: "division" });
+			if (first.status === "succeeded") {
+				expect(first.review.findings[0]?.evidence[0]).toMatchObject({
+					sourceId: dividePath,
+					startLine: 2,
+					endLine: 2,
+					quote: "\treturn a / b;",
+				});
+				expect(first.review.findings[0]?.evidence[0]?.hash).toMatch(/^[a-f0-9]{64}$/);
+			}
+
+			let prematureAggregatorCalls = 0;
+			const premature = await aggregateReview(
+				{
+					plan: validated.value,
+					unitReviews: [first],
+					cwd,
+					startedAt: clock.now(),
+				},
+				{
+					runPrompt: async ({ stage }) => {
+						if (stage === "aggregator") {
+							prematureAggregatorCalls += 1;
+						}
+						throw new Error(`Unexpected stage ${stage}`);
+					},
+					clock,
+					modelId: MODEL_ID,
+					thinkingLevel: THINKING,
+				},
+			);
+			expect(prematureAggregatorCalls).toBe(0);
+			expect(premature.ok).toBe(false);
+			if (premature.ok) {
+				throw new Error("expected premature aggregation failure");
+			}
+			expect(premature.failure).toMatchObject({
+				kind: "invalid_aggregation",
+				reason: "missing_results",
+			});
+
+			const remaining = await reviewUnits(
+				{ plan: validated.value, unitIds: ["formatting"], cwd, roots },
+				{ runPrompt: stagedRunner, sourceLoader, hash, concurrency: 2, thinkingLevel: THINKING },
+			);
+			expect(remaining.ok).toBe(true);
+			if (!remaining.ok) {
+				throw new Error(remaining.failure.message);
+			}
+			expect(stagedReviewerCalls).toEqual(["division", "formatting"]);
+
+			const unitArtifacts = [first, ...remaining.value];
+			for (const artifact of unitArtifacts) {
+				await writeJsonAtomic(path.join(artifactDir, `${artifact.unitId}.json`), artifact);
+			}
+
+			clock.advance(25);
+			const startedAt = clock.now();
+			clock.advance(40);
+			const aggregated = await aggregateReview(
+				{
+					plan: validated.value,
+					unitReviews: unitArtifacts,
+					cwd,
+					startedAt,
+				},
+				{ runPrompt: stagedRunner, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+			);
+			expect(aggregated.ok).toBe(true);
+			if (!aggregated.ok) {
+				throw new Error(aggregated.failure.message);
+			}
+
+			const reportPath = path.join(artifactDir, "report.json");
+			await writeJsonAtomic(reportPath, aggregated.value);
+			const persistedReport = JSON.parse(await fs.readFile(reportPath, "utf8")) as ReviewReport;
+			expect(persistedReport.aggregate.verdict).toBe("FAIL");
+			expect(persistedReport.findings[0]).toMatchObject({
+				severity: "major",
+				sourceFindings: ["division/zero-divisor"],
+			});
+			expect(persistedReport.incomplete).toBe(false);
+
+			const runReviewRunner: PromptRunner = async ({ resultSchema, stage, userPrompt }) => {
+				if (stage === "planner") {
+					return promptResult(resultSchema, stage, buildPlannerOutput(editedFocus));
+				}
+				if (stage === "reviewer") {
+					const unitId = reviewerUnitId(userPrompt);
+					const review = buildReviewerOutput(unitId);
+					return promptResult(resultSchema, stage, review.value, review.reads);
+				}
+				if (stage === "aggregator") {
+					return promptResult(resultSchema, stage, buildAggregatorOutput());
+				}
+				throw new Error(`Unexpected runReview stage ${stage}`);
+			};
+
+			clock.advance(10);
+			const runReviewStartedClock = createClock(clock.now());
+			const full = await runReview(
+				{
+					reviewGoal: "Review public numeric behavior",
+					riskLevel: "high",
+					targetFiles: [dividePath, formatPath],
+					cwd,
+					roots,
+				},
+				{
+					runPrompt: runReviewRunner,
+					sourceLoader,
+					clock: runReviewStartedClock,
+					hash,
+					concurrency: 2,
+					modelId: MODEL_ID,
+					thinkingLevel: THINKING,
+				},
+			);
+			expect(full.ok).toBe(true);
+			if (!full.ok) {
+				throw new Error(full.failure.message);
+			}
+
+			expect(reportContract(full.value)).toEqual(reportContract(aggregated.value));
+		});
+	});
+});

@@ -1,35 +1,30 @@
 import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 
-export const CONTEXT_TOOL_NAMES = ["read", "lsp", "ast_grep"] as const;
-export const PLANNER_TOOL_NAMES = [...CONTEXT_TOOL_NAMES, "task"] as const;
-const CONTEXT_TOOL_NAME_SET = new Set<string>(CONTEXT_TOOL_NAMES);
-export const MAX_CONTEXT_TOOL_CALLS = 4;
-export const MAX_PLANNER_CONTEXT_TOOL_CALLS = 12;
+export const CONTEXT_TOOL_NAMES = ["read", "glob", "grep", "lsp", "ast_grep"] as const;
+export const MAX_CONTEXT_TOOL_CALLS = 24;
 
-export type ContextToolMode = "none" | "read_only" | "semantic_planning";
+export type ContextToolMode = "none" | "planner" | "reviewer";
 
-const READ_ONLY_LSP_ACTIONS = new Set([
-	"diagnostics",
-	"definition",
-	"type_definition",
-	"implementation",
-	"references",
-	"hover",
-	"symbols",
-	"status",
-	"capabilities",
-]);
-
+const CONTEXT_TOOL_NAME_LOOKUP: Record<(typeof CONTEXT_TOOL_NAMES)[number], true> = {
+	read: true,
+	glob: true,
+	grep: true,
+	lsp: true,
+	ast_grep: true,
+};
+const READ_ONLY_LSP_ACTIONS: Record<string, true> = {
+	capabilities: true,
+	definition: true,
+	diagnostics: true,
+	hover: true,
+	implementation: true,
+	references: true,
+	status: true,
+	symbols: true,
+	type_definition: true,
+};
 const recordSchema = z.record(z.string(), z.unknown());
-const taskInputSchema = z
-	.object({
-		name: z.string().optional(),
-		agent: z.literal("scout"),
-		task: z.string().min(1),
-		isolated: z.boolean().optional(),
-	})
-	.strict();
 
 export function authorizeContextToolCall({
 	callCount,
@@ -37,7 +32,6 @@ export function authorizeContextToolCall({
 	input,
 	mode,
 	roots,
-	taskCallCount = 0,
 	toolName,
 }: {
 	callCount: number;
@@ -45,27 +39,16 @@ export function authorizeContextToolCall({
 	input: unknown;
 	mode: ContextToolMode;
 	roots: string[];
-	taskCallCount?: number;
 	toolName: string;
 }) {
 	if (mode === "none") return "Context tools are disabled for this prompt";
-	if (toolName === "task") {
-		if (mode !== "semantic_planning") return "Subagents are disabled for this prompt";
-		if (taskCallCount > 1) return "Semantic planner may invoke exactly one scout";
-		const task = taskInputSchema.safeParse(input);
-		if (!task.success || task.data.agent !== "scout") return "Semantic planner may invoke only the scout agent";
-		return null;
-	}
-	if (!CONTEXT_TOOL_NAME_SET.has(toolName)) {
-		return `Tool ${toolName} is outside the read-only context policy`;
-	}
-	const maxCalls = mode === "semantic_planning" ? MAX_PLANNER_CONTEXT_TOOL_CALLS : MAX_CONTEXT_TOOL_CALLS;
-	if (callCount - taskCallCount > maxCalls) return `Context tool budget exceeded (${maxCalls} calls)`;
+	if (!(toolName in CONTEXT_TOOL_NAME_LOOKUP)) return `Tool ${toolName} is outside the read-only context policy`;
+	if (callCount > MAX_CONTEXT_TOOL_CALLS) return `Context tool budget exceeded (${MAX_CONTEXT_TOOL_CALLS} calls)`;
 
 	const record = recordSchema.parse(input ?? {});
 	if (toolName === "lsp") {
 		const action = typeof record.action === "string" ? record.action.toLowerCase() : "";
-		if (!READ_ONLY_LSP_ACTIONS.has(action)) return `LSP action ${action || "<missing>"} is not read-only`;
+		if (!(action in READ_ONLY_LSP_ACTIONS)) return `LSP action ${action || "<missing>"} is not read-only`;
 	}
 
 	for (const target of toolTargets(toolName, record)) {
@@ -81,7 +64,7 @@ export function authorizeContextToolCall({
 function toolTargets(toolName: string, input: Record<string, unknown>) {
 	const raw = toolName === "lsp" ? input.file : input.path;
 	if (typeof raw !== "string" || raw.length === 0) return [];
-	return toolName === "ast_grep" ? raw.split(";").filter(Boolean) : [raw];
+	return toolName === "read" || toolName === "lsp" ? [raw] : raw.split(";").filter(Boolean);
 }
 
 function isWithin(root: string, candidate: string) {

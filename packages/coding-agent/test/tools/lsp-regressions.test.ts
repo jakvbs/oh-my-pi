@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult, RenderResultOptions } from "@oh-my-pi/pi-agent-core";
 import { arkToWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { preloadPluginRoots } from "@oh-my-pi/pi-coding-agent/discovery/helpers";
 import { LspTool } from "@oh-my-pi/pi-coding-agent/lsp";
 import * as lspClient from "@oh-my-pi/pi-coding-agent/lsp/client";
@@ -1077,6 +1078,123 @@ describe("lsp regressions", () => {
 		expect(filtered).toHaveLength(2);
 		expect(unique).toHaveLength(1);
 		expect(unique[0]?.name).toBe("logger");
+	});
+
+	it("builds and incrementally refreshes repository symbol maps", async () => {
+		const tempDir = TempDir.createSync("@omp-lsp-repository-symbols-");
+		try {
+			const srcDir = path.join(tempDir.path(), "src");
+			const alphaPath = path.join(srcDir, "alpha.ts");
+			const betaPath = path.join(srcDir, "beta.ts");
+			await Bun.write(alphaPath, "export function alpha() {}\n");
+			await Bun.write(betaPath, "export function beta() {}\n");
+			let documentRequests = 0;
+
+			installFakeLsp((message, srv) => {
+				if (message.method === "initialize") {
+					srv.send({
+						jsonrpc: "2.0",
+						id: message.id,
+						result: { capabilities: { documentSymbolProvider: true } },
+					});
+				} else if (message.method === "textDocument/documentSymbol") {
+					documentRequests += 1;
+					srv.send({
+						jsonrpc: "2.0",
+						id: message.id,
+						result: [
+							{
+								name: `symbol${documentRequests}`,
+								kind: 12,
+								range: {
+									start: { line: 0, character: 0 },
+									end: { line: 0, character: 6 },
+								},
+								selectionRange: {
+									start: { line: 0, character: 0 },
+									end: { line: 0, character: 6 },
+								},
+								children: [
+									{
+										name: "nested",
+										kind: 6,
+										range: {
+											start: { line: 1, character: 0 },
+											end: { line: 1, character: 6 },
+										},
+										selectionRange: {
+											start: { line: 1, character: 0 },
+											end: { line: 1, character: 6 },
+										},
+									},
+								],
+							},
+						],
+					});
+				} else if (message.method === "shutdown") {
+					srv.send({ jsonrpc: "2.0", id: message.id, result: null });
+				} else if (message.method === "exit") {
+					srv.exit(0);
+				}
+			});
+
+			const server: ServerConfig = {
+				command: "fake-typescript-language-server",
+				resolvedCommand: process.execPath,
+				fileTypes: ["ts"],
+				rootMarkers: [],
+			};
+			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
+				servers: { typescript: server },
+				idleTimeoutMs: undefined,
+			});
+			vi.spyOn(lspConfig, "getServersForFile").mockImplementation((_config, filePath) =>
+				filePath.endsWith(".ts") ? [["typescript", server]] : [],
+			);
+			const session: ToolSession = {
+				cwd: tempDir.path(),
+				hasUI: false,
+				getSessionFile: () => null,
+				getSessionSpawns: () => null,
+				settings: Settings.isolated(),
+			};
+			const tool = new LspTool(session);
+			const outputText = (result: AgentToolResult<LspToolDetails>): string =>
+				result.content
+					.filter(block => block.type === "text")
+					.map(block => block.text)
+					.join("\n");
+
+			const first = outputText(await tool.execute("repository-symbols-1", { action: "symbols", file: "src" }));
+			expect(first).toContain("2 refreshed");
+			expect(first).toContain("src/alpha.ts:");
+			expect(first).toContain("src/beta.ts:");
+			expect(documentRequests).toBe(2);
+			expect(first).toContain("top-level scope");
+			expect(first).not.toContain("nested");
+
+			const all = outputText(
+				await tool.execute("repository-symbols-all", { action: "symbols", file: "src", scope: "all" }),
+			);
+			expect(all).toContain("all scope");
+			expect(all).toContain("nested");
+			expect(documentRequests).toBe(2);
+
+			const cached = outputText(await tool.execute("repository-symbols-2", { action: "symbols", file: "src" }));
+			expect(cached).toContain("0 refreshed");
+			expect(cached).toContain("2 cache hits");
+			expect(documentRequests).toBe(2);
+
+			await Bun.write(betaPath, "export function betaChanged() {}\n");
+			const refreshed = outputText(await tool.execute("repository-symbols-3", { action: "symbols", file: "src" }));
+			expect(refreshed).toContain("1 refreshed");
+			expect(refreshed).toContain("1 cache hits");
+			expect(documentRequests).toBe(3);
+		} finally {
+			vi.restoreAllMocks();
+			await lspClient.shutdownAll();
+			tempDir.removeSync();
+		}
 	});
 
 	it("applies command-only code actions by executing workspace commands", async () => {

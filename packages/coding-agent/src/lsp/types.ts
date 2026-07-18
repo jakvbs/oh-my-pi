@@ -20,6 +20,10 @@ export const lspSchema = type({
 		.atMost(TOOL_TIMEOUTS.lsp.max)
 		.describe("Timeout in seconds (default 20; range 5–300)."),
 	payload: "string?",
+	"max_symbols?": "number.integer >= 1",
+	"max_symbols_per_file?": "number.integer >= 1",
+	generated_policy: "'compact' | 'include' | 'exclude'?",
+	scope: "'top-level' | 'all'?",
 });
 
 export type LspParams = typeof lspSchema.infer;
