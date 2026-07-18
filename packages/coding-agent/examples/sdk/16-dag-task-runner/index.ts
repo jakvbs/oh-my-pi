@@ -811,27 +811,27 @@ export async function runCli(
 ): Promise<number> {
 	const args = parseArgs(argv);
 	setMaxListeners(ABORT_SIGNAL_LISTENER_LIMIT);
+	const raw = JSON.parse(await Bun.file(args.dag).text());
+	let dag: DAG;
+	try {
+		dag = parseDAG(raw);
+	} catch (error) {
+		if (error instanceof DAGValidationError) {
+			process.stderr.write(`[dag-runner] deterministic preflight failed:\n${error.message}\n`);
+			return 1;
+		}
+		throw error;
+	}
+	const fileModels = args.modelsFile
+		? validateModelMap(JSON.parse(await Bun.file(args.modelsFile).text()), `--models-file ${args.modelsFile}`)
+		: undefined;
+	const mergedModels = mergeModelOverrides({ dagModels: dag.models, fileModels });
+	dag.models = Object.keys(mergedModels).length > 0 ? mergedModels : undefined;
+	const dagHash = await hashNormalizedDAG(dag);
 	const needsRuntime = args.semanticPreflight || (!args.initOnly && !args.reviewOnly);
 	const runtime = needsRuntime ? await createSessionRuntime() : undefined;
-	try {
-		const raw = JSON.parse(await Bun.file(args.dag).text());
-		let dag: DAG;
-		try {
-			dag = parseDAG(raw);
-		} catch (error) {
-			if (error instanceof DAGValidationError) {
-				process.stderr.write(`[dag-runner] deterministic preflight failed:\n${error.message}\n`);
-				return 1;
-			}
-			throw error;
-		}
-		const fileModels = args.modelsFile
-			? validateModelMap(JSON.parse(await Bun.file(args.modelsFile).text()), `--models-file ${args.modelsFile}`)
-			: undefined;
-		const mergedModels = mergeModelOverrides({ dagModels: dag.models, fileModels });
-		dag.models = Object.keys(mergedModels).length > 0 ? mergedModels : undefined;
-		const dagHash = await hashNormalizedDAG(dag);
 
+	try {
 		if (args.semanticPreflight) {
 			if (!runtime) throw new Error("Semantic preflight runtime was not initialized");
 			writeLine(`semantic preflight — DAG sha256 ${dagHash}`);

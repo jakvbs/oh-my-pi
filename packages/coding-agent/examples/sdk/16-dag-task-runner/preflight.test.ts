@@ -529,6 +529,32 @@ describe("semantic review contracts", () => {
 });
 
 describe("semantic preflight CLI", () => {
+	test("deterministic preflight rejects before runtime initialization", async () => {
+		using tempDir = TempDir.createSync("@omp-dag-deterministic-first-");
+		const dagPath = tempDir.join("invalid-dag.json");
+		const canvasPath = tempDir.join("must-not-exist.canvas.tsx");
+		await Bun.write(dagPath, JSON.stringify({ title: "invalid", success_criteria: [], tasks: [] }));
+		let runtimeCreations = 0;
+
+		const code = await runCli(
+			["--dag", dagPath, "--canvas-path", canvasPath, "--cwd", tempDir.path()],
+			undefined,
+			async () => {
+				runtimeCreations++;
+				return {
+					close: () => {},
+					factory: async () => {
+						throw new Error("session must not start");
+					},
+				};
+			},
+		);
+
+		expect(code).toBe(1);
+		expect(runtimeCreations).toBe(0);
+		expect(await Bun.file(canvasPath).exists()).toBe(false);
+	});
+
 	test("review-only requires no canvas and creates no task session", async () => {
 		using tempDir = TempDir.createSync("@omp-dag-review-only-");
 		const dagPath = tempDir.join("dag.json");

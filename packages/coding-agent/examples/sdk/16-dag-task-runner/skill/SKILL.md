@@ -192,7 +192,7 @@ SDK `agent_end` starts a 15-second post-stream finalization grace. Timed-out or 
 | `--semantic-preflight`          | off               | Review once; execute only on pass.        |
 | `--review-only`                 | off               | Review only; no canvas/task sessions.     |
 | `--review-model <pattern>`      | `@default`        | Reviewer model pattern.                   |
-| `--review-timeout-ms <ms>`      | `120000`          | Reviewer deadline.                        |
+| `--review-timeout-ms <ms>`      | `120000`          | Per-stage session creation and prompt timeout. |
 
 All numeric controls require positive safe integers. Review-specific flags require `--semantic-preflight` or `--review-only`.
 

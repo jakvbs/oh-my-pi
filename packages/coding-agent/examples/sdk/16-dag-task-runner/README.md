@@ -6,8 +6,8 @@ The visualization remains `.canvas.tsx` rather than being reduced to Markdown or
 
 ## Behavior
 
-- Runs mandatory deterministic preflight first: goal, success criteria, IDs, dependencies, context sources, declared writes, complexity values, model overrides, and cycles. Independent errors are reported together.
-- Optionally runs one isolated semantic LLM review (`--semantic-preflight` / `--review-only`) against the exact normalized effective DAG before any canvas write or task session.
+- Runs mandatory deterministic preflight first: goal, success criteria, IDs, dependencies, context sources, declared writes, complexity values, model overrides, and cycles. Multiple compatible errors are reported together.
+- Optionally runs one isolated semantic LLM review (`--semantic-preflight` / `--review-only`) against the exact validated effective DAG serialization before any canvas write or task session.
 - Uses deterministic source-order readiness. Root tasks start together; each dependent starts as soon as all of its own parents finish.
 - Prepends up to 2,000 characters from each task named in `context_from`; ordering-only dependencies add no prompt context.
 - Keeps the newest 4,000 streamed assistant characters per task and publishes at most every 500 ms by default.
@@ -133,7 +133,7 @@ OMP retry is explicitly disabled in isolated per-session settings. A provider er
 | `--semantic-preflight`     | `false`                 | Run one isolated semantic review; execute only on pass.                     |
 | `--review-only`            | `false`                 | Implies semantic review; no task sessions or canvas required.               |
 | `--review-model`           | `@default`              | Reviewer model pattern; requires semantic/review-only mode.                 |
-| `--review-timeout-ms`      | `120000`                | Reviewer deadline; requires semantic/review-only mode.                      |
+| `--review-timeout-ms`      | `120000`                | Per-stage session creation and prompt timeout; requires semantic/review-only mode. |
 | `--debounce`               | `200` ms                | Serialized visualization write debounce.                                    |
 | `--task-timeout-ms`        | `1200000`               | Overall task deadline.                                                      |
 | `--stream-publish-ms`      | `500` ms                | Live output publish throttle.                                               |
@@ -143,14 +143,14 @@ Unknown flags are ignored, matching the original CLI. Numeric flags accept posit
 
 ## Preflight layers
 
-1. **Deterministic validation** always runs before model/session/canvas creation. It collects every independent schema/graph error (no prompt-quality lints).
+1. **Deterministic validation** always runs before runtime/session/canvas creation. It collects multiple compatible schema/graph errors; graph-wide checks run once the referenced topology is usable.
 2. **Semantic review** is opt-in. Sequence:
 
 ```text
 read JSON
 → deterministic validation
 → merge model overrides
-→ hash normalized effective DAG (SHA-256)
+→ hash exact validated effective DAG serialization (SHA-256)
 → optional semantic review
 → execute the same in-memory DAG object
 ```

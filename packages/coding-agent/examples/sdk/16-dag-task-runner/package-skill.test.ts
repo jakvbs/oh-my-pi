@@ -28,7 +28,7 @@ describe("copyable skill packaging", () => {
 		const destination = path.join(tempDir.path(), "dag-task-runner");
 		const packaged = await packageSkill(destination);
 
-		expect(packaged).toEqual({ destination, files: EXPECTED_FILES });
+		expect(packaged).toEqual({ destination: await fs.realpath(destination), files: EXPECTED_FILES });
 		expect(await Bun.file(path.join(destination, "SKILL.md")).text()).toBe(
 			await Bun.file(path.join(import.meta.dir, "skill/SKILL.md")).text(),
 		);
