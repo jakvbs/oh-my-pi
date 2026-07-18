@@ -12,9 +12,11 @@ The visualization remains `.canvas.tsx` rather than being reduced to Markdown or
 - Prepends up to 2,000 characters from each task named in `context_from`; ordering-only dependencies add no prompt context.
 - Keeps the newest 4,000 streamed assistant characters per task and publishes at most every 500 ms by default.
 - Marks provider failures recorded in the terminal OMP assistant message as task errors even when `session.prompt()` resolves.
-- Disables OMP automatic retries to retain the original runner's no-task-retry behavior.
+- Disables OMP automatic retries; a task runs again only through explicit `--resume`.
 - Marks dependents of failed tasks as `ERROR` without launching them.
 - Flushes initial, terminal, failed, and interrupted canvas states.
+- Atomically checkpoints orchestration state before task work and after terminal transitions.
+- On `--resume`, verifies the exact DAG and canonical cwd, retains `FINISHED` nodes, and reruns only unfinished work.
 
 ## Run from the monorepo
 
@@ -130,6 +132,7 @@ OMP retry is explicitly disabled in isolated per-session settings. A provider er
 | `--cwd`                    | `process.cwd()`         | Working directory for every task session.                                   |
 | `--models-file`            | —                       | Partial complexity-to-model JSON override.                                  |
 | `--init-only`              | `false`                 | Write the initial canvas and exit without task sessions.                    |
+| `--resume`                 | `false`                 | Resume from the checkpoint derived from `--canvas-path`; incompatible with init/review-only. |
 | `--semantic-preflight`     | `false`                 | Run one isolated semantic review; execute only on pass.                     |
 | `--review-only`            | `false`                 | Implies semantic review; no task sessions or canvas required.               |
 | `--review-model`           | `@default`              | Reviewer model pattern; requires semantic/review-only mode.                 |
@@ -175,6 +178,14 @@ Upstream task results (for context — do not re-do this work):
 Each selected context snippet is capped at 2,000 characters with a final ellipsis. If any direct dependency is `ERROR`, the task is not launched and receives `Skipped: upstream task(s) … failed`; this naturally cascades through downstream tasks.
 
 A 20-minute deadline covers SDK session creation and the agent turn. Session events reset the five-minute idle timer; SDK `agent_end` starts the retained 15-second post-stream finalization grace, bounded by the remaining task deadline. Timeouts abort best-effort. Abort and dispose operations are individually bounded so cleanup cannot mask the recorded result, and a session factory that resolves after its deadline is observed and cleaned up. All sessions are in-memory. The canvas writer serializes writes and flushes the latest snapshot, including on SIGINT, SIGTERM, SIGHUP, and runner failures.
+
+## Checkpoint and resume
+
+For `run.canvas.tsx`, an executable run writes `run.checkpoint.json`. Each replacement is atomic. State is persisted initially, when a task becomes `RUNNING`, after terminal/skipped transitions, and at finalization.
+
+`--resume` requires the same effective DAG hash, canonical `cwd`, checkpoint version, and task set. It preserves `FINISHED` task results for dependency scheduling and `context_from`; every other task returns to `PENDING`. Consequently, failed or interrupted tasks run again, their downstream waits, and completed independent branches create no sessions.
+
+An attempted task receives its previous error/output plus an instruction to inspect and repair partial workspace changes. Resume is at-least-once execution: it never rolls back Git, deletes partial files, rewrites the DAG, or assumes a clean workspace.
 
 ## Canvas and Obsidian
 

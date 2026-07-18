@@ -10,6 +10,7 @@ const EXPECTED_FILES = [
 	"SKILL.md",
 	"examples/example-dag.json",
 	"runtime/canvas-writer.ts",
+	"runtime/checkpoint.ts",
 	"runtime/dag.ts",
 	"runtime/index.ts",
 	"runtime/package.json",

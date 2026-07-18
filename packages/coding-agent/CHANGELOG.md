@@ -297,6 +297,7 @@
 ### Added
 
 - Added optional opt-in semantic DAG preflight (`--semantic-preflight`, `--review-only`) that reviews the exact validated effective DAG serialization through an isolated tool-free structured yield session before canvas or task execution.
+- Added atomic SDK DAG checkpoints and explicit `--resume`, preserving completed nodes while retrying interrupted or failed work and its downstream against the existing workspace.
 
 ### Changed
 

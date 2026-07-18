@@ -340,6 +340,7 @@ describe("semantic review contracts", () => {
 				streamPublishMs: 1,
 				streamIdleTimeoutMs: 500,
 				initOnly: false,
+				resume: false,
 				semanticPreflight: false,
 				reviewOnly: false,
 				reviewModel: "@default",

@@ -15,7 +15,8 @@ import {
 import { logger } from "@oh-my-pi/pi-utils";
 import Handlebars from "handlebars";
 import { z } from "zod";
-import { CanvasWriter, initialRunState, type RunState, type TaskState } from "./canvas-writer";
+import { CanvasWriter, initialRunState, type PreviousAttempt, type RunState, type TaskState } from "./canvas-writer";
+import { CheckpointStore } from "./checkpoint";
 import {
 	computeRanks,
 	createModelResolver,
@@ -46,6 +47,7 @@ export interface CliArgs {
 	streamPublishMs: number;
 	streamIdleTimeoutMs: number;
 	initOnly: boolean;
+	resume: boolean;
 	semanticPreflight: boolean;
 	reviewOnly: boolean;
 	reviewModel: string;
@@ -104,6 +106,11 @@ interface PromptParent {
 	output: string;
 }
 
+interface ResumeExecution {
+	store: CheckpointStore;
+	state: RunState;
+}
+
 export interface ExecutionObserver {
 	onStateCreated: (state: RunState, writer: CanvasWriter) => void;
 	onFinalized: () => void;
@@ -130,6 +137,7 @@ const LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = {
 };
 const renderTaskPrompt = Handlebars.compile<{
 	parents: PromptParent[];
+	previousAttempt?: PreviousAttempt;
 	subtaskPrompt: string;
 }>(taskPromptTemplate, { noEscape: true });
 
@@ -151,9 +159,16 @@ export function parseArgs(argv: string[], cwdDefault = process.cwd()): CliArgs {
 
 	const initOnly = args["init-only"] === "true";
 	const reviewOnly = args["review-only"] === "true";
+	const resume = args.resume === "true";
 	const semanticPreflight = args["semantic-preflight"] === "true" || reviewOnly;
 	const reviewModelProvided = Object.hasOwn(args, "review-model");
 	const reviewTimeoutProvided = Object.hasOwn(args, "review-timeout-ms");
+	if (Object.hasOwn(args, "resume") && !resume) {
+		throw new Error("--resume does not accept a value");
+	}
+	if (resume && (initOnly || reviewOnly)) {
+		throw new Error("--resume cannot be combined with --init-only or --review-only");
+	}
 
 	if (reviewOnly && initOnly) {
 		throw new Error("--review-only cannot be combined with --init-only");
@@ -191,6 +206,7 @@ export function parseArgs(argv: string[], cwdDefault = process.cwd()): CliArgs {
 			"--stream-idle-timeout-ms",
 		),
 		initOnly,
+		resume,
 		semanticPreflight,
 		reviewOnly,
 		reviewModel: reviewModelProvided
@@ -247,7 +263,14 @@ export function buildTaskPrompt(task: RawTask, stateById: ReadonlyMap<string, Ta
 				: "(no output)";
 		parents.push({ id: dependencyId, status: dependency.status, output });
 	}
-	return renderTaskPrompt({ parents, subtaskPrompt: task.subtask_prompt });
+	const previous = stateById.get(task.id)?.previousAttempt;
+	const previousAttempt = previous
+		? {
+				errorMessage: previous.errorMessage ? truncate(previous.errorMessage, UPSTREAM_SNIPPET_CAP) : undefined,
+				resultText: previous.resultText ? truncate(previous.resultText, UPSTREAM_SNIPPET_CAP) : undefined,
+			}
+		: undefined;
+	return renderTaskPrompt({ parents, previousAttempt, subtaskPrompt: task.subtask_prompt });
 }
 
 export function sdkModelSelection(model: string, authenticatedFallback: string): SdkModelSelection {
@@ -280,10 +303,22 @@ export async function executeDAG(
 	args: ExecutionCliArgs,
 	sessionFactory: SessionFactory,
 	observer?: ExecutionObserver,
+	resumeExecution?: ResumeExecution,
 ): Promise<RunState> {
 	const modelForComplexity = createModelResolver(dag.models);
 	const ranks = computeRanks(dag);
-	const state = initialRunState(dag, modelForComplexity);
+	const freshState = initialRunState(dag, modelForComplexity);
+	let state = freshState;
+	let checkpointStore: CheckpointStore | undefined;
+	if (!args.initOnly) {
+		checkpointStore =
+			resumeExecution?.store ??
+			(await CheckpointStore.open(args.canvasPath, await hashNormalizedDAG(dag), args.cwd));
+		if (args.resume) {
+			state = resumeExecution?.state ?? (await checkpointStore.loadResumeState(freshState));
+		}
+	}
+
 	const stateById = new Map(state.tasks.map(task => [task.id, task]));
 	const writer = new CanvasWriter(args.canvasPath, args.debounceMs);
 	let finalized = false;
@@ -299,12 +334,20 @@ export async function executeDAG(
 		observer?.onFinalized();
 		return state;
 	}
+	if (!checkpointStore) throw new Error("Checkpoint store was not initialized");
+	if (args.resume) writeLine(`resume ← ${checkpointStore.path}`);
+	writeLine(`checkpoint → ${checkpointStore.path}`);
+	await checkpointStore.write(state);
 
 	try {
 		const unresolvedDependencies = new Map<string, number>();
 		const dependents = new Map<string, RawTask[]>();
 		for (const task of dag.tasks) {
-			unresolvedDependencies.set(task.id, task.depends_on.length);
+			const unresolved = task.depends_on.reduce(
+				(count, dependencyId) => count + (stateById.get(dependencyId)?.status === "FINISHED" ? 0 : 1),
+				0,
+			);
+			unresolvedDependencies.set(task.id, unresolved);
 			dependents.set(task.id, []);
 		}
 		for (const task of dag.tasks) {
@@ -313,11 +356,14 @@ export async function executeDAG(
 			}
 		}
 
-		const ready = dag.tasks.filter(task => task.depends_on.length === 0);
+		const ready = dag.tasks.filter(
+			task => stateById.get(task.id)?.status !== "FINISHED" && unresolvedDependencies.get(task.id) === 0,
+		);
 		let readyIndex = 0;
 		const running = new Map<string, Promise<RawTask>>();
 		const releaseDependents = (task: RawTask): void => {
 			for (const dependent of dependents.get(task.id)!) {
+				if (stateById.get(dependent.id)?.status === "FINISHED") continue;
 				const remaining = unresolvedDependencies.get(dependent.id)! - 1;
 				unresolvedDependencies.set(dependent.id, remaining);
 				if (remaining === 0) ready.push(dependent);
@@ -332,6 +378,7 @@ export async function executeDAG(
 				);
 				if (failedDependencies.length > 0) {
 					skipTask(task, stateById, state, writer, failedDependencies);
+					await checkpointStore.write(state);
 					releaseDependents(task);
 					continue;
 				}
@@ -339,7 +386,7 @@ export async function executeDAG(
 				writeLine(`starting ${task.id}`);
 				running.set(
 					task.id,
-					runTask(task, stateById, state, writer, args.cwd, sessionFactory, {
+					runTask(task, stateById, state, writer, checkpointStore, args.cwd, sessionFactory, {
 						taskTimeoutMs: args.taskTimeoutMs,
 						streamPublishMs: args.streamPublishMs,
 						streamIdleTimeoutMs: args.streamIdleTimeoutMs,
@@ -359,6 +406,7 @@ export async function executeDAG(
 		if (errors.length > 0) {
 			state.runMessage = `Some tasks failed: ${errors.map(task => task.id).join(", ")}`;
 		}
+		await checkpointStore.write(state);
 		writer.schedule(structuredCloneState(state));
 		await writer.flush();
 		finalized = true;
@@ -370,6 +418,7 @@ export async function executeDAG(
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		await markRunTerminated(state, `Runner failed: ${message}`, "FAILED");
+		await checkpointStore.write(state);
 		writer.schedule(structuredCloneState(state));
 		await writer.flush();
 		finalized = true;
@@ -377,6 +426,7 @@ export async function executeDAG(
 	} finally {
 		if (!finalized) {
 			await markRunTerminated(state, "Runner exited before finalization", "FAILED");
+			await checkpointStore.write(state);
 			writer.schedule(structuredCloneState(state));
 			await writer.flush();
 		}
@@ -388,6 +438,7 @@ async function runTask(
 	stateById: Map<string, TaskState>,
 	state: RunState,
 	writer: CanvasWriter,
+	checkpointStore: CheckpointStore,
 	cwd: string,
 	sessionFactory: SessionFactory,
 	options: RunTaskOptions,
@@ -396,6 +447,7 @@ async function runTask(
 	taskState.status = "RUNNING";
 	taskState.startedAt = Date.now();
 	writer.schedule(structuredCloneState(state));
+	await checkpointStore.write(state);
 	const deadline = Date.now() + options.taskTimeoutMs;
 	const buffer = new BoundedTextBuffer(STREAM_CAP);
 	let lastPublishAt = 0;
@@ -479,6 +531,7 @@ async function runTask(
 		publishIfDue(true);
 		if (session) await cleanupSession(session, task.id, false);
 		writer.schedule(structuredCloneState(state));
+		await checkpointStore.write(state);
 	}
 }
 
@@ -828,6 +881,23 @@ export async function runCli(
 	const mergedModels = mergeModelOverrides({ dagModels: dag.models, fileModels });
 	dag.models = Object.keys(mergedModels).length > 0 ? mergedModels : undefined;
 	const dagHash = await hashNormalizedDAG(dag);
+	const executionArgs = args.reviewOnly ? undefined : requireExecutionArgs(args);
+	let resumeExecution: ResumeExecution | undefined;
+	if (args.resume) {
+		if (!executionArgs) throw new Error("Execution arguments are required for resume");
+		try {
+			const store = await CheckpointStore.open(executionArgs.canvasPath, dagHash, executionArgs.cwd);
+			resumeExecution = {
+				store,
+				state: await store.loadResumeState(initialRunState(dag, createModelResolver(dag.models))),
+			};
+		} catch (error) {
+			process.stderr.write(
+				`[dag-runner] resume failed: ${error instanceof Error ? error.message : String(error)}\n`,
+			);
+			return 1;
+		}
+	}
 	const needsRuntime = args.semanticPreflight || (!args.initOnly && !args.reviewOnly);
 	const runtime = needsRuntime ? await createSessionRuntime() : undefined;
 
@@ -864,7 +934,7 @@ export async function runCli(
 			}
 		}
 
-		const executionArgs = requireExecutionArgs(args);
+		if (!executionArgs) throw new Error("Execution arguments were not initialized");
 		if (args.initOnly) {
 			await executeDAG(
 				dag,
@@ -878,7 +948,7 @@ export async function runCli(
 		}
 
 		if (!runtime) throw new Error("Runner runtime was not initialized");
-		const state = await executeDAG(dag, executionArgs, runtime.factory, observer);
+		const state = await executeDAG(dag, executionArgs, runtime.factory, observer, resumeExecution);
 		return state.runOutcome === "SUCCESS" ? 0 : 1;
 	} finally {
 		runtime?.close();

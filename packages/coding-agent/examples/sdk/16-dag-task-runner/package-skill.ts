@@ -25,6 +25,7 @@ const SOURCE_FILES = [
 	["dag.ts", "runtime/dag.ts"],
 	["preflight.ts", "runtime/preflight.ts"],
 	["canvas-writer.ts", "runtime/canvas-writer.ts"],
+	["checkpoint.ts", "runtime/checkpoint.ts"],
 	["run-example.ts", "runtime/run-example.ts"],
 	["prompts/task.md", "runtime/prompts/task.md"],
 	["prompts/preflight-system.md", "runtime/prompts/preflight-system.md"],

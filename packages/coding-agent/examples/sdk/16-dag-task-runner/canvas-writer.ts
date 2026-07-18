@@ -14,6 +14,11 @@ import type { Complexity, DAG } from "./dag";
 
 export type TaskStatus = "PENDING" | "RUNNING" | "FINISHED" | "ERROR";
 
+export interface PreviousAttempt {
+	errorMessage?: string;
+	resultText?: string;
+}
+
 export interface TaskState {
 	id: string;
 	depends_on: string[];
@@ -23,6 +28,7 @@ export interface TaskState {
 	subtask_prompt: string;
 	status: TaskStatus;
 	model: string;
+	previousAttempt?: PreviousAttempt;
 	startedAt?: number;
 	finishedAt?: number;
 	resultText?: string;
@@ -153,6 +159,11 @@ import { useEffect, useMemo, useState } from 'react';
 type TaskStatus = 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR';
 type Complexity = 'HIGH' | 'MED' | 'LOW';
 
+interface PreviousAttempt {
+  errorMessage?: string;
+  resultText?: string;
+}
+
 interface TaskState {
   id: string;
   depends_on: string[];
@@ -162,6 +173,7 @@ interface TaskState {
   subtask_prompt: string;
   status: TaskStatus;
   model: string;
+  previousAttempt?: PreviousAttempt;
   startedAt?: number;
   finishedAt?: number;
   resultText?: string;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import { initialRunState, renderCanvasSource, type TaskState } from "./canvas-writer";
+import { checkpointPathForCanvas } from "./checkpoint";
 import { computeRanks, createModelResolver, parseDAG, validateModelMap } from "./dag";
 import {
 	BoundedTextBuffer,
@@ -312,6 +313,7 @@ test("starts a dependent as soon as its own parents finish", async () => {
 			reviewModel: "@default",
 			reviewTimeoutMs: 120_000,
 			initOnly: false,
+			resume: false,
 		},
 		sessionFactory,
 	);
@@ -382,6 +384,7 @@ test("executes concurrent siblings through the session adapter and cascades prov
 		reviewModel: "@default",
 		reviewTimeoutMs: 120_000,
 		initOnly: false,
+		resume: false,
 	};
 	const sessionFactory = () =>
 		Promise.resolve(
@@ -450,6 +453,213 @@ CHILD`,
 	expect(await Bun.file(args.canvasPath).text()).toContain('"runOutcome": "FAILED"');
 });
 
+test("resumes only unfinished tasks and rejects a stale DAG checkpoint", async () => {
+	using tempDir = TempDir.createSync("@omp-dag-resume-");
+	const dag = parseDAG({
+		title: "Resume",
+		goal: "Complete the recoverable DAG",
+		success_criteria: ["Every task finishes"],
+		tasks: [
+			{
+				id: "completed-root",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "COMPLETED ROOT",
+			},
+			{
+				id: "failed-root",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "FAILED ROOT",
+			},
+			{
+				id: "failed-child",
+				depends_on: ["failed-root"],
+				context_from: ["failed-root"],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "FAILED CHILD",
+			},
+			{
+				id: "independent-root",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "INDEPENDENT ROOT",
+			},
+		],
+	});
+	const args = {
+		dag: "unused.json",
+		canvasPath: tempDir.join("resume.canvas.tsx"),
+		cwd: tempDir.path(),
+		debounceMs: 1,
+		taskTimeoutMs: 1_000,
+		streamPublishMs: 1,
+		streamIdleTimeoutMs: 1_000,
+		initOnly: false,
+		resume: false,
+		semanticPreflight: false,
+		reviewOnly: false,
+		reviewModel: "@default",
+		reviewTimeoutMs: 120_000,
+	};
+	const firstPrompts: string[] = [];
+	const first = await executeDAG(dag, args, () =>
+		Promise.resolve(
+			new FakeRunnerSession(
+				async (prompt, publish) => {
+					firstPrompts.push(prompt);
+					if (prompt === "FAILED ROOT") {
+						publish({ type: "text_delta", delta: "partial change" });
+						return [
+							{
+								contentText: "",
+								errorMessage: "provider failed",
+								inputTokens: 1,
+								outputTokens: 1,
+								stopReason: "error",
+							},
+						];
+					}
+					return [{ contentText: `${prompt} done`, inputTokens: 1, outputTokens: 1, stopReason: "stop" }];
+				},
+				() => {},
+			),
+		),
+	);
+
+	expect(first.runOutcome).toBe("FAILED");
+	expect(firstPrompts).toEqual(expect.arrayContaining(["COMPLETED ROOT", "FAILED ROOT", "INDEPENDENT ROOT"]));
+	expect(firstPrompts).not.toContain("FAILED CHILD");
+	const checkpointPath = checkpointPathForCanvas(args.canvasPath);
+	expect((await Bun.file(checkpointPath).json()).state.tasks.map((task: TaskState) => [task.id, task.status])).toEqual(
+		[
+			["completed-root", "FINISHED"],
+			["failed-root", "ERROR"],
+			["failed-child", "ERROR"],
+			["independent-root", "FINISHED"],
+		],
+	);
+
+	const resumedPrompts: string[] = [];
+	const resumed = await executeDAG(dag, { ...args, resume: true }, () =>
+		Promise.resolve(
+			new FakeRunnerSession(
+				async prompt => {
+					resumedPrompts.push(prompt);
+					const contentText = prompt.endsWith("FAILED ROOT") ? "repaired root" : "completed child";
+					return [{ contentText, inputTokens: 1, outputTokens: 1, stopReason: "stop" }];
+				},
+				() => {},
+			),
+		),
+	);
+
+	expect(resumed.runOutcome).toBe("SUCCESS");
+	expect(resumedPrompts).toHaveLength(2);
+	expect(resumedPrompts[0]).toContain("Previous attempt did not finish successfully");
+	expect(resumedPrompts[0]).toContain("provider failed");
+	expect(resumedPrompts[0]).toContain("partial change");
+	expect(resumedPrompts[0]).toEndWith("FAILED ROOT");
+	expect(resumedPrompts[1]).toContain("repaired root");
+	expect(resumedPrompts[1]).toEndWith("FAILED CHILD");
+	expect(resumed.tasks.map(task => [task.id, task.status])).toEqual([
+		["completed-root", "FINISHED"],
+		["failed-root", "FINISHED"],
+		["failed-child", "FINISHED"],
+		["independent-root", "FINISHED"],
+	]);
+
+	let staleCheckpointSessions = 0;
+	await expect(
+		executeDAG(parseDAG({ ...dag, goal: "Changed goal" }), { ...args, resume: true }, async () => {
+			staleCheckpointSessions++;
+			throw new Error("session must not start");
+		}),
+	).rejects.toThrow("DAG hash mismatch");
+	expect(staleCheckpointSessions).toBe(0);
+});
+
+test("persists RUNNING before session work and retries it on resume", async () => {
+	using tempDir = TempDir.createSync("@omp-dag-resume-running-");
+	const dag = parseDAG({
+		title: "Interrupted resume",
+		goal: "Retry interrupted work",
+		success_criteria: ["The interrupted task finishes"],
+		tasks: [
+			{
+				id: "interrupted",
+				depends_on: [],
+				context_from: [],
+				writes: [],
+				complexity: "LOW",
+				subtask_prompt: "INTERRUPTED TASK",
+			},
+		],
+	});
+	const args = {
+		dag: "unused.json",
+		canvasPath: tempDir.join("interrupted.canvas.tsx"),
+		cwd: tempDir.path(),
+		debounceMs: 1,
+		taskTimeoutMs: 1_000,
+		streamPublishMs: 1,
+		streamIdleTimeoutMs: 1_000,
+		initOnly: false,
+		resume: false,
+		semanticPreflight: false,
+		reviewOnly: false,
+		reviewModel: "@default",
+		reviewTimeoutMs: 120_000,
+	};
+	const sessionStarted = Promise.withResolvers<void>();
+	const releaseSession = Promise.withResolvers<void>();
+	const firstExecution = executeDAG(dag, args, () =>
+		Promise.resolve(
+			new FakeRunnerSession(
+				async () => {
+					sessionStarted.resolve();
+					await releaseSession.promise;
+					return [{ contentText: "late success", inputTokens: 1, outputTokens: 1, stopReason: "stop" }];
+				},
+				() => {},
+			),
+		),
+	);
+	await sessionStarted.promise;
+
+	const checkpointPath = checkpointPathForCanvas(args.canvasPath);
+	const runningCheckpoint = await Bun.file(checkpointPath).text();
+	expect(JSON.parse(runningCheckpoint).state.tasks[0].status).toBe("RUNNING");
+	releaseSession.resolve();
+	await firstExecution;
+	await Bun.write(checkpointPath, runningCheckpoint);
+
+	const prompts: string[] = [];
+	const resumed = await executeDAG(dag, { ...args, resume: true }, () =>
+		Promise.resolve(
+			new FakeRunnerSession(
+				async prompt => {
+					prompts.push(prompt);
+					return [{ contentText: "resumed success", inputTokens: 1, outputTokens: 1, stopReason: "stop" }];
+				},
+				() => {},
+			),
+		),
+	);
+
+	expect(prompts).toHaveLength(1);
+	expect(prompts[0]).toContain("Previous attempt did not finish successfully");
+	expect(resumed.runOutcome).toBe("SUCCESS");
+	expect(resumed.tasks[0].status).toBe("FINISHED");
+});
+
 test("applies SDK agent_end finalization grace and bounds timed-out session cleanup", async () => {
 	using tempDir = TempDir.createSync("@omp-dag-terminal-grace-");
 	const neverFinalizes = Promise.withResolvers<RunnerAssistantMessage[]>();
@@ -476,6 +686,7 @@ test("applies SDK agent_end finalization grace and bounds timed-out session clea
 			reviewModel: "@default",
 			reviewTimeoutMs: 120_000,
 			initOnly: false,
+			resume: false,
 		},
 		() =>
 			Promise.resolve(
@@ -535,6 +746,7 @@ test("disposes a session factory result that arrives after the task deadline", a
 			reviewModel: "@default",
 			reviewTimeoutMs: 120_000,
 			initOnly: false,
+			resume: false,
 		},
 		async () => {
 			await Bun.sleep(30);
@@ -570,9 +782,17 @@ describe("CLI and output parity", () => {
 			reviewModel: "@default",
 			reviewTimeoutMs: 120_000,
 			initOnly: true,
+			resume: false,
 		});
 		expect(() => parseArgs(["--dag", "dag.json", "--canvas", "run", "--debounce", "0"])).toThrow(
 			"--debounce must be a positive integer",
+		);
+		expect(parseArgs(["--dag", "dag.json", "--canvas", "run", "--resume"]).resume).toBe(true);
+		expect(() => parseArgs(["--dag", "dag.json", "--canvas", "run", "--resume", "checkpoint.json"])).toThrow(
+			"--resume does not accept a value",
+		);
+		expect(() => parseArgs(["--dag", "dag.json", "--canvas", "run", "--resume", "--init-only"])).toThrow(
+			"--resume cannot be combined",
 		);
 	});
 

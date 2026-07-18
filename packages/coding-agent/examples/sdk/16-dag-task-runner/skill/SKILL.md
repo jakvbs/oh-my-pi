@@ -174,10 +174,23 @@ The runner:
 5. inspects terminal assistant messages so provider failures are not mistaken for success;
 6. skips children of failed parents with an explicit upstream failure message;
 7. records result text, duration, and available input/output token counts;
-8. finalizes and flushes success, failure, timeout, and interrupted canvas states.
+8. atomically checkpoints initial, running, terminal, and final orchestration state;
+9. finalizes and flushes success, failure, timeout, and interrupted canvas states.
 
 OMP automatic retries are disabled through isolated per-session settings. Legacy model labels remain visible in the canvas; `composer-2` routes through OMP `@default`, `auto-low` routes through `@smol`, and other values are passed as OMP model patterns. Every selection also carries an authenticated available-model fallback so a matching but unauthenticated provider cannot block execution when another configured model is usable.
 SDK `agent_end` starts a 15-second post-stream finalization grace. Timed-out or late-created sessions are aborted/disposed through bounded best-effort cleanup so teardown cannot hide the task result.
+
+Resume a failed or interrupted run only when requested, using the identical DAG, canvas, and cwd:
+
+```bash
+bun "$RUNNER_DIR/index.ts" \
+  --resume \
+  --dag /tmp/dag-<slug>.json \
+  --canvas-path "$CANVAS_PATH" \
+  --cwd "$PWD"
+```
+
+Resume verifies the effective DAG hash and canonical cwd. It retains `FINISHED` tasks, retries every other task, and then releases their downstream. Retried tasks MUST inspect and repair possible partial workspace changes; resume never rolls back Git or assumes a clean workspace.
 
 ### CLI controls
 
@@ -189,6 +202,7 @@ SDK `agent_end` starts a 15-second post-stream finalization grace. Timed-out or 
 | `--stream-idle-timeout-ms <ms>` | `300000`          | No-session-event timeout.                 |
 | `--debounce <ms>`               | `200`             | Canvas write debounce.                    |
 | `--cwd <path>`                  | current directory | SDK session working directory.            |
+| `--resume`                      | off               | Resume the matching canvas checkpoint.    |
 | `--semantic-preflight`          | off               | Review once; execute only on pass.        |
 | `--review-only`                 | off               | Review only; no canvas/task sessions.     |
 | `--review-model <pattern>`      | `@default`        | Reviewer model pattern.                   |
@@ -212,6 +226,7 @@ After exit:
 - Each task card retains the newest 4,000 streamed characters.
 - Any direct dependency in `ERROR` prevents the child from launching; this cascades.
 - SIGINT, SIGTERM, and SIGHUP mark nonterminal tasks and flush the canvas before exit.
+- Resume is at-least-once execution; it preserves finished results but does not roll back partial filesystem effects.
 - The generated `.canvas.tsx` uses `cursor/canvas`; Obsidian can store/address it but does not render it.
 
 ## Reference
