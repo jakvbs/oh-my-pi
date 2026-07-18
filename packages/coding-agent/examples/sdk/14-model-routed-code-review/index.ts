@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import {
 	createAgentSession,
@@ -12,6 +12,7 @@ import {
 } from "@oh-my-pi/pi-coding-agent";
 import { z } from "zod";
 import { shutdownAll as shutdownLspClients } from "../../../src/lsp/client";
+import { writeJsonArtifact } from "./artifact-store";
 import { authorizeContextToolCall, CONTEXT_TOOL_NAMES, MAX_CONTEXT_TOOL_CALLS } from "./context-tools";
 import {
 	type CliCommand,
@@ -320,36 +321,6 @@ async function pathExists(pathValue: string): Promise<boolean> {
 	}
 }
 
-async function writeJsonAtomic(outputPath: string, value: unknown): Promise<ReviewOutcome<string>> {
-	const absolutePath = resolve(outputPath);
-	const temporaryPath = `${absolutePath}.${process.pid}.${Date.now()}.tmp`;
-	let destinationClaimed = false;
-	try {
-		await fs.mkdir(dirname(absolutePath), { recursive: true });
-		const claim = await fs.open(absolutePath, "wx");
-		await claim.close();
-		destinationClaimed = true;
-		await fs.writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-		await fs.rename(temporaryPath, absolutePath);
-		return ok(absolutePath);
-	} catch (error) {
-		await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
-		if (destinationClaimed) {
-			await fs.rm(absolutePath, { force: true }).catch(() => undefined);
-		}
-		const code = (error as { code?: string }).code;
-		return fail({
-			kind: "invalid_plan",
-			reason: "schema",
-			message:
-				code === "EEXIST"
-					? `Refusing to overwrite existing output: ${absolutePath}`
-					: `Failed to write JSON artifact: ${errorMessage(error)}`,
-			target: absolutePath,
-		});
-	}
-}
-
 async function loadJsonArtifact(pathValue: string): Promise<ReviewOutcome<unknown>> {
 	const absolutePath = resolve(pathValue);
 	try {
@@ -535,7 +506,7 @@ async function dispatchCommand(input: {
 			},
 		);
 		if (!plan.ok) return plan;
-		const written = await writeJsonAtomic(command.outputPath, plan.value);
+		const written = await writeJsonArtifact(command.outputPath, plan.value);
 		if (!written.ok) return written;
 		return ok(plan.value);
 	}
@@ -565,7 +536,7 @@ async function dispatchCommand(input: {
 				thinkingLevel: THINKING_LEVEL,
 			},
 		);
-		const written = await writeJsonAtomic(command.outputPath, artifact);
+		const written = await writeJsonArtifact(command.outputPath, artifact);
 		if (!written.ok) return written;
 		return ok(artifact);
 	}
@@ -599,7 +570,7 @@ async function dispatchCommand(input: {
 		);
 		if (!reviewed.ok) return reviewed;
 		for (const artifact of reviewed.value) {
-			const written = await writeJsonAtomic(resolve(command.outputDir, `${artifact.unitId}.json`), artifact);
+			const written = await writeJsonArtifact(resolve(command.outputDir, `${artifact.unitId}.json`), artifact);
 			if (!written.ok) return written;
 		}
 		return ok(reviewed.value);
@@ -639,7 +610,7 @@ async function dispatchCommand(input: {
 			},
 		);
 		if (!report.ok) return report;
-		const written = await writeJsonAtomic(command.outputPath, report.value);
+		const written = await writeJsonArtifact(command.outputPath, report.value);
 		if (!written.ok) return written;
 		return ok(report.value);
 	}
@@ -668,7 +639,7 @@ async function dispatchCommand(input: {
 	);
 	if (!report.ok) return report;
 	if (command.outputPath) {
-		const written = await writeJsonAtomic(command.outputPath, report.value);
+		const written = await writeJsonArtifact(command.outputPath, report.value);
 		if (!written.ok) return written;
 	}
 	return ok(report.value);
