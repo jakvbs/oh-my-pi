@@ -73,6 +73,8 @@ describe("DAG parity", () => {
 	test("deduplicates dependencies and preserves deterministic source-order ranks", () => {
 		const dag = parseDAG({
 			title: " demo ",
+			goal: "Test goal",
+			success_criteria: ["Criterion"],
 			tasks: [
 				{ id: "a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
 				{ id: "b", depends_on: [], context_from: [], writes: [], complexity: "MED", subtask_prompt: "B" },
@@ -98,6 +100,8 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "bad",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [
 					{
 						id: "a",
@@ -113,6 +117,8 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "cycle",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [
 					{ id: "a", depends_on: ["b"], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
 					{ id: "b", depends_on: ["a"], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "B" },
@@ -125,12 +131,16 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "missing context",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [{ id: "a", depends_on: [], writes: [], complexity: "LOW", subtask_prompt: "A" }],
 			}),
 		).toThrow("tasks[0].context_from must be an array of strings");
 		expect(() =>
 			parseDAG({
 				title: "missing writes",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [{ id: "a", depends_on: [], context_from: [], complexity: "LOW", subtask_prompt: "A" }],
 			}),
 		).toThrow("tasks[0].writes must be an array of strings");
@@ -140,6 +150,8 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "bad context",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [
 					{ id: "a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
 					{
@@ -159,6 +171,8 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "unsafe path",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [
 					{
 						id: "a",
@@ -174,6 +188,8 @@ describe("DAG parity", () => {
 		expect(() =>
 			parseDAG({
 				title: "write conflict",
+				goal: "Test goal",
+				success_criteria: ["Criterion"],
 				tasks: [
 					{ id: "a", depends_on: [], context_from: [], writes: ["*"], complexity: "LOW", subtask_prompt: "A" },
 					{
@@ -190,6 +206,8 @@ describe("DAG parity", () => {
 
 		const ordered = parseDAG({
 			title: "ordered writes",
+			goal: "Test goal",
+			success_criteria: ["Criterion"],
 			tasks: [
 				{
 					id: "a",
@@ -229,6 +247,8 @@ test("starts a dependent as soon as its own parents finish", async () => {
 	const events: string[] = [];
 	const dag = parseDAG({
 		title: "Node-ready scheduling",
+		goal: "Test goal",
+		success_criteria: ["Criterion"],
 		tasks: [
 			{
 				id: "slow-root",
@@ -287,6 +307,10 @@ test("starts a dependent as soon as its own parents finish", async () => {
 			taskTimeoutMs: 500,
 			streamPublishMs: 1,
 			streamIdleTimeoutMs: 500,
+			semanticPreflight: false,
+			reviewOnly: false,
+			reviewModel: "@default",
+			reviewTimeoutMs: 120_000,
 			initOnly: false,
 		},
 		sessionFactory,
@@ -306,6 +330,8 @@ test("executes concurrent siblings through the session adapter and cascades prov
 
 	const dag = parseDAG({
 		title: "Adapter contract",
+		goal: "Test goal",
+		success_criteria: ["Criterion"],
 		tasks: [
 			{ id: "parent-a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "ROOT:A" },
 			{ id: "parent-b", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "ROOT:B" },
@@ -351,6 +377,10 @@ test("executes concurrent siblings through the session adapter and cascades prov
 		taskTimeoutMs: 1_000,
 		streamPublishMs: 1,
 		streamIdleTimeoutMs: 1_000,
+		semanticPreflight: false,
+		reviewOnly: false,
+		reviewModel: "@default",
+		reviewTimeoutMs: 120_000,
 		initOnly: false,
 	};
 	const sessionFactory = () =>
@@ -427,6 +457,8 @@ test("applies SDK agent_end finalization grace and bounds timed-out session clea
 	let disposed = 0;
 	const dag = parseDAG({
 		title: "Terminal grace",
+		goal: "Test goal",
+		success_criteria: ["Criterion"],
 		tasks: [{ id: "task", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "TASK" }],
 	});
 	const state = await executeDAG(
@@ -439,6 +471,10 @@ test("applies SDK agent_end finalization grace and bounds timed-out session clea
 			taskTimeoutMs: 40,
 			streamPublishMs: 1,
 			streamIdleTimeoutMs: 1_000,
+			semanticPreflight: false,
+			reviewOnly: false,
+			reviewModel: "@default",
+			reviewTimeoutMs: 120_000,
 			initOnly: false,
 		},
 		() =>
@@ -480,6 +516,8 @@ test("disposes a session factory result that arrives after the task deadline", a
 	);
 	const dag = parseDAG({
 		title: "Late session",
+		goal: "Test goal",
+		success_criteria: ["Criterion"],
 		tasks: [{ id: "task", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "TASK" }],
 	});
 	const state = await executeDAG(
@@ -492,6 +530,10 @@ test("disposes a session factory result that arrives after the task deadline", a
 			taskTimeoutMs: 10,
 			streamPublishMs: 1,
 			streamIdleTimeoutMs: 1_000,
+			semanticPreflight: false,
+			reviewOnly: false,
+			reviewModel: "@default",
+			reviewTimeoutMs: 120_000,
 			initOnly: false,
 		},
 		async () => {
@@ -523,6 +565,10 @@ describe("CLI and output parity", () => {
 			taskTimeoutMs: 1_200_000,
 			streamPublishMs: 500,
 			streamIdleTimeoutMs: 300_000,
+			semanticPreflight: false,
+			reviewOnly: false,
+			reviewModel: "@default",
+			reviewTimeoutMs: 120_000,
 			initOnly: true,
 		});
 		expect(() => parseArgs(["--dag", "dag.json", "--canvas", "run", "--debounce", "0"])).toThrow(
@@ -587,6 +633,8 @@ describe("CLI and output parity", () => {
 	test("renders a self-contained canvas with inlined initial state", () => {
 		const dag = parseDAG({
 			title: "Canvas",
+			goal: "Test goal",
+			success_criteria: ["Criterion"],
 			tasks: [
 				{ id: "a", depends_on: [], context_from: [], writes: [], complexity: "LOW", subtask_prompt: "A" },
 				{

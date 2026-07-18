@@ -1,7 +1,7 @@
 /**
  * DAG schema parsing, validation, and topological ranking for the runner.
  *
- * The DAG file shape is intentionally tiny — see ../examples/example_dag.json.
+ * The DAG file shape is intentionally tiny — see ./example-dag.json.
  */
 
 import * as path from "node:path";
@@ -21,8 +21,48 @@ export interface RawTask {
 
 export interface DAG {
 	title: string;
+	goal: string;
+	success_criteria: string[];
 	models?: ModelMapOverride;
 	tasks: RawTask[];
+}
+
+export type DAGDiagnosticCode =
+	| "INVALID_ROOT"
+	| "INVALID_GOAL"
+	| "INVALID_SUCCESS_CRITERIA"
+	| "INVALID_TASK"
+	| "DUPLICATE_ID"
+	| "UNKNOWN_DEPENDENCY"
+	| "SELF_DEPENDENCY"
+	| "INVALID_CONTEXT_SOURCE"
+	| "CYCLE"
+	| "INVALID_WRITE_PATH"
+	| "WRITE_CONFLICT"
+	| "INVALID_MODEL_MAP";
+
+export interface DAGDiagnostic {
+	severity: "error";
+	code: DAGDiagnosticCode;
+	message: string;
+	taskId?: string;
+	field?: string;
+}
+
+export interface DAGValidationResult {
+	ok: boolean;
+	diagnostics: DAGDiagnostic[];
+	dag?: DAG;
+}
+
+export class DAGValidationError extends Error {
+	readonly diagnostics: DAGDiagnostic[];
+
+	constructor(diagnostics: DAGDiagnostic[]) {
+		super(formatDiagnostics(diagnostics));
+		this.name = "DAGValidationError";
+		this.diagnostics = diagnostics;
+	}
 }
 
 const COMPLEXITY_KEYS = ["HIGH", "MED", "LOW"] as const satisfies readonly Complexity[];
@@ -33,91 +73,414 @@ export const DEFAULT_MODEL_MAP: ModelMap = {
 	LOW: "auto-low",
 };
 
-export function parseDAG(raw: unknown): DAG {
-	if (!isRecord(raw)) {
-		throw new Error("DAG file must be a JSON object.");
-	}
-	const obj = raw;
-	if (typeof obj.title !== "string" || obj.title.trim() === "") {
-		throw new Error("DAG.title must be a non-empty string.");
-	}
-	if (!Array.isArray(obj.tasks) || obj.tasks.length === 0) {
-		throw new Error("DAG.tasks must be a non-empty array.");
-	}
-
-	const tasks: RawTask[] = obj.tasks.map((t, i) => validateTask(t, i));
-	const ids = new Set<string>();
-	for (const t of tasks) {
-		if (ids.has(t.id)) {
-			throw new Error(`Duplicate task id: ${t.id}`);
-		}
-		ids.add(t.id);
-	}
-	for (const t of tasks) {
-		for (const dep of t.depends_on) {
-			if (!ids.has(dep)) {
-				throw new Error(`Task ${t.id} depends_on unknown id: ${dep}`);
-			}
-			if (dep === t.id) {
-				throw new Error(`Task ${t.id} depends on itself.`);
-			}
-		}
-		for (const contextId of t.context_from) {
-			if (!t.depends_on.includes(contextId)) {
-				throw new Error(`Task ${t.id} context_from must be a subset of depends_on: ${contextId}`);
-			}
-		}
-	}
-
-	detectCycle(tasks);
-	validateWriteConflicts(tasks);
-
-	const models = obj.models === undefined ? undefined : validateModelMap(obj.models, "DAG.models");
-
-	return { title: obj.title, models, tasks };
+export function formatDiagnostics(diagnostics: readonly DAGDiagnostic[]): string {
+	return diagnostics
+		.map(diagnostic => {
+			const location = [diagnostic.taskId !== undefined ? `task ${diagnostic.taskId}` : undefined, diagnostic.field]
+				.filter((part): part is string => part !== undefined)
+				.join(", ");
+			return location.length > 0
+				? `${diagnostic.code} (${location}): ${diagnostic.message}`
+				: `${diagnostic.code}: ${diagnostic.message}`;
+		})
+		.join("\n");
 }
 
-function validateTask(raw: unknown, index: number): RawTask {
+export function validateDAG(raw: unknown): DAGValidationResult {
+	const diagnostics: DAGDiagnostic[] = [];
 	if (!isRecord(raw)) {
-		throw new Error(`tasks[${index}] must be an object.`);
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					severity: "error",
+					code: "INVALID_ROOT",
+					message: "DAG file must be a JSON object.",
+				},
+			],
+		};
 	}
-	const t = raw;
-	const id = t.id;
-	if (typeof id !== "string" || id.trim() === "") {
-		throw new Error(`tasks[${index}].id must be a non-empty string.`);
+	const obj = raw;
+
+	let title: string | undefined;
+	if (typeof obj.title !== "string" || obj.title.trim() === "") {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_ROOT",
+			field: "title",
+			message: "DAG.title must be a non-empty string.",
+		});
+	} else {
+		title = obj.title;
 	}
-	const depends_on = t.depends_on ?? [];
-	if (!isStringArray(depends_on)) {
-		throw new Error(`tasks[${index}].depends_on must be an array of strings.`);
+
+	let goal: string | undefined;
+	if (typeof obj.goal !== "string" || obj.goal.trim() === "") {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_GOAL",
+			field: "goal",
+			message: "DAG.goal must be a non-empty string.",
+		});
+	} else {
+		goal = obj.goal;
 	}
-	const context_from = t.context_from;
-	if (!isStringArray(context_from)) {
-		throw new Error(`tasks[${index}].context_from must be an array of strings.`);
+
+	let successCriteria: string[] | undefined;
+	if (!Array.isArray(obj.success_criteria)) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_SUCCESS_CRITERIA",
+			field: "success_criteria",
+			message: "DAG.success_criteria must be a non-empty array of strings.",
+		});
+	} else if (obj.success_criteria.length === 0) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_SUCCESS_CRITERIA",
+			field: "success_criteria",
+			message: "DAG.success_criteria must be a non-empty array of strings.",
+		});
+	} else {
+		const criteriaDiagnostics: DAGDiagnostic[] = [];
+		const seen = new Set<string>();
+		const deduped: string[] = [];
+		for (let index = 0; index < obj.success_criteria.length; index++) {
+			const criterion = obj.success_criteria[index];
+			if (typeof criterion !== "string") {
+				criteriaDiagnostics.push({
+					severity: "error",
+					code: "INVALID_SUCCESS_CRITERIA",
+					field: `success_criteria[${index}]`,
+					message: `DAG.success_criteria[${index}] must be a non-empty string.`,
+				});
+				continue;
+			}
+			if (criterion.trim() === "") {
+				criteriaDiagnostics.push({
+					severity: "error",
+					code: "INVALID_SUCCESS_CRITERIA",
+					field: `success_criteria[${index}]`,
+					message: `DAG.success_criteria[${index}] must be a non-empty string.`,
+				});
+				continue;
+			}
+			if (seen.has(criterion)) continue;
+			seen.add(criterion);
+			deduped.push(criterion);
+		}
+		diagnostics.push(...criteriaDiagnostics);
+		if (criteriaDiagnostics.length === 0) {
+			if (deduped.length === 0) {
+				diagnostics.push({
+					severity: "error",
+					code: "INVALID_SUCCESS_CRITERIA",
+					field: "success_criteria",
+					message: "DAG.success_criteria must be a non-empty array of strings.",
+				});
+			} else {
+				successCriteria = deduped;
+			}
+		}
 	}
-	const writes = t.writes;
-	if (!isStringArray(writes)) {
-		throw new Error(`tasks[${index}].writes must be an array of strings.`);
+
+	let models: ModelMapOverride | undefined;
+	if (obj.models !== undefined) {
+		const modelResult = collectModelMapDiagnostics(obj.models, "DAG.models");
+		diagnostics.push(...modelResult.diagnostics);
+		if (modelResult.models !== undefined) models = modelResult.models;
 	}
-	const complexity = t.complexity;
-	if (!isComplexity(complexity)) {
-		throw new Error(`tasks[${index}].complexity must be one of HIGH | MED | LOW.`);
+
+	if (!Array.isArray(obj.tasks) || obj.tasks.length === 0) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_ROOT",
+			field: "tasks",
+			message: "DAG.tasks must be a non-empty array.",
+		});
+		return { ok: false, diagnostics };
 	}
-	const subtask_prompt = t.subtask_prompt;
-	if (typeof subtask_prompt !== "string" || subtask_prompt.trim() === "") {
-		throw new Error(`tasks[${index}].subtask_prompt must be a non-empty string.`);
+
+	const taskResults = obj.tasks.map((task, index) => collectTaskDiagnostics(task, index));
+	for (const result of taskResults) diagnostics.push(...result.diagnostics);
+
+	const idOwners = new Map<string, number[]>();
+	for (let index = 0; index < taskResults.length; index++) {
+		const id = taskResults[index].id;
+		if (id === undefined) continue;
+		const owners = idOwners.get(id) ?? [];
+		owners.push(index);
+		idOwners.set(id, owners);
 	}
+	const duplicateIds = new Set<string>();
+	const knownIds = new Set<string>();
+	for (const [id, owners] of idOwners) {
+		if (owners.length < 2) {
+			knownIds.add(id);
+			continue;
+		}
+		duplicateIds.add(id);
+		diagnostics.push({
+			severity: "error",
+			code: "DUPLICATE_ID",
+			taskId: id,
+			field: "id",
+			message: `Duplicate task id: ${id}`,
+		});
+	}
+
+	for (const parsed of taskResults) {
+		if (parsed.id === undefined || !parsed.dependsOnUsable || parsed.depends_on === undefined) continue;
+		if (duplicateIds.has(parsed.id)) continue;
+		for (const dep of parsed.depends_on) {
+			if (dep === parsed.id) {
+				diagnostics.push({
+					severity: "error",
+					code: "SELF_DEPENDENCY",
+					taskId: parsed.id,
+					field: "depends_on",
+					message: `Task ${parsed.id} depends on itself.`,
+				});
+				continue;
+			}
+			if (!knownIds.has(dep) && !duplicateIds.has(dep)) {
+				diagnostics.push({
+					severity: "error",
+					code: "UNKNOWN_DEPENDENCY",
+					taskId: parsed.id,
+					field: "depends_on",
+					message: `Task ${parsed.id} depends_on unknown id: ${dep}`,
+				});
+			}
+		}
+		if (!parsed.contextFromUsable || parsed.context_from === undefined) continue;
+		for (const contextId of parsed.context_from) {
+			if (!parsed.depends_on.includes(contextId)) {
+				diagnostics.push({
+					severity: "error",
+					code: "INVALID_CONTEXT_SOURCE",
+					taskId: parsed.id,
+					field: "context_from",
+					message: `Task ${parsed.id} context_from must be a subset of depends_on: ${contextId}`,
+				});
+			}
+		}
+	}
+
+	const usableById = new Map<string, RawTask>();
+	for (const parsed of taskResults) {
+		if (!parsed.task || duplicateIds.has(parsed.task.id)) continue;
+		usableById.set(parsed.task.id, parsed.task);
+	}
+
+	const graphTasks = [...usableById.values()];
+	const graphUsable =
+		graphTasks.length > 0 && graphTasks.every(task => task.depends_on.every(dep => usableById.has(dep)));
+
+	if (graphUsable) {
+		const cycle = detectCycle(graphTasks);
+		if (cycle) {
+			diagnostics.push({
+				severity: "error",
+				code: "CYCLE",
+				message: `Cycle detected: ${cycle}`,
+			});
+		}
+		for (const conflict of collectWriteConflicts(graphTasks)) {
+			diagnostics.push(conflict);
+		}
+	}
+
+	if (diagnostics.length > 0 || title === undefined || goal === undefined || successCriteria === undefined) {
+		return { ok: false, diagnostics };
+	}
+
+	const tasks = taskResults.map(result => result.task).filter((task): task is RawTask => task !== undefined);
+	if (tasks.length !== obj.tasks.length || duplicateIds.size > 0) {
+		return { ok: false, diagnostics };
+	}
+
 	return {
-		id,
-		depends_on: [...new Set(depends_on)],
-		context_from: [...new Set(context_from)],
-		writes: [...new Set(writes.map((write, writeIndex) => validateWritePath(write, index, writeIndex)))],
-		complexity,
-		subtask_prompt,
+		ok: true,
+		diagnostics: [],
+		dag: {
+			title,
+			goal,
+			success_criteria: successCriteria,
+			models,
+			tasks,
+		},
 	};
 }
 
-/** Throws on the first cycle found. Uses iterative DFS with a recursion stack. */
-function detectCycle(tasks: RawTask[]): void {
+export function parseDAG(raw: unknown): DAG {
+	const result = validateDAG(raw);
+	if (!result.ok || !result.dag) {
+		throw new DAGValidationError(result.diagnostics);
+	}
+	return result.dag;
+}
+
+interface CollectedTask {
+	diagnostics: DAGDiagnostic[];
+	id?: string;
+	task?: RawTask;
+	depends_on?: string[];
+	context_from?: string[];
+	dependsOnUsable: boolean;
+	contextFromUsable: boolean;
+}
+
+function collectTaskDiagnostics(raw: unknown, index: number): CollectedTask {
+	const diagnostics: DAGDiagnostic[] = [];
+	if (!isRecord(raw)) {
+		return {
+			diagnostics: [
+				{
+					severity: "error",
+					code: "INVALID_TASK",
+					field: `tasks[${index}]`,
+					message: `tasks[${index}] must be an object.`,
+				},
+			],
+			dependsOnUsable: false,
+			contextFromUsable: false,
+		};
+	}
+	const t = raw;
+	let id: string | undefined;
+	if (typeof t.id !== "string" || t.id.trim() === "") {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_TASK",
+			field: `tasks[${index}].id`,
+			message: `tasks[${index}].id must be a non-empty string.`,
+		});
+	} else {
+		id = t.id;
+	}
+
+	let depends_on: string[] | undefined;
+	let dependsOnUsable = false;
+	const dependsRaw = t.depends_on ?? [];
+	if (!isStringArray(dependsRaw)) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_TASK",
+			taskId: id,
+			field: `tasks[${index}].depends_on`,
+			message: `tasks[${index}].depends_on must be an array of strings.`,
+		});
+	} else {
+		depends_on = [...new Set(dependsRaw)];
+		dependsOnUsable = id !== undefined;
+	}
+
+	let context_from: string[] | undefined;
+	let contextFromUsable = false;
+	if (!isStringArray(t.context_from)) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_TASK",
+			taskId: id,
+			field: `tasks[${index}].context_from`,
+			message: `tasks[${index}].context_from must be an array of strings.`,
+		});
+	} else {
+		context_from = [...new Set(t.context_from)];
+		contextFromUsable = dependsOnUsable;
+	}
+
+	let writes: string[] | undefined;
+	if (!isStringArray(t.writes)) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_TASK",
+			taskId: id,
+			field: `tasks[${index}].writes`,
+			message: `tasks[${index}].writes must be an array of strings.`,
+		});
+	} else {
+		const normalizedWrites: string[] = [];
+		const seen = new Set<string>();
+		let writePathErrors = false;
+		for (let writeIndex = 0; writeIndex < t.writes.length; writeIndex++) {
+			const writeResult = validateWritePath(t.writes[writeIndex], index, writeIndex);
+			if (writeResult.diagnostic) {
+				writePathErrors = true;
+				diagnostics.push({
+					...writeResult.diagnostic,
+					taskId: id,
+				});
+				continue;
+			}
+			if (seen.has(writeResult.value)) continue;
+			seen.add(writeResult.value);
+			normalizedWrites.push(writeResult.value);
+		}
+		if (!writePathErrors) writes = normalizedWrites;
+	}
+
+	let complexity: Complexity | undefined;
+	if (!isComplexity(t.complexity)) {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_TASK",
+			taskId: id,
+			field: `tasks[${index}].complexity`,
+			message: `tasks[${index}].complexity must be one of HIGH | MED | LOW.`,
+		});
+	} else {
+		complexity = t.complexity;
+	}
+
+	let subtask_prompt: string | undefined;
+	if (typeof t.subtask_prompt !== "string" || t.subtask_prompt.trim() === "") {
+		diagnostics.push({
+			severity: "error",
+			code: "INVALID_TASK",
+			taskId: id,
+			field: `tasks[${index}].subtask_prompt`,
+			message: `tasks[${index}].subtask_prompt must be a non-empty string.`,
+		});
+	} else {
+		subtask_prompt = t.subtask_prompt;
+	}
+
+	const partial = {
+		diagnostics,
+		id,
+		depends_on,
+		context_from,
+		dependsOnUsable,
+		contextFromUsable,
+	};
+	if (
+		id === undefined ||
+		depends_on === undefined ||
+		context_from === undefined ||
+		writes === undefined ||
+		complexity === undefined ||
+		subtask_prompt === undefined
+	) {
+		return partial;
+	}
+
+	return {
+		...partial,
+		task: {
+			id,
+			depends_on,
+			context_from,
+			writes,
+			complexity,
+			subtask_prompt,
+		},
+	};
+}
+
+/** Returns the cycle path string on the first cycle found. Uses iterative DFS with a recursion stack. */
+function detectCycle(tasks: RawTask[]): string | undefined {
 	const adj = new Map<string, string[]>();
 	for (const t of tasks) adj.set(t.id, []);
 	for (const t of tasks) {
@@ -134,9 +497,7 @@ function detectCycle(tasks: RawTask[]): void {
 
 	for (const start of tasks) {
 		if (color.get(start.id) !== WHITE) continue;
-		const stack: Array<{ id: string; childIdx: number; pathIdx: number }> = [
-			{ id: start.id, childIdx: 0, pathIdx: 0 },
-		];
+		const stack: Array<{ id: string; childIdx: number }> = [{ id: start.id, childIdx: 0 }];
 		const path: string[] = [];
 		color.set(start.id, GRAY);
 		path.push(start.id);
@@ -154,19 +515,23 @@ function detectCycle(tasks: RawTask[]): void {
 			const cColor = color.get(child) ?? WHITE;
 			if (cColor === GRAY) {
 				const cycleStart = path.indexOf(child);
-				const cycle = [...path.slice(cycleStart), child].join(" -> ");
-				throw new Error(`Cycle detected: ${cycle}`);
+				return [...path.slice(cycleStart), child].join(" -> ");
 			}
 			if (cColor === WHITE) {
 				color.set(child, GRAY);
 				path.push(child);
-				stack.push({ id: child, childIdx: 0, pathIdx: path.length - 1 });
+				stack.push({ id: child, childIdx: 0 });
 			}
 		}
 	}
+	return undefined;
 }
 
-function validateWritePath(value: string, taskIndex: number, writeIndex: number): string {
+function validateWritePath(
+	value: string,
+	taskIndex: number,
+	writeIndex: number,
+): { value: string; diagnostic?: DAGDiagnostic } {
 	const segments = value.split("/");
 	const isInvalid =
 		value === "" ||
@@ -181,14 +546,20 @@ function validateWritePath(value: string, taskIndex: number, writeIndex: number)
 		segments.some(segment => segment === "." || segment === "..") ||
 		/[*?[\]{}]/.test(value);
 	if (value !== "*" && isInvalid) {
-		throw new Error(
-			`tasks[${taskIndex}].writes[${writeIndex}] must be "*" or an exact normalized repo-relative path.`,
-		);
+		return {
+			value,
+			diagnostic: {
+				severity: "error",
+				code: "INVALID_WRITE_PATH",
+				field: `tasks[${taskIndex}].writes[${writeIndex}]`,
+				message: `tasks[${taskIndex}].writes[${writeIndex}] must be "*" or an exact normalized repo-relative path.`,
+			},
+		};
 	}
-	return value;
+	return { value };
 }
 
-function validateWriteConflicts(tasks: RawTask[]): void {
+function collectWriteConflicts(tasks: RawTask[]): DAGDiagnostic[] {
 	const byId = new Map<string, RawTask>();
 	for (const task of tasks) byId.set(task.id, task);
 
@@ -205,6 +576,7 @@ function validateWriteConflicts(tasks: RawTask[]): void {
 		ancestorsById.set(task.id, ancestors);
 	}
 
+	const diagnostics: DAGDiagnostic[] = [];
 	for (let leftIndex = 0; leftIndex < tasks.length; leftIndex++) {
 		const left = tasks[leftIndex];
 		for (let rightIndex = leftIndex + 1; rightIndex < tasks.length; rightIndex++) {
@@ -217,11 +589,16 @@ function validateWriteConflicts(tasks: RawTask[]): void {
 			) {
 				continue;
 			}
-			throw new Error(
-				`Tasks ${left.id} and ${right.id} have unordered overlapping writes: ${overlap}. Add a dependency or split their writes.`,
-			);
+			diagnostics.push({
+				severity: "error",
+				code: "WRITE_CONFLICT",
+				taskId: left.id,
+				field: "writes",
+				message: `Tasks ${left.id} and ${right.id} have unordered overlapping writes: ${overlap}. Add a dependency or split their writes.`,
+			});
 		}
 	}
+	return diagnostics;
 }
 
 function overlappingWrite(left: readonly string[], right: readonly string[]): string | undefined {
@@ -272,21 +649,55 @@ export function computeRanks(dag: DAG): RawTask[][] {
 	return ranks;
 }
 
-export function validateModelMap(raw: unknown, label = "model map"): ModelMapOverride {
+function collectModelMapDiagnostics(
+	raw: unknown,
+	label: string,
+): { diagnostics: DAGDiagnostic[]; models?: ModelMapOverride } {
 	if (!isRecord(raw)) {
-		throw new Error(`${label} must be a JSON object.`);
+		return {
+			diagnostics: [
+				{
+					severity: "error",
+					code: "INVALID_MODEL_MAP",
+					field: label,
+					message: `${label} must be a JSON object.`,
+				},
+			],
+		};
 	}
+	const diagnostics: DAGDiagnostic[] = [];
 	const models: ModelMapOverride = {};
 	for (const [key, value] of Object.entries(raw)) {
 		if (!isComplexity(key)) {
-			throw new Error(`${label} contains unknown complexity key: ${key}`);
+			diagnostics.push({
+				severity: "error",
+				code: "INVALID_MODEL_MAP",
+				field: `${label}.${key}`,
+				message: `${label} contains unknown complexity key: ${key}`,
+			});
+			continue;
 		}
 		if (typeof value !== "string" || value.trim() === "") {
-			throw new Error(`${label}.${key} must be a non-empty string.`);
+			diagnostics.push({
+				severity: "error",
+				code: "INVALID_MODEL_MAP",
+				field: `${label}.${key}`,
+				message: `${label}.${key} must be a non-empty string.`,
+			});
+			continue;
 		}
 		models[key] = value.trim();
 	}
-	return models;
+	if (diagnostics.length > 0) return { diagnostics };
+	return { diagnostics: [], models };
+}
+
+export function validateModelMap(raw: unknown, label = "model map"): ModelMapOverride {
+	const result = collectModelMapDiagnostics(raw, label);
+	if (result.diagnostics.length > 0 || result.models === undefined) {
+		throw new DAGValidationError(result.diagnostics);
+	}
+	return result.models;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

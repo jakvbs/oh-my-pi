@@ -1,5 +1,11 @@
 {
     "title": "Build a tiny CLI todo app",
+    "goal": "Build a tiny single-file Node.js CLI todo app with local JSON persistence, tests, and a short README.",
+    "success_criteria": [
+        "A single-file `todo.mjs` supports add, list, done, and rm against a local JSON store.",
+        "`test_todo.mjs` exercises the core command flow with Node's built-in test runner.",
+        "README.md documents commands, examples, and storage location without modifying todo.mjs."
+    ],
     "tasks": [
         {
             "id": "research-stack",
@@ -7,7 +13,7 @@
             "context_from": [],
             "writes": [],
             "complexity": "LOW",
-            "subtask_prompt": "Sketch the smallest reasonable design for a single-file Node.js CLI todo app that stores items in a local JSON file. List the supported commands (add, list, done, rm), the JSON schema, and the file layout. Output as markdown bullets only — do not write any code yet."
+            "subtask_prompt": "Sketch the smallest reasonable design for a single-file Node.js CLI todo app that stores items in a local JSON file. List the supported commands (add, list, done, rm), the JSON schema, and the file layout. Output as markdown bullets only \u2014 do not write any code yet."
         },
         {
             "id": "research-cli-conventions",
@@ -15,37 +21,57 @@
             "context_from": [],
             "writes": [],
             "complexity": "LOW",
-            "subtask_prompt": "Summarize the conventions a small Node CLI should follow: shebang line, exit codes, stdout vs stderr usage, --help output shape, and how to parse argv without a dependency. Output as markdown bullets only — do not write code."
+            "subtask_prompt": "Summarize the conventions a small Node CLI should follow: shebang line, exit codes, stdout vs stderr usage, --help output shape, and how to parse argv without a dependency. Output as markdown bullets only \u2014 do not write code."
         },
         {
             "id": "design",
-            "depends_on": ["research-stack", "research-cli-conventions"],
-            "context_from": ["research-stack", "research-cli-conventions"],
+            "depends_on": [
+                "research-stack",
+                "research-cli-conventions"
+            ],
+            "context_from": [
+                "research-stack",
+                "research-cli-conventions"
+            ],
             "writes": [],
             "complexity": "MED",
-            "subtask_prompt": "Combine the upstream research into a one-page implementation plan for the todo CLI. Specify file paths, function signatures, error handling, and the JSON storage shape. Output a markdown design doc — still no code."
+            "subtask_prompt": "Combine the upstream research into a one-page implementation plan for the todo CLI. Specify file paths, function signatures, error handling, and the JSON storage shape. Output a markdown design doc \u2014 still no code."
         },
         {
             "id": "implement",
-            "depends_on": ["design"],
-            "context_from": ["design"],
-            "writes": ["todo.mjs"],
+            "depends_on": [
+                "design"
+            ],
+            "context_from": [
+                "design"
+            ],
+            "writes": [
+                "todo.mjs"
+            ],
             "complexity": "MED",
             "subtask_prompt": "Implement the design as `todo.mjs` in the current working directory. It must be a single file with no dependencies, support the four commands from the design, and persist to `./todos.json`. After writing the file, run it once with `node todo.mjs --help` and include the output in your reply."
         },
         {
             "id": "tests",
-            "depends_on": ["implement"],
+            "depends_on": [
+                "implement"
+            ],
             "context_from": [],
-            "writes": ["test_todo.mjs"],
+            "writes": [
+                "test_todo.mjs"
+            ],
             "complexity": "LOW",
-            "subtask_prompt": "Add a `test_todo.mjs` script in the cwd that exercises add → list → done → rm against `todo.mjs` using a temp JSON file. Use only the Node `node:test` and `node:assert` modules. Run it with `node --test test_todo.mjs` and include the output in your reply."
+            "subtask_prompt": "Add a `test_todo.mjs` script in the cwd that exercises add \u2192 list \u2192 done \u2192 rm against `todo.mjs` using a temp JSON file. Use only the Node `node:test` and `node:assert` modules. Run it with `node --test test_todo.mjs` and include the output in your reply."
         },
         {
             "id": "docs",
-            "depends_on": ["implement"],
+            "depends_on": [
+                "implement"
+            ],
             "context_from": [],
-            "writes": ["README.md"],
+            "writes": [
+                "README.md"
+            ],
             "complexity": "LOW",
             "subtask_prompt": "Write a short `README.md` in the cwd describing what `todo.mjs` does, the supported commands with examples, and where data is stored. Do not modify `todo.mjs`."
         }

@@ -292,6 +292,11 @@
 ### Breaking Changes
 
 - Required SDK DAG task definitions to declare explicit `context_from` and `writes` interfaces, with validation for unsafe or unordered overlapping writes.
+- Required SDK DAG documents to declare `goal` and nonempty `success_criteria`; deterministic preflight now reports every independent validation error instead of failing on the first one.
+
+### Added
+
+- Added optional opt-in semantic DAG preflight (`--semantic-preflight`, `--review-only`) that reviews the exact normalized effective DAG through an isolated tool-free structured yield session before canvas or task execution.
 
 ### Changed
 

@@ -14,6 +14,7 @@ const RUNTIME_DEPENDENCIES = [
 	"@oh-my-pi/pi-coding-agent",
 	"@oh-my-pi/pi-utils",
 	"handlebars",
+	"zod",
 ] as const;
 const RUNTIME_DEV_DEPENDENCIES = ["@types/bun", "@typescript/native-preview"] as const;
 
@@ -22,9 +23,12 @@ const SOURCE_FILES = [
 	["example-dag.json", "examples/example-dag.json"],
 	["index.ts", "runtime/index.ts"],
 	["dag.ts", "runtime/dag.ts"],
+	["preflight.ts", "runtime/preflight.ts"],
 	["canvas-writer.ts", "runtime/canvas-writer.ts"],
 	["run-example.ts", "runtime/run-example.ts"],
 	["prompts/task.md", "runtime/prompts/task.md"],
+	["prompts/preflight-system.md", "runtime/prompts/preflight-system.md"],
+	["prompts/preflight-review.md", "runtime/prompts/preflight-review.md"],
 ] as const;
 
 const GENERATED_FILES = [

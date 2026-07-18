@@ -26,6 +26,8 @@ Schema:
 ```json
 {
     "title": "<short run title>",
+    "goal": "<what the DAG must accomplish>",
+    "success_criteria": ["<observable criterion>", "<another criterion>"],
     "models": {
         "HIGH": "gpt-5.3-codex",
         "MED": "composer-2",
@@ -46,6 +48,7 @@ Schema:
 
 Rules:
 
+- `goal` MUST be a nonblank string. `success_criteria` MUST be a nonempty array of nonblank strings.
 - Dependencies MUST reference task IDs in the same file. Cycles and self-dependencies are invalid.
 - `context_from` MUST be an array and a subset of `depends_on`. Use `[]` when dependency completion matters but its reply text does not.
 - `writes` MUST contain exact normalized repo-relative paths. Use `[]` only for tasks that do not write repository files and `["*"]` for an unbounded write scope.
@@ -66,6 +69,14 @@ Rules:
 A nontrivial DAG SHOULD contain at least one rank with multiple tasks. The bundled `example-dag.json` demonstrates 2 → 1 → 1 → 2 ranks.
 
 Write the DAG to a temporary JSON file such as `/tmp/dag-<slug>.json`.
+
+Semantic review is OPTIONAL and RECOMMENDED for nontrivial DAGs:
+
+```bash
+bun "$RUNNER_DIR/index.ts"   --review-only   --dag /tmp/dag-<slug>.json   --cwd "$PWD"
+```
+
+Use `--semantic-preflight` when you want review-then-execute, or combine with `--init-only` to review then write only the initial canvas. The reviewer sees the supplied goal/DAG only and has no repository tools; it cannot mutate the workspace or auto-repair the DAG.
 
 ## 2. Locate the runtime, install dependencies, and create the initial canvas
 
@@ -178,8 +189,12 @@ SDK `agent_end` starts a 15-second post-stream finalization grace. Timed-out or 
 | `--stream-idle-timeout-ms <ms>` | `300000`          | No-session-event timeout.                 |
 | `--debounce <ms>`               | `200`             | Canvas write debounce.                    |
 | `--cwd <path>`                  | current directory | SDK session working directory.            |
+| `--semantic-preflight`          | off               | Review once; execute only on pass.        |
+| `--review-only`                 | off               | Review only; no canvas/task sessions.     |
+| `--review-model <pattern>`      | `@default`        | Reviewer model pattern.                   |
+| `--review-timeout-ms <ms>`      | `120000`          | Reviewer deadline.                        |
 
-All numeric controls require positive safe integers.
+All numeric controls require positive safe integers. Review-specific flags require `--semantic-preflight` or `--review-only`.
 
 ## 4. Summarize
 

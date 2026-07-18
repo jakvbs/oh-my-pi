@@ -7,27 +7,38 @@ import {
 	type AgentSessionEvent,
 	createAgentSession,
 	discoverAuthStorage,
+	type ExtensionFactory,
 	ModelRegistry,
 	SessionManager,
 	Settings,
 } from "@oh-my-pi/pi-coding-agent";
 import { logger } from "@oh-my-pi/pi-utils";
 import Handlebars from "handlebars";
+import { z } from "zod";
 import { CanvasWriter, initialRunState, type RunState, type TaskState } from "./canvas-writer";
 import {
 	computeRanks,
 	createModelResolver,
 	type DAG,
+	DAGValidationError,
 	type ModelMapOverride,
 	parseDAG,
 	type RawTask,
 	validateModelMap,
 } from "./dag";
+import {
+	formatSemanticIssues,
+	hashNormalizedDAG,
+	preflightSystemPromptText,
+	runSemanticPreflight,
+	SemanticPreflightError,
+	semanticReviewSchema,
+} from "./preflight";
 import taskPromptTemplate from "./prompts/task.md" with { type: "text" };
 
 export interface CliArgs {
 	dag: string;
-	canvasPath: string;
+	canvasPath?: string;
 	cwd: string;
 	modelsFile?: string;
 	debounceMs: number;
@@ -35,11 +46,20 @@ export interface CliArgs {
 	streamPublishMs: number;
 	streamIdleTimeoutMs: number;
 	initOnly: boolean;
+	semanticPreflight: boolean;
+	reviewOnly: boolean;
+	reviewModel: string;
+	reviewTimeoutMs: number;
 }
 
-interface SessionFactoryOptions {
+export interface ExecutionCliArgs extends CliArgs {
+	canvasPath: string;
+}
+
+export interface SessionFactoryOptions {
 	cwd: string;
 	model: string;
+	purpose: "task" | "preflight";
 }
 
 export interface RunnerAssistantMessage {
@@ -50,7 +70,11 @@ export interface RunnerAssistantMessage {
 	stopReason: AssistantMessage["stopReason"];
 }
 
-export type RunnerSessionEvent = { type: "activity" } | { type: "terminal" } | { type: "text_delta"; delta: string };
+export type RunnerSessionEvent =
+	| { type: "activity" }
+	| { type: "terminal" }
+	| { type: "text_delta"; delta: string }
+	| { type: "terminal_yield"; details: unknown };
 
 export interface RunnerSession {
 	readonly isStreaming: boolean;
@@ -94,6 +118,8 @@ const STREAM_CAP = 4000;
 const DEFAULT_TASK_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_STREAM_PUBLISH_MS = 500;
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_REVIEW_TIMEOUT_MS = 120_000;
+const DEFAULT_REVIEW_MODEL = "@default";
 const FINALIZATION_GRACE_MS = 15 * 1000;
 const CLEANUP_TIMEOUT_MS = 1000;
 const UPSTREAM_SNIPPET_CAP = 2000;
@@ -123,17 +149,31 @@ export function parseArgs(argv: string[], cwdDefault = process.cwd()): CliArgs {
 	}
 	if (!args.dag) throw new Error("--dag <path> is required");
 
+	const initOnly = args["init-only"] === "true";
+	const reviewOnly = args["review-only"] === "true";
+	const semanticPreflight = args["semantic-preflight"] === "true" || reviewOnly;
+	const reviewModelProvided = Object.hasOwn(args, "review-model");
+	const reviewTimeoutProvided = Object.hasOwn(args, "review-timeout-ms");
+
+	if (reviewOnly && initOnly) {
+		throw new Error("--review-only cannot be combined with --init-only");
+	}
+	if ((reviewModelProvided || reviewTimeoutProvided) && !semanticPreflight) {
+		throw new Error("--review-model and --review-timeout-ms require --semantic-preflight or --review-only");
+	}
+
 	const cwd = args.cwd ?? cwdDefault;
-	let canvasPath = args["canvas-path"];
+	let canvasPath: string | undefined = args["canvas-path"];
 	if (!canvasPath) {
-		if (!args.canvas) {
+		if (args.canvas) {
+			const canvasesDir = args["canvases-dir"] ?? defaultCanvasesDir(cwd);
+			const stem = args.canvas.replace(/\.canvas\.tsx$/, "");
+			canvasPath = path.join(canvasesDir, `${stem}.canvas.tsx`);
+		} else if (!reviewOnly) {
 			throw new Error("Provide either --canvas-path <abs-path> or --canvas <name>");
 		}
-		const canvasesDir = args["canvases-dir"] ?? defaultCanvasesDir(cwd);
-		const stem = args.canvas.replace(/\.canvas\.tsx$/, "");
-		canvasPath = path.join(canvasesDir, `${stem}.canvas.tsx`);
 	}
-	if (!canvasPath.endsWith(".canvas.tsx")) {
+	if (canvasPath !== undefined && !canvasPath.endsWith(".canvas.tsx")) {
 		canvasPath = `${canvasPath.replace(/\.tsx$/, "")}.canvas.tsx`;
 	}
 
@@ -150,7 +190,23 @@ export function parseArgs(argv: string[], cwdDefault = process.cwd()): CliArgs {
 			DEFAULT_STREAM_IDLE_TIMEOUT_MS,
 			"--stream-idle-timeout-ms",
 		),
-		initOnly: args["init-only"] === "true",
+		initOnly,
+		semanticPreflight,
+		reviewOnly,
+		reviewModel: reviewModelProvided
+			? (() => {
+					const value = args["review-model"];
+					if (typeof value !== "string" || value.trim() === "" || value === "true") {
+						throw new Error("--review-model <pattern> is required");
+					}
+					return value;
+				})()
+			: DEFAULT_REVIEW_MODEL,
+		reviewTimeoutMs: parsePositiveInt(
+			reviewTimeoutProvided ? args["review-timeout-ms"] : undefined,
+			DEFAULT_REVIEW_TIMEOUT_MS,
+			"--review-timeout-ms",
+		),
 	};
 }
 
@@ -212,9 +268,16 @@ export function terminalAssistantError(
 	return message.errorMessage ?? `Run ${message.stopReason}`;
 }
 
+export function requireExecutionArgs(args: CliArgs): ExecutionCliArgs {
+	if (args.canvasPath === undefined) {
+		throw new Error("Canvas path is required for DAG execution");
+	}
+	return { ...args, canvasPath: args.canvasPath };
+}
+
 export async function executeDAG(
 	dag: DAG,
-	args: CliArgs,
+	args: ExecutionCliArgs,
 	sessionFactory: SessionFactory,
 	observer?: ExecutionObserver,
 ): Promise<RunState> {
@@ -350,7 +413,7 @@ async function runTask(
 	};
 
 	try {
-		const sessionPromise = sessionFactory({ cwd, model: taskState.model });
+		const sessionPromise = sessionFactory({ cwd, model: taskState.model, purpose: "task" });
 		try {
 			session = await withTimeout(
 				sessionPromise,
@@ -625,6 +688,10 @@ class CodingAgentSessionAdapter implements RunnerSession {
 
 	subscribe(listener: (event: RunnerSessionEvent) => void): () => void {
 		return this.#session.subscribe(event => {
+			if (event.type === "tool_execution_end" && !event.isError && event.toolName === "yield") {
+				listener({ type: "terminal_yield", details: event.result.details });
+				return;
+			}
 			if (sdkSessionEventKind(event.type) === "terminal") {
 				listener({ type: "terminal" });
 				return;
@@ -665,7 +732,17 @@ class CodingAgentSessionAdapter implements RunnerSession {
 	}
 }
 
-async function createDefaultSessionFactory(): Promise<{ close: () => void; factory: SessionFactory }> {
+const preflightToolGuard: ExtensionFactory = api => {
+	api.on("tool_call", async event => {
+		if (event.toolName === "yield") return undefined;
+		return {
+			block: true,
+			reason: `Semantic preflight sessions may only use the yield tool; blocked ${event.toolName}.`,
+		};
+	});
+};
+
+export async function createDefaultSessionFactory(): Promise<{ close: () => void; factory: SessionFactory }> {
 	const authStorage = await discoverAuthStorage();
 	const modelRegistry = new ModelRegistry(authStorage);
 	await modelRegistry.refresh();
@@ -678,9 +755,36 @@ async function createDefaultSessionFactory(): Promise<{ close: () => void; facto
 
 	return {
 		close: () => authStorage.close(),
-		factory: async ({ cwd, model }) => {
+		factory: async ({ cwd, model, purpose }) => {
 			const settings = Settings.isolated({ "retry.enabled": false });
 			const modelSelection = sdkModelSelection(model, authenticatedFallback);
+			if (purpose === "preflight") {
+				const terminalSchema = z.array(semanticReviewSchema).length(1);
+				const { session } = await createAgentSession({
+					authStorage,
+					contextFiles: [],
+					cwd,
+					customTools: [],
+					disableExtensionDiscovery: true,
+					enableLsp: false,
+					enableMCP: false,
+					extensions: [preflightToolGuard],
+					hasUI: false,
+					...modelSelection,
+					modelRegistry,
+					outputSchema: z.toJSONSchema(terminalSchema),
+					preloadedCustomToolPaths: [],
+					requireYieldTool: true,
+					sessionManager: SessionManager.inMemory(),
+					settings,
+					skills: [],
+					slashCommands: [],
+					spawns: "",
+					systemPrompt: preflightSystemPromptText(),
+					toolNames: [],
+				});
+				return new CodingAgentSessionAdapter(session);
+			}
 			const { session } = await createAgentSession({
 				authStorage,
 				cwd,
@@ -698,22 +802,73 @@ async function createDefaultSessionFactory(): Promise<{ close: () => void; facto
 	};
 }
 
-export async function runCli(argv = process.argv.slice(2), observer?: ExecutionObserver): Promise<number> {
+export type CreateSessionRuntime = () => Promise<{ close: () => void; factory: SessionFactory }>;
+
+export async function runCli(
+	argv = process.argv.slice(2),
+	observer?: ExecutionObserver,
+	createSessionRuntime: CreateSessionRuntime = createDefaultSessionFactory,
+): Promise<number> {
 	const args = parseArgs(argv);
 	setMaxListeners(ABORT_SIGNAL_LISTENER_LIMIT);
-	const runtime = args.initOnly ? undefined : await createDefaultSessionFactory();
+	const needsRuntime = args.semanticPreflight || (!args.initOnly && !args.reviewOnly);
+	const runtime = needsRuntime ? await createSessionRuntime() : undefined;
 	try {
 		const raw = JSON.parse(await Bun.file(args.dag).text());
-		const dag = parseDAG(raw);
+		let dag: DAG;
+		try {
+			dag = parseDAG(raw);
+		} catch (error) {
+			if (error instanceof DAGValidationError) {
+				process.stderr.write(`[dag-runner] deterministic preflight failed:\n${error.message}\n`);
+				return 1;
+			}
+			throw error;
+		}
 		const fileModels = args.modelsFile
 			? validateModelMap(JSON.parse(await Bun.file(args.modelsFile).text()), `--models-file ${args.modelsFile}`)
 			: undefined;
-		dag.models = mergeModelOverrides({ dagModels: dag.models, fileModels });
+		const mergedModels = mergeModelOverrides({ dagModels: dag.models, fileModels });
+		dag.models = Object.keys(mergedModels).length > 0 ? mergedModels : undefined;
+		const dagHash = await hashNormalizedDAG(dag);
 
+		if (args.semanticPreflight) {
+			if (!runtime) throw new Error("Semantic preflight runtime was not initialized");
+			writeLine(`semantic preflight — DAG sha256 ${dagHash}`);
+			try {
+				const result = await runSemanticPreflight({
+					cwd: args.cwd,
+					dag,
+					dagHash,
+					reviewModel: args.reviewModel,
+					reviewTimeoutMs: args.reviewTimeoutMs,
+					sessionFactory: runtime.factory,
+				});
+				if (result.review.issues.length > 0) {
+					process.stdout.write(`${formatSemanticIssues(result.review.issues)}\n`);
+				}
+				if (result.review.verdict === "revise") {
+					process.stderr.write(`[dag-runner] semantic preflight revise — DAG sha256 ${result.dagHash}\n`);
+					return 1;
+				}
+				writeLine(`semantic preflight pass — DAG sha256 ${result.dagHash}`);
+				if (args.reviewOnly) {
+					writeLine("review-only pass — exiting without task sessions or canvas");
+					return 0;
+				}
+			} catch (error) {
+				const message =
+					error instanceof SemanticPreflightError || error instanceof Error ? error.message : String(error);
+				process.stderr.write(`[dag-runner] semantic preflight failed: ${message}\n`);
+				return 1;
+			}
+		}
+
+		const executionArgs = requireExecutionArgs(args);
 		if (args.initOnly) {
 			await executeDAG(
 				dag,
-				args,
+				executionArgs,
 				async () => {
 					throw new Error("Session factory must not run in --init-only mode");
 				},
@@ -723,7 +878,7 @@ export async function runCli(argv = process.argv.slice(2), observer?: ExecutionO
 		}
 
 		if (!runtime) throw new Error("Runner runtime was not initialized");
-		const state = await executeDAG(dag, args, runtime.factory, observer);
+		const state = await executeDAG(dag, executionArgs, runtime.factory, observer);
 		return state.runOutcome === "SUCCESS" ? 0 : 1;
 	} finally {
 		runtime?.close();

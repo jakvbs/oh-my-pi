@@ -6,7 +6,8 @@ The visualization remains `.canvas.tsx` rather than being reduced to Markdown or
 
 ## Behavior
 
-- Validates IDs, dependencies, context sources, declared writes, complexity values, model overrides, and cycles.
+- Runs mandatory deterministic preflight first: goal, success criteria, IDs, dependencies, context sources, declared writes, complexity values, model overrides, and cycles. Independent errors are reported together.
+- Optionally runs one isolated semantic LLM review (`--semantic-preflight` / `--review-only`) against the exact normalized effective DAG before any canvas write or task session.
 - Uses deterministic source-order readiness. Root tasks start together; each dependent starts as soon as all of its own parents finish.
 - Prepends up to 2,000 characters from each task named in `context_from`; ordering-only dependencies add no prompt context.
 - Keeps the newest 4,000 streamed assistant characters per task and publishes at most every 500 ms by default.
@@ -65,6 +66,12 @@ Expected scheduling shape:
 ```json
 {
     "title": "Build a tiny CLI todo app",
+    "goal": "Build a tiny single-file Node.js CLI todo app with local JSON persistence, tests, and a short README.",
+    "success_criteria": [
+        "A single-file `todo.mjs` supports add, list, done, and rm against a local JSON store.",
+        "`test_todo.mjs` exercises the core command flow with Node's built-in test runner.",
+        "README.md documents commands, examples, and storage location without modifying todo.mjs."
+    ],
     "models": {
         "HIGH": "gpt-5.3-codex",
         "MED": "composer-2",
@@ -83,10 +90,12 @@ Expected scheduling shape:
 }
 ```
 
-| Field            | Required | Contract                                                                                                      |
-| ---------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| `title`          | yes      | Nonblank string. Validation trims only for the blank check; stored text is unchanged.                         |
-| `id`             | yes      | Unique nonblank task ID.                                                                                      |
+| Field               | Required | Contract                                                                                                      |
+| ------------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `title`             | yes      | Display label. Nonblank string. Validation trims only for the blank check; stored text is unchanged.          |
+| `goal`              | yes      | Nonblank string. Validation trims only for the blank check; stored text is unchanged.                         |
+| `success_criteria`  | yes      | Nonempty string array. Blank entries are rejected; exact duplicates are removed in insertion order.           |
+| `id`                | yes      | Unique nonblank task ID.                                                                                      |
 | `depends_on`     | no       | Scheduling and failure-propagation IDs; defaults to `[]`; duplicates are removed in insertion order.         |
 | `context_from`   | yes      | IDs whose results enter the prompt; must be a subset of `depends_on`; duplicates are removed.                |
 | `writes`         | yes      | Exact normalized repo-relative paths, `[]` for no repo writes, or `["*"]` for an unbounded write scope.      |
@@ -120,13 +129,33 @@ OMP retry is explicitly disabled in isolated per-session settings. A provider er
 | `--canvases-dir`           | retained workspace path | Used with `--canvas`; defaults to `~/.cursor/projects/<cwd-slug>/canvases`. |
 | `--cwd`                    | `process.cwd()`         | Working directory for every task session.                                   |
 | `--models-file`            | —                       | Partial complexity-to-model JSON override.                                  |
-| `--init-only`              | `false`                 | Write the initial canvas and exit without auth.                             |
+| `--init-only`              | `false`                 | Write the initial canvas and exit without task sessions.                    |
+| `--semantic-preflight`     | `false`                 | Run one isolated semantic review; execute only on pass.                     |
+| `--review-only`            | `false`                 | Implies semantic review; no task sessions or canvas required.               |
+| `--review-model`           | `@default`              | Reviewer model pattern; requires semantic/review-only mode.                 |
+| `--review-timeout-ms`      | `120000`                | Reviewer deadline; requires semantic/review-only mode.                      |
 | `--debounce`               | `200` ms                | Serialized visualization write debounce.                                    |
 | `--task-timeout-ms`        | `1200000`               | Overall task deadline.                                                      |
 | `--stream-publish-ms`      | `500` ms                | Live output publish throttle.                                               |
 | `--stream-idle-timeout-ms` | `300000` ms             | No-session-event timeout, bounded by the task deadline.                     |
 
 Unknown flags are ignored, matching the original CLI. Numeric flags accept positive safe integers only.
+
+## Preflight layers
+
+1. **Deterministic validation** always runs before model/session/canvas creation. It collects every independent schema/graph error (no prompt-quality lints).
+2. **Semantic review** is opt-in. Sequence:
+
+```text
+read JSON
+→ deterministic validation
+→ merge model overrides
+→ hash normalized effective DAG (SHA-256)
+→ optional semantic review
+→ execute the same in-memory DAG object
+```
+
+Semantic review is tool-free, structured, bounded, and cannot mutate repository state. It can warn or request revision, but it never auto-rewrites the DAG. Review cost and verdicts are non-deterministic model outputs; warnings alone still pass, while any `severity: "error"` issue forces `revise` and blocks canvas/task creation. The reviewer sees only the supplied goal/criteria/DAG JSON — no repository tools.
 
 ## Prompt and failure semantics
 
@@ -216,7 +245,11 @@ dag-task-runner/
     ├── dag.ts
     ├── run-example.ts
     ├── canvas-writer.ts
-    └── prompts/task.md
+    ├── preflight.ts
+    └── prompts/
+        ├── task.md
+        ├── preflight-system.md
+        └── preflight-review.md
 ```
 
 The generated runtime keeps the safe demo contract: `bun run example` still requires `--cwd <existing-scratch-directory>`.
@@ -232,12 +265,16 @@ The generated runtime keeps the safe demo contract: `bun run example` still requ
 ├── package-skill.ts
 ├── index.ts
 ├── dag.ts
+├── preflight.ts
 ├── run-example.ts
 ├── canvas-writer.ts
 ├── index.test.ts
+├── preflight.test.ts
 ├── package-skill.test.ts
 ├── example-dag.json
 ├── prompts/task.md
+├── prompts/preflight-system.md
+├── prompts/preflight-review.md
 └── skill/SKILL.md
 ```
 

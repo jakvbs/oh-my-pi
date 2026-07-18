@@ -13,6 +13,9 @@ const EXPECTED_FILES = [
 	"runtime/dag.ts",
 	"runtime/index.ts",
 	"runtime/package.json",
+	"runtime/preflight.ts",
+	"runtime/prompts/preflight-review.md",
+	"runtime/prompts/preflight-system.md",
 	"runtime/prompts/task.md",
 	"runtime/run-example.ts",
 	"runtime/text-imports.d.ts",
@@ -50,6 +53,7 @@ describe("copyable skill packaging", () => {
 			"@oh-my-pi/pi-coding-agent": rootManifest.workspaces.catalog["@oh-my-pi/pi-coding-agent"],
 			"@oh-my-pi/pi-utils": rootManifest.workspaces.catalog["@oh-my-pi/pi-utils"],
 			handlebars: rootManifest.workspaces.catalog.handlebars,
+			zod: rootManifest.workspaces.catalog.zod,
 		});
 		expect(manifest.devDependencies).toEqual({
 			"@types/bun": rootManifest.workspaces.catalog["@types/bun"],

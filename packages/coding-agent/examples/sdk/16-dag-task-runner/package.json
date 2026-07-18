@@ -9,5 +9,8 @@
         "package-skill": "bun package-skill.ts",
         "check": "bun --cwd ../../.. check",
         "test": "bun test"
+    },
+    "dependencies": {
+        "zod": "catalog:"
     }
 }
