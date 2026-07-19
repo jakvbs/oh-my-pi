@@ -41,7 +41,7 @@ aggregate <plan.json> --results-dir results/ --output report.json
 run <goal> <files...> [--output report.json]
 ```
 
-Edit the plan JSON, then run units independently or concurrently; each unit writes a terminal success or failure artifact. Aggregate only when every unit artifact is present. `run` is the same end-to-end convenience path.
+Edit the plan JSON, then run units independently or concurrently; each unit writes a terminal success or failure artifact with a primary-and-related source fingerprint. `review-units` requires a new output directory and publishes its complete artifact set with one atomic directory rename. Aggregate only when every unit artifact is present and its fingerprint still matches current sources. Expected CLI, artifact, runtime, and review failures use explicit `ReviewFailure.kind` values. `run` is the same end-to-end convenience path.
 
 ## Quick Reference
 

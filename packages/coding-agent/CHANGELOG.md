@@ -303,11 +303,12 @@
 ### Changed
 
 - Changed the SDK DAG task runner example to start each task as soon as its dependencies finish instead of waiting for unrelated tasks in the same Kahn rank.
-- Updated the model-routed code review example to the completed artifact lifecycle: editable versioned plan/unit JSON artifacts, independent bounded unit/subset review, typed terminal failures, source/unit fingerprints, and a complete terminal-result aggregation barrier.
+- Updated the model-routed code review example to the completed artifact lifecycle: editable versioned plan/unit JSON artifacts, independent bounded unit/subset review, precise typed terminal failures, source/unit fingerprints, a complete terminal-result aggregation barrier, and separated contracts, policy, runner, CLI, and SDK adapters.
 
 ### Fixed
 
-- Fixed model-routed review artifact publication so concurrent readers see either no destination or the complete JSON, while preserving existing outputs.
+- Fixed model-routed review artifact publication so concurrent readers see either no destination or the complete JSON or unit-result directory, while preserving existing outputs and publishing `review-units` as one atomic set.
+- Fixed model-routed review consistency by fingerprinting each unit's primary and related sources before and after review, then revalidating them before and after aggregation.
 
 ## [17.0.2] - 2026-07-17
 

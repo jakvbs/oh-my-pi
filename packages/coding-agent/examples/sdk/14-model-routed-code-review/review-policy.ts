@@ -779,3 +779,56 @@ export function decideReviewerOutputPolicy(input: {
 		verdict: verdictDecision.value,
 	});
 }
+
+/** Aggregator must conserve every finding reference exactly once and cite known unit paths. */
+export function validateAggregationGrouping(
+	output: AggregationModelOutput,
+	plan: ValidatedPlan,
+	knownFindingReferences: ReadonlySet<string>,
+): ReviewOutcome<AggregationModelOutput> {
+	const knownUnits = planUnitById(plan);
+	const seenRefs = new Set<string>();
+	for (const group of output.orderedGroups) {
+		for (const reference of group.findingRefs) {
+			const key = findingReferenceKey(reference.unitId, reference.findingId);
+			if (!knownFindingReferences.has(key)) {
+				return fail({
+					kind: "invalid_aggregation",
+					reason: "unknown_finding",
+					message: `Aggregator referenced unknown finding: ${key}`,
+					findingRef: key,
+				});
+			}
+			if (seenRefs.has(key)) {
+				return fail({
+					kind: "invalid_aggregation",
+					reason: "duplicate_finding",
+					message: `Aggregator repeated finding: ${key}`,
+					findingRef: key,
+				});
+			}
+			seenRefs.add(key);
+		}
+	}
+	for (const key of knownFindingReferences) {
+		if (!seenRefs.has(key)) {
+			return fail({
+				kind: "invalid_aggregation",
+				reason: "omitted_finding",
+				message: `Aggregator omitted finding: ${key}`,
+				findingRef: key,
+			});
+		}
+	}
+	for (const gap of output.coverageGaps) {
+		const unit = knownUnits.get(gap.unitId);
+		if (!unit?.primaryFiles.includes(gap.path)) {
+			return fail({
+				kind: "invalid_aggregation",
+				reason: "invalid_group",
+				message: `Aggregator referenced unknown coverage gap: ${gap.unitId}/${gap.path}`,
+			});
+		}
+	}
+	return ok(output);
+}

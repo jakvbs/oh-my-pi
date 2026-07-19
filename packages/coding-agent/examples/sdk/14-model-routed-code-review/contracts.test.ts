@@ -4,18 +4,20 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-	type HashFn,
-	type PlanArtifact,
-	type PromptExecutionMetadata,
-	parseCliCommand,
 	parsePlanArtifact,
 	parsePlannerOutput,
 	parseUnitReviewArtifact,
+	toPlanArtifact,
+	toValidatedPlan,
+} from "./artifact-codec";
+import { parseCliCommand } from "./cli";
+import {
+	type HashFn,
+	type PlanArtifact,
+	type PromptExecutionMetadata,
 	type ReviewFailure,
 	type ReviewOutcome,
 	type ReviewUnit,
-	toPlanArtifact,
-	toValidatedPlan,
 	UNIT_REVIEW_SCHEMA_VERSION,
 	type UnitReviewArtifact,
 	type ValidatedPlan,
@@ -56,6 +58,12 @@ function expectFailure(
 	if (outcome.ok) return;
 	expect(outcome.failure.kind).toBe(expected.kind);
 	expect(outcome.failure).toEqual(expect.objectContaining({ reason: expected.reason }));
+}
+
+function expectFailureKind(outcome: ReviewOutcome<unknown>, kind: ReviewFailure["kind"]): void {
+	expect(outcome.ok).toBe(false);
+	if (outcome.ok) return;
+	expect(outcome.failure.kind).toBe(kind);
 }
 
 async function withTempRoot(
@@ -154,7 +162,10 @@ function parseTrustedPlan(
 	});
 }
 
-function succeededUnitArtifact(plan: ValidatedPlan, unitId: string): UnitReviewArtifact {
+function succeededUnitArtifact(
+	plan: ValidatedPlan,
+	unitId: string,
+): Extract<UnitReviewArtifact, { status: "succeeded" }> {
 	const unit = plan.units.find(item => item.id === unitId);
 	if (!unit) throw new Error(`missing unit ${unitId}`);
 	return {
@@ -162,6 +173,7 @@ function succeededUnitArtifact(plan: ValidatedPlan, unitId: string): UnitReviewA
 		planFingerprint: plan.planFingerprint,
 		unitId,
 		unitFingerprint: unit.unitFingerprint,
+		sourceFingerprint: "c".repeat(64),
 		status: "succeeded",
 		review: {
 			unitId,
@@ -608,25 +620,19 @@ describe("parseCliCommand grammars", () => {
 	});
 
 	test("rejects missing explicit units and required outputs", () => {
-		expectFailure(parseCliCommand(["review-units", "--plan", "plan.json", "--output-dir", "units"]), {
-			kind: "invalid_plan",
-			reason: "schema",
-		});
-		expectFailure(parseCliCommand(["review-unit", "--plan", "plan.json", "--output", "unit.json"]), {
-			kind: "invalid_plan",
-			reason: "schema",
-		});
-		expectFailure(parseCliCommand(["plan", "--goal", "Review plan", "--", "src/a.ts"]), {
-			kind: "invalid_plan",
-			reason: "schema",
-		});
-		expectFailure(parseCliCommand(["aggregate", "--plan", "plan.json", "--results-dir", "results"]), {
-			kind: "invalid_plan",
-			reason: "schema",
-		});
-		expectFailure(parseCliCommand(["review-unit", "--plan", "plan.json", "--unit", "alpha"]), {
-			kind: "invalid_plan",
-			reason: "schema",
-		});
+		expectFailureKind(
+			parseCliCommand(["review-units", "--plan", "plan.json", "--output-dir", "units"]),
+			"invalid_cli",
+		);
+		expectFailureKind(
+			parseCliCommand(["review-unit", "--plan", "plan.json", "--output", "unit.json"]),
+			"invalid_cli",
+		);
+		expectFailureKind(parseCliCommand(["plan", "--goal", "Review plan", "--", "src/a.ts"]), "invalid_cli");
+		expectFailureKind(
+			parseCliCommand(["aggregate", "--plan", "plan.json", "--results-dir", "results"]),
+			"invalid_cli",
+		);
+		expectFailureKind(parseCliCommand(["review-unit", "--plan", "plan.json", "--unit", "alpha"]), "invalid_cli");
 	});
 });

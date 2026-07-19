@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { ZodType } from "zod";
+import { parsePlanArtifact } from "./artifact-codec";
 import {
 	PLAN_SCHEMA_VERSION,
 	type PlanArtifact,
@@ -12,7 +13,6 @@ import {
 	type PromptResult,
 	type PromptRunner,
 	type PromptStage,
-	parsePlanArtifact,
 	type ReviewReport,
 	type UnitReviewArtifact,
 	type ValidatedPlan,
@@ -170,6 +170,7 @@ function plannerUnits(
 		title?: string;
 		riskLevel?: "low" | "medium" | "high" | "critical";
 		reviewFocus?: string[];
+		relatedFiles?: string[];
 	}>,
 ) {
 	return entries.map(entry => ({
@@ -177,7 +178,7 @@ function plannerUnits(
 		title: entry.title ?? entry.id,
 		objective: `Review ${entry.id}`,
 		primary_files: [entry.filePath],
-		related_files: [],
+		related_files: entry.relatedFiles ?? [],
 		review_focus: entry.reviewFocus ?? ["correctness"],
 		risk_level: entry.riskLevel ?? "medium",
 		rationale: `Owns ${entry.id}`,
@@ -616,6 +617,45 @@ describe("reviewUnit", () => {
 			},
 		);
 	});
+
+	test("source changes during a PASS review produce a terminal stale_sources artifact", async () => {
+		await withTempWorkspace(
+			{ "source.ts": "export const value = 1;\n", "related.ts": "export const dependency = 1;\n" },
+			async context => {
+				const sourcePath = context.paths["source.ts"]!;
+				const relatedPath = context.paths["related.ts"]!;
+				const planner: PromptRunner = async ({ resultSchema, stage }) =>
+					promptResult(resultSchema, stage, {
+						overview: "Single unit",
+						units: plannerUnits([{ id: "source", filePath: sourcePath, relatedFiles: [relatedPath] }]),
+					});
+				const { plan } = await createValidatedPlan({
+					cwd: context.cwd,
+					roots: context.roots,
+					targetFiles: [sourcePath],
+					reviewGoal: "Review source",
+					sourceLoader: context.sourceLoader,
+					clock: context.clock,
+					runPrompt: planner,
+				});
+				const reviewer: PromptRunner = async ({ resultSchema, stage }) => {
+					await Bun.write(relatedPath, "export const dependency = 2;\n");
+					return promptResult(resultSchema, stage, passReview("source", sourcePath), [sourcePath]);
+				};
+
+				const artifact = await reviewUnit(
+					{ plan, unitId: "source", cwd: context.cwd, roots: context.roots },
+					{ runPrompt: reviewer, sourceLoader: context.sourceLoader, hash, thinkingLevel: THINKING },
+				);
+
+				expect(artifact).toMatchObject({
+					status: "failed",
+					unitId: "source",
+					failure: { kind: "invalid_unit_result", reason: "stale_sources" },
+				});
+			},
+		);
+	});
 });
 
 describe("reviewUnits", () => {
@@ -936,8 +976,67 @@ describe("aggregateReview", () => {
 		});
 	}
 
+	test("rejects complete artifacts when unit sources changed after review", async () => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, sourceLoader, clock, paths }) => {
+			await Bun.write(paths["a.ts"]!, "export const divide = () => 0;\n");
+			let aggregatorCalls = 0;
+			const runPrompt: PromptRunner = async ({ stage }) => {
+				if (stage === "aggregator") aggregatorCalls += 1;
+				throw new Error(`Unexpected stage ${stage}`);
+			};
+
+			const outcome = await aggregateReview(
+				{ plan, unitReviews: succeeded, cwd, startedAt: clock.now() },
+				{ runPrompt, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+			);
+
+			expect(aggregatorCalls).toBe(0);
+			expect(outcome).toMatchObject({
+				ok: false,
+				failure: { kind: "invalid_unit_result", reason: "stale_sources", unitId: "division" },
+			});
+		});
+	});
+
+	test("rejects artifacts when sources change while aggregation is running", async () => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, sourceLoader, clock, paths }) => {
+			let aggregatorCalls = 0;
+			const runPrompt: PromptRunner = async ({ resultSchema, stage }) => {
+				aggregatorCalls += 1;
+				await Bun.write(paths["b.ts"]!, "export const format = () => 'changed';\n");
+				return promptResult(resultSchema, stage, {
+					overall_summary: "Review completed",
+					ordered_groups: [
+						{
+							finding_refs: [
+								{ unit_id: "division", finding_id: "zero-divisor" },
+								{ unit_id: "formatting", finding_id: "string-coercion" },
+							],
+							title: "Numeric API contracts",
+							reason: "Grouped public API issues",
+							recommended_action: "Tighten API contracts",
+							verification_after_change: "Cover numeric edges",
+						},
+					],
+					coverage_gaps: [],
+				});
+			};
+
+			const outcome = await aggregateReview(
+				{ plan, unitReviews: succeeded, cwd, startedAt: clock.now() },
+				{ runPrompt, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+			);
+
+			expect(aggregatorCalls).toBe(1);
+			expect(outcome).toMatchObject({
+				ok: false,
+				failure: { kind: "invalid_unit_result", reason: "stale_sources", unitId: "formatting" },
+			});
+		});
+	});
+
 	test("premature missing results are a typed failure and do not invoke the aggregator", async () => {
-		await twoUnitFixture(async ({ cwd, plan, succeeded, clock }) => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, sourceLoader, clock }) => {
 			let aggregatorCalls = 0;
 			const runPrompt: PromptRunner = async ({ stage }) => {
 				if (stage === "aggregator") {
@@ -953,7 +1052,7 @@ describe("aggregateReview", () => {
 					cwd,
 					startedAt: clock.now(),
 				},
-				{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+				{ runPrompt, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
 			);
 
 			expect(aggregatorCalls).toBe(0);
@@ -969,7 +1068,7 @@ describe("aggregateReview", () => {
 	});
 
 	test("failed terminal unit results still aggregate with coverage gaps", async () => {
-		await twoUnitFixture(async ({ cwd, plan, succeeded, failedEvidence, clock, paths }) => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, failedEvidence, sourceLoader, clock, paths }) => {
 			let aggregatorCalls = 0;
 			const runPrompt: PromptRunner = async ({ resultSchema, stage }) => {
 				expect(stage).toBe("aggregator");
@@ -996,7 +1095,7 @@ describe("aggregateReview", () => {
 					cwd,
 					startedAt: clock.now(),
 				},
-				{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+				{ runPrompt, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
 			);
 
 			expect(aggregatorCalls).toBe(1);
@@ -1018,7 +1117,7 @@ describe("aggregateReview", () => {
 	});
 
 	test("complete results invoke the aggregator once, conserve findings, and keep deterministic severity", async () => {
-		await twoUnitFixture(async ({ cwd, plan, succeeded, clock }) => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, sourceLoader, clock }) => {
 			let aggregatorCalls = 0;
 			const runPrompt: PromptRunner = async ({ resultSchema, stage }) => {
 				expect(stage).toBe("aggregator");
@@ -1048,7 +1147,7 @@ describe("aggregateReview", () => {
 					cwd,
 					startedAt: clock.now(),
 				},
-				{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+				{ runPrompt, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
 			);
 
 			expect(aggregatorCalls).toBe(1);
@@ -1072,7 +1171,7 @@ describe("aggregateReview", () => {
 	});
 
 	test("foreign, stale, duplicate, and unknown unit artifacts fail before the aggregator runs", async () => {
-		await twoUnitFixture(async ({ cwd, plan, succeeded, clock }) => {
+		await twoUnitFixture(async ({ cwd, plan, succeeded, sourceLoader, clock }) => {
 			let aggregatorCalls = 0;
 			const runPrompt: PromptRunner = async ({ stage }) => {
 				if (stage === "aggregator") {
@@ -1118,7 +1217,7 @@ describe("aggregateReview", () => {
 						cwd,
 						startedAt: clock.now(),
 					},
-					{ runPrompt, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+					{ runPrompt, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
 				);
 				expect(aggregatorCalls, testCase.label).toBe(0);
 				expect(outcome.ok, testCase.label).toBe(false);
@@ -1292,6 +1391,8 @@ describe("end-to-end lifecycle smoke", () => {
 						}
 						throw new Error(`Unexpected stage ${stage}`);
 					},
+					sourceLoader,
+					hash,
 					clock,
 					modelId: MODEL_ID,
 					thinkingLevel: THINKING,
@@ -1332,7 +1433,7 @@ describe("end-to-end lifecycle smoke", () => {
 					cwd,
 					startedAt,
 				},
-				{ runPrompt: stagedRunner, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
+				{ runPrompt: stagedRunner, sourceLoader, hash, clock, modelId: MODEL_ID, thinkingLevel: THINKING },
 			);
 			expect(aggregated.ok).toBe(true);
 			if (!aggregated.ok) {

@@ -3,6 +3,13 @@ import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import Handlebars from "handlebars";
 import type { z } from "zod";
 import {
+	parseAggregationOutput,
+	parsePlanArtifact,
+	parsePlannerOutput,
+	parseReviewerOutput,
+	toPlanArtifact,
+} from "./artifact-codec";
+import {
 	aggregationOutputSchema,
 	CONTEXT_TOOL_POLICY_VERSION,
 	type HashFn,
@@ -11,10 +18,6 @@ import {
 	type PromptExecutionMetadata,
 	type PromptResult,
 	type PromptRunner,
-	parseAggregationOutput,
-	parsePlanArtifact,
-	parsePlannerOutput,
-	parseReviewerOutput,
 	plannerOutputSchema,
 	REPORT_SCHEMA_VERSION,
 	type ReviewFailure,
@@ -25,7 +28,6 @@ import {
 	reviewerOutputSchema,
 	type Severity,
 	type TokenUsage,
-	toPlanArtifact,
 	UNIT_REVIEW_SCHEMA_VERSION,
 	type UnitReviewArtifact,
 	type ValidatedPlan,
@@ -124,6 +126,8 @@ export type AggregateReviewRequest = {
 
 export type AggregateReviewDeps = {
 	runPrompt: PromptRunner;
+	sourceLoader: SourceLoader;
+	hash: HashFn;
 	clock: Clock;
 	modelId: string;
 	thinkingLevel: ThinkingLevel;
@@ -198,6 +202,7 @@ function failedUnitArtifact(input: {
 	planFingerprint: string;
 	unitId: string;
 	unitFingerprint: string;
+	sourceFingerprint?: string;
 	failure: ReviewFailure;
 	execution?: PromptExecutionMetadata;
 }): UnitReviewArtifact {
@@ -206,6 +211,7 @@ function failedUnitArtifact(input: {
 		planFingerprint: input.planFingerprint,
 		unitId: input.unitId,
 		unitFingerprint: input.unitFingerprint,
+		...(input.sourceFingerprint ? { sourceFingerprint: input.sourceFingerprint } : {}),
 		status: "failed",
 		failure: input.failure,
 		...(input.execution ? { execution: input.execution } : {}),
@@ -252,52 +258,56 @@ async function computeSourceFingerprint(input: {
 	return ok(input.hash(canonical));
 }
 
-async function loadSourceSnapshots(input: {
+type UnitScopeSnapshot = {
+	fingerprint: string;
+	sources: SourceSnapshot[];
+};
+
+async function snapshotUnitScope(input: {
 	cwd: string;
-	unitId: string;
-	paths: readonly string[];
+	unit: ValidatedReviewUnit;
 	readPaths: ReadonlySet<string>;
 	sourceLoader: SourceLoader;
-}): Promise<ReviewOutcome<SourceSnapshot[]>> {
-	const orderedPaths = normalizeAbsolutePaths(input.cwd, input.paths);
-	if (orderedPaths.length === 0) return ok([]);
-
+	hash: HashFn;
+	stage: "reviewer" | "aggregator";
+}): Promise<ReviewOutcome<UnitScopeSnapshot>> {
+	const orderedPaths = normalizeAbsolutePaths(input.cwd, [...input.unit.primaryFiles, ...input.unit.relatedFiles]);
 	let snapshots: readonly CanonicalSource[];
 	try {
 		snapshots = await input.sourceLoader.snapshot(orderedPaths);
 	} catch (error) {
 		return fail({
-			kind: "invalid_evidence",
-			unitId: input.unitId,
-			message: `Failed to snapshot evidence sources: ${errorMessage(error)}`,
+			kind: "source_snapshot_failed",
+			stage: input.stage,
+			unitId: input.unit.id,
+			message: `Failed to snapshot unit sources: ${errorMessage(error)}`,
 		});
 	}
 
 	const byPath = new Map<string, string>();
-	for (const snapshot of snapshots) {
-		byPath.set(resolve(input.cwd, snapshot.path), snapshot.content);
-	}
+	for (const snapshot of snapshots) byPath.set(resolve(input.cwd, snapshot.path), snapshot.content);
 
-	const loaded: SourceSnapshot[] = [];
+	const sources: SourceSnapshot[] = [];
 	for (const pathValue of orderedPaths) {
 		const content = byPath.get(pathValue);
 		if (content === undefined) {
 			return fail({
-				kind: "invalid_evidence",
-				unitId: input.unitId,
-				sourceId: pathValue,
-				message: `Missing canonical snapshot for evidence source: ${pathValue}`,
+				kind: "source_snapshot_failed",
+				stage: input.stage,
+				unitId: input.unit.id,
+				message: `Missing canonical snapshot for unit source: ${pathValue}`,
 			});
 		}
-		loaded.push({
-			sourceId: pathValue,
-			content,
-			wasRead: input.readPaths.has(pathValue),
-		});
+		sources.push({ sourceId: pathValue, content, wasRead: input.readPaths.has(pathValue) });
 	}
-	return ok(loaded);
-}
 
+	return ok({
+		fingerprint: input.hash(
+			JSON.stringify(sources.map(source => ({ path: source.sourceId, content: source.content }))),
+		),
+		sources,
+	});
+}
 function createSemaphore(permits: number) {
 	let available = Math.max(1, permits);
 	const waiters: Array<() => void> = [];
@@ -379,6 +389,7 @@ function buildAggregatorRequest(plan: ValidatedPlan, unitResults: readonly UnitR
 					status: artifact.status,
 					unitId: artifact.unitId,
 					unitFingerprint: artifact.unitFingerprint,
+					sourceFingerprint: artifact.sourceFingerprint,
 					review: artifact.review,
 				};
 			}
@@ -386,6 +397,7 @@ function buildAggregatorRequest(plan: ValidatedPlan, unitResults: readonly UnitR
 				status: artifact.status,
 				unitId: artifact.unitId,
 				unitFingerprint: artifact.unitFingerprint,
+				...(artifact.sourceFingerprint ? { sourceFingerprint: artifact.sourceFingerprint } : {}),
 				failure: artifact.failure,
 			};
 		}),
@@ -498,6 +510,23 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 	}
 
 	const roots = normalizeAbsolutePaths(request.cwd, request.roots);
+	const initialScope = await snapshotUnitScope({
+		cwd: request.cwd,
+		unit: planUnit,
+		readPaths: new Set(),
+		sourceLoader: deps.sourceLoader,
+		hash: deps.hash,
+		stage: "reviewer",
+	});
+	if (!initialScope.ok) {
+		return failedUnitArtifact({
+			planFingerprint: request.plan.planFingerprint,
+			unitId: planUnit.id,
+			unitFingerprint: planUnit.unitFingerprint,
+			failure: initialScope.failure,
+		});
+	}
+
 	let promptResult: ReviewerPromptResult;
 	try {
 		promptResult = await deps.runPrompt({
@@ -532,6 +561,40 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 		});
 	}
 
+	const readPaths = new Set((promptResult.contextReadPaths ?? []).map(pathValue => resolve(request.cwd, pathValue)));
+	const currentScope = await snapshotUnitScope({
+		cwd: request.cwd,
+		unit: planUnit,
+		readPaths,
+		sourceLoader: deps.sourceLoader,
+		hash: deps.hash,
+		stage: "reviewer",
+	});
+	if (!currentScope.ok) {
+		return failedUnitArtifact({
+			planFingerprint: request.plan.planFingerprint,
+			unitId: planUnit.id,
+			unitFingerprint: planUnit.unitFingerprint,
+			failure: currentScope.failure,
+			execution: promptResult.execution,
+		});
+	}
+	if (initialScope.value.fingerprint !== currentScope.value.fingerprint) {
+		return failedUnitArtifact({
+			planFingerprint: request.plan.planFingerprint,
+			unitId: planUnit.id,
+			unitFingerprint: planUnit.unitFingerprint,
+			sourceFingerprint: currentScope.value.fingerprint,
+			failure: {
+				kind: "invalid_unit_result",
+				reason: "stale_sources",
+				unitId: planUnit.id,
+				message: `Unit sources changed while review was running: ${planUnit.id}`,
+			},
+			execution: promptResult.execution,
+		});
+	}
+
 	const parsed = parseReviewerOutput(promptResult.output, {
 		cwd: request.cwd,
 		roots,
@@ -542,12 +605,12 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 			planFingerprint: request.plan.planFingerprint,
 			unitId: planUnit.id,
 			unitFingerprint: planUnit.unitFingerprint,
+			sourceFingerprint: currentScope.value.fingerprint,
 			failure: parsed.failure,
 			execution: promptResult.execution,
 		});
 	}
 
-	const readPaths = new Set((promptResult.contextReadPaths ?? []).map(pathValue => resolve(request.cwd, pathValue)));
 	const policy = decideReviewerOutputPolicy({
 		unit: planUnit,
 		output: parsed.value,
@@ -558,32 +621,8 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 			planFingerprint: request.plan.planFingerprint,
 			unitId: planUnit.id,
 			unitFingerprint: planUnit.unitFingerprint,
+			sourceFingerprint: currentScope.value.fingerprint,
 			failure: policy.failure,
-			execution: promptResult.execution,
-		});
-	}
-
-	const evidencePaths = [
-		...new Set([
-			...planUnit.primaryFiles,
-			...planUnit.relatedFiles,
-			...parsed.value.findings.flatMap(finding => finding.evidence.map(item => item.sourceId)),
-			...readPaths,
-		]),
-	];
-	const snapshots = await loadSourceSnapshots({
-		cwd: request.cwd,
-		unitId: planUnit.id,
-		paths: evidencePaths,
-		readPaths,
-		sourceLoader: deps.sourceLoader,
-	});
-	if (!snapshots.ok) {
-		return failedUnitArtifact({
-			planFingerprint: request.plan.planFingerprint,
-			unitId: planUnit.id,
-			unitFingerprint: planUnit.unitFingerprint,
-			failure: snapshots.failure,
 			execution: promptResult.execution,
 		});
 	}
@@ -592,7 +631,7 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 	const verified = verifyEvidence({
 		unitId: planUnit.id,
 		findings: parsed.value.findings,
-		sourceSnapshots: snapshots.value,
+		sourceSnapshots: currentScope.value.sources,
 		allowedSourceIds,
 		hash: deps.hash,
 	});
@@ -601,6 +640,7 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 			planFingerprint: request.plan.planFingerprint,
 			unitId: planUnit.id,
 			unitFingerprint: planUnit.unitFingerprint,
+			sourceFingerprint: currentScope.value.fingerprint,
 			failure: verified.failure,
 			execution: promptResult.execution,
 		});
@@ -611,6 +651,7 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 		planFingerprint: request.plan.planFingerprint,
 		unitId: planUnit.id,
 		unitFingerprint: planUnit.unitFingerprint,
+		sourceFingerprint: currentScope.value.fingerprint,
 		status: "succeeded",
 		review: {
 			unitId: planUnit.id,
@@ -665,6 +706,45 @@ export async function reviewUnits(
 	return ok(artifacts);
 }
 
+async function validateUnitSourceFingerprints(input: {
+	plan: ValidatedPlan;
+	unitReviews: readonly UnitReviewArtifact[];
+	cwd: string;
+	sourceLoader: SourceLoader;
+	hash: HashFn;
+}): Promise<ReviewOutcome<true>> {
+	for (const artifact of input.unitReviews) {
+		if (!artifact.sourceFingerprint) continue;
+		const unit = input.plan.units.find(candidate => candidate.id === artifact.unitId);
+		if (!unit) {
+			return fail({
+				kind: "invalid_unit_result",
+				reason: "unknown_unit",
+				unitId: artifact.unitId,
+				message: `Cannot validate source fingerprint for unknown unit: ${artifact.unitId}`,
+			});
+		}
+		const currentScope = await snapshotUnitScope({
+			cwd: input.cwd,
+			unit,
+			readPaths: new Set(),
+			sourceLoader: input.sourceLoader,
+			hash: input.hash,
+			stage: "aggregator",
+		});
+		if (!currentScope.ok) return currentScope;
+		if (currentScope.value.fingerprint !== artifact.sourceFingerprint) {
+			return fail({
+				kind: "invalid_unit_result",
+				reason: "stale_sources",
+				unitId: artifact.unitId,
+				message: `Unit review artifact is stale because its sources changed: ${artifact.unitId}`,
+			});
+		}
+	}
+	return ok(true);
+}
+
 /**
  * Aggregate a complete terminal unit-artifact set into a ReviewReport.
  * Begins the aggregator prompt only after readiness checks succeed.
@@ -675,6 +755,15 @@ export async function aggregateReview(
 ): Promise<ReviewOutcome<ReviewReport>> {
 	const readiness = decideAggregationReadiness(request.plan, request.unitReviews);
 	if (!readiness.ok) return readiness;
+
+	const currentSources = await validateUnitSourceFingerprints({
+		plan: request.plan,
+		unitReviews: readiness.value,
+		cwd: request.cwd,
+		sourceLoader: deps.sourceLoader,
+		hash: deps.hash,
+	});
+	if (!currentSources.ok) return currentSources;
 
 	const unitResults = readiness.value;
 	const knownFindingRefs = unitResults.flatMap(artifact =>
@@ -700,6 +789,15 @@ export async function aggregateReview(
 			message: errorMessage(error),
 		});
 	}
+
+	const finalSources = await validateUnitSourceFingerprints({
+		plan: request.plan,
+		unitReviews: unitResults,
+		cwd: request.cwd,
+		sourceLoader: deps.sourceLoader,
+		hash: deps.hash,
+	});
+	if (!finalSources.ok) return finalSources;
 
 	const parsed = parseAggregationOutput(promptResult.output, {
 		plan: request.plan,
@@ -833,6 +931,8 @@ export async function runReview(request: RunReviewRequest, deps: RunReviewDeps):
 		},
 		{
 			runPrompt: deps.runPrompt,
+			sourceLoader: deps.sourceLoader,
+			hash: deps.hash,
 			clock: deps.clock,
 			modelId: deps.modelId,
 			thinkingLevel: deps.thinkingLevel,

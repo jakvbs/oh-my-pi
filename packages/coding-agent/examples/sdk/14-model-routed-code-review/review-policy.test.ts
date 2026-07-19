@@ -150,6 +150,7 @@ function succeededArtifact(input: {
 		planFingerprint: input.planFingerprint ?? input.plan.planFingerprint,
 		unitId: input.unitId,
 		unitFingerprint: input.unitFingerprint ?? unit.unitFingerprint,
+		sourceFingerprint: "d".repeat(64),
 		status: "succeeded",
 		review: {
 			unitId: input.unitId,
