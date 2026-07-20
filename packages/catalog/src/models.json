@@ -17743,7 +17743,7 @@
 		},
 		"swe-1-7": {
 			"id": "swe-1-7",
-			"name": "SWE-1.7",
+			"name": "SWE-1.7 Max",
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
