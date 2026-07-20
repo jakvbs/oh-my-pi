@@ -33,6 +33,7 @@ import {
 	type ValidatedPlan,
 	type ValidatedReviewUnit,
 } from "./contracts";
+import { coreGuide, type GuideDocument, guideDocumentsFor, plannerGuideCatalog } from "./guide-catalog";
 import aggregatorPrompt from "./prompts/aggregator.md" with { type: "text" };
 import aggregatorRequestPrompt from "./prompts/aggregator-request.md" with { type: "text" };
 import plannerPrompt from "./prompts/planner.md" with { type: "text" };
@@ -153,6 +154,12 @@ export type RunReviewDeps = {
 
 const SEVERITIES = ["heuristic", "minor", "major", "critical"] as const satisfies readonly Severity[];
 
+const renderReviewerSystem = Handlebars.compile<{ coreGuide: string; guides: readonly GuideDocument[] }>(
+	reviewerPrompt,
+	{
+		noEscape: true,
+	},
+);
 const renderPlannerRequest = Handlebars.compile<{ requestJson: string }>(plannerRequestPrompt, { noEscape: true });
 const renderReviewerRequest = Handlebars.compile<{ requestJson: string }>(reviewerRequestPrompt, { noEscape: true });
 const renderAggregatorRequest = Handlebars.compile<{ requestJson: string }>(aggregatorRequestPrompt, {
@@ -193,6 +200,7 @@ function unitToModelDto(unit: ReviewUnit) {
 		primary_files: unit.primaryFiles,
 		related_files: unit.relatedFiles,
 		review_focus: unit.reviewFocus,
+		guide_ids: unit.guideIds,
 		risk_level: unit.riskLevel,
 		rationale: unit.rationale,
 	};
@@ -449,6 +457,7 @@ export async function createReviewPlan(
 						review_goal: request.reviewGoal,
 						risk_level: request.riskLevel,
 						target_files: targetFiles,
+						guide_catalog: plannerGuideCatalog,
 					},
 					null,
 					2,
@@ -532,7 +541,10 @@ export async function reviewUnit(request: ReviewUnitRequest, deps: ReviewUnitDep
 		promptResult = await deps.runPrompt({
 			stage: "reviewer",
 			resultSchema: reviewerPromptSchema,
-			systemPrompt: reviewerPrompt,
+			systemPrompt: renderReviewerSystem({
+				coreGuide,
+				guides: guideDocumentsFor(planUnit.guideIds),
+			}),
 			userPrompt: renderReviewerRequest({
 				requestJson: JSON.stringify(
 					{

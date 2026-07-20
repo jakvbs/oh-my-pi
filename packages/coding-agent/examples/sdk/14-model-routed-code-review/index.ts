@@ -20,6 +20,7 @@ export type {
 	ValidatedPlan,
 	ValidatedReviewUnit,
 } from "./contracts";
+export type { GuideId } from "./guide-catalog";
 export type {
 	AggregateReviewDeps,
 	AggregateReviewRequest,

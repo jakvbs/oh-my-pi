@@ -293,6 +293,7 @@
 
 - Required SDK DAG task definitions to declare explicit `context_from` and `writes` interfaces, with validation for unsafe or unordered overlapping writes.
 - Required SDK DAG documents to declare `goal` and nonempty `success_criteria`; deterministic preflight now reports multiple compatible validation errors instead of failing on the first one.
+- Required model-routed code review plans to select 1–3 hierarchical guide lenses per unit, with versioned fingerprints, validated finding provenance, and core-plus-selected reviewer prompt delivery; older plans without `guideIds` are incompatible.
 
 ### Added
 
@@ -309,6 +310,7 @@
 
 - Fixed model-routed review artifact publication so concurrent readers see either no destination or the complete JSON or unit-result directory, while preserving existing outputs and publishing `review-units` as one atomic set.
 - Fixed model-routed review consistency by fingerprinting each unit's primary and related sources before and after review, then revalidating them before and after aggregation.
+- Fixed change-probe review guides to keep request-supplied probes and simulated edit placement in finding reasoning instead of unverifiable source evidence.
 
 ## [17.0.2] - 2026-07-17
 

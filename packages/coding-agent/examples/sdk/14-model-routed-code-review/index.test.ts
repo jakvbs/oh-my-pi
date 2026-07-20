@@ -17,6 +17,7 @@ import {
 	type UnitReviewArtifact,
 	type ValidatedPlan,
 } from "./contracts";
+import type { GuideId } from "./guide-catalog";
 import {
 	aggregateReview,
 	type Clock,
@@ -171,6 +172,7 @@ function plannerUnits(
 		riskLevel?: "low" | "medium" | "high" | "critical";
 		reviewFocus?: string[];
 		relatedFiles?: string[];
+		guideIds?: GuideId[];
 	}>,
 ) {
 	return entries.map(entry => ({
@@ -180,6 +182,7 @@ function plannerUnits(
 		primary_files: [entry.filePath],
 		related_files: entry.relatedFiles ?? [],
 		review_focus: entry.reviewFocus ?? ["correctness"],
+		guide_ids: entry.guideIds ?? ["contract/state-lifecycle"],
 		risk_level: entry.riskLevel ?? "medium",
 		rationale: `Owns ${entry.id}`,
 	}));
@@ -205,6 +208,7 @@ function findingReview(input: {
 	startLine: number;
 	endLine?: number;
 	title?: string;
+	guideIds?: GuideId[];
 }) {
 	const endLine = input.endLine ?? input.startLine;
 	const quote = lineQuote(input.fileContent, input.startLine, endLine);
@@ -220,6 +224,7 @@ function findingReview(input: {
 				category: "correctness",
 				severity: input.severity,
 				confidence: input.confidence ?? "high",
+				...(input.guideIds ? { guide_ids: input.guideIds } : {}),
 				evidence: [
 					{
 						source_id: input.filePath,
@@ -303,6 +308,7 @@ function reportContract(report: ReviewReport) {
 			categories: finding.categories,
 			severity: finding.severity,
 			confidence: finding.confidence,
+			guideIds: finding.guideIds,
 			reason: finding.reason,
 			suggestedAction: finding.suggestedAction,
 			verificationAfterChange: finding.verificationAfterChange,
@@ -1492,5 +1498,78 @@ describe("end-to-end lifecycle smoke", () => {
 
 			expect(reportContract(full.value)).toEqual(reportContract(aggregated.value));
 		});
+	});
+});
+
+describe("hierarchical guide prompt delivery", () => {
+	test("routes metadata to planner, selected documents to reviewer, and no documents to aggregator", async () => {
+		await withTempWorkspace(
+			{ "source.ts": "export const value = 1;\n" },
+			async ({ cwd, paths, roots, sourceLoader, clock }) => {
+				const captured: Partial<Record<PromptStage, { systemPrompt: string; userPrompt: string }>> = {};
+				const runPrompt: PromptRunner = async ({ resultSchema, stage, systemPrompt, userPrompt }) => {
+					captured[stage] = { systemPrompt, userPrompt };
+					if (stage === "planner") {
+						return promptResult(resultSchema, stage, {
+							overview: "One selected review unit",
+							units: plannerUnits([
+								{
+									id: "source",
+									filePath: paths["source.ts"]!,
+									guideIds: ["contract/errors-handling", "narrative/readability"],
+									reviewFocus: ["public error result", "entry-point contract"],
+								},
+							]),
+						});
+					}
+					if (stage === "reviewer") {
+						return promptResult(resultSchema, stage, passReview("source", paths["source.ts"]!), [
+							paths["source.ts"]!,
+						]);
+					}
+					return promptResult(resultSchema, stage, {
+						overall_summary: "No findings",
+						ordered_groups: [],
+						coverage_gaps: [],
+					});
+				};
+
+				const result = await runReview(
+					{
+						reviewGoal: "Review exported value",
+						riskLevel: "medium",
+						targetFiles: [paths["source.ts"]!],
+						cwd,
+						roots,
+					},
+					{
+						runPrompt,
+						sourceLoader,
+						clock,
+						hash,
+						concurrency: 1,
+						modelId: MODEL_ID,
+						thinkingLevel: THINKING,
+					},
+				);
+				expect(result.ok).toBe(true);
+
+				expect(captured.planner?.userPrompt).toContain('"guide_catalog"');
+				expect(captured.planner?.userPrompt).toContain('"contract/errors-handling"');
+				expect(captured.planner?.userPrompt).not.toContain("### ERROR-01 —");
+
+				expect(captured.reviewer?.systemPrompt).toContain("# Core review contract");
+				expect(captured.reviewer?.systemPrompt).toContain("### ERROR-01 —");
+				expect(captured.reviewer?.systemPrompt).toContain("### LANG-1 —");
+				expect(captured.reviewer?.systemPrompt).not.toContain("### STATE-01 —");
+				expect(captured.reviewer?.userPrompt).toContain(
+					'"guide_ids": [\n      "contract/errors-handling",\n      "narrative/readability"',
+				);
+
+				expect(captured.aggregator?.systemPrompt).not.toContain("# Core review contract");
+				expect(captured.aggregator?.userPrompt).not.toContain("### ERROR-01 —");
+				expect(captured.aggregator?.userPrompt).not.toContain("### LANG-1 —");
+			},
+		);
 	});
 });

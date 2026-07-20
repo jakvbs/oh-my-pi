@@ -22,10 +22,12 @@ import {
 	decideReviewerCoverage,
 	decideUnitVerdict,
 	deriveCoverageGaps,
-	deriveReviewRunState,
 	evidenceHashInput,
 	materializeFindingGroups,
+	unionFindingGuideIds,
+	validateFindingProvenance,
 	validateFindingReferenceConservation,
+	validateGuideSelection,
 	validateUnitSelection,
 	verifyEvidence,
 } from "./review-policy";
@@ -67,6 +69,7 @@ function makeUnit(overrides: Partial<ReviewUnit> & Pick<ReviewUnit, "id">): Revi
 		primaryFiles: overrides.primaryFiles ?? [primaryA],
 		relatedFiles: overrides.relatedFiles ?? [],
 		reviewFocus: overrides.reviewFocus ?? ["correctness"],
+		guideIds: overrides.guideIds ?? ["contract/state-lifecycle"],
 		riskLevel: overrides.riskLevel ?? "medium",
 		rationale: overrides.rationale ?? `Owns ${overrides.id}`,
 		...overrides,
@@ -189,6 +192,69 @@ function failedArtifact(input: {
 		execution: reviewerExecution(),
 	};
 }
+
+describe("guide policy", () => {
+	test("validates cardinality, uniqueness, known ids, and order", () => {
+		const valid = validateGuideSelection(["narrative/readability", "contract/errors-handling"], "alpha");
+		expect(valid).toEqual({
+			ok: true,
+			value: ["narrative/readability", "contract/errors-handling"],
+		});
+
+		for (const guideIds of [
+			[],
+			["unknown/guide"],
+			["contract/state-lifecycle", "contract/state-lifecycle"],
+			["contract/state-lifecycle", "contract/errors-handling", "contract/policy-ownership", "narrative/readability"],
+		]) {
+			const result = validateGuideSelection(guideIds, "alpha");
+			expect(result.ok).toBe(false);
+			if (result.ok) continue;
+			expect(result.failure).toEqual(expect.objectContaining({ kind: "invalid_plan", reason: "guide_selection" }));
+		}
+	});
+
+	test("validates optional finding provenance as a unique unit subset", () => {
+		expect(
+			validateFindingProvenance({
+				unitId: "alpha",
+				unitGuideIds: ["contract/state-lifecycle", "contract/errors-handling"],
+				findingId: "finding-a",
+				guideIds: ["contract/errors-handling"],
+			}),
+		).toEqual({ ok: true, value: ["contract/errors-handling"] });
+
+		for (const guideIds of [
+			[],
+			["contract/errors-handling", "contract/errors-handling"],
+			["narrative/readability"],
+			["unknown/guide"],
+		]) {
+			const result = validateFindingProvenance({
+				unitId: "alpha",
+				unitGuideIds: ["contract/state-lifecycle", "contract/errors-handling"],
+				findingId: "finding-a",
+				guideIds,
+			});
+			expect(result.ok).toBe(false);
+			if (result.ok) continue;
+			expect(result.failure).toEqual(
+				expect.objectContaining({ kind: "invalid_unit_result", reason: "guide_provenance" }),
+			);
+		}
+	});
+
+	test("unions provenance in catalog order independent of source order", () => {
+		const union = unionFindingGuideIds([
+			makeVerifiedFinding({ id: "narrative", guideIds: ["narrative/readability"] }),
+			makeVerifiedFinding({
+				id: "contract",
+				guideIds: ["contract/errors-handling", "contract/state-lifecycle"],
+			}),
+		]);
+		expect(union).toEqual(["contract/state-lifecycle", "contract/errors-handling", "narrative/readability"]);
+	});
+});
 
 function aggregationOutput(
 	overrides: Partial<AggregationModelOutput> & Pick<AggregationModelOutput, "orderedGroups">,
@@ -625,13 +691,17 @@ describe("decideAggregationReadiness", () => {
 describe("finding-reference conservation and materialization", () => {
 	const plan = makePlan([
 		makeValidatedUnit(makeUnit({ id: "alpha", primaryFiles: [primaryA] }), hash("unit:alpha")),
-		makeValidatedUnit(makeUnit({ id: "beta", primaryFiles: [primaryB] }), hash("unit:beta")),
+		makeValidatedUnit(
+			makeUnit({ id: "beta", primaryFiles: [primaryB], guideIds: ["narrative/readability"] }),
+			hash("unit:beta"),
+		),
 	]);
 
 	const alphaFinding = makeVerifiedFinding({
 		id: "null-check",
 		severity: "major",
 		confidence: "high",
+		guideIds: ["contract/state-lifecycle"],
 		category: "correctness",
 		evidence: [
 			{
@@ -648,6 +718,7 @@ describe("finding-reference conservation and materialization", () => {
 		id: "format-drift",
 		severity: "minor",
 		confidence: "low",
+		guideIds: ["narrative/readability"],
 		category: "consistency",
 		evidence: [
 			{
@@ -783,6 +854,7 @@ describe("finding-reference conservation and materialization", () => {
 			severity: "major",
 			confidence: "low",
 			categories: ["correctness", "consistency"],
+			guideIds: ["contract/state-lifecycle", "narrative/readability"],
 		});
 		expect(result.value[0]?.sourceFindings).toEqual(["alpha/null-check", "beta/format-drift"]);
 		expect(new Set(result.value[0]?.sourceFindings).size).toBe(2);
@@ -827,44 +899,5 @@ describe("finding-reference conservation and materialization", () => {
 				reason: "Reviewer aborted before coverage",
 			},
 		]);
-	});
-});
-
-describe("deriveReviewRunState", () => {
-	const plan = makePlan([
-		makeValidatedUnit(makeUnit({ id: "alpha", primaryFiles: [primaryA] }), hash("unit:alpha")),
-		makeValidatedUnit(makeUnit({ id: "beta", primaryFiles: [primaryB] }), hash("unit:beta")),
-	]);
-
-	test("returns planned when there are no unit results", () => {
-		expect(deriveReviewRunState(plan, [], false)).toEqual({ state: "planned" });
-	});
-
-	test("returns reviewing with completed and pending unit ids", () => {
-		expect(deriveReviewRunState(plan, [succeededArtifact({ plan, unitId: "alpha" })], false)).toEqual({
-			state: "reviewing",
-			completedUnitIds: ["alpha"],
-			pendingUnitIds: ["beta"],
-		});
-	});
-
-	test("returns ready_to_aggregate when every unit is terminal", () => {
-		expect(
-			deriveReviewRunState(
-				plan,
-				[succeededArtifact({ plan, unitId: "alpha" }), failedArtifact({ plan, unitId: "beta" })],
-				false,
-			),
-		).toEqual({ state: "ready_to_aggregate" });
-	});
-
-	test("returns completed when a report is present", () => {
-		expect(
-			deriveReviewRunState(
-				plan,
-				[succeededArtifact({ plan, unitId: "alpha" }), succeededArtifact({ plan, unitId: "beta" })],
-				true,
-			),
-		).toEqual({ state: "completed" });
 	});
 });

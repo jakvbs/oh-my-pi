@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { isEexist, isEnoent } from "@oh-my-pi/pi-utils";
+import { isEexist } from "@oh-my-pi/pi-utils";
 import type { ReviewOutcome } from "./contracts";
 
 export async function writeJsonArtifact(outputPath: string, value: unknown): Promise<ReviewOutcome<string>> {
@@ -31,15 +31,16 @@ export async function writeJsonArtifact(outputPath: string, value: unknown): Pro
 	}
 }
 
+/** Publish a complete directory through one no-clobber symlink creation. The hidden sibling directory is backing storage. */
 export async function writeJsonArtifactDirectory(
 	outputDirectory: string,
 	artifacts: readonly { fileName: string; value: unknown }[],
 ): Promise<ReviewOutcome<string[]>> {
 	const absoluteDirectory = resolve(outputDirectory);
 	const parentDirectory = dirname(absoluteDirectory);
-	const stagingDirectory = resolve(
+	const backingDirectory = resolve(
 		parentDirectory,
-		`.${basename(absoluteDirectory)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+		`.${basename(absoluteDirectory)}.${process.pid}.${crypto.randomUUID()}.data`,
 	);
 
 	for (const artifact of artifacts) {
@@ -57,48 +58,24 @@ export async function writeJsonArtifactDirectory(
 	}
 
 	try {
-		await fs.lstat(absoluteDirectory);
-		return {
-			ok: false,
-			failure: {
-				kind: "artifact_io_failed",
-				operation: "publish",
-				path: absoluteDirectory,
-				message: `Refusing to overwrite existing output directory: ${absoluteDirectory}`,
-			},
-		};
-	} catch (error) {
-		if (!isEnoent(error)) {
-			return {
-				ok: false,
-				failure: {
-					kind: "artifact_io_failed",
-					operation: "publish",
-					path: absoluteDirectory,
-					message: `Failed to inspect output directory: ${String(error)}`,
-				},
-			};
-		}
-	}
-
-	try {
 		await fs.mkdir(parentDirectory, { recursive: true });
-		await fs.mkdir(stagingDirectory);
+		await fs.mkdir(backingDirectory);
 		await Promise.all(
 			artifacts.map(artifact =>
-				fs.writeFile(resolve(stagingDirectory, artifact.fileName), `${JSON.stringify(artifact.value, null, 2)}\n`, {
+				fs.writeFile(resolve(backingDirectory, artifact.fileName), `${JSON.stringify(artifact.value, null, 2)}\n`, {
 					encoding: "utf8",
 					flag: "wx",
 				}),
 			),
 		);
-		await fs.rename(stagingDirectory, absoluteDirectory);
+		const symlinkTarget = process.platform === "win32" ? backingDirectory : basename(backingDirectory);
+		await fs.symlink(symlinkTarget, absoluteDirectory, process.platform === "win32" ? "junction" : "dir");
 		return {
 			ok: true,
 			value: artifacts.map(artifact => resolve(absoluteDirectory, artifact.fileName)),
 		};
 	} catch (error) {
-		await fs.rm(stagingDirectory, { recursive: true, force: true }).catch(() => undefined);
+		await fs.rm(backingDirectory, { recursive: true, force: true }).catch(() => undefined);
 		return {
 			ok: false,
 			failure: {

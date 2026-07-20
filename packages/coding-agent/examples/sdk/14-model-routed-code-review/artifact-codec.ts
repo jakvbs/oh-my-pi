@@ -29,11 +29,14 @@ import {
 	unitReviewArtifactBoundarySchema,
 	type ValidatedPlan,
 	type ValidatedReviewUnit,
+	type VerifiedFinding,
 } from "./contracts";
 import {
 	planFingerprintInput,
 	unitFingerprintInput,
 	validateAggregationGrouping,
+	validateFindingProvenance,
+	validateGuideSelection,
 	validateTargetOwnership,
 	validateUniqueUnitIds,
 } from "./review-policy";
@@ -97,17 +100,20 @@ function hashCanonical(hash: HashFn, value: unknown): string {
 	return hash(canonicalString(value));
 }
 
-function canonicalizeReviewUnit(raw: RawPlannerOutput["units"][number], cwd: string): ReviewUnit {
-	return {
+function canonicalizeReviewUnit(raw: RawPlannerOutput["units"][number], cwd: string): ReviewOutcome<ReviewUnit> {
+	const guideIds = validateGuideSelection(raw.guide_ids, raw.id);
+	if (!guideIds.ok) return guideIds;
+	return ok({
 		id: raw.id,
 		title: raw.title,
 		objective: raw.objective,
 		primaryFiles: raw.primary_files.map(pathValue => normalizeAbsolutePath(cwd, pathValue)),
 		relatedFiles: raw.related_files.map(pathValue => normalizeAbsolutePath(cwd, pathValue)),
 		reviewFocus: [...raw.review_focus],
+		guideIds: guideIds.value,
 		riskLevel: raw.risk_level,
 		rationale: raw.rationale,
-	};
+	});
 }
 
 function validateUnitsAgainstTargets(
@@ -117,6 +123,8 @@ function validateUnitsAgainstTargets(
 ): ReviewOutcome<ReviewUnit[]> {
 	const normalizedUnits: ReviewUnit[] = [];
 	for (const unit of units) {
+		const guideIds = validateGuideSelection(unit.guideIds, unit.id);
+		if (!guideIds.ok) return guideIds;
 		for (const primary of unit.primaryFiles) {
 			if (!pathAllowed(roots, primary)) {
 				return fail({
@@ -138,7 +146,7 @@ function validateUnitsAgainstTargets(
 				});
 			}
 		}
-		normalizedUnits.push({ ...unit, relatedFiles });
+		normalizedUnits.push({ ...unit, relatedFiles, guideIds: guideIds.value });
 	}
 	const uniqueIds = validateUniqueUnitIds(normalizedUnits);
 	if (!uniqueIds.ok) return uniqueIds;
@@ -150,17 +158,27 @@ function validateUnitsAgainstTargets(
 	return ok(normalizedUnits);
 }
 
-function canonicalizeReviewerOutput(raw: RawReviewerOutput, cwd: string): ReviewerOutput {
-	return {
-		unitId: raw.unit_id,
-		verdict: raw.verdict,
-		summary: raw.summary,
-		findings: raw.findings.map(finding => ({
+function canonicalizeReviewerOutput(
+	raw: RawReviewerOutput,
+	cwd: string,
+	unit: ReviewUnit,
+): ReviewOutcome<ReviewerOutput> {
+	const findings: ReviewerOutput["findings"] = [];
+	for (const finding of raw.findings) {
+		const guideIds = validateFindingProvenance({
+			unitId: unit.id,
+			unitGuideIds: unit.guideIds,
+			findingId: finding.id,
+			guideIds: finding.guide_ids,
+		});
+		if (!guideIds.ok) return guideIds;
+		findings.push({
 			id: finding.id,
 			title: finding.title,
 			category: finding.category,
 			severity: finding.severity,
 			confidence: finding.confidence,
+			...(guideIds.value ? { guideIds: guideIds.value } : {}),
 			evidence: finding.evidence.map(item => ({
 				sourceId: normalizeAbsolutePath(cwd, item.source_id),
 				startLine: item.start_line,
@@ -171,13 +189,19 @@ function canonicalizeReviewerOutput(raw: RawReviewerOutput, cwd: string): Review
 			reason: finding.reason,
 			suggestedAction: finding.suggested_action,
 			verificationAfterChange: finding.verification_after_change,
-		})),
+		});
+	}
+	return ok({
+		unitId: raw.unit_id,
+		verdict: raw.verdict,
+		summary: raw.summary,
+		findings,
 		coverage: raw.coverage.map(item => ({
 			path: normalizeAbsolutePath(cwd, item.path),
 			status: item.status,
 			notes: item.notes,
 		})),
-	};
+	});
 }
 
 function canonicalizeAggregationModelOutput(raw: RawAggregationModelOutput, cwd: string): AggregationModelOutput {
@@ -213,7 +237,12 @@ export function parsePlannerOutput(raw: unknown, context: PlannerOutputParseCont
 
 	const roots = context.roots.map(root => resolve(root));
 	const targetFiles = context.targetFiles.map(pathValue => normalizeAbsolutePath(context.cwd, pathValue));
-	const units = parsed.data.units.map(unit => canonicalizeReviewUnit(unit, context.cwd));
+	const units: ReviewUnit[] = [];
+	for (const rawUnit of parsed.data.units) {
+		const unit = canonicalizeReviewUnit(rawUnit, context.cwd);
+		if (!unit.ok) return unit;
+		units.push(unit.value);
+	}
 	const validatedUnits = validateUnitsAgainstTargets(units, targetFiles, roots);
 	if (!validatedUnits.ok) return validatedUnits;
 
@@ -253,12 +282,18 @@ export function parsePlanArtifact(raw: unknown, context: PlanArtifactParseContex
 		});
 	}
 
-	const units: ReviewUnit[] = parsed.data.units.map(unit => ({
-		...unit,
-		primaryFiles: unit.primaryFiles.map(pathValue => normalizeAbsolutePath(context.cwd, pathValue)),
-		relatedFiles: [...new Set(unit.relatedFiles.map(pathValue => normalizeAbsolutePath(context.cwd, pathValue)))],
-		reviewFocus: [...unit.reviewFocus],
-	}));
+	const units: ReviewUnit[] = [];
+	for (const unit of parsed.data.units) {
+		const guideIds = validateGuideSelection(unit.guideIds, unit.id);
+		if (!guideIds.ok) return guideIds;
+		units.push({
+			...unit,
+			primaryFiles: unit.primaryFiles.map(pathValue => normalizeAbsolutePath(context.cwd, pathValue)),
+			relatedFiles: [...new Set(unit.relatedFiles.map(pathValue => normalizeAbsolutePath(context.cwd, pathValue)))],
+			reviewFocus: [...unit.reviewFocus],
+			guideIds: guideIds.value,
+		});
+	}
 
 	const validatedUnits = validateUnitsAgainstTargets(units, artifactTargets, roots);
 	if (!validatedUnits.ok) return validatedUnits;
@@ -300,7 +335,9 @@ export function parseReviewerOutput(raw: unknown, context: ReviewerOutputParseCo
 		});
 	}
 
-	const review = canonicalizeReviewerOutput(parsed.data, context.cwd);
+	const canonical = canonicalizeReviewerOutput(parsed.data, context.cwd, context.unit);
+	if (!canonical.ok) return canonical;
+	const review = canonical.value;
 	if (review.unitId !== expectedUnitId) {
 		return fail({
 			kind: "invalid_unit_result",
@@ -387,6 +424,26 @@ export function parseUnitReviewArtifact(
 				message: `Succeeded unit artifact review.unitId ${artifact.review.unitId} does not match unitId`,
 			});
 		}
+		const findings: VerifiedFinding[] = [];
+		for (const finding of artifact.review.findings) {
+			const { guideIds: rawGuideIds, ...findingWithoutGuideIds } = finding;
+			const guideIds = validateFindingProvenance({
+				unitId: artifact.unitId,
+				unitGuideIds: planUnit.guideIds,
+				findingId: finding.id,
+				guideIds: rawGuideIds,
+			});
+			if (!guideIds.ok) return guideIds;
+			findings.push({
+				...findingWithoutGuideIds,
+				...(guideIds.value ? { guideIds: guideIds.value } : {}),
+				evidence: finding.evidence.map(item => ({
+					...item,
+					sourceId: normalizeAbsolutePath(context.cwd, item.sourceId),
+					quote: item.quote.replace(/\r\n/g, "\n"),
+				})),
+			});
+		}
 
 		return ok({
 			...artifact,
@@ -396,14 +453,7 @@ export function parseUnitReviewArtifact(
 					...item,
 					path: normalizeAbsolutePath(context.cwd, item.path),
 				})),
-				findings: artifact.review.findings.map(finding => ({
-					...finding,
-					evidence: finding.evidence.map(item => ({
-						...item,
-						sourceId: normalizeAbsolutePath(context.cwd, item.sourceId),
-						quote: item.quote.replace(/\r\n/g, "\n"),
-					})),
-				})),
+				findings,
 			},
 		});
 	}
@@ -470,6 +520,7 @@ export function toPlanArtifact(input: {
 			primaryFiles: unit.primaryFiles.map(pathValue => resolve(pathValue)),
 			relatedFiles: [...new Set(unit.relatedFiles.map(pathValue => resolve(pathValue)))],
 			reviewFocus: [...unit.reviewFocus],
+			guideIds: [...unit.guideIds],
 		})),
 		createdAt: input.createdAt,
 		plannerExecution: input.plannerExecution,
@@ -486,6 +537,7 @@ export function toValidatedPlan(artifact: PlanArtifact, hash: HashFn): Validated
 			primaryFiles: [...unit.primaryFiles],
 			relatedFiles: [...new Set(unit.relatedFiles)],
 			reviewFocus: [...unit.reviewFocus],
+			guideIds: [...unit.guideIds],
 		})),
 	};
 	const units: ValidatedReviewUnit[] = normalized.units.map(unit => ({

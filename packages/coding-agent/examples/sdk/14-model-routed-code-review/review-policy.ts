@@ -8,7 +8,6 @@ import type {
 	ReviewerOutput,
 	ReviewFailure,
 	ReviewOutcome,
-	ReviewRunState,
 	ReviewUnit,
 	Severity,
 	UnitReviewArtifact,
@@ -18,6 +17,7 @@ import type {
 	VerifiedEvidence,
 	VerifiedFinding,
 } from "./contracts";
+import { type GuideId, isGuideId, plannerGuideCatalog } from "./guide-catalog";
 
 type PlanFingerprintSource = {
 	schemaVersion: string;
@@ -42,6 +42,7 @@ export type UnitFingerprintInput = {
 	primaryFiles: string[];
 	relatedFiles: string[];
 	reviewFocus: string[];
+	guideIds: GuideId[];
 	riskLevel: string;
 	rationale: string;
 };
@@ -161,6 +162,84 @@ export function validateUniqueUnitIds(units: readonly ReviewUnit[]): ReviewOutco
 	}
 	return ok(true);
 }
+/** Planner guide order is semantic: first is the dominant lens. */
+export function validateGuideSelection(guideIds: readonly string[], unitId?: string): ReviewOutcome<GuideId[]> {
+	if (guideIds.length < 1 || guideIds.length > 3) {
+		return fail({
+			kind: "invalid_plan",
+			reason: "guide_selection",
+			message: `Unit ${unitId ?? "<unknown>"} must select between one and three guides`,
+			...(unitId ? { target: unitId } : {}),
+		});
+	}
+
+	const selected: GuideId[] = [];
+	const seen = new Set<string>();
+	for (const guideId of guideIds) {
+		if (seen.has(guideId)) {
+			return fail({
+				kind: "invalid_plan",
+				reason: "guide_selection",
+				message: `Unit ${unitId ?? "<unknown>"} repeats guide id ${guideId}`,
+				...(unitId ? { target: unitId } : {}),
+			});
+		}
+		if (!isGuideId(guideId)) {
+			return fail({
+				kind: "invalid_plan",
+				reason: "guide_selection",
+				message: `Unit ${unitId ?? "<unknown>"} selected unknown guide id ${guideId}`,
+				...(unitId ? { target: unitId } : {}),
+			});
+		}
+		seen.add(guideId);
+		selected.push(guideId);
+	}
+	return ok(selected);
+}
+
+/** Optional finding provenance must be unique, known, and owned by its unit. */
+export function validateFindingProvenance(input: {
+	unitId: string;
+	unitGuideIds: readonly GuideId[];
+	findingId: string;
+	guideIds?: readonly string[];
+}): ReviewOutcome<GuideId[] | undefined> {
+	if (input.guideIds === undefined) return ok(undefined);
+	if (input.guideIds.length === 0) {
+		return fail({
+			kind: "invalid_unit_result",
+			reason: "guide_provenance",
+			unitId: input.unitId,
+			message: `Finding ${input.findingId} guide provenance must not be empty`,
+		});
+	}
+
+	const allowed = new Set(input.unitGuideIds);
+	const seen = new Set<string>();
+	const validated: GuideId[] = [];
+	for (const guideId of input.guideIds) {
+		if (seen.has(guideId)) {
+			return fail({
+				kind: "invalid_unit_result",
+				reason: "guide_provenance",
+				unitId: input.unitId,
+				message: `Finding ${input.findingId} repeats guide id ${guideId}`,
+			});
+		}
+		if (!isGuideId(guideId) || !allowed.has(guideId)) {
+			return fail({
+				kind: "invalid_unit_result",
+				reason: "guide_provenance",
+				unitId: input.unitId,
+				message: `Finding ${input.findingId} cites guide outside unit selection: ${guideId}`,
+			});
+		}
+		seen.add(guideId);
+		validated.push(guideId);
+	}
+	return ok(validated);
+}
 
 /** Selected unit ids must be known to the plan and contain no duplicates. */
 export function validateUnitSelection(
@@ -207,6 +286,7 @@ export function unitFingerprintInput(unit: ReviewUnit): UnitFingerprintInput {
 		primaryFiles: [...unit.primaryFiles],
 		relatedFiles: [...unit.relatedFiles],
 		reviewFocus: [...unit.reviewFocus],
+		guideIds: [...unit.guideIds],
 		riskLevel: unit.riskLevel,
 		rationale: unit.rationale,
 	};
@@ -582,6 +662,12 @@ function deduplicateEvidence(evidence: readonly VerifiedEvidence[]): VerifiedEvi
 	}
 	return [...unique.values()];
 }
+/** Deterministic catalog-order union; aggregator output has no provenance authority. */
+export function unionFindingGuideIds(findings: readonly Pick<VerifiedFinding, "guideIds">[]): GuideId[] | undefined {
+	const present = new Set(findings.flatMap(finding => finding.guideIds ?? []));
+	const ordered = plannerGuideCatalog.map(guide => guide.id).filter(id => present.has(id));
+	return ordered.length > 0 ? ordered : undefined;
+}
 
 /** Materialize aggregator groups into findings with preserved evidence and deterministic severity/confidence. */
 export function materializeFindingGroups(
@@ -619,6 +705,7 @@ export function materializeFindingGroups(
 			referenced.push({ key, ...found });
 		}
 
+		const guideIds = unionFindingGuideIds(referenced.map(item => item.finding));
 		materialized.push({
 			id: `finding-${index + 1}`,
 			sourceFindings: referenced.map(item => item.key),
@@ -627,6 +714,7 @@ export function materializeFindingGroups(
 			categories: [...new Set(referenced.map(item => item.finding.category))],
 			severity: maximumSeverity(referenced.map(item => item.finding.severity)),
 			confidence: minimumConfidence(referenced.map(item => item.finding.confidence)),
+			...(guideIds ? { guideIds } : {}),
 			evidence: deduplicateEvidence(referenced.flatMap(item => item.finding.evidence)),
 			reason: group.reason,
 			suggestedAction: group.recommendedAction,
@@ -700,44 +788,6 @@ export function deriveCoverageGaps(
  * completed only when reportPresence is true; otherwise:
  * 0 artifacts → planned, partial → reviewing, all terminal → ready_to_aggregate.
  */
-export function deriveReviewRunState(
-	plan: ValidatedPlan,
-	unitResults: readonly UnitReviewArtifact[],
-	reportPresence: boolean,
-): ReviewRunState {
-	const expectedIds = plan.units.map(unit => unit.id);
-	const completedUnitIds: string[] = [];
-	const seen = new Set<string>();
-
-	for (const artifact of unitResults) {
-		if (!expectedIds.includes(artifact.unitId)) continue;
-		if (seen.has(artifact.unitId)) continue;
-		if (artifact.status === "succeeded" || artifact.status === "failed") {
-			seen.add(artifact.unitId);
-			completedUnitIds.push(artifact.unitId);
-		}
-	}
-
-	const pendingUnitIds = expectedIds.filter(unitId => !seen.has(unitId));
-
-	if (reportPresence) {
-		return { state: "completed" };
-	}
-
-	if (completedUnitIds.length === 0) {
-		return { state: "planned" };
-	}
-
-	if (pendingUnitIds.length > 0) {
-		return {
-			state: "reviewing",
-			completedUnitIds,
-			pendingUnitIds,
-		};
-	}
-
-	return { state: "ready_to_aggregate" };
-}
 
 /** Convenience: run coverage + verdict consistency checks for a reviewer output. */
 export function decideReviewerOutputPolicy(input: {

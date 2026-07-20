@@ -24,7 +24,7 @@ test("allows bounded read-only filesystem exploration", () => {
 
 test("blocks writes, remote paths, unsafe LSP actions, and excessive calls", () => {
 	expect(authorize("write", { path: "/repo/src/a.ts" })).toContain("outside the read-only context policy");
-	expect(authorize("task", { agent: "scout", task: "inspect" }, 1, "planner")).toContain(
+	expect(authorize("task", { agent: "worker", task: "inspect" }, 1, "planner")).toContain(
 		"outside the read-only context policy",
 	);
 	expect(authorize("read", { path: "https://example.com/source.ts" })).toContain("must be a local path");

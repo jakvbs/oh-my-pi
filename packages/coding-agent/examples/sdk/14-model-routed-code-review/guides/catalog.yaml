@@ -1,0 +1,173 @@
+version: 1
+
+guides:
+  - id: contract/state-lifecycle
+    family: contract
+    title: State and lifecycle
+    when_to_use:
+      - invariant-protected state, domain construction, value objects, or lifecycle transitions
+    not_for:
+      - raw DTO or transport shapes without a declared domain invariant
+    requires: []
+    criteria:
+      - STATE-01
+      - STATE-02
+      - STATE-03
+      - STATE-04
+      - STATE-05
+      - DATA-VALUE-OBJECT-INVARIANT
+
+  - id: contract/errors-handling
+    family: contract
+    title: Errors and handling
+    when_to_use:
+      - public failure representation, catch/conversion paths, or error effects
+    not_for:
+      - intentionally aggregated failures with no distinct caller response
+    requires: []
+    criteria:
+      - ERROR-01
+      - ERROR-02
+      - ERROR-03
+
+  - id: contract/compatibility-fallbacks
+    family: contract
+    title: Compatibility and fallbacks
+    when_to_use:
+      - version compatibility, rollout branches, protocol variants, or fallbacks
+    not_for:
+      - ordinary error handling without compatibility or fallback policy
+    requires: []
+    criteria:
+      - COMPAT-01
+      - COMPAT-02
+      - FALLBACK-01
+      - FALLBACK-02
+      - FALLBACK-03
+
+  - id: contract/policy-ownership
+    family: contract
+    title: Policy ownership
+    when_to_use:
+      - duplicated invariants, defaults, mappings, boundary policy, or caller-side domain decisions
+    not_for:
+      - similar syntax encoding independent domain rules
+    requires: []
+    criteria:
+      - OWNER-01
+      - OWNER-02
+      - OWNER-03
+      - OWNER-04
+      - MOD-POLICY-OWNERSHIP
+
+  - id: modules/interfaces-locality
+    family: modules
+    title: Interfaces and locality
+    when_to_use:
+      - module boundaries, caller knowledge, depth, leverage, locality, or layering
+    not_for:
+      - abstraction justified only by future flexibility or easier mocking
+    requires: []
+    criteria:
+      - MOD-INTERFACE-KNOWLEDGE
+      - MOD-DELETION-DEPTH
+      - MOD-LEVERAGE
+      - MOD-CHANGE-LOCALITY
+      - MOD-SAME-OPERATION-LAYERING
+      - MOD-CALLER-BEHAVIOR
+      - ABSTRACTION-CALLER-KNOWLEDGE
+
+  - id: modules/seams-representation
+    family: modules
+    title: Seams and representation
+    when_to_use:
+      - seams, adapters, canonical representations, or shared abstractions
+    not_for:
+      - value-object invariants or abstraction caller knowledge owned by other lenses
+    requires: []
+    criteria:
+      - SEAM-REAL-VARIATION
+      - ADAPTER-BOUNDARY-ISOLATION
+      - DATA-CANONICAL-REPRESENTATION
+      - ABSTRACTION-SHARED-CONTRACT
+
+  - id: modules/change-probes
+    family: modules
+    title: Explicit change probes
+    when_to_use:
+      - a concrete future policy, state, vendor, or domain change is explicitly supplied
+    not_for:
+      - hypothetical flexibility without an explicit change probe
+    requires:
+      - explicit change probe in the review request or allowed source
+    criteria:
+      - PROBE-POLICY-CHANGE
+      - PROBE-STATE-VARIANT
+      - PROBE-VENDOR-CHANGE
+      - PROBE-DOMAIN-SCENARIO
+
+  - id: narrative/readability
+    family: narrative
+    title: Language and readable flow
+    when_to_use:
+      - names, terminology, entry-point narrative, abstraction level, or navigation
+    not_for:
+      - correctness or numeric complexity without a communication cost
+    requires: []
+    criteria:
+      - LANG-1
+      - LANG-2
+      - LANG-3
+      - NARR-1A
+      - NARR-1B
+      - NARR-2
+      - NARR-3
+      - NARR-4
+      - NARR-5
+
+  - id: narrative/values-flow
+    family: narrative
+    title: Values and flow
+    when_to_use:
+      - effect visibility, value roles/units, branch ownership, or readability metrics
+    not_for:
+      - pure transformations or metrics absent from the review rationale
+    requires: []
+    criteria:
+      - COG-1
+      - COG-2A
+      - COG-2B
+      - FLOW-1
+      - METRIC-1
+
+  - id: tests/scenario-design
+    family: tests
+    title: Test scenario design
+    when_to_use:
+      - test sources, doubles, assertions, or a behavior claim backed by tests
+    not_for:
+      - exploration without a behavior or readiness claim
+    requires: []
+    criteria:
+      - TEST-BOUNDARY
+      - TEST-SCENARIO-LINEARITY
+      - TEST-COLLABORATOR-CHOICE
+      - TEST-DOUBLE-CONTRACT
+      - TEST-PROTOCOL-ASSERTIONS
+
+  - id: tests/evidence-safety
+    family: tests
+    title: Test evidence and safety
+    when_to_use:
+      - execution, determinism, isolation, cleanup, suite safety, or fix-proof claims
+    not_for:
+      - treating test source as proof of successful execution
+    requires: []
+    criteria:
+      - TEST-DETERMINISM
+      - TEST-ISOLATION
+      - TEST-RESOURCE-CLEANUP
+      - TEST-FULL-SUITE-SAFETY
+      - TEST-VERDICT-COVERAGE
+      - TEST-RUNNABLE-PROOF
+      - TEST-BUG-BEFORE-AFTER

@@ -6,6 +6,7 @@ import * as path from "node:path";
 import {
 	parsePlanArtifact,
 	parsePlannerOutput,
+	parseReviewerOutput,
 	parseUnitReviewArtifact,
 	toPlanArtifact,
 	toValidatedPlan,
@@ -89,6 +90,7 @@ function rawPlannerUnit(input: {
 	focus?: string[];
 	riskLevel?: "low" | "medium" | "high" | "critical";
 	rationale?: string;
+	guideIds?: string[];
 }) {
 	return {
 		id: input.id,
@@ -97,6 +99,7 @@ function rawPlannerUnit(input: {
 		primary_files: Array.isArray(input.primary) ? input.primary : [input.primary],
 		related_files: input.related ?? [],
 		review_focus: input.focus ?? ["correctness"],
+		guide_ids: input.guideIds ?? ["contract/state-lifecycle"],
 		risk_level: input.riskLevel ?? "medium",
 		rationale: input.rationale ?? `Owns ${input.id}`,
 	};
@@ -110,6 +113,7 @@ function reviewUnit(input: {
 	objective?: string;
 	reviewFocus?: string[];
 	riskLevel?: ReviewUnit["riskLevel"];
+	guideIds?: ReviewUnit["guideIds"];
 	rationale?: string;
 }): ReviewUnit {
 	return {
@@ -119,6 +123,7 @@ function reviewUnit(input: {
 		primaryFiles: input.primaryFiles,
 		relatedFiles: input.relatedFiles ?? [],
 		reviewFocus: input.reviewFocus ?? ["correctness"],
+		guideIds: input.guideIds ?? ["contract/state-lifecycle"],
 		riskLevel: input.riskLevel ?? "medium",
 		rationale: input.rationale ?? `Owns ${input.id}`,
 	};
@@ -230,6 +235,7 @@ describe("parsePlannerOutput canonical editable semantics", () => {
 						primaryFiles: [a],
 						relatedFiles: [b],
 						reviewFocus: ["ownership", "paths"],
+						guideIds: ["contract/state-lifecycle"],
 						riskLevel: "high",
 						rationale: "Owns alpha",
 					},
@@ -240,6 +246,7 @@ describe("parsePlannerOutput canonical editable semantics", () => {
 						primaryFiles: [b],
 						relatedFiles: [],
 						reviewFocus: ["correctness"],
+						guideIds: ["contract/state-lifecycle"],
 						riskLevel: "medium",
 						rationale: "Owns beta",
 					},
@@ -255,6 +262,65 @@ describe("parsePlannerOutput canonical editable semantics", () => {
 			if (!validated.ok) return;
 			expect(validated.value.units.map(unit => unit.id)).toEqual(["alpha", "beta"]);
 			expect(validated.value.planFingerprint).toHaveLength(64);
+		});
+	});
+
+	test("preserves selected guide priority order", async () => {
+		await withTempRoot(({ root, a }) => {
+			const outcome = parsePlannerOutput(
+				{
+					overview: "Ordered guides",
+					units: [
+						rawPlannerUnit({
+							id: "alpha",
+							primary: a,
+							guideIds: ["narrative/readability", "contract/errors-handling"],
+						}),
+					],
+				},
+				{ cwd: root, roots: [root], targetFiles: [a] },
+			);
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) return;
+			expect(outcome.value.units[0]?.guideIds).toEqual(["narrative/readability", "contract/errors-handling"]);
+		});
+	});
+
+	test("rejects invalid guide selections with typed failures", async () => {
+		await withTempRoot(({ root, a }) => {
+			for (const guideIds of [
+				[],
+				["unknown/guide"],
+				["contract/state-lifecycle", "contract/state-lifecycle"],
+				[
+					"contract/state-lifecycle",
+					"contract/errors-handling",
+					"contract/policy-ownership",
+					"narrative/readability",
+				],
+				["core"],
+			]) {
+				const outcome = parsePlannerOutput(
+					{
+						overview: "Invalid guides",
+						units: [rawPlannerUnit({ id: "alpha", primary: a, guideIds })],
+					},
+					{ cwd: root, roots: [root], targetFiles: [a] },
+				);
+				expectFailure(outcome, { kind: "invalid_plan", reason: "guide_selection" });
+			}
+		});
+	});
+
+	test("rejects legacy planner output without guide_ids", async () => {
+		await withTempRoot(({ root, a }) => {
+			const { guide_ids: omittedGuideIds, ...legacyUnit } = rawPlannerUnit({ id: "alpha", primary: a });
+			expect(omittedGuideIds).toEqual(["contract/state-lifecycle"]);
+			const outcome = parsePlannerOutput(
+				{ overview: "Legacy plan", units: [legacyUnit] },
+				{ cwd: root, roots: [root], targetFiles: [a] },
+			);
+			expectFailure(outcome, { kind: "invalid_plan", reason: "schema" });
 		});
 	});
 });
@@ -368,6 +434,57 @@ describe("parsePlanArtifact editable plan contracts", () => {
 		});
 	});
 
+	test("editable guide selection failures use guide_selection while legacy plans fail schema", async () => {
+		await withTempRoot(({ root, a }) => {
+			const artifact = buildPlanArtifact({
+				targets: [a],
+				units: [reviewUnit({ id: "alpha", primaryFiles: [a] })],
+			});
+			for (const guideIds of [
+				[],
+				["unknown/guide"],
+				["contract/state-lifecycle", "contract/state-lifecycle"],
+				[
+					"contract/state-lifecycle",
+					"contract/errors-handling",
+					"contract/policy-ownership",
+					"narrative/readability",
+				],
+				["core"],
+			]) {
+				expectFailure(
+					parsePlanArtifact(
+						{ ...artifact, units: [{ ...artifact.units[0]!, guideIds }] },
+						{
+							cwd: root,
+							roots: [root],
+							targetFiles: [a],
+							sourceFingerprint: artifact.sourceFingerprint,
+							hash,
+						},
+					),
+					{ kind: "invalid_plan", reason: "guide_selection" },
+				);
+			}
+
+			const { guideIds: omittedGuideIds, ...legacyUnit } = artifact.units[0]!;
+			expect(omittedGuideIds).toEqual(["contract/state-lifecycle"]);
+			expectFailure(
+				parsePlanArtifact(
+					{ ...artifact, units: [legacyUnit] },
+					{
+						cwd: root,
+						roots: [root],
+						targetFiles: [a],
+						sourceFingerprint: artifact.sourceFingerprint,
+						hash,
+					},
+				),
+				{ kind: "invalid_plan", reason: "schema" },
+			);
+		});
+	});
+
 	test("changed supplied current source fingerprint fails as stale_sources", async () => {
 		await withTempRoot(({ root, a, b }) => {
 			const artifact = buildPlanArtifact({
@@ -451,6 +568,7 @@ describe("fingerprint contracts", () => {
 				title: "Alpha",
 				objective: "Objective",
 				reviewFocus: ["focus-a"],
+				guideIds: ["contract/state-lifecycle", "contract/errors-handling"],
 				riskLevel: "low",
 				rationale: "Rationale",
 			});
@@ -466,6 +584,7 @@ describe("fingerprint contracts", () => {
 				{ ...baseUnit, objective: "New objective" },
 				{ ...baseUnit, relatedFiles: [b] },
 				{ ...baseUnit, reviewFocus: ["focus-b"] },
+				{ ...baseUnit, guideIds: ["contract/errors-handling", "contract/state-lifecycle"] },
 				{ ...baseUnit, riskLevel: "critical" },
 				{ ...baseUnit, rationale: "New rationale" },
 			];
@@ -489,6 +608,66 @@ describe("fingerprint contracts", () => {
 				hash,
 			).units[0]!.unitFingerprint;
 			expect(primaryFingerprint).not.toBe(baseFingerprint);
+		});
+	});
+});
+
+describe("parseReviewerOutput guide provenance", () => {
+	test("accepts unit subsets and rejects foreign or duplicate ids", async () => {
+		await withTempRoot(({ root, a }) => {
+			const unit = reviewUnit({
+				id: "alpha",
+				primaryFiles: [a],
+				guideIds: ["contract/state-lifecycle", "contract/errors-handling"],
+			});
+			const output = {
+				unit_id: "alpha",
+				verdict: "NEEDS_REVIEW",
+				summary: "One finding",
+				findings: [
+					{
+						id: "finding-a",
+						title: "Finding",
+						category: "correctness",
+						severity: "minor",
+						confidence: "high",
+						guide_ids: ["contract/errors-handling"],
+						evidence: [
+							{
+								source_id: a,
+								start_line: 1,
+								end_line: 1,
+								quote: "export const value = 1;",
+								observation: "Observed line",
+							},
+						],
+						reason: "Contract mismatch",
+						suggested_action: "Repair contract",
+						verification_after_change: "Re-read source",
+					},
+				],
+				coverage: [{ path: a, status: "reviewed", notes: "Read complete file" }],
+			};
+
+			const valid = parseReviewerOutput(output, { cwd: root, roots: [root], unit });
+			expect(valid.ok).toBe(true);
+			if (!valid.ok) return;
+			expect(valid.value.findings[0]?.guideIds).toEqual(["contract/errors-handling"]);
+
+			for (const guideIds of [
+				["narrative/readability"],
+				["contract/errors-handling", "contract/errors-handling"],
+				["unknown/guide"],
+			]) {
+				const invalid = parseReviewerOutput(
+					{
+						...output,
+						findings: [{ ...output.findings[0]!, guide_ids: guideIds }],
+					},
+					{ cwd: root, roots: [root], unit },
+				);
+				expectFailure(invalid, { kind: "invalid_unit_result", reason: "guide_provenance" });
+			}
 		});
 	});
 });
@@ -532,6 +711,112 @@ describe("parseUnitReviewArtifact stale and foreign contracts", () => {
 				),
 				{ kind: "invalid_unit_result", reason: "schema" },
 			);
+		});
+	});
+
+	test("rejects a unit artifact after guide selection changes", async () => {
+		await withTempRoot(({ root, a }) => {
+			const originalPlan = toValidatedPlan(
+				buildPlanArtifact({
+					targets: [a],
+					units: [
+						reviewUnit({
+							id: "alpha",
+							primaryFiles: [a],
+							guideIds: ["contract/state-lifecycle"],
+						}),
+					],
+				}),
+				hash,
+			);
+			const staleArtifact = succeededUnitArtifact(originalPlan, "alpha");
+			const editedPlan = toValidatedPlan(
+				buildPlanArtifact({
+					targets: [a],
+					units: [
+						reviewUnit({
+							id: "alpha",
+							primaryFiles: [a],
+							guideIds: ["contract/errors-handling"],
+						}),
+					],
+				}),
+				hash,
+			);
+			expect(editedPlan.units[0]?.unitFingerprint).not.toBe(originalPlan.units[0]?.unitFingerprint);
+			expectFailure(
+				parseUnitReviewArtifact(
+					{ ...staleArtifact, planFingerprint: editedPlan.planFingerprint },
+					{ cwd: root, roots: [root], plan: editedPlan },
+				),
+				{ kind: "invalid_unit_result", reason: "stale_unit" },
+			);
+		});
+	});
+
+	test("validates persisted finding guide provenance through pure policy", async () => {
+		await withTempRoot(({ root, a }) => {
+			const plan = toValidatedPlan(
+				buildPlanArtifact({
+					targets: [a],
+					units: [
+						reviewUnit({
+							id: "alpha",
+							primaryFiles: [a],
+							guideIds: ["contract/state-lifecycle", "contract/errors-handling"],
+						}),
+					],
+				}),
+				hash,
+			);
+			const artifact = succeededUnitArtifact(plan, "alpha");
+			const finding = {
+				id: "finding-a",
+				title: "Finding",
+				category: "correctness",
+				severity: "minor",
+				confidence: "high",
+				guideIds: ["contract/errors-handling"],
+				evidence: [
+					{
+						sourceId: a,
+						startLine: 1,
+						endLine: 1,
+						quote: "export const value = 1;",
+						observation: "Observed line",
+						hash: hash("evidence"),
+					},
+				],
+				reason: "Contract mismatch",
+				suggestedAction: "Repair contract",
+				verificationAfterChange: "Re-read source",
+			};
+			const withFinding = {
+				...artifact,
+				review: { ...artifact.review, findings: [finding] },
+			};
+			const accepted = parseUnitReviewArtifact(withFinding, { cwd: root, roots: [root], plan });
+			expect(accepted.ok).toBe(true);
+
+			for (const guideIds of [
+				["narrative/readability"],
+				["contract/errors-handling", "contract/errors-handling"],
+				["unknown/guide"],
+			]) {
+				expectFailure(
+					parseUnitReviewArtifact(
+						{
+							...withFinding,
+							review: {
+								...withFinding.review,
+								findings: [{ ...finding, guideIds }],
+							},
+						},
+						{ cwd: root, roots: [root], plan },
+					),
+					{ kind: "invalid_unit_result", reason: "guide_provenance" },
+				);
+			}
 		});
 	});
 });

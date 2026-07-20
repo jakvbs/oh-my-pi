@@ -1,12 +1,13 @@
 import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import { z } from "zod";
 import type { ContextToolMode } from "./context-tools";
+import type { GuideId } from "./guide-catalog";
 
 /** Stable versions shared by plan/unit/report artifacts and prompt metadata. */
-export const PROMPT_VERSION = "filesystem-model-routed-review/2.0.0" as const;
-export const PLAN_SCHEMA_VERSION = "review-plan/1.0.0" as const;
-export const UNIT_REVIEW_SCHEMA_VERSION = "unit-review/2.0.0" as const;
-export const REPORT_SCHEMA_VERSION = "review-report/1.0.0" as const;
+export const PROMPT_VERSION = "filesystem-model-routed-review/3.0.0" as const;
+export const PLAN_SCHEMA_VERSION = "review-plan/2.0.0" as const;
+export const UNIT_REVIEW_SCHEMA_VERSION = "unit-review/3.0.0" as const;
+export const REPORT_SCHEMA_VERSION = "review-report/2.0.0" as const;
 export const CONTEXT_TOOL_POLICY_VERSION = "read-only-filesystem/1.0.0" as const;
 
 const MAX_PRIMARY_FILES_PER_UNIT = 8;
@@ -110,7 +111,14 @@ export type ReviewFailure =
 	  }
 	| {
 			kind: "invalid_plan";
-			reason: "schema" | "path" | "ownership" | "duplicate_unit" | "unknown_target" | "stale_sources";
+			reason:
+				| "schema"
+				| "path"
+				| "ownership"
+				| "duplicate_unit"
+				| "unknown_target"
+				| "stale_sources"
+				| "guide_selection";
 			message: string;
 			target?: string;
 	  }
@@ -136,7 +144,8 @@ export type ReviewFailure =
 				| "foreign_plan"
 				| "stale_unit"
 				| "stale_sources"
-				| "non_terminal";
+				| "non_terminal"
+				| "guide_provenance";
 			unitId?: string;
 			message: string;
 	  }
@@ -156,6 +165,7 @@ export type ReviewUnit = {
 	primaryFiles: string[];
 	relatedFiles: string[];
 	reviewFocus: string[];
+	guideIds: GuideId[];
 	riskLevel: RiskLevel;
 	rationale: string;
 };
@@ -202,6 +212,7 @@ export type Finding = {
 	category: string;
 	severity: Severity;
 	confidence: Confidence;
+	guideIds?: GuideId[];
 	evidence: Evidence[];
 	reason: string;
 	suggestedAction: string;
@@ -288,6 +299,7 @@ export type AggregatedFinding = {
 	categories: string[];
 	severity: Severity;
 	confidence: Confidence;
+	guideIds?: GuideId[];
 	evidence: VerifiedEvidence[];
 	reason: string;
 	suggestedAction: string;
@@ -337,16 +349,6 @@ export type AggregationInput = {
 	plan: ValidatedPlan;
 	unitReviews: UnitReviewArtifact[];
 };
-
-export type ReviewRunState =
-	| { state: "planned" }
-	| {
-			state: "reviewing";
-			completedUnitIds: readonly string[];
-			pendingUnitIds: readonly string[];
-	  }
-	| { state: "ready_to_aggregate" }
-	| { state: "completed" };
 
 /** Canonical planner-model semantics after path/ownership normalization. */
 export type PlannerOutput = {
@@ -423,6 +425,7 @@ const rawReviewUnitSchema = z
 		primary_files: z.array(absolutePathStringSchema).min(1).max(MAX_PRIMARY_FILES_PER_UNIT),
 		related_files: z.array(absolutePathStringSchema).max(MAX_RELATED_FILES_PER_UNIT),
 		review_focus: z.array(nonEmptyStringSchema).min(1).max(MAX_REVIEW_FOCUS),
+		guide_ids: z.array(nonEmptyStringSchema),
 		risk_level: riskLevelSchema,
 		rationale: nonEmptyStringSchema,
 	})
@@ -443,6 +446,7 @@ const trustedReviewUnitSchema = z
 		primaryFiles: z.array(absolutePathStringSchema).min(1).max(MAX_PRIMARY_FILES_PER_UNIT),
 		relatedFiles: z.array(absolutePathStringSchema).max(MAX_RELATED_FILES_PER_UNIT),
 		reviewFocus: z.array(nonEmptyStringSchema).min(1).max(MAX_REVIEW_FOCUS),
+		guideIds: z.array(nonEmptyStringSchema),
 		riskLevel: riskLevelSchema,
 		rationale: nonEmptyStringSchema,
 	})
@@ -479,6 +483,7 @@ const rawFindingSchema = z
 		category: nonEmptyStringSchema,
 		severity: severitySchema,
 		confidence: confidenceSchema,
+		guide_ids: z.array(nonEmptyStringSchema).optional(),
 		evidence: z.array(rawEvidenceSchema).min(1).max(MAX_EVIDENCE_PER_FINDING),
 		reason: nonEmptyStringSchema,
 		suggested_action: nonEmptyStringSchema,
@@ -522,6 +527,7 @@ const verifiedFindingSchema = z
 		category: nonEmptyStringSchema,
 		severity: severitySchema,
 		confidence: confidenceSchema,
+		guideIds: z.array(nonEmptyStringSchema).optional(),
 		evidence: z.array(verifiedEvidenceSchema).min(1).max(MAX_EVIDENCE_PER_FINDING),
 		reason: nonEmptyStringSchema,
 		suggestedAction: nonEmptyStringSchema,
@@ -598,7 +604,15 @@ const reviewFailureSchema: z.ZodType<ReviewFailure> = z.union([
 	z
 		.object({
 			kind: z.literal("invalid_plan"),
-			reason: z.enum(["schema", "path", "ownership", "duplicate_unit", "unknown_target", "stale_sources"]),
+			reason: z.enum([
+				"schema",
+				"path",
+				"ownership",
+				"duplicate_unit",
+				"unknown_target",
+				"stale_sources",
+				"guide_selection",
+			]),
 			message: nonEmptyStringSchema,
 			target: nonEmptyStringSchema.optional(),
 		})
@@ -631,6 +645,7 @@ const reviewFailureSchema: z.ZodType<ReviewFailure> = z.union([
 				"stale_unit",
 				"stale_sources",
 				"non_terminal",
+				"guide_provenance",
 			]),
 			unitId: identifierSchema.optional(),
 			message: nonEmptyStringSchema,
@@ -715,6 +730,8 @@ const rawAggregationModelOutputSchema = z
 export type RawPlannerOutput = z.infer<typeof rawPlannerOutputSchema>;
 export type RawReviewerOutput = z.infer<typeof rawReviewerOutputSchema>;
 export type RawAggregationModelOutput = z.infer<typeof rawAggregationModelOutputSchema>;
+export type RawPlanArtifact = z.infer<typeof planArtifactSchema>;
+export type RawUnitReviewArtifact = z.infer<typeof unitReviewArtifactSchema>;
 
 /** PromptRunner-facing Zod schema for planner yields (snake_case model DTO). */
 export function plannerOutputSchema(): z.ZodType<RawPlannerOutput> {
@@ -736,11 +753,11 @@ export function aggregationOutputSchema(): z.ZodType<RawAggregationModelOutput> 
 	return aggregationModelOutputSchema();
 }
 
-export function planArtifactBoundarySchema(): z.ZodType<PlanArtifact> {
+export function planArtifactBoundarySchema(): z.ZodType<RawPlanArtifact> {
 	return planArtifactSchema;
 }
 
-export function unitReviewArtifactBoundarySchema(): z.ZodType<UnitReviewArtifact> {
+export function unitReviewArtifactBoundarySchema(): z.ZodType<RawUnitReviewArtifact> {
 	return unitReviewArtifactSchema;
 }
 

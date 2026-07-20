@@ -41,7 +41,9 @@ aggregate <plan.json> --results-dir results/ --output report.json
 run <goal> <files...> [--output report.json]
 ```
 
-Edit the plan JSON, then run units independently or concurrently; each unit writes a terminal success or failure artifact with a primary-and-related source fingerprint. `review-units` requires a new output directory and publishes its complete artifact set with one atomic directory rename. Aggregate only when every unit artifact is present and its fingerprint still matches current sources. Expected CLI, artifact, runtime, and review failures use explicit `ReviewFailure.kind` values. `run` is the same end-to-end convenience path.
+Edit the plan JSON, then run units independently or concurrently; each unit writes a terminal success or failure artifact with a primary-and-related source fingerprint. `review-units` requires a new output path and atomically publishes a symlink-backed directory; treat its hidden sibling backing directory and public link as one artifact. Aggregate only when every unit artifact is present and its fingerprint still matches current sources. Expected CLI, artifact, runtime, and review failures use explicit `ReviewFailure.kind` values. `run` is the same end-to-end convenience path.
+
+The review knowledge is hierarchical: `core.md` is always active and the catalog exposes 11 selectable lenses across contract, modules, narrative, and tests. The planner assigns 1–3 ordered `guideIds` to each unit: the first is dominant, while `reviewFocus` names that unit's concrete risks, invariants, and boundaries. Editing guide selection changes the unit and plan fingerprints, invalidating stale unit artifacts. Each reviewer receives core plus only its selected guide documents; the aggregator neither routes nor reads guides and deterministically preserves source-finding provenance. Plan schema v2 is a clean cutover: plans without `guideIds` are incompatible.
 
 ## Quick Reference
 

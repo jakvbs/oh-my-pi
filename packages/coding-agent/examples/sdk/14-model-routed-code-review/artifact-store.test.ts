@@ -65,7 +65,7 @@ describe("writeJsonArtifact", () => {
 });
 
 describe("writeJsonArtifactDirectory", () => {
-	test("publishes the complete artifact set with one directory rename", async () => {
+	test("publishes the complete artifact set with one no-clobber namespace link", async () => {
 		await withTempDirectory(async directory => {
 			const destination = path.join(directory, "units");
 			const artifacts = [
@@ -93,6 +93,7 @@ describe("writeJsonArtifactDirectory", () => {
 				value: [path.join(destination, "alpha.json"), path.join(destination, "beta.json")],
 			});
 			expect(observedPartial).toBe(false);
+			expect((await fs.lstat(destination)).isSymbolicLink()).toBe(true);
 			expect((await fs.readdir(destination)).sort()).toEqual(["alpha.json", "beta.json"]);
 		});
 	});
