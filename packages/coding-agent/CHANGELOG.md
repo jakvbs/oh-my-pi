@@ -1,17 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+
 - Fixed failed plan-mode exits leaving the session on the restored execution model while plan mode remained active and silently changing ambient `xd://` tool presentation; rollback now restores the plan model, thinking level, and exact top-level-versus-mounted tool partition so exit can be retried safely ([#6013](https://github.com/can1357/oh-my-pi/pull/6013)).
-
-### Fixed
-
-- Fixed the interactive `!`/`!!` shell shortcut spawning fish as a login shell (`fish -l -c …`), which fired `status is-login` blocks in user config (agent/keychain setup, PATH mutation) on every command. fish is now started with `-i` instead — interactive shells source the same `config.fish`/`conf.d` files (so aliases and functions from #1816 keep working) without login-shell side effects. zsh behavior (`-l -i`) is unchanged.
-
-### Fixed
-
-- Fixed the status-line `tok/s` badge ignoring vibe worker sessions: in `/vibe` mode the director is often idle while workers stream, so the badge showed a stale/zero rate while parallel work was actively generating tokens. The rate now aggregates the main session's live tok/s with every live vibe worker's tok/s, and falls back to the main session's own cached rate when no workers are streaming.
-
-## [17.0.5] - 2026-07-18
 
 ### Added
 
@@ -21,6 +12,13 @@
 - Added support for id-prefixed targets and keys in `retry.fallbackChains` wildcards (e.g., `"openrouter/google/*"`).
 - Added support for `Shift+Enter` in the session tree selector (`/tree`, `/branch`) to summarize and switch branches in a single step.
 - Added the `PI_CONFIG_FILES` environment variable to load settings overlays before `--config` overlays.
+- Added native Warp CLI-agent events for rich session status, tool approvals, and completion notifications ([#5592](https://github.com/can1357/oh-my-pi/pull/5592) by [@metaphorics](https://github.com/metaphorics)).
+- Added Codex (ChatGPT subscription) support to `generate_image`. The tool now resolves a connected `openai-codex` OAuth credential and drives OpenAI's hosted `image_generation` tool through the ChatGPT backend (`chatgpt.com/backend-api/codex/responses`, `chatgpt-account-id` header) **independent of the active chat model** — so image generation works on a ChatGPT/Codex subscription with no metered `OPENAI_API_KEY`, even when the active model is Claude/Gemini/etc. A new `providers.image: "openai-codex"` option forces it; `auto` now auto-detects a connected subscription (priority: active GPT image tool > Codex subscription > Antigravity > xAI > OpenRouter > Gemini), and the `openai` preference falls back to it when no `OPENAI_API_KEY`/active GPT model is present.
+- Added an optional `provider` parameter to `generate_image` (`auto` | `openai` | `openai-codex` | `antigravity` | `xai` | `gemini` | `openrouter`) that overrides the `providers.image` setting **for a single request** — so "generate this using gemini / codex / xai" routes per-call without changing the global setting. Absent → the `providers.image` setting applies, unchanged; the named provider uses the same resolution semantics (falls back to auto-detect if it has no credentials). File: `tools/image-gen.ts` (`imageProviderSchema`, `findImageApiKey` `preference` arg).
+- Added OpenTelemetry log and metric export alongside the existing trace export. When `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` (or the shared `OTEL_EXPORTER_OTLP_ENDPOINT`) is set, `omp` registers a `LoggerProvider` and forwards every centralized-logger event as an OTLP log record (severity + attributes + active span context for log↔trace correlation, min level via `OTEL_LOG_LEVEL`, plus a structured `agent run completed` summary event). When `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (or the shared endpoint) is set, it registers a `MeterProvider` with a `PeriodicExportingMetricReader` and records GenAI-semconv `gen_ai.client.token.usage` plus `pi.omp.agent.*` counters/histograms (runs, steps, chat/tool calls by name+status+finish reason, latencies, estimated cost, errors) from the agent run summary and per-chat usage hooks. Each signal honors its own `OTEL_*_EXPORTER=none` kill switch, the global `OTEL_SDK_DISABLED`, and declines non-`http/protobuf` protocols independently ([#4604](https://github.com/can1357/oh-my-pi/issues/4604)).
+- `retry.fallbackChains` wildcards now support id-prefixed targets and keys: a chain entry like `"openrouter/google/*"` re-prefixes the failing model's bare id (`google-antigravity/gemini-x` → `openrouter/google/gemini-x`), a plain `"provider/*"` entry falling back *from* an aggregator strips the vendor prefix when the target provider only knows the bare id (`openrouter/google/x` → `google-vertex/x`), and an id-prefixed key (`"openrouter/google/*"`) scopes a chain to that provider's ids under the prefix.
+- The session tree selector (`/tree`, `/branch`) now supports Shift+Enter to summarize-and-switch in one step: it forks from the selected entry with a branch summary, with no extra prompt and regardless of `branchSummary.enabled`. Plain Enter keeps the current behavior (direct switch by default; the summary prompt only when `branchSummary.enabled` is on). ([#5152](https://github.com/can1357/oh-my-pi/issues/5152))
+- Added the turn's local timestamp (`YYYY-MM-DD HH:mm:ss`, down to the second) to the per-turn token-usage row shown under assistant messages when `display.showTokenUsage` is enabled.
 
 ### Changed
 
@@ -32,53 +30,11 @@
 - Made the hashline seen-line guard opt-in and off by default via `edit.enforceSeenLines`.
 
 ### Fixed
+
+- Fixed the interactive `!`/`!!` shell shortcut spawning fish as a login shell (`fish -l -c …`), which fired `status is-login` blocks in user config (agent/keychain setup, PATH mutation) on every command. fish is now started with `-i` instead — interactive shells source the same `config.fish`/`conf.d` files (so aliases and functions from #1816 keep working) without login-shell side effects. zsh behavior (`-l -i`) is unchanged.
+- Fixed the status-line `tok/s` badge ignoring vibe worker sessions: in `/vibe` mode the director is often idle while workers stream, so the badge showed a stale/zero rate while parallel work was actively generating tokens. The rate now aggregates the main session's live tok/s with every live vibe worker's tok/s, and falls back to the main session's own cached rate when no workers are streaming.
 - Fixed `plan.defaultOnStartup` being ignored by headless `omp -p` sessions, so the initial prompt now runs in plan mode and the persisted session remains in plan mode for later review ([#6017](https://github.com/can1357/oh-my-pi/issues/6017)).
-
 - Fixed resuming an active plan session replacing its journal-restored model with the current `modelRoles.plan` setting ([#6015](https://github.com/can1357/oh-my-pi/issues/6015)).
-- Fixed `--model <role>` resolving a bare configured `modelRoles` key.
-- Browser tool selectors now accept bare snapshot refs (`tab.click("e501")`, `@e501`) everywhere `aria-ref=e501` works — previously the tab-worker backend fell through to a CSS tag selector that could never match, burning the 2s zero-match watchdog with a misleading "matches no elements" hint. `tab.select`, `tab.uploadFile`, `tab.press({ selector })`, `tab.screenshot({ selector })`, and `tab.drag` now resolve refs too. Unknown/stale refs fail immediately with the "refresh refs" error.
-- `tab.select` no longer double-reports the previously selected option of a single `<select>`: the returned selection is read back after the full assignment pass instead of mid-loop.
-- Fixed transcript blocks being visibly duplicated during streaming (whole tool boxes and assistant paragraphs recommitted below their first copy on the terminal tape) by removing transcript committed-prefix compaction entirely. Dropping committed rows from the transcript's local frame shifted the frame under the engine's committed-prefix ledger, so the audit re-anchored and recommitted rows the tape already held. The transcript now always keeps its full local frame; committed finalized blocks still skip `render()` via the segment reuse bypass. Reverts the compaction half of [#5930](https://github.com/can1357/oh-my-pi/issues/5930)'s fix (compose keeps the render bypass; the local frame is no longer truncated).
-- Fixed tmux pane growth during a live response blanking finalized chat history re-exposed from native scrollback by rebasing the in-place repaint's commit seam to the resized viewport tail ([#6011](https://github.com/can1357/oh-my-pi/issues/6011)).
-- Fixed classifier refusals (e.g. Anthropic `stop_reason: "refusal"`) ending the turn with no visible error. Two independent regressions: (1) session events reached subscribers out of order when a turn's provider events landed in one tick — extension emits only await for event types with registered handlers, so the assistant `message_end` overtook its own `message_start` and the TUI skipped the error render entirely (no pinned banner, no inline `Error:` line); subscriber fan-out is now serialized in emission order. (2) Refusal turns are pruned from active context at settle (#3591), which also erased them from `state.messages` before `prompt()` resolved — print mode printed nothing and exited 0, and the task executor's `getLastAssistantMessage()` saw the previous turn. The pruned refusal is now retained until the next run starts, `getLastAssistantMessage()` reports it, and print mode reads the settled assistant via that accessor (exit 1 + refusal message on stderr). Additionally, `#lastAssistantMessage` is now set synchronously on `message_end` to prevent `agent_end` maintenance from reading a stale assistant turn when tool results and stops land in the same tick.
-- Fixed `before_provider_request` extension contexts exposing the primary session model for cross-provider Advisor requests instead of the request model ([#6006](https://github.com/can1357/oh-my-pi/issues/6006)).
-- Fixed isolated `task` subagents mutating the parent checkout and stacking parallel task branches. Copy isolation backends (reflink/apfs/btrfs/zfs/block-clone/rcopy) materialise the worktree by duplicating its `.git` verbatim; when the parent is a linked git worktree its `.git` is a pointer file, so the isolation shared the parent's HEAD/index/ref namespace and a task's `git checkout`/`commit` moved the parent's branch (and the rcopy `git worktree add` path leaked task branches into the shared namespace so a second task committed on top of the first). `ensureIsolation` now runs a new `git.detachGitDir` after `isoStart`: each isolation becomes a standalone repo with a frozen HEAD/refs/index snapshot that borrows the source object database through `objects/info/alternates`, so isolated git operations stay private, every task branch is parented on the requested base, and patch/branch capture (`git fetch <merged>`) still resolves objects. ([#6003](https://github.com/can1357/oh-my-pi/issues/6003))
-- Fixed `browser.run` leaving Puppeteer request handlers and interception state with divergent lifetimes by removing run-scoped handlers, disabling interception, and releasing held requests on every exit path ([#6004](https://github.com/can1357/oh-my-pi/issues/6004)).
-- Fixed Codex web search to honor configured `openai-codex` base URLs, API keys, and headers without leaking official OAuth credentials to custom endpoints; explicitly selected providers now fail closed instead of silently falling back ([#6001](https://github.com/can1357/oh-my-pi/issues/6001)).
-- Fixed `launch start` waiting for a finite PTY command to exit when the broker's PID-file handoff was unavailable; PTY startup now reports the spawned PID directly and returns an authoritative running or exited snapshot promptly ([#5996](https://github.com/can1357/oh-my-pi/issues/5996)).
-- Fixed queued user steering aborting side-effecting `hub start` calls after the broker request may already have been written; only passive hub waits and followed logs are now interruptible ([#5995](https://github.com/can1357/oh-my-pi/issues/5995)).
-- Fixed JavaScript/TypeScript debugging by launching vscode-js-debug over TCP, handling recursive `startDebugging` child sessions, synchronizing breakpoints across the session tree, and terminating every child connection ([#5984](https://github.com/can1357/oh-my-pi/issues/5984)).
-- Fixed rich ask options showing preview content only for the highlighted choice; every option now renders its preview inline, with pageable long content and accurate configured paging and cancel hints ([#5988](https://github.com/can1357/oh-my-pi/pull/5988) by [@metaphorics](https://github.com/metaphorics)).
-- Fixed legacy pi extensions failing extension validation when importing `getPackageDir` or `getProjectDir` from `@earendil-works/pi-coding-agent` (aliased to the legacy shim). The shim only re-exported `getAgentDir`; the two missing path helpers now resolve — `getProjectDir` from `@oh-my-pi/pi-utils`, and `getPackageDir` as a string-valued wrapper over omp's canonical package-root helper that falls back to the executable's directory inside `bun --compile` binaries (where the canonical helper returns `undefined`), matching pi's string contract. Extensions like `@gotgenes/pi-permission-system` install and load, and `path.join(getPackageDir(), …)` no longer crashes in the shipped binary ([#5968](https://github.com/can1357/oh-my-pi/issues/5968)).
-- Fixed headless print mode disposing the session before a final advisor review completed, which could drop the advisor transcript and usage ([#5942](https://github.com/can1357/oh-my-pi/pull/5942)).
-- Fixed capped zero-block assistant stops remaining in active/session history with the full failed-request usage, causing the next post-snapcompact `continue` to re-enter context maintenance at the same boundary; capped empty turns are now discarded and the failure names model switching or `/shake images` as recovery options ([#5959](https://github.com/can1357/oh-my-pi/issues/5959)).
-- Long sessions no longer re-run `convertToLlm` over settled history every turn. Conversion is memoized per message identity (plus the assistant `interruptedNext` neighbor flag): an exact re-convert of the same array reuses the outer `Message[]`, append-only growth reuses the converted prefix via slice-on-growth, and the prune/shake/strip-images/prewalk-scrub rewrite seams invalidate the affected message before the next pass. On the `llm-assembly` bench (N=5000) steady/append convert and repeat estimate are all >10x faster with robust MAD-noise well under 20% ([#5934](https://github.com/can1357/oh-my-pi/issues/5934)).
-- Fixed `/exit` hanging on post-prompt work and stacking independent subsystem teardown delays by bounding the aborted-work drain, disposing independent session resources concurrently, and keeping long shutdown waits visible ([#5932](https://github.com/can1357/oh-my-pi/issues/5932)).
-- Fixed queued-message display updates being skipped by focused-editor keystroke frames by explicitly repainting the pending-message container ([#5928](https://github.com/can1357/oh-my-pi/issues/5928)).
-- Fixed RPC and RPC-UI startup crashes when an in-process extension claimed Bun's singleton stdin stream before the protocol reader ([#5898](https://github.com/can1357/oh-my-pi/issues/5898)).
-- Bash command timeouts now render with a warning (yellow) border instead of an error (red) border, reflecting that the timeout ran its course rather than the command failed. `isError` remains `true` on the result so the model still knows the command did not complete normally. The `timedOut` flag is now propagated from the bash executor to distinguish timeouts from user aborts.
-- Fixed Cursor responses streams stalling after an exec-channel tool completed without automatically recovering. The session now continues from the already-buffered tool result instead of replaying the side-effecting request. ([#5790](https://github.com/can1357/oh-my-pi/issues/5790))
-
-- Fixed isolated `task` subagents mutating the parent git checkout and stacking parallel task branches by detaching the git directory.
-- Fixed Windows compatibility issues, including `launch start` daemons opening visible console windows, startup crashes when running from a drive root, and command errors in the `hub` tool with non-POSIX shells.
-- Fixed Windows stdio MCP servers launched through `.cmd`/`.bat` shims failing with `Transport closed` by escaping arguments properly.
-- Fixed browser tool selectors (`tab.click`, `tab.select`, etc.) to accept bare snapshot refs (e.g., `tab.click("e501")`, `@e501`) and resolved crashes when handed `ElementHandle` objects.
-- Fixed classifier refusals (e.g., Anthropic `stop_reason: "refusal"`) ending turns with no visible error or exiting 0 in print mode.
-- Fixed transcript blocks being duplicated during streaming and tmux pane growth blanking finalized chat history.
-- Fixed JS/TS debugging by launching vscode-js-debug over TCP and synchronizing breakpoints across the session tree.
-- Fixed legacy pi extensions failing validation or loading when importing path helpers or package managers.
-- Fixed `/login` and `/logout` failing to refresh model discovery with fresh credentials due to stale cached data.
-- Fixed Cursor models and advisors failing to receive or execute mounted `xd://` devices and MCP tools.
-- Fixed MCP tools repeatedly unmounting/remounting with overlapping sanitized prefixes, and stale tools remaining after disconnecting.
-- Fixed custom LSP servers crashing when requesting unconfigured `workspace/configuration` sections.
-- Fixed keyboard input dying after the first keypress when custom tools or modules hijack stdin at import time.
-- Fixed auto-compaction dead-ending in a warning loop when the most recent turn is over budget.
-- Fixed GitHub-hosted repository file reads falling back to `curl` by adding a dedicated `github` file-read operation.
-- Fixed active session markers and TUI usage panels truncating organization suffixes from same-email account labels.
-- Fixed `write` approval gates misclassifying `xd://` device writes as `exec`.
-- Fixed bash command timeouts rendering with an incorrect error border, and resolved Windows bash crashes when piped commands time out.
-- Migrated legacy nested/quoted-dotted config keys (e.g., `dev.autoqa.consent` -> `dev.autoqaConsent`) on settings load.
-- Added managed `ctx.setInterval` / `ctx.setTimeout` / `ctx.clearTimer` helpers on extension contexts to prevent uncaught exceptions from crashing sessions.
 - Fixed `--model <role>` resolving a bare configured `modelRoles` key.
 - Browser tool selectors now accept bare snapshot refs (`tab.click("e501")`, `@e501`) everywhere `aria-ref=e501` works — previously the tab-worker backend fell through to a CSS tag selector that could never match, burning the 2s zero-match watchdog with a misleading "matches no elements" hint. `tab.select`, `tab.uploadFile`, `tab.press({ selector })`, `tab.screenshot({ selector })`, and `tab.drag` now resolve refs too. Unknown/stale refs fail immediately with the "refresh refs" error.
 - `tab.select` no longer double-reports the previously selected option of a single `<select>`: the returned selection is read back after the full assignment pass instead of mid-loop.
@@ -154,23 +110,61 @@
 - Fixed raw Puppeteer `page`/`browser` promises from crashing inline browser workers or killing dedicated workers when a target closed before the caller awaited the promise.
 - Fixed auto-compaction dead-ending in a warning loop ("Compaction freed too little context to make progress") when the single most-recent turn is itself over budget so `prepareCompaction` has nothing to summarize (`findCutPoint` never cuts inside a tool result). This `!preparation` short-circuit never ran the artifact-backed `shake` elide rescue that #3786 added to the post-maintenance guard, so snapcompact/context-full maintenance paused with no attempt to shrink the oversized tail. The dead-end now runs the same elide pass, re-prepares on the shrunken branch, and falls through to a normal compaction when the tail became summarizable — only pausing (single warning) when nothing is elide-eligible. ([#4786](https://github.com/can1357/oh-my-pi/issues/4786))
 - Fixed GitHub-hosted repository file reads falling back to `curl` by adding a dedicated `github` file-read operation and explicit tool-routing guidance ([#4805](https://github.com/can1357/oh-my-pi/issues/4805)).
+- Bounded RPC JSONL frames to 1 MiB, compacted oversized `agent_end` frames without losing complete Python prompt results, and guaranteed worker reaping plus pending-request rejection after output-reader failures or explicit stops ([#5405](https://github.com/can1357/oh-my-pi/issues/5405)).
+- Fixed `web_search` being unreachable under default config: with `tools.xdev: true`, the discoverable `web_search` tool was mounted under `xd://` and dropped from the top-level toolset, so models calling it directly got "Tool web_search not found". It is now pinned top-level via `XDEV_KEEP_TOP_LEVEL` while other discoverable tools keep mounting under `xd://` ([#5973](https://github.com/can1357/oh-my-pi/issues/5973)).
+- Fixed onboarding omitting model selection by adding a persisted default-model step, and documented custom `models.yml` provider configuration and default-role selection ([#5979](https://github.com/can1357/oh-my-pi/issues/5979)).
+- Fixed `autoResume` crossing an explicit `/new` boundary: after `/new` a new session's JSONL is created lazily (only once assistant output exists), so exiting before any assistant message left the per-terminal breadcrumb pointing at a not-yet-materialized file. `readTerminalBreadcrumbEntry` rejected the missing target and `continueRecent()` fell back to the most-recent session — the pre-`/new` transcript — processing the next prompt with stale context. `/new` now records a durable `fresh` breadcrumb boundary that `continueRecent()` honors (starting fresh) even when the target is absent, while a genuinely stale/deleted breadcrumb still falls back to the most-recent session ([#5730](https://github.com/can1357/oh-my-pi/issues/5730)).
+- Fixed subagents that repeatedly submit malformed `yield` results from leaving the parent waiting forever; malformed submissions now repeat the required response format, and repeated invalid submissions fail the child with a clear error. ([#4957](https://github.com/can1357/oh-my-pi/issues/4957))
+- Fixed configured or `-e` extensions in compiled binaries failing to resolve bundled `@oh-my-pi/*` value imports through the `omp-legacy-pi-bundled:` registry, and surfaced extension load failures during interactive and `-p` session startup. ([#4954](https://github.com/can1357/oh-my-pi/issues/4954))
 
 ### Removed
 
 - Fixed the Cursor-backed advisor losing entire turns when it selected server-native tools (`bash`, `grep`, etc.) outside its grant: exec-resolved native blocks are already rejected in-band by the advisor-scoped bridge, so they no longer trip the unavailable-tool quarantine and discard the `advise` emitted in the same turn ([#5900](https://github.com/can1357/oh-my-pi/issues/5900)).
 - Fixed custom `anthropic-messages` OAuth providers being unable to opt into configured Claude Code fingerprint header overrides. ([#5888](https://github.com/can1357/oh-my-pi/issues/5888))
 - Fixed authoritative providers (e.g. `openai-codex`) keeping unsupported bundled models selectable when a fresh model cache and an expired OAuth token coincided: built-in discovery now forces the OAuth refresh so the provider's model manager is constructed and prunes stale bundled entries (e.g. `gpt-5.4-nano`) instead of waiting out the cache TTL. ([#5364](https://github.com/can1357/oh-my-pi/issues/5364))
+
+## [17.0.5] - 2026-07-18
+
+### Added
+
+- Added support for Codex (ChatGPT subscription) in `generate_image` via the `providers.image: "openai-codex"` option, including automatic subscription detection and fallback logic.
+- Added an optional `provider` parameter to `generate_image` to override the global image provider setting for a single request.
+- Added OpenTelemetry log and metric export capabilities alongside existing trace exports, supporting standard OTLP environment variables.
+- Added support for id-prefixed targets and keys in `retry.fallbackChains` wildcards (e.g., `"openrouter/google/*"`).
+- Added support for `Shift+Enter` in the session tree selector (`/tree`, `/branch`) to summarize and switch branches in a single step.
+- Added the `PI_CONFIG_FILES` environment variable to load settings overlays before `--config` overlays.
+
+### Changed
+
+- Changed bundled TTSR rules to warn instead of interrupting generation.
+- Renamed the system prompt's project-context section wrapper from `<context>` to `<repo-rules>` to prevent XML tag collisions with in-band tool dialects.
+- Renamed the `/extensions` dashboard tab "Agents (standard)" to "Agent Dirs (.agent/.agents)" to clarify its purpose.
+- Optimized performance by reducing concurrent subagent update CPU usage, skipping unnecessary title generation in non-interactive hosts, and memoizing `convertToLlm` conversions over settled history.
+- Improved the display of `read xd://` calls by rendering them in a compact grouped view instead of full tool-execution cards.
+- Made the hashline seen-line guard opt-in and off by default via `edit.enforceSeenLines`.
+
 ### Fixed
 
-- Bounded RPC JSONL frames to 1 MiB, compacted oversized `agent_end` frames without losing complete Python prompt results, and guaranteed worker reaping plus pending-request rejection after output-reader failures or explicit stops ([#5405](https://github.com/can1357/oh-my-pi/issues/5405)).
-
-### Fixed
-
-- Fixed `web_search` being unreachable under default config: with `tools.xdev: true`, the discoverable `web_search` tool was mounted under `xd://` and dropped from the top-level toolset, so models calling it directly got "Tool web_search not found". It is now pinned top-level via `XDEV_KEEP_TOP_LEVEL` while other discoverable tools keep mounting under `xd://` ([#5973](https://github.com/can1357/oh-my-pi/issues/5973)).
-
-### Fixed
-
-- Fixed onboarding omitting model selection by adding a persisted default-model step, and documented custom `models.yml` provider configuration and default-role selection ([#5979](https://github.com/can1357/oh-my-pi/issues/5979)).
+- Fixed isolated `task` subagents mutating the parent git checkout and stacking parallel task branches by detaching the git directory.
+- Fixed Windows compatibility issues, including `launch start` daemons opening visible console windows, startup crashes when running from a drive root, and command errors in the `hub` tool with non-POSIX shells.
+- Fixed Windows stdio MCP servers launched through `.cmd`/`.bat` shims failing with `Transport closed` by escaping arguments properly.
+- Fixed browser tool selectors (`tab.click`, `tab.select`, etc.) to accept bare snapshot refs (e.g., `tab.click("e501")`, `@e501`) and resolved crashes when handed `ElementHandle` objects.
+- Fixed classifier refusals (e.g., Anthropic `stop_reason: "refusal"`) ending turns with no visible error or exiting 0 in print mode.
+- Fixed transcript blocks being duplicated during streaming and tmux pane growth blanking finalized chat history.
+- Fixed JS/TS debugging by launching vscode-js-debug over TCP and synchronizing breakpoints across the session tree.
+- Fixed legacy pi extensions failing validation or loading when importing path helpers or package managers.
+- Fixed `/login` and `/logout` failing to refresh model discovery with fresh credentials due to stale cached data.
+- Fixed Cursor models and advisors failing to receive or execute mounted `xd://` devices and MCP tools.
+- Fixed MCP tools repeatedly unmounting/remounting with overlapping sanitized prefixes, and stale tools remaining after disconnecting.
+- Fixed custom LSP servers crashing when requesting unconfigured `workspace/configuration` sections.
+- Fixed keyboard input dying after the first keypress when custom tools or modules hijack stdin at import time.
+- Fixed auto-compaction dead-ending in a warning loop when the most recent turn is over budget.
+- Fixed GitHub-hosted repository file reads falling back to `curl` by adding a dedicated `github` file-read operation.
+- Fixed active session markers and TUI usage panels truncating organization suffixes from same-email account labels.
+- Fixed `write` approval gates misclassifying `xd://` device writes as `exec`.
+- Fixed bash command timeouts rendering with an incorrect error border, and resolved Windows bash crashes when piped commands time out.
+- Migrated legacy nested/quoted-dotted config keys (e.g., `dev.autoqa.consent` -> `dev.autoqaConsent`) on settings load.
+- Added managed `ctx.setInterval` / `ctx.setTimeout` / `ctx.clearTimer` helpers on extension contexts to prevent uncaught exceptions from crashing sessions.
 
 ## [17.0.4] - 2026-07-18
 
@@ -862,10 +856,6 @@
 - Fixed --tools filtering in interactive sessions incorrectly disabling deferred MCP tools from configured servers.
 - Fixed kept-alive task subagents entering infinite provider-call loops after an IRC wake and terminal yield.
 
-### Added
-
-- Added the turn's local timestamp (`YYYY-MM-DD HH:mm:ss`, down to the second) to the per-turn token-usage row shown under assistant messages when `display.showTokenUsage` is enabled.
-
 ## [16.3.15] - 2026-07-09
 
 ### Changed
@@ -897,11 +887,6 @@
 - Fixed the streamed `write` tool's collapsed pending tail preview leaving stale rows above the first partial-result frame in the TUI; the first result now replays the viewport like the SSH placeholder seam already did ([#4477](https://github.com/can1357/oh-my-pi/issues/4477))
 - Fixed first-run setup ignoring a pre-seeded `config.yaml`: the settings loader now treats `config.yml` and `config.yaml` as equivalent existing main config files, writes back to the existing extension, and only creates canonical `config.yml` for fresh installs. ([#4914](https://github.com/can1357/oh-my-pi/issues/4914))
 - Fixed extension `sendUserMessage()` without `deliverAs` surfacing `AgentBusyError` during active streams; omitted `deliverAs` now queues a steer through the normal prompt flow, and ACP/RPC skill-command prompts queue while streaming (RPC honors the prompt command's `streamingBehavior`, defaulting to steer) ([#4923](https://github.com/can1357/oh-my-pi/issues/4923)).
-- Fixed subagents that repeatedly submit malformed `yield` results from leaving the parent waiting forever; malformed submissions now repeat the required response format, and repeated invalid submissions fail the child with a clear error. ([#4957](https://github.com/can1357/oh-my-pi/issues/4957))
-
-### Fixed
-
-- Fixed configured or `-e` extensions in compiled binaries failing to resolve bundled `@oh-my-pi/*` value imports through the `omp-legacy-pi-bundled:` registry, and surfaced extension load failures during interactive and `-p` session startup. ([#4954](https://github.com/can1357/oh-my-pi/issues/4954))
 
 ## [16.3.12] - 2026-07-08
 
