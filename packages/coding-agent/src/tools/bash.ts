@@ -969,14 +969,29 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// for a plain command. Only `async: true` is an async request, a blank
 		// `name` is no service name, and service-only fields with nothing in
 		// them are not a service request.
-		const name = blankToUndefined(rawName);
-		const ready = normalizeReady(rawReady);
+		//
+		// Conflicting fields degrade instead of failing: running the command
+		// the caller did ask for beats rejecting the call. `async: true` is the
+		// stronger signal (a finite job the caller wants to wait on later), so
+		// it wins over `name`/`ready`; a bare `timeout` next to `name` keeps the
+		// service and is dropped, because services have no deadline. A
+		// rejection here used to send models into a retry loop that re-sent the
+		// same arguments with `ready.timeout` added.
+		let name = blankToUndefined(rawName);
+		let ready = normalizeReady(rawReady);
 		const asyncRequested = rawAsync === true;
 		const pendingNotices: string[] = [];
+		if (name !== undefined && asyncRequested) {
+			pendingNotices.push(
+				`Ignored name${ready === undefined ? "" : "/ready"}: \`async\` runs a finite background job, not a service; ran as a background job. Omit \`async\` to start service "${name}".`,
+			);
+			name = undefined;
+			ready = undefined;
+		}
 		if (name !== undefined) {
 			if (!this.#launchEnabled) throw new ToolError("Service launch is disabled in this session.");
-			if (asyncRequested || rawTimeout !== undefined)
-				throw new ToolError("Service mode does not accept async or timeout; use ready.timeout for readiness.");
+			if (rawTimeout !== undefined)
+				pendingNotices.push("Ignored timeout: services have no deadline; use ready.timeout for readiness.");
 		} else if (ready !== undefined) {
 			// Nothing can honour ready without a service to attach it to;
 			// running the command the caller did ask for beats failing the call.
@@ -1077,6 +1092,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 				);
 			if (daemon.exitReason) lines.push(`Reason: ${daemon.exitReason}`);
 			if (service.log) lines.push(service.log);
+			lines.push(...pendingNotices);
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
 				details: {
