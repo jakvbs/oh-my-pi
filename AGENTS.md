@@ -1,10 +1,20 @@
 # Development Rules
 
+## Maintained fork
+
+This checkout maintains `jakvbs/oh-my-pi`, not an upstream contribution branch. Implement and commit fork changes directly on `main`; do not open upstream PRs unless explicitly requested. `origin` is `git@github.com:jakvbs/oh-my-pi.git`; `upstream` is `git@github.com:can1357/oh-my-pi.git`. Preserve fork commits when rebasing on `upstream/main`, integrate remote fork changes first, and never push to upstream.
+
+The global `omp` command uses this checkout's existing `packages/coding-agent/scripts/omp` dev launcher; retain the previous compiled binary for rollback. Updates go through the OMP phase in `~/research/.agents/skills/sync/SKILL.md` (sync fork, rebase upstream, conditionally refresh dependencies/native bindings, verify), not `omp update` or a published npm/binary installer. The launcher reads the live checkout; do not start new sessions or workers during rebase. This fork policy supersedes the upstream "never commit unless asked" rule below for completed fork work; pushing still requires an authorized delivery or dotsync request.
+
+The fork has no `omp-kata` runners. `.github/workflows/ci.yml` routes every job outside `can1357/oh-my-pi` to the GitHub-hosted `ubuntu-22.04` path (sharded like PRs) and skips the kata-only `rust_validate` and `native_addons_cross` jobs; keep that `github.repository` guard when resolving rebase conflicts in `runs-on`/`if` lines.
+
 ## Default Context
 
 This repo contains multiple packages, but **`packages/coding-agent/`** is the primary focus. Unless otherwise specified, assume work refers to this package.
 
 **Terminology**: When the user says "agent" or asks "why is agent doing X", they mean the **coding-agent package implementation**, not you (the assistant). The coding-agent is a CLI tool — questions about its behavior refer to code in `packages/coding-agent/`, not your current session.
+
+**Behavior questions** ("how does omp handle X", "where is X configured"): read the matching `docs/<topic>.md` first (e.g. `docs/settings.md` for config files and precedence, `docs/config-usage.md` for the loader internals, `docs/providers.md`, `docs/extension-loading.md`); most name the owning `src/` files, which beats grepping source blind. Never invent a source path from a package name — list the directory with `read`/`glob` and confirm it exists.
 
 ### Package Structure
 

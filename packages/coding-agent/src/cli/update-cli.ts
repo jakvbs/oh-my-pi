@@ -2218,14 +2218,22 @@ function persistChannel(channel: UpdateChannel): void {
 	}
 }
 
+/** Shown when `omp update` would replace this maintained fork with an upstream release. */
+export const FORK_UPDATE_DISABLED_MESSAGE =
+	"omp update is disabled in this maintained fork: installing an upstream release would replace the fork. Update by rebasing the fork onto upstream instead. `omp update --check` still reports upstream releases and `omp update --plugins` still updates plugins.";
+
 /**
- * Run the update command.
+ * Run the update command. In the maintained fork only `--check` runs; installing is refused.
  */
 export async function runUpdateCommand(opts: {
 	force: boolean;
 	check: boolean;
 	channel?: UpdateChannel;
 }): Promise<void> {
+	if (!opts.check) {
+		console.error(chalk.red(FORK_UPDATE_DISABLED_MESSAGE));
+		process.exit(1);
+	}
 	// `update.channel` picks the channel; --canary/--stable switch and persist it.
 	await Settings.init({ cwd: getProjectDir() });
 	console.log(chalk.dim(`Current version: ${VERSION}`));
