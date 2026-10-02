@@ -28,7 +28,7 @@ Set `bash.enabled: false` in settings to remove the model-facing `bash` tool fro
 - extracts a leading single-line `cd <path> && ...` into `cwd` when `cwd` was not supplied, unless the path needs shell expansion,
 - rejects `async: true` when `async.enabled` is false,
 - defaults finite-command `timeout` to 300 seconds; `0` explicitly disables the command deadline,
-- rejects `async: true` or any supplied `timeout` in named-service mode; readiness uses `ready.timeout`,
+- degrades conflicting fields instead of rejecting the call: `name` with `async: true` runs a finite background job and ignores `name`/`ready` (noted in the output), and a supplied `timeout` in named-service mode is ignored because services have no deadline; readiness uses `ready.timeout`,
 - ignores `ready` without a nonblank `name`, adding a notice.
 
 There are no structured `head` or `tail` parameters. Command text is never rewritten for internal URLs. The embedded shell and its in-process coreutils resolve `scheme://` paths through an injected async filesystem (`InternalUrlFilesystem`) at the moment of each operation, so URLs built from variables, redirections, globs, `cd`, and a URL `cwd` all work. File-backed schemes operate on their backing files; rendered resources are read-only; external programs never see virtual paths and cannot start in a virtual working directory. `xargs`, `find -exec`/`-execdir`, and `ifne` run their commands through the shell's own dispatch in a subshell, so `… | xargs cat` reaches the in-process `cat` and its URL arguments. The finite-command routes also load configured direnv/devenv changes. SDK callers of the executor can supply an `env` overlay; the bash tool itself uses shell assignments for per-command variables.

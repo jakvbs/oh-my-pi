@@ -51,7 +51,11 @@ async function rejectionMessage(promise: Promise<unknown>): Promise<string> {
 	throw new Error("Expected the promise to reject");
 }
 
-function toolSession(cwd: string, manager?: AsyncJobManager, options: { launch?: boolean } = {}): ToolSession {
+function toolSession(
+	cwd: string,
+	manager?: AsyncJobManager,
+	options: { launch?: boolean; async?: boolean } = {},
+): ToolSession {
 	return {
 		cwd,
 		hasUI: false,
@@ -61,7 +65,7 @@ function toolSession(cwd: string, manager?: AsyncJobManager, options: { launch?:
 		asyncJobManager: manager,
 		settings: Settings.isolated({
 			"launch.enabled": options.launch ?? true,
-			"async.enabled": false,
+			"async.enabled": options.async ?? false,
 			"bash.autoBackground.enabled": false,
 			"bash.autoBackground.thresholdMs": 60_000,
 			"bashInterceptor.enabled": false,
@@ -378,7 +382,7 @@ describe("bash services via proc://", () => {
 		const oldTitle = process.title;
 		const broker = startBroker(cwd, runtimeDir);
 		const manager = new AsyncJobManager({});
-		const session = toolSession(cwd, manager);
+		const session = toolSession(cwd, manager, { async: true });
 		const bash = new BashTool(session);
 		const proc = new ProcProtocolHandler();
 		try {
@@ -489,12 +493,40 @@ describe("bash services via proc://", () => {
 				),
 			).toContain("must remain persistent");
 			await proc.write(parseInternalUrl("proc://detach-candidate/kill"), "", { session });
-			await expect(bash.execute("invalid", { command: "true", name: "bad", async: true })).rejects.toThrow(
-				"does not accept async or timeout",
-			);
-			await expect(bash.execute("invalid", { command: "true", name: "bad", timeout: 1 })).rejects.toThrow(
-				"does not accept async or timeout",
-			);
+			// `name` + `async` is the argument shape models fall into for finite
+			// jobs; it must run as a background job, not reject, so the model is
+			// never sent into a retry loop.
+			const jobManager = new AsyncJobManager({});
+			session.asyncJobManager = jobManager;
+			const degraded = await bash.execute("name-with-async", {
+				command: "printf 'JOB\\n'",
+				name: "bad",
+				ready: { timeout: 600 },
+				async: true,
+				pty: false,
+			});
+			const degradedText = degraded.content[0]?.type === "text" ? degraded.content[0].text : "";
+			expect(degraded.details?.service).toBeUndefined();
+			expect(degraded.details?.async).toMatchObject({ state: "running", type: "bash" });
+			expect(degradedText).toContain("Ignored name/ready");
+			expect(degradedText).toContain('start service "bad"');
+			const degradedJob = jobManager.getJob(degraded.details?.async?.jobId ?? "");
+			expect(degradedJob).toBeDefined();
+			await degradedJob?.promise;
+			expect(degradedJob?.resultText).toContain("JOB");
+			await jobManager.dispose({ timeoutMs: 1_000 });
+			const daemons = await client.request({ op: "list" });
+			expect(daemons.op === "list" ? daemons.daemons.map(daemon => daemon.name) : []).not.toContain("bad");
+			const timed = await bash.execute("name-with-timeout", {
+				command: "printf 'TIMED\\n'; read line",
+				name: "timed",
+				ready: { log: "TIMED", timeout: 5 },
+				timeout: 1,
+				pty: false,
+			});
+			expect(timed.details?.service?.ready).toBeTrue();
+			expect(timed.content[0]?.type === "text" ? timed.content[0].text : "").toContain("Ignored timeout");
+			await proc.write(parseInternalUrl("proc://timed/kill"), "", { session });
 		} finally {
 			await client.request({ op: "stop", name: "echo-service", timeoutMs: 1_000 }).catch(() => undefined);
 			await client.request({ op: "stop", name: "detach-candidate", timeoutMs: 1_000 }).catch(() => undefined);
