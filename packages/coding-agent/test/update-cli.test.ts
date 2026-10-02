@@ -123,6 +123,29 @@ describe("update command plugin dispatch", () => {
 	});
 });
 
+describe("maintained fork update guard", () => {
+	it.each([
+		{ force: false, check: false },
+		{ force: true, check: false },
+		{ force: false, check: false, channel: "canary" as const },
+	])("refuses to install an upstream release (%o)", async opts => {
+		const fetchSpy = spyOn(globalThis, "fetch");
+		const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+		const exitSpy = spyOn(process, "exit").mockImplementation((code?: number | string | null) => {
+			throw new Error(`exit ${code}`);
+		});
+		try {
+			await expect(updateCli.runUpdateCommand(opts)).rejects.toThrow("exit 1");
+			expect(String(errorSpy.mock.calls[0]?.[0])).toContain(updateCli.FORK_UPDATE_DISABLED_MESSAGE);
+			expect(fetchSpy).not.toHaveBeenCalled();
+		} finally {
+			fetchSpy.mockRestore();
+			errorSpy.mockRestore();
+			exitSpy.mockRestore();
+		}
+	});
+});
+
 describe("parseUpdateArgs", () => {
 	it("preserves the legacy plugin update shorthand", () => {
 		expect(parseUpdateArgs(["update", "-l"])).toEqual({
