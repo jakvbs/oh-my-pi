@@ -27,7 +27,7 @@ import type { ExecOptions } from "../../exec/exec";
 import { execCommand } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import * as PiCodingAgent from "../../index";
-import type { SendUserMessageOptions } from "../../session/agent-session";
+import type { SendCustomMessageOptions, SendUserMessageOptions } from "../../session/agent-session";
 import type { CustomMessagePayload } from "../../session/messages";
 import type { FileDeleteFallbackHandler, FileWriteFallbackHandler } from "../../tools/file-write-fallback";
 import { isFilesystemSourcePath } from "../../tools/path-utils";
@@ -293,10 +293,7 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 		return this.runtime.flagValues.get(name);
 	}
 
-	sendMessage<T = unknown>(
-		message: CustomMessagePayload<T>,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" | "aside" },
-	): void {
+	sendMessage<T = unknown>(message: CustomMessagePayload<T>, options?: SendCustomMessageOptions): void {
 		this.runtime.sendMessage(message, options);
 	}
 

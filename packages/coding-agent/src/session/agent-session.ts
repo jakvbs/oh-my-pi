@@ -286,6 +286,7 @@ import type {
 	RestoredQueuedMessage,
 	RoleModelCycle,
 	RoleModelCycleResult,
+	SendCustomMessageOptions,
 	SendUserMessageOptions,
 	SessionHandoffOptions,
 	SessionOAuthAccountList,
@@ -8656,9 +8657,7 @@ export class AgentSession implements SettingsScope {
 	 */
 	async sendCustomMessage<T = unknown>(
 		message: CustomMessagePayload<T>,
-		options?: {
-			triggerTurn?: boolean;
-			deliverAs?: "steer" | "followUp" | "nextTurn" | "aside";
+		options?: SendCustomMessageOptions & {
 			queueChipText?: string;
 			acceptTerminalEmptyStop?: boolean;
 		},
@@ -8668,9 +8667,7 @@ export class AgentSession implements SettingsScope {
 
 	async #sendCustomMessage<T = unknown>(
 		message: CustomMessagePayload<T>,
-		options?: {
-			triggerTurn?: boolean;
-			deliverAs?: "steer" | "followUp" | "nextTurn" | "aside";
+		options?: SendCustomMessageOptions & {
 			queueChipText?: string;
 			acceptTerminalEmptyStop?: boolean;
 		},
@@ -8694,19 +8691,18 @@ export class AgentSession implements SettingsScope {
 	async #dispatchCustomMessage<T = unknown>(
 		message: CustomMessagePayload<T>,
 		options:
-			| {
-					triggerTurn?: boolean;
-					deliverAs?: "steer" | "followUp" | "nextTurn" | "aside";
+			| (SendCustomMessageOptions & {
 					queueChipText?: string;
 					acceptTerminalEmptyStop?: boolean;
-			  }
+			  })
 			| undefined,
 		outcome: PromptDispatchOutcome,
 	): Promise<boolean> {
 		// Captured before the normalization await below — see #sessionGeneration's doc comment.
 		const sessionGeneration = this.#sessionGeneration;
 		const normalizedPayload = normalizeCustomMessagePayload<T>(message);
-		const suppressQueueChip = options?.deliverAs === "nextTurn" || options?.deliverAs === "aside";
+		const suppressQueueChip =
+			options?.deliverAs === "nextTurn" || options?.deliverAs === "aside" || options?.deliverAs === "displayOnly";
 		const details =
 			options?.queueChipText && !suppressQueueChip
 				? ({
@@ -8726,6 +8722,30 @@ export class AgentSession implements SettingsScope {
 			timestamp: Date.now(),
 		};
 		const normalizedAppMessage = await this.#normalizeAgentMessageImages(appMessage);
+		if (options?.deliverAs === "displayOnly") {
+			if (await this.#sessionGenerationChanged(sessionGeneration)) return false;
+			// Transcript-only: persisted with the exclusion marker and painted now, idle or
+			// mid-turn, but never appended to agent state — so no provider request, context
+			// hook, compaction or reload (session-context skips marked entries) can see it.
+			const displayMessage: CustomMessage<T> = { ...normalizedAppMessage, excludeFromContext: true };
+			this.sessionManager.appendCustomMessageEntry(
+				displayMessage.customType,
+				displayMessage.content,
+				displayMessage.display,
+				displayMessage.details,
+				displayMessage.attribution,
+				undefined,
+				true,
+			);
+			if (displayMessage.display === true) {
+				await this.#emitSessionEvent(
+					{ type: "message_start", message: displayMessage },
+					{ detachExtensions: true },
+				);
+				await this.#emitSessionEvent({ type: "message_end", message: displayMessage }, { detachExtensions: true });
+			}
+			return false;
+		}
 		if (this.isStreaming) {
 			// Queued into a turn the agent owns: that turn holds the session. Busy only
 			// from another prompt's setup claims nothing (that prompt decides).

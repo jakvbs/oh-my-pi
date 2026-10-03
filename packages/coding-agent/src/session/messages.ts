@@ -357,6 +357,12 @@ function normalizeSessionMessageForProviderReplay(message: AgentMessage): unknow
 				excludeFromContext: message.excludeFromContext,
 			};
 		case "custom":
+			return {
+				role: message.role,
+				customType: message.customType,
+				content: normalizeProviderReplayValue(message.content),
+				excludeFromContext: message.excludeFromContext,
+			};
 		case "hookMessage":
 			return {
 				role: message.role,
@@ -1119,6 +1125,9 @@ function convertOne(m: AgentMessage, interruptedNext: boolean): Message[] {
 		}
 		case "custom": {
 			if (!isCustomMessageContent(m.content)) return [];
+			if (m.excludeFromContext) {
+				return [];
+			}
 			if (isSteeringUserMessage(m)) {
 				const converted = convertMessageToLlm(wrapSteeringUserMessage(m));
 				return converted ? [converted] : [];

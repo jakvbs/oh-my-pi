@@ -82,7 +82,7 @@ import type { MemoryRuntimeContext } from "../../memory-backend";
 import type { CustomEditor } from "@oh-my-pi/pi-tui/prompt/custom-editor";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
 import type { NativeToolView } from "@oh-my-pi/pi-tui/tools/renderer";
-import type { AsyncJobSnapshot, SendUserMessageOptions } from "../../session/agent-session";
+import type { AsyncJobSnapshot, SendCustomMessageOptions, SendUserMessageOptions } from "../../session/agent-session";
 import type { EphemeralTurnOptions, EphemeralTurnResult } from "../../session/agent-session-types";
 import type { CompactMode } from "../../session/compact-modes";
 import type { CustomMessagePayload } from "../../session/messages";
@@ -1588,11 +1588,12 @@ export interface ExtensionAPI {
 	 * `deliverAs: "aside"` injects the message at the next agent step boundary without interrupting
 	 * the in-flight tool batch; when the session is idle it starts a turn regardless of `triggerTurn`
 	 * (plan mode folds it into context instead).
+	 *
+	 * `deliverAs: "displayOnly"` paints a `display: true` message in the transcript right away, idle
+	 * or mid-turn, and persists it with `excludeFromContext`; the model never sees it, not in the
+	 * current run, not in `context` hooks, and not after a reload. `triggerTurn` is ignored.
 	 */
-	sendMessage<T = unknown>(
-		message: CustomMessagePayload<T>,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" | "aside" },
-	): void;
+	sendMessage<T = unknown>(message: CustomMessagePayload<T>, options?: SendCustomMessageOptions): void;
 
 	/** Send a user prompt: idle starts a turn; streaming queues as steer unless deliverAs is set.
 	 *  `deliverAs: "aside"` injects at the next step boundary without interrupting the in-flight tool
@@ -1828,8 +1829,9 @@ export type SendMessageHandler = <T = unknown>(
 	 * an internal continuation without surfacing the message in the editable pending queue.
 	 * `deliverAs: "aside"` injects at the next step boundary without interrupting the in-flight
 	 * tool batch, except that it ends a running interruptible `wait`; idle starts a turn regardless of `triggerTurn` (plan mode folds into context).
+	 * `deliverAs: "displayOnly"` paints and persists a transcript-only message the model never sees.
 	 */
-	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" | "aside" },
+	options?: SendCustomMessageOptions,
 ) => void;
 
 /** `deliverAs: "aside"` injects at the next step boundary without interrupting the in-flight tool

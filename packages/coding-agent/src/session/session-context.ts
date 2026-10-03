@@ -406,7 +406,9 @@ export function buildSessionContext(
 		} else if (entry.type === "custom_message") {
 			if (
 				!options?.transcript &&
-				(entry.customType === PREWALK_PLAN_MESSAGE_TYPE || entry.customType === VIBE_MODE_CONTEXT_MESSAGE_TYPE)
+				(entry.excludeFromContext === true ||
+					entry.customType === PREWALK_PLAN_MESSAGE_TYPE ||
+					entry.customType === VIBE_MODE_CONTEXT_MESSAGE_TYPE)
 			) {
 				return;
 			}

@@ -235,6 +235,8 @@ export interface CustomMessage<T = unknown> {
 	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
 	timestamp: number;
+	/** If true, this message renders in the transcript but is never converted for the model (`deliverAs: "displayOnly"`). */
+	excludeFromContext?: boolean;
 }
 
 /**
