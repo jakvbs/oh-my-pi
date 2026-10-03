@@ -30,6 +30,7 @@ export interface CustomMessageEntryLike {
 	details?: unknown;
 	display: boolean;
 	attribution?: MessageAttribution;
+	excludeFromContext?: boolean;
 }
 
 /** Entries that replay as visible or hidden transcript messages. */
@@ -40,7 +41,7 @@ export function customMessageEntryMessage(entry: CustomMessageEntryLike): Custom
 	if (!isCustomMessageContent(entry.content)) return undefined;
 	const normalized = normalizeCustomMessagePayload(entry);
 	const attribution = entry.attribution === undefined ? undefined : normalized.attribution;
-	return createCustomMessage(
+	const message = createCustomMessage(
 		normalized.customType,
 		normalized.content,
 		normalized.display,
@@ -48,6 +49,7 @@ export function customMessageEntryMessage(entry: CustomMessageEntryLike): Custom
 		entry.timestamp,
 		attribution,
 	);
+	return entry.excludeFromContext === true ? { ...message, excludeFromContext: true } : message;
 }
 
 /** Restore the message represented by a transcript entry. */

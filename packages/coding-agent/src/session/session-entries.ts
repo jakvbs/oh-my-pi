@@ -291,6 +291,9 @@ export interface ModeChangeEntry extends SessionEntryBase {
  * display controls TUI rendering:
  * - false: hidden entirely
  * - true: rendered with distinct styling (different from user messages)
+ *
+ * excludeFromContext (`deliverAs: "displayOnly"`) keeps the entry out of the
+ * rebuilt model context; it only replays into the display transcript.
  */
 export interface CustomMessageEntry<T = unknown> extends SessionEntryBase {
 	type: "custom_message";
@@ -300,6 +303,7 @@ export interface CustomMessageEntry<T = unknown> extends SessionEntryBase {
 	display: boolean;
 	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
+	excludeFromContext?: boolean;
 }
 
 /** Session entry - has id/parentId for tree structure (returned by "read" methods in SessionManager) */

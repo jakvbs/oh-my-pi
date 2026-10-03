@@ -467,6 +467,20 @@ export interface SendUserMessageOptions {
 	attribution?: MessageAttribution;
 }
 
+/**
+ * Queue behavior for a custom message. `steer`/`followUp`/`nextTurn`/`aside` decide when the
+ * model sees it; `displayOnly` persists and paints it in the transcript while the model never
+ * sees it, idle or streaming, now or after a reload.
+ */
+export type CustomMessageDeliveryMode = "steer" | "followUp" | "nextTurn" | "aside" | "displayOnly";
+
+/** Options for AgentSession.sendCustomMessage() and `pi.sendMessage()`. */
+export interface SendCustomMessageOptions {
+	/** Start a turn when idle; ignored by `displayOnly`, which never starts one. */
+	triggerTurn?: boolean;
+	deliverAs?: CustomMessageDeliveryMode;
+}
+
 /** Result from a handoff operation. */
 export interface HandoffResult {
 	document: string;
