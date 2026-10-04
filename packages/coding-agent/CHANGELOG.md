@@ -9,6 +9,7 @@
 - Grammars for less common languages (Kotlin, Swift, Ruby, PHP, Haskell, Verilog, and others) are now downloaded on first use for code summaries, block context, `ast_grep`, `ast_edit`, and TTSR rules; offline, files in those languages are skipped with a note instead of failing. `PI_GRAMMARS_URL` overrides the download location.
 - Added `bash.gitGuard` (default off) for checkouts shared by concurrent agents: the bash tool refuses `git stash`, `git reset --hard` or to another commit, and `git checkout`/`switch`/`restore` that would overwrite working-tree files unless a merge or rebase conflict is being resolved; unstaging stays allowed, and commands are judged as they actually run, including inside substitutions, functions, and after `cd`.
 - `pi.sendMessage(..., { deliverAs: "displayOnly" })` persists and paints a custom message in the transcript without ever adding it to the model context; `CustomMessageEntry.excludeFromContext` marks such entries on reload.
+- Every user turn now carries its local send time with UTC offset (`<system-reminder>Local time of this message: 2026-10-04 19:26 +02:00.</system-reminder>`), so the model can tell the current time, elapsed time between turns and convert UTC log timestamps; the bytes derive from the message's own timestamp, so the prompt cache is unaffected.
 
 ### Changed
 

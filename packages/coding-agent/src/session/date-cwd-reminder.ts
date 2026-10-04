@@ -11,12 +11,22 @@
  * for the lifetime of a session/day and refresh automatically at midnight.
  */
 import type { Context, Message, UserMessage } from "@oh-my-pi/pi-ai";
+import { formatLocalDateTimeWithOffset } from "@oh-my-pi/pi-tui/chrome/local-date";
 import { prompt } from "@oh-my-pi/pi-utils";
 import dateCwdReminderTemplate from "../prompts/system/date-cwd-reminder.md" with { type: "text" };
 
 /** Renders the reminder text for the given local calendar date and cwd. */
 export function renderDateCwdReminder(date: string, cwd: string): string {
 	return prompt.render(dateCwdReminderTemplate, { date, cwd }).trim();
+}
+
+/**
+ * Renders the local send time of one user turn. Derived from the message's own
+ * timestamp, so the bytes never change once sent and the prompt cache holds;
+ * the offset lets the model convert UTC log/session timestamps.
+ */
+export function renderTurnTime(timestamp: number): string {
+	return `<system-reminder>Local time of this message: ${formatLocalDateTimeWithOffset(new Date(timestamp))}.</system-reminder>`;
 }
 
 function messageStartsWithReminder(message: UserMessage, reminder: string): boolean {
@@ -40,6 +50,11 @@ export function isDateCwdReminderControl(message: Message): boolean {
 	return reminderControls.has(message);
 }
 
+function withTurnTime(message: UserMessage): UserMessage {
+	if (!Number.isFinite(message.timestamp)) return message;
+	return injectReminder(message, renderTurnTime(message.timestamp));
+}
+
 /**
  * Keeps volatile date/cwd reminders append-only across provider requests.
  *
@@ -58,8 +73,29 @@ export class DateCwdReminderInjector {
 	transform(context: Context, date: string, cwd: string): Context {
 		if (!context.systemPrompt || context.systemPrompt.length === 0 || context.messages.length === 0) return context;
 		const reminder = renderDateCwdReminder(date, cwd);
-		const messages = this.#inject(context.messages, reminder);
+		const stamped = this.#stampTurns(context.messages);
+		const messages = this.#inject(stamped, reminder);
 		return messages === context.messages ? context : { ...context, messages };
+	}
+
+	#stamps = new WeakMap<UserMessage, UserMessage>();
+
+	/** Prefix every user turn with its send time; cached so each message keeps one identity. */
+	#stampTurns(messages: Message[]): Message[] {
+		let out: Message[] | undefined;
+		for (let index = 0; index < messages.length; index++) {
+			const message = messages[index]!;
+			if (message.role !== "user") continue;
+			let stamped = this.#stamps.get(message);
+			if (!stamped) {
+				stamped = withTurnTime(message);
+				this.#stamps.set(message, stamped);
+			}
+			if (stamped === message) continue;
+			out ??= messages.slice();
+			out[index] = stamped;
+		}
+		return out ?? messages;
 	}
 
 	#inject(messages: Message[], reminder: string): Message[] {
