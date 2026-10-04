@@ -9,6 +9,7 @@
 - Added `/dump anon`, which writes the same anonymized session and subagent JSONL to a zip in the temp directory and copies its path ([#15077](https://github.com/can1357/oh-my-pi/pull/15077) by [@H4vC](https://github.com/H4vC))
 - Added message times to `/dump` transcripts (assistant turns also show request duration and time to first token), and live status, last activity, pending tool calls, and the partially streamed turn to `/dump all` files for subagents still running, so a stuck subagent can be diagnosed from the archive ([#15121](https://github.com/can1357/oh-my-pi/pull/15121) by [@H4vC](https://github.com/H4vC))
 - `pi.sendMessage(..., { deliverAs: "displayOnly" })` persists and paints a custom message in the transcript without ever adding it to the model context; `CustomMessageEntry.excludeFromContext` marks such entries on reload.
+- Every user turn now carries its local send time with UTC offset (`<system-reminder>Local time of this message: 2026-10-04 19:26 +02:00.</system-reminder>`), so the model can tell the current time, elapsed time between turns and convert UTC log timestamps; the bytes derive from the message's own timestamp, so the prompt cache is unaffected.
 
 ### Changed
 

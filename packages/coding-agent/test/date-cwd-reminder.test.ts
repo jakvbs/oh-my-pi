@@ -7,9 +7,13 @@ import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { DateCwdReminderInjector, renderDateCwdReminder } from "@oh-my-pi/pi-coding-agent/session/date-cwd-reminder";
+import {
+	DateCwdReminderInjector,
+	renderDateCwdReminder,
+	renderTurnTime,
+} from "@oh-my-pi/pi-coding-agent/session/date-cwd-reminder";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { formatLocalCalendarDate } from "@oh-my-pi/pi-tui/chrome/local-date";
+import { formatLocalCalendarDate, formatLocalDateTimeWithOffset } from "@oh-my-pi/pi-tui/chrome/local-date";
 import { normalizePromptPath } from "@oh-my-pi/pi-coding-agent/utils/prompt-path";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
@@ -33,7 +37,7 @@ describe("date-cwd-reminder", () => {
 			expect(out.messages).not.toBe(messages);
 			expect(out.messages[0]).toEqual({
 				role: "user",
-				content: `${renderDateCwdReminder("2026-08-14", "/work/omp")}\n\nhello`,
+				content: `${renderDateCwdReminder("2026-08-14", "/work/omp")}\n\n${renderTurnTime(1)}\n\nhello`,
 				timestamp: 1,
 			});
 			expect(out.messages[1]).toBe(messages[1]);
@@ -56,6 +60,7 @@ describe("date-cwd-reminder", () => {
 
 			expect(out.messages[0]?.content).toEqual([
 				{ type: "text", text: renderDateCwdReminder("2026-08-14", "/work/omp") },
+				{ type: "text", text: renderTurnTime(1) },
 				{ type: "image", data: "img", mimeType: "image/png" },
 			]);
 		});
@@ -91,7 +96,9 @@ describe("date-cwd-reminder", () => {
 
 			expect(second.messages[0]).toBe(firstInjected);
 			expect(second.messages[0]?.content).toBe(firstInjected.content);
-			expect(second.messages[2]?.content).toBe(`${renderDateCwdReminder("2026-08-15", "/new")}\n\nsecond`);
+			expect(second.messages[2]?.content).toBe(
+				`${renderDateCwdReminder("2026-08-15", "/new")}\n\n${renderTurnTime(2)}\n\nsecond`,
+			);
 			expect(firstUser.content).toBe("first");
 			expect(secondUser.content).toBe("second");
 		});
@@ -136,8 +143,35 @@ describe("date-cwd-reminder", () => {
 			);
 
 			// The retained tail is sent exactly as before; only the new summary gets the current reminder.
-			expect(after.messages.slice(1)).toEqual([kept, toolTurn, control]);
-			expect(after.messages[0]?.content).toBe(`${renderDateCwdReminder("2026-08-14", "/new")}\n\nsummary`);
+			expect(after.messages.slice(1)).toEqual(live.messages.slice(2));
+			expect(after.messages[0]?.content).toBe(
+				`${renderDateCwdReminder("2026-08-14", "/new")}\n\n${renderTurnTime(3)}\n\nsummary`,
+			);
+		});
+
+		it("stamps every user turn with its own local send time, stable across later requests", () => {
+			const injector = new DateCwdReminderInjector();
+			const sentAt = Date.UTC(2026, 9, 4, 16, 55);
+			const firstUser: Message = { role: "user", content: "first", timestamp: sentAt };
+			const secondUser: Message = { role: "user", content: "second", timestamp: sentAt + 31 * 60_000 };
+			const context: Context = {
+				systemPrompt: ["system"],
+				messages: [firstUser, createAssistantMessage("done"), secondUser],
+			};
+
+			const first = injector.transform(context, "2026-10-04", "/cwd");
+			// The stamp is the message's own send time in local time with its UTC
+			// offset, not the request time: a turn sent 31 minutes later says so.
+			expect(renderTurnTime(sentAt)).toContain(formatLocalDateTimeWithOffset(new Date(sentAt)));
+			expect(renderTurnTime(sentAt)).toMatch(/\d{2}:\d{2} [+-]\d{2}:\d{2}/);
+			expect(first.messages[0]?.content).toContain(renderTurnTime(sentAt));
+			expect(first.messages[2]?.content).toBe(`${renderTurnTime(sentAt + 31 * 60_000)}\n\nsecond`);
+
+			// A later request (new array, same persisted messages) must resend
+			// identical bytes so the provider prompt cache keeps its prefix.
+			const replay = injector.transform({ ...context, messages: [...context.messages] }, "2026-10-04", "/cwd");
+			expect(replay.messages[0]).toBe(first.messages[0]);
+			expect(replay.messages[2]).toBe(first.messages[2]);
 		});
 	});
 });
