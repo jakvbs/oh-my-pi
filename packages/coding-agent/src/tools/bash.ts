@@ -1109,7 +1109,10 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 		// A timeout of 0 is an explicit long-running-command contract: the user
 		// must still cancel the call or job, but OMP does not impose a deadline.
-		const requestedTimeoutSec = rawTimeout ?? 300;
+		// An explicit `async` job defaults to that contract: a silent default
+		// deadline killed long background jobs (CI watches, audits) mid-run and
+		// skipped their cleanup, and models kept omitting `timeout`.
+		const requestedTimeoutSec = rawTimeout ?? (asyncRequested ? 0 : 300);
 		const timeoutDisabled = requestedTimeoutSec === 0;
 		const maxTimeout = cfgToolsMaxTimeout.get(this.session.settings);
 		const timeoutSec = timeoutDisabled ? undefined : clampTimeout("bash", requestedTimeoutSec, maxTimeout);
