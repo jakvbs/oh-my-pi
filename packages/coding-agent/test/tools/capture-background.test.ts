@@ -103,6 +103,45 @@ describe("capture failure across background and cancellation boundaries", () => 
 		}
 	});
 
+	it("runs an async bash job without a deadline unless timeout is set", async () => {
+		await using temp = await TempDir.create("@async-deadline-");
+		const manager = new AsyncJobManager({});
+		const base = sessionFor(temp.path(), manager);
+		// A 1s global cap makes the old 300s async default fire within the test.
+		const session = {
+			...base,
+			settings: Settings.isolated({
+				"async.enabled": true,
+				"bashInterceptor.enabled": false,
+				"bash.autoBackground.enabled": false,
+				"tools.maxTimeout": 1,
+			}),
+		};
+		const bash = new BashTool(session);
+		const run = async (args: { command: string; async: true; timeout?: number }) => {
+			const started = await bash.execute("async-deadline", args);
+			const jobId = started.details?.async?.jobId;
+			if (!jobId) throw new Error("Expected background job");
+			await manager.getJob(jobId)?.promise;
+			return { started, job: manager.getJob(jobId) };
+		};
+		try {
+			const unbounded = await run({ command: "sleep 2 && echo DONE", async: true });
+			expect(unbounded.started.details?.timeoutDisabled).toBeTrue();
+			expect(unbounded.job?.status).toBe("completed");
+			expect(unbounded.job?.resultText).toContain("DONE");
+			expect(unbounded.job?.resultText).not.toContain("timed out");
+
+			const bounded = await run({ command: "sleep 3 && echo DONE", async: true, timeout: 1 });
+			expect(bounded.started.details?.timeoutSeconds).toBe(1);
+			const boundedText = `${bounded.job?.resultText ?? ""}${bounded.job?.errorText ?? ""}`;
+			expect(boundedText).toContain("timed out after 1 seconds");
+			expect(boundedText).not.toContain("DONE");
+		} finally {
+			await manager.dispose({ timeoutMs: 1_000 });
+		}
+	}, 15_000);
+
 	it("delivers an eval background capture failure without failing the completed cell", async () => {
 		await using temp = await TempDir.create("@capture-background-eval-");
 		const deliveries: string[] = [];
