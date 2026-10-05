@@ -349,20 +349,39 @@ function typescriptSpeaksLsp(tscPath: string): boolean {
 	return packageDir !== null && !fs.existsSync(path.join(packageDir, "lib", "tsserver.js"));
 }
 
+function realpathOrSelf(filePath: string): string {
+	try {
+		return fs.realpathSync(filePath);
+	} catch {
+		return filePath;
+	}
+}
+
 /**
  * Keep exactly one TypeScript server. `typescript-language-server` needs
  * `lib/tsserver.js`, which a TypeScript 7 workspace no longer ships, so it fails
  * at initialize there; `tsc --lsp` exits on older TypeScript. Pick by inspecting
- * the resolved `tsc` install rather than spawning both.
+ * the resolved `tsc` install rather than spawning both. A configured server that
+ * runs the same `tsc` binary under another name (e.g. a patched Effect build)
+ * replaces the built-in `typescript-native` instead of running beside it.
  */
 function selectTypescriptServer(servers: Record<string, ServerConfig>): void {
 	const native = servers["typescript-native"];
 	if (!native?.resolvedCommand) return;
-	if (typescriptSpeaksLsp(native.resolvedCommand)) {
-		delete servers["typescript-language-server"];
-	} else {
+	if (!typescriptSpeaksLsp(native.resolvedCommand)) {
 		delete servers["typescript-native"];
+		return;
 	}
+	delete servers["typescript-language-server"];
+	const nativeBinary = realpathOrSelf(native.resolvedCommand);
+	const replacedByConfig = Object.entries(servers).some(
+		([name, server]) =>
+			name !== "typescript-native" &&
+			!server.isLinter &&
+			server.resolvedCommand !== undefined &&
+			realpathOrSelf(server.resolvedCommand) === nativeBinary,
+	);
+	if (replacedByConfig) delete servers["typescript-native"];
 }
 
 interface ConfigSource {

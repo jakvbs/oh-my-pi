@@ -2572,6 +2572,33 @@ describe("lsp regressions", () => {
 			}
 		});
 
+		it("keeps one tsc --lsp server when project config registers the workspace tsc under another name", async () => {
+			if (process.platform === "win32") return;
+			const tempDir = TempDir.createSync("@omp-lsp-ts7-custom-");
+			vi.spyOn(Bun, "which").mockReturnValue(null);
+			try {
+				await writeTypescriptWorkspace(tempDir.path(), { tsserver: false, symlinkTsc: true });
+				await Bun.write(
+					path.join(tempDir.path(), ".omp", "lsp.json"),
+					JSON.stringify({
+						servers: {
+							"effect-tsgo": {
+								command: "tsc",
+								args: ["--lsp", "-stdio"],
+								fileTypes: [".ts", ".tsx"],
+								rootMarkers: ["package.json"],
+							},
+						},
+					}),
+				);
+				const config = loadConfig(tempDir.path());
+				expect(Object.keys(config.servers)).toEqual(["effect-tsgo"]);
+			} finally {
+				vi.restoreAllMocks();
+				tempDir.removeSync();
+			}
+		});
+
 		it("keeps typescript-language-server when tsserver.js exists", async () => {
 			const tempDir = TempDir.createSync("@omp-lsp-ts5-");
 			vi.spyOn(Bun, "which").mockReturnValue(null);
