@@ -15,7 +15,11 @@ import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { convertToLlm, wrapSteeringForModel } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ExtensionRuntime, loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
+import {
+	ExtensionRuntime,
+	loadExtensionFromFactory,
+	loadExtensions,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
 import {
 	EXTENSION_HANDLER_TIMEOUT_MS,
 	ExtensionRunner,
@@ -33,6 +37,7 @@ import type {
 import { ExtensionToolWrapper } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/wrapper";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
+import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import { getProjectAgentDir, logger, TempDir } from "@oh-my-pi/pi-utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 
@@ -1667,41 +1672,23 @@ describe("ExtensionRunner", () => {
 			const entered = Promise.withResolvers<void>();
 			const release = Promise.withResolvers<void>();
 			const order: string[] = [];
-			const extension: Extension = {
-				path: "slow-start",
-				resolvedPath: "slow-start",
-				handlers: new Map([
-					[
-						"session_start",
-						[
-							async () => {
-								entered.resolve();
-								await release.promise;
-								order.push("prepared");
-							},
-							async () => {
-								order.push("sibling");
-							},
-						],
-					],
-				]),
-				tools: new Map(),
-				assistantThinkingRenderers: [],
-				fileWriteFallbackHandlers: [],
-				fileDeleteFallbackHandlers: [],
-				messageRenderers: new Map(),
-				composerShapes: new Map(),
-				commands: new Map(),
-				flags: new Map(),
-				shortcuts: new Map(),
-			};
-			const runner = new ExtensionRunner(
-				[extension],
-				new ExtensionRuntime(),
+			const runtime = new ExtensionRuntime();
+			const extension = await loadExtensionFromFactory(
+				pi => {
+					pi.on("session_start", async () => {
+						entered.resolve();
+						await release.promise;
+						order.push("prepared");
+					});
+					pi.on("session_start", () => {
+						order.push("sibling");
+					});
+				},
 				tempDir.path(),
-				sessionManager,
-				modelRegistry,
+				new EventBus(),
+				runtime,
 			);
+			const runner = new ExtensionRunner([extension], runtime, tempDir.path(), sessionManager, modelRegistry);
 			const errors: ExtensionError[] = [];
 			runner.onError(error => errors.push(error));
 			testSetExtensionHandlerTimeoutMs(10);
