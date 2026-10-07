@@ -7709,6 +7709,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#commandController.handleMoveCommand(targetPath);
 	}
 
+	async moveSessionTo(directory: string): Promise<boolean> {
+		if (this.#vibeSessionTransitionBlocked()) return false;
+		return this.#commandController.moveSessionTo(directory);
+	}
+
 	async handleWorktreeCommand(branch?: string, options?: { keepChanges?: boolean }): Promise<void> {
 		if (this.#vibeSessionTransitionBlocked()) return;
 		const worktree = await this.#commandController.handleWorktreeCommand(branch, options);

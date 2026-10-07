@@ -9,7 +9,12 @@ import * as sessionWorktree from "@oh-my-pi/pi-coding-agent/session/session-work
 import { Container } from "@oh-my-pi/pi-tui";
 
 function createMoveContext(sourceDir: string, settingsFlush?: () => Promise<void>) {
-	const state = { cwd: sourceDir, movedTo: undefined as string | undefined, completedBtwVisible: true };
+	const state = {
+		cwd: sourceDir,
+		movedTo: undefined as string | undefined,
+		completedBtwVisible: true,
+		streaming: false,
+	};
 	const present = vi.fn();
 	const applyCwdChange = vi.fn(async (cwd: string) => {
 		expect(state.cwd).toBe(cwd);
@@ -36,7 +41,12 @@ function createMoveContext(sourceDir: string, settingsFlush?: () => Promise<void
 		return moved;
 	});
 	const ctx = {
-		session: { isStreaming: false, moveSession },
+		session: {
+			get isStreaming() {
+				return state.streaming;
+			},
+			moveSession,
+		},
 		sessionManager: {
 			getCwd: () => state.cwd,
 			captureState,
@@ -503,6 +513,26 @@ describe("CommandController /move", () => {
 			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
 			expect(ctx.present).not.toHaveBeenCalled();
 			expect(ctx.showError).toHaveBeenCalledWith(expect.stringContaining("session move denied"));
+		} finally {
+			await fs.rm(sourceDir, { recursive: true, force: true });
+			await fs.rm(targetDir, { recursive: true, force: true });
+		}
+	});
+
+	it("moves an extension-requested session into an existing directory and refuses while streaming", async () => {
+		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-ext-move-src-"));
+		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-ext-move-dst-"));
+		try {
+			const { ctx, state } = createMoveContext(sourceDir);
+			const controller = new CommandController(ctx);
+
+			state.streaming = true;
+			expect(await controller.moveSessionTo(targetDir)).toBe(false);
+			expect(state.cwd).toBe(sourceDir);
+
+			state.streaming = false;
+			expect(await controller.moveSessionTo(targetDir)).toBe(true);
+			expect(state.cwd).toBe(targetDir);
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });
 			await fs.rm(targetDir, { recursive: true, force: true });

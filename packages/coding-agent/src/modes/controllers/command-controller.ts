@@ -1529,6 +1529,12 @@ export class CommandController {
 		return this.ctx.withBtwSessionMove(operation);
 	}
 
+	/** Extension-driven `/move` to an existing directory; false means nothing moved. */
+	async moveSessionTo(directory: string): Promise<boolean> {
+		if (this.ctx.session.isStreaming) return false;
+		return this.#withSessionMove(() => this.#relocateSession(path.resolve(directory)));
+	}
+
 	/** Relocate only while #withSessionMove holds the BTW gate; false means no successful move. */
 	async #relocateSession(resolvedPath: string): Promise<boolean> {
 		if (resolvedPath === path.resolve(this.ctx.sessionManager.getCwd())) return false;
