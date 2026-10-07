@@ -144,8 +144,8 @@ function normalizeHandlerTimeout(timeoutMs: number): number {
 
 /**
  * Dedicated cap for `session_shutdown` handlers. The generic 30s budget is
- * appropriate for events extensions can observe (e.g. `session_start`,
- * `before_provider_request`), but `session_shutdown` is fire-and-forget
+ * appropriate for observation events (e.g. `before_provider_request`),
+ * but `session_shutdown` is fire-and-forget
  * teardown — extensions receive no result and the user has already asked to
  * leave. A hung handler (e.g. an extension waiting on a stuck IPC pipe to a
  * companion app) MUST NOT hold Ctrl+C / `/exit` hostage for the full window.
@@ -158,9 +158,10 @@ export function testSetSessionShutdownHandlerTimeoutMs(timeoutMs: number): void 
 	sessionShutdownHandlerTimeoutMs = timeoutMs;
 }
 
-/** Per-event handler budget. Defaults to the generic cap; `session_shutdown`
- *  uses its own short cap so teardown stays prompt. */
+/** Startup is a readiness barrier; shutdown has a short cap so teardown stays prompt. */
 function handlerTimeoutForEvent(eventType: string): number {
+	// Timing out does not cancel extension work; releasing startup can race session relocation.
+	if (eventType === "session_start") return Infinity;
 	return eventType === "session_shutdown" ? sessionShutdownHandlerTimeoutMs : extensionHandlerTimeoutMs;
 }
 
@@ -322,7 +323,7 @@ async function raceHandlerWithTimeout<T>(
 		resolveInterrupt(EXTENSION_HANDLER_TIMEOUT);
 	};
 	const armTimer = () => {
-		if (settled || pauseDepth > 0) return;
+		if (settled || pauseDepth > 0 || remainingMs === Infinity) return;
 		activeSince = performance.now();
 		timer = setTimeout(expire, Math.max(0, remainingMs));
 	};

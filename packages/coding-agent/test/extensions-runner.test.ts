@@ -1663,15 +1663,73 @@ describe("ExtensionRunner", () => {
 			);
 		};
 
-		it("times out session_start handlers, emits an error, and continues to sibling extensions", async () => {
-			const hangExtensionPath = path.join(tempDir.path(), "hang-session-start.ts");
-			const fastExtensionPath = path.join(tempDir.path(), "fast-session-start.ts");
-			const markerPath = path.join(tempDir.path(), "session-start-marker.txt");
+		it("keeps session_start pending until initialization finishes beyond the generic deadline", async () => {
+			const entered = Promise.withResolvers<void>();
+			const release = Promise.withResolvers<void>();
+			const order: string[] = [];
+			const extension: Extension = {
+				path: "slow-start",
+				resolvedPath: "slow-start",
+				handlers: new Map([
+					[
+						"session_start",
+						[
+							async () => {
+								entered.resolve();
+								await release.promise;
+								order.push("prepared");
+							},
+							async () => {
+								order.push("sibling");
+							},
+						],
+					],
+				]),
+				tools: new Map(),
+				assistantThinkingRenderers: [],
+				fileWriteFallbackHandlers: [],
+				fileDeleteFallbackHandlers: [],
+				messageRenderers: new Map(),
+				composerShapes: new Map(),
+				commands: new Map(),
+				flags: new Map(),
+				shortcuts: new Map(),
+			};
+			const runner = new ExtensionRunner(
+				[extension],
+				new ExtensionRuntime(),
+				tempDir.path(),
+				sessionManager,
+				modelRegistry,
+			);
+			const errors: ExtensionError[] = [];
+			runner.onError(error => errors.push(error));
+			testSetExtensionHandlerTimeoutMs(10);
+			const emission = runner.emit({ type: "session_start" }).then(() => {
+				order.push("ready");
+			});
+			try {
+				await entered.promise;
+				// Exercise the real watchdog, including its Bun.sleep(0) grace tick outside fake timers.
+				await Bun.sleep(30);
+				expect(order).toEqual([]);
+			} finally {
+				release.resolve();
+				await emission;
+			}
+			expect(order).toEqual(["prepared", "sibling", "ready"]);
+			expect(errors).toEqual([]);
+		});
+
+		it("times out session_switch handlers, emits an error, and continues to sibling extensions", async () => {
+			const hangExtensionPath = path.join(tempDir.path(), "hang-session-switch.ts");
+			const fastExtensionPath = path.join(tempDir.path(), "fast-session-switch.ts");
+			const markerPath = path.join(tempDir.path(), "session-switch-marker.txt");
 			fs.writeFileSync(
 				hangExtensionPath,
 				`
 					export default function(pi) {
-						pi.on("session_start", async () => {
+						pi.on("session_switch", async () => {
 							await Promise.withResolvers().promise;
 						});
 					}
@@ -1683,7 +1741,7 @@ describe("ExtensionRunner", () => {
 					import * as fs from "node:fs";
 
 					export default function(pi) {
-						pi.on("session_start", async () => {
+						pi.on("session_switch", async () => {
 							fs.appendFileSync(${JSON.stringify(markerPath)}, "fast\\n");
 						});
 					}
@@ -1706,7 +1764,7 @@ describe("ExtensionRunner", () => {
 			testSetExtensionHandlerTimeoutMs(10);
 
 			const startedAt = performance.now();
-			await runner.emit({ type: "session_start" });
+			await runner.emit({ type: "session_switch", reason: "new", previousSessionFile: undefined });
 			const elapsedMs = performance.now() - startedAt;
 
 			expect(elapsedMs).toBeGreaterThanOrEqual(8);
@@ -1714,13 +1772,13 @@ describe("ExtensionRunner", () => {
 			expect(fs.readFileSync(markerPath, "utf8")).toBe("fast\n");
 			expect(warnSpy).toHaveBeenCalledWith("Extension handler timed out", {
 				extensionPath: hangExtensionPath,
-				event: "session_start",
+				event: "session_switch",
 				timeoutMs: 10,
 			});
 			expect(errors).toEqual([
 				{
 					extensionPath: hangExtensionPath,
-					event: "session_start",
+					event: "session_switch",
 					error: "handler timed out after 10ms",
 				},
 			]);
