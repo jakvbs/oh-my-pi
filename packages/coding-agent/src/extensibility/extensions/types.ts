@@ -535,6 +535,11 @@ export interface ExtensionContext {
 	 * Optional for compatibility with hosts that do not provide side turns.
 	 */
 	runEphemeralTurn?(options: EphemeralTurnOptions): Promise<EphemeralTurnResult>;
+	/** Relocate the session and process into an existing directory, like `/move <dir>`.
+	 * Resolves false when the host refused or rolled back the move (streaming, mode lock, error).
+	 * Optional: only the interactive TUI host provides it.
+	 */
+	moveSession?(directory: string): Promise<boolean>;
 	/** Structured memory runtime for status/search/save across the configured backend. */
 	memory?: MemoryRuntimeContext;
 	/**
@@ -1902,6 +1907,7 @@ export interface ExtensionContextActions {
 	compact: (instructionsOrOptions?: string | CompactOptions) => Promise<void>;
 	getSystemPrompt: () => string[];
 	runEphemeralTurn?: (options: EphemeralTurnOptions) => Promise<EphemeralTurnResult>;
+	moveSession?: (directory: string) => Promise<boolean>;
 }
 
 /** Actions for ExtensionCommandContext (ctx.* in command handlers). */
