@@ -2,6 +2,7 @@
  * Shared command execution utilities for hooks and custom tools.
  */
 import { ptree } from "@oh-my-pi/pi-utils";
+import { PROMPT_FREE_ENV } from "./non-interactive-env";
 
 /**
  * Options for executing shell commands.
@@ -42,6 +43,7 @@ export async function execCommand(
 		signal: options?.signal,
 		timeout: options?.timeout,
 		allowNonZero: true,
+		env: { ...Bun.env, ...PROMPT_FREE_ENV },
 		allowAbort: true,
 		stderr: "full",
 	});

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "bun:test";
 import { execCommand } from "../src/exec/exec";
+import { PROMPT_FREE_ENV } from "../src/exec/non-interactive-env";
 
 const HANG = ["-e", "setTimeout(() => {}, 30_000)"];
 
@@ -20,6 +21,19 @@ describe("execCommand", () => {
 		const result = await pending;
 		expect(result.killed).toBe(true);
 		expect(result.code).toBe(-1);
+	});
+
+	it("gives children an environment that rejects credential and host-key prompts", async () => {
+		const result = await execCommand(
+			process.execPath,
+			["-e", "process.stdout.write(JSON.stringify(process.env))"],
+			process.cwd(),
+		);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			GIT_TERMINAL_PROMPT: "0",
+			SSH_ASKPASS: PROMPT_FREE_ENV.SSH_ASKPASS,
+			SSH_ASKPASS_REQUIRE: "force",
+		});
 	});
 
 	it("reports cancellation when the child traps SIGTERM and exits zero", async () => {
