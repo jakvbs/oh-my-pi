@@ -3,7 +3,22 @@ import { $which } from "@oh-my-pi/pi-utils";
 /** Portable command that rejects credential prompts without assuming an FHS layout. */
 export const REJECT_PROMPT_COMMAND = $which("false") ?? "false";
 
+/**
+ * Rejects credential, host-key and editor prompts. Children inherit the TUI's controlling terminal,
+ * so a tool that opens `/dev/tty` would otherwise write into the TUI and read the user's keystrokes.
+ */
+export const PROMPT_FREE_ENV: Readonly<Record<string, string>> = {
+	GIT_EDITOR: "true",
+	VISUAL: "true",
+	EDITOR: "true",
+	GIT_TERMINAL_PROMPT: "0",
+	SSH_ASKPASS: REJECT_PROMPT_COMMAND,
+	// Without it ssh still prefers the terminal for host-key confirmation.
+	SSH_ASKPASS_REQUIRE: "force",
+};
+
 export const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
+	...PROMPT_FREE_ENV,
 	// Disable pagers so commands don't block on interactive views.
 	PAGER: "cat",
 	GIT_PAGER: "cat",
@@ -22,12 +37,6 @@ export const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
 	TERM: "dumb",
 	NO_COLOR: "1",
 	PYTHONUNBUFFERED: "1",
-	// Disable editor and terminal credential prompts.
-	GIT_EDITOR: "true",
-	VISUAL: "true",
-	EDITOR: "true",
-	GIT_TERMINAL_PROMPT: "0",
-	SSH_ASKPASS: REJECT_PROMPT_COMMAND,
 	CI: "true",
 	AGENT: "1",
 	// Package manager defaults for unattended execution.
