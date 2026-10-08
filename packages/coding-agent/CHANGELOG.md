@@ -27,7 +27,7 @@
 - Fixed hotkeys pressed in Tern while omp is still starting (such as Alt+P for the model selector) being ignored; like in other terminals, they now take effect once startup finishes ([#15120](https://github.com/can1357/oh-my-pi/pull/15120) by [@H4vC](https://github.com/H4vC))
 - Fixed a startup extension dialog (select, confirm, input) in Tern not receiving keys until it timed out ([#15122](https://github.com/can1357/oh-my-pi/pull/15122) by [@H4vC](https://github.com/H4vC))
 - Fixed the `bash` tool rejecting `name` together with `async` ("Service mode does not accept async or timeout"), which sent models into a retry loop; the call now runs as a background job and notes the ignored `name`/`ready`, and a `timeout` next to `name` is ignored instead of failing.
-- Fixed two TypeScript language servers running per session when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server now replaces the built-in `typescript-native`.
+- Fixed overlapping TypeScript language servers when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server handles its file types and the built-in `typescript-native` handles only the remaining types.
 
 ## [18.8.7] - 2026-10-09
 
