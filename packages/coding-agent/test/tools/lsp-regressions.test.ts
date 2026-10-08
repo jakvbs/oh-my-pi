@@ -2572,27 +2572,77 @@ describe("lsp regressions", () => {
 			}
 		});
 
+		async function writeCustomTscConfig(root: string, fileTypes: string[]) {
+			await Bun.write(
+				path.join(root, ".omp", "lsp.json"),
+				JSON.stringify({
+					servers: {
+						"effect-tsgo": {
+							command: "tsc",
+							args: ["--lsp", "-stdio"],
+							fileTypes,
+							rootMarkers: ["package.json"],
+						},
+					},
+				}),
+			);
+		}
+
 		it("keeps one tsc --lsp server when project config registers the workspace tsc under another name", async () => {
 			if (process.platform === "win32") return;
 			const tempDir = TempDir.createSync("@omp-lsp-ts7-custom-");
 			vi.spyOn(Bun, "which").mockReturnValue(null);
 			try {
 				await writeTypescriptWorkspace(tempDir.path(), { tsserver: false, symlinkTsc: true });
-				await Bun.write(
-					path.join(tempDir.path(), ".omp", "lsp.json"),
-					JSON.stringify({
-						servers: {
-							"effect-tsgo": {
-								command: "tsc",
-								args: ["--lsp", "-stdio"],
-								fileTypes: [".ts", ".tsx"],
-								rootMarkers: ["package.json"],
-							},
-						},
-					}),
-				);
+				await writeCustomTscConfig(tempDir.path(), [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 				const config = loadConfig(tempDir.path());
 				expect(Object.keys(config.servers)).toEqual(["effect-tsgo"]);
+			} finally {
+				vi.restoreAllMocks();
+				tempDir.removeSync();
+			}
+		});
+
+		it.each([".ts", "TS"])("keeps non-overlapping coverage when a custom tsc handles %s", async fileType => {
+			if (process.platform === "win32") return;
+			const tempDir = TempDir.createSync("@omp-lsp-ts7-narrow-");
+			vi.spyOn(Bun, "which").mockReturnValue(null);
+			try {
+				await writeTypescriptWorkspace(tempDir.path(), { tsserver: false, symlinkTsc: true });
+				await writeCustomTscConfig(tempDir.path(), [fileType]);
+				const config = loadConfig(tempDir.path());
+				expect(getServersForFile(config, path.join(tempDir.path(), "index.ts")).map(([name]) => name)).toEqual([
+					"effect-tsgo",
+				]);
+				for (const extension of [".js", ".tsx"]) {
+					expect(
+						getServersForFile(config, path.join(tempDir.path(), `index${extension}`)).map(([name]) => name),
+					).toEqual(["typescript-native"]);
+				}
+			} finally {
+				vi.restoreAllMocks();
+				tempDir.removeSync();
+			}
+		});
+
+		it("routes TS and TSX exclusively to a custom tsc while preserving built-in JavaScript coverage", async () => {
+			if (process.platform === "win32") return;
+			const tempDir = TempDir.createSync("@omp-lsp-ts7-tsx-");
+			vi.spyOn(Bun, "which").mockReturnValue(null);
+			try {
+				await writeTypescriptWorkspace(tempDir.path(), { tsserver: false, symlinkTsc: true });
+				await writeCustomTscConfig(tempDir.path(), [".ts", ".tsx"]);
+				const config = loadConfig(tempDir.path());
+				for (const extension of [".ts", ".tsx"]) {
+					expect(
+						getServersForFile(config, path.join(tempDir.path(), `index${extension}`)).map(([name]) => name),
+					).toEqual(["effect-tsgo"]);
+				}
+				for (const extension of [".js", ".jsx", ".mjs", ".cjs"]) {
+					expect(
+						getServersForFile(config, path.join(tempDir.path(), `index${extension}`)).map(([name]) => name),
+					).toEqual(["typescript-native"]);
+				}
 			} finally {
 				vi.restoreAllMocks();
 				tempDir.removeSync();

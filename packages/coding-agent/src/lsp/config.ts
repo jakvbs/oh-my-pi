@@ -358,12 +358,13 @@ function realpathOrSelf(filePath: string): string {
 }
 
 /**
- * Keep exactly one TypeScript server. `typescript-language-server` needs
+ * Keep one TypeScript server per file type. `typescript-language-server` needs
  * `lib/tsserver.js`, which a TypeScript 7 workspace no longer ships, so it fails
  * at initialize there; `tsc --lsp` exits on older TypeScript. Pick by inspecting
  * the resolved `tsc` install rather than spawning both. A configured server that
  * runs the same `tsc` binary under another name (e.g. a patched Effect build)
- * replaces the built-in `typescript-native` instead of running beside it.
+ * replaces the built-in `typescript-native` for its file types; the built-in
+ * serves only the remaining types.
  */
 function selectTypescriptServer(servers: Record<string, ServerConfig>): void {
 	const native = servers["typescript-native"];
@@ -374,14 +375,14 @@ function selectTypescriptServer(servers: Record<string, ServerConfig>): void {
 	}
 	delete servers["typescript-language-server"];
 	const nativeBinary = realpathOrSelf(native.resolvedCommand);
-	const replacedByConfig = Object.entries(servers).some(
-		([name, server]) =>
-			name !== "typescript-native" &&
-			!server.isLinter &&
-			server.resolvedCommand !== undefined &&
-			realpathOrSelf(server.resolvedCommand) === nativeBinary,
-	);
-	if (replacedByConfig) delete servers["typescript-native"];
+	const fileTypeKey = (fileType: string) => fileType.toLowerCase().replace(/^\./, "");
+	for (const [name, server] of Object.entries(servers)) {
+		if (name === "typescript-native" || server.isLinter || server.resolvedCommand === undefined) continue;
+		if (realpathOrSelf(server.resolvedCommand) !== nativeBinary) continue;
+		const covered = new Set(server.fileTypes.map(fileTypeKey));
+		native.fileTypes = native.fileTypes.filter(fileType => !covered.has(fileTypeKey(fileType)));
+	}
+	if (native.fileTypes.length === 0) delete servers["typescript-native"];
 }
 
 interface ConfigSource {

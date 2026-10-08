@@ -38,7 +38,7 @@
 - Fixed browser tab recordings and video frame/contact-sheet extraction creating `omp-browser-recording-*` and `omp-video-*` scratch directories in your working directory instead of the system temp directory.
 - Fixed edit snapshots retaining excess history when metadata or displayed-line provenance grows; the 64 MiB snapshot budget now counts UTF-8 bytes, so CJK- and emoji-heavy files keep fewer versions ([#14975](https://github.com/can1357/oh-my-pi/pull/14975) by [@iliaal](https://github.com/iliaal)).
 - Fixed the `bash` tool rejecting `name` together with `async` ("Service mode does not accept async or timeout"), which sent models into a retry loop; the call now runs as a background job and notes the ignored `name`/`ready`, and a `timeout` next to `name` is ignored instead of failing.
-- Fixed two TypeScript language servers running per session when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server now replaces the built-in `typescript-native`.
+- Fixed overlapping TypeScript language servers when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server handles its file types and the built-in `typescript-native` handles only the remaining types.
 
 ## [18.8.6] - 2026-10-08
 
