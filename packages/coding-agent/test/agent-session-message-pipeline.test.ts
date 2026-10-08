@@ -456,7 +456,7 @@ describe("AgentSession message pipeline", () => {
 			let timer: Timer | undefined;
 			const extension = await loadExtensionFromFactory(
 				api => {
-					api.on("session_start", async () => {
+					api.on("agent_start", async () => {
 						await saved.runEphemeralTurn!({
 							promptText: "Question?",
 							signal: caller.signal,
@@ -503,14 +503,11 @@ describe("AgentSession message pipeline", () => {
 			});
 			sessions.push(session);
 			// Bind runtime actions before emitting the handler under test.
-			const handler = extension.handlers.get("session_start")!;
-			extension.handlers.delete("session_start");
 			await initializeExtensions(session, { reportSendError: () => {}, reportRuntimeError: () => {} });
-			extension.handlers.set("session_start", handler);
 			const saved = runner.createContext();
 			testSetExtensionHandlerTimeoutMs(cancellation === "handler timeout" ? 100 : 1000);
 			try {
-				const emission = runner.emit({ type: "session_start" });
+				const emission = runner.emit({ type: "agent_start" });
 				await started.promise;
 				if (cancellation === "caller cancellation") caller.abort();
 				await emission;
