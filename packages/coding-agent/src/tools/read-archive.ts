@@ -56,6 +56,15 @@ interface CachedArchiveReader {
 }
 
 /**
+ * Filesystems stamp ctime from a coarse clock (a kernel tick on Linux before
+ * multigrain timestamps, whole seconds on some filesystems), so a rewrite in the
+ * same tick as the previous change can keep every identity field. Archives
+ * changed this recently before being indexed are not cached, like Git's
+ * racily-clean index entries: any later rewrite then lands in a later tick.
+ */
+const RACY_CHANGE_WINDOW_MS = 2_000;
+
+/**
  * Recently opened archives, so paging through members does not re-read and
  * re-index the archive per read. Bounded by count and by total indexed entries;
  * an entry is reused only while the file's identity (inode, mtime, ctime, size)
@@ -68,6 +77,8 @@ const archiveReaderCache = new LRUCache<string, CachedArchiveReader>({
 });
 
 async function openArchiveCached(absolutePath: string): Promise<ArchiveReader> {
+	// Taken before stat: the archive bytes are read no earlier than this.
+	const statStartedAtMs = Date.now();
 	// A vanished or unreadable archive is reported by the opener, as it always has been.
 	const stat = await Bun.file(absolutePath)
 		.stat()
@@ -84,7 +95,7 @@ async function openArchiveCached(absolutePath: string): Promise<ArchiveReader> {
 		return cached.reader;
 	}
 	const reader = await openArchive(absolutePath);
-	if (!CACHEABLE_ARCHIVE_FORMATS[reader.format]) {
+	if (!CACHEABLE_ARCHIVE_FORMATS[reader.format] || statStartedAtMs - stat.ctimeMs < RACY_CHANGE_WINDOW_MS) {
 		archiveReaderCache.delete(absolutePath);
 		return reader;
 	}
