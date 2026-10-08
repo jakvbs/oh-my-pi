@@ -1339,7 +1339,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		const tempDir = makeTempDir();
 		const registrationExtension: ExtensionFactory = pi => {
 			for (const name of ["stalled_registration_tool", "recovered_registration_tool"]) {
-				pi.on("session_start", async () => {
+				pi.on("agent_start", async () => {
 					await Promise.resolve();
 					pi.registerTool({
 						name,
@@ -1379,7 +1379,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			});
 			testSetExtensionHandlerTimeoutMs(10);
 
-			await runner.emit({ type: "session_start" });
+			await runner.emit({ type: "agent_start" });
 			unsubscribe();
 
 			expect(errors).toContain("handler timed out after 10ms");
