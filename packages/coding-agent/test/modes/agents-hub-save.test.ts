@@ -14,14 +14,14 @@ test("an agent saved from the hub is a discoverable TypeScript module", async ()
 		const filePath = await deps.saveAgent("project", {
 			identifier: "hub-saved",
 			whenToUse: 'Use for "quoted" work.',
-			systemPrompt: "Line one.\n`backtick` \\ \"quote\"\n",
+			systemPrompt: 'Line one.\n`backtick` \\ "quote"\n',
 		});
 
 		expect(filePath.endsWith(".ts")).toBe(true);
 		const { agents } = await discoverAgents(cwd, os.tmpdir(), roots);
 		const saved = agents.find(agent => agent.name === "hub-saved");
 		expect(saved?.description).toBe('Use for "quoted" work.');
-		expect(saved?.systemPrompt).toBe("Line one.\n`backtick` \\ \"quote\"");
+		expect(saved?.systemPrompt).toBe('Line one.\n`backtick` \\ "quote"');
 	} finally {
 		await fs.rm(cwd, { recursive: true, force: true });
 	}
