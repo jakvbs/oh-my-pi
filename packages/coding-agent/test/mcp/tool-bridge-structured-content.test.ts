@@ -7,7 +7,6 @@ import { type MCPToolDetails, renderMCPResult } from "@oh-my-pi/pi-tui/tools/mcp
 import { resetSettingsForTest, Settings } from "../../src/config/settings";
 import type { CustomToolContext, CustomToolResult } from "../../src/extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../../src/extensibility/custom-tools/wrapper";
-import { bridgeValueFromToolResult } from "../../src/eval/js/tool-bridge";
 import { MCPTool } from "../../src/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "../../src/mcp/types";
 import { SessionManager } from "../../src/session/session-manager";
@@ -71,35 +70,7 @@ describe("MCP bridge structuredContent", () => {
 		expect(text).toBe("plain result");
 	});
 
-	it("lets an eval consumer advance pages using opaque cursors rather than display text", async () => {
-		const cursor = "next:λ/```json";
-		const tool = toolFor(params => {
-			const next = params.arguments?.cursor;
-			if (next !== undefined && next !== cursor) throw new Error("invalid cursor");
-			return {
-				content: [{ type: "text", text: "Page returned; this text is not a data API." }],
-				structuredContent: {
-					items: next === undefined ? ["first"] : ["second"],
-					next_cursor: next === undefined ? cursor : null,
-				},
-			};
-		});
-		const items: string[] = [];
-		let next: string | null | undefined;
-		do {
-			const args = next === undefined ? {} : { cursor: next };
-			const result = await tool.execute("page", args, undefined, {} as CustomToolContext);
-			const value = bridgeValueFromToolResult(tool.name, args, result);
-			if (typeof value !== "object" || !("details" in value)) throw new Error("missing tool details");
-			const page = (value.details as MCPToolDetails).structuredContent;
-			if (!page || !Array.isArray(page.items)) throw new Error("missing structured page");
-			items.push(...page.items);
-			next = page.next_cursor as string | null;
-			if (items.length > 2) throw new Error("pagination did not terminate");
-		} while (next !== null);
-		expect(items).toEqual(["first", "second"]);
-	});
-	it("keeps oversized structured data available to eval without duplicating it in the session JSONL", async () => {
+	it("keeps oversized structured data in details without duplicating it in the session JSONL", async () => {
 		using temp = TempDir.createSync("@mcp-structured-spill-");
 		const manager = SessionManager.create(temp.path(), temp.path());
 		await manager.ensureOnDisk();
@@ -137,12 +108,6 @@ describe("MCP bridge structuredContent", () => {
 			expect(details.serverName).toBe("rhizome-mcp");
 			expect(details.mcpToolName).toBe("list_issues");
 			expect(details.isError).toBe(true);
-			const value = bridgeValueFromToolResult(tool.name, {}, result);
-			if (typeof value !== "object" || !("details" in value)) throw new Error("Expected eval details");
-			expect((value.details as MCPToolDetails).structuredContent).toEqual(structuredContent);
-			expect(value.hasError).toBe(true);
-			expect(value.text).not.toContain(structuredContent.pages[0]!.rows[0]!.body);
-			expect(value.text).toContain(`artifact://${artifactId}`);
 
 			const message = {
 				role: "toolResult" as const,

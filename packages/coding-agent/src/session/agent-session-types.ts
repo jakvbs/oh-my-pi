@@ -31,7 +31,6 @@ import type { Settings } from "../config/settings";
 import type { SkillsSettings } from "../extensibility/settings";
 import type { CursorMcpResourceAdapter } from "../cursor";
 import type { RawSseDebugBuffer } from "@oh-my-pi/pi-tui/apps/debug/raw-sse-buffer";
-import type { EvalPreludeDefinition } from "../eval/preludes";
 import type { TtsrManager } from "../export/ttsr";
 import type { LoadedCustomCommand } from "../extensibility/custom-commands";
 import type { ExtensionRunner, PreparedExtension } from "../extensibility/extensions";
@@ -42,7 +41,6 @@ import type { Skill, SkillWarning } from "../extensibility/skills";
 import type { FileSlashCommand } from "../extensibility/slash-commands";
 import type { SecretObfuscator } from "../secrets/obfuscator";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
-import type { ToolSession } from "../tools";
 import type { XdevState } from "../tools/xdev";
 import type { CodexAutoRedeemCoordinator } from "./codex-auto-reset";
 import type { SettingsGatedToolDelta } from "./session-tools";
@@ -153,8 +151,6 @@ export interface InitialRetryFallbackState {
 /** Dependencies and initial state used to construct an AgentSession. */
 export interface AgentSessionConfig {
 	agent: Agent;
-	/** Shared with the provider stream wrapper: current Codex Code Mode tool exposure snapshot for turn metadata. */
-	codeModeState?: { namespacesInfo?: unknown };
 	sessionManager: SessionManager;
 	settings: Settings;
 	/**
@@ -213,10 +209,6 @@ export interface AgentSessionConfig {
 	 * it when the context changes; side-channel requests never arm it.
 	 */
 	cacheWarmer?: CacheWarmer;
-	/** Returns the current enabled eval prelude definitions. */
-	getEvalPreludes?: () => readonly EvalPreludeDefinition[];
-	/** Tool bridge context used by user-initiated Python cells to project enabled eval preludes. */
-	evalToolSession?: ToolSession;
 	/** Loaded skills already discovered by the SDK. */
 	skills?: Skill[];
 	/** Frozen routing hints shared with the system prompt and later skillful notices. */
@@ -307,8 +299,6 @@ export interface AgentSessionConfig {
 	ttsrManager?: TtsrManager;
 	/** Secret obfuscator for provider and edit content. */
 	obfuscator?: SecretObfuscator;
-	/** Logical owner for retained eval kernels created by this session. */
-	evalKernelOwnerId?: string;
 	/** Async job manager owned and disposed by this session. */
 	ownedAsyncJobManager?: AsyncJobManager;
 	/** Async job manager visible to this session. */

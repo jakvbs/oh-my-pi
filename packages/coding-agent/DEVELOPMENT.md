@@ -69,7 +69,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/session.md), [session-tree-plan.md](../../docs/session-tree-plan.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/settings.md), [config-usage.md](../../docs/config-usage.md), [models.md](../../docs/models.md), [secrets.md](../../docs/secrets.md) |
 | `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/custom-tools.md), [`tools/`](../../docs/tools/) |
-| `exec/`, `eval/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger) | [bash-tool-runtime.md](../../docs/bash-tool-runtime.md), [python-repl.md](../../docs/python-repl.md) |
+| `exec/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, ssh, debugger) | [bash-tool-runtime.md](../../docs/bash-tool-runtime.md) |
 | `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/lsp-config.md), [tools/lsp.md](../../docs/tools/lsp.md) |
 | `task/`, `swarm/`, `irc/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC, plan mode | [task-agent-discovery.md](../../docs/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
 | `web/`, `exa/` | Fetch, search providers, scrapers | [tools/web_search.md](../../docs/tools/web_search.md) |
@@ -111,11 +111,11 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - Authoring + registry: [custom-tools.md](../../docs/custom-tools.md)
 - Output/artifacts: [blob-artifact-architecture.md](../../docs/blob-artifact-architecture.md)
 - Gating/approval: [approval-mode.md](../../docs/approval-mode.md), [resolve-tool-runtime.md](../../docs/resolve-tool-runtime.md)
-- Per-tool reference: [`docs/tools/`](../../docs/tools/) — `read`, `write`, `edit`, `ast-edit`, `ast-grep`, `grep`, `glob`, `bash`, `eval`, `wait`, `lsp`, `debug`, `task`, `web_search`, `browser`, `github`, `ask`, `todo`, `recall`, `retain`, `reflect`, `checkpoint`, `rewind`
+- Per-tool reference: [`docs/tools/`](../../docs/tools/) — `read`, `write`, `edit`, `ast-edit`, `ast-grep`, `grep`, `glob`, `bash`, `wait`, `lsp`, `debug`, `task`, `web_search`, `browser`, `github`, `ask`, `todo`, `recall`, `retain`, `reflect`, `checkpoint`, `rewind`
 
 ### Execution backends
 - [bash-tool-runtime.md](../../docs/bash-tool-runtime.md), [tools/bash.md](../../docs/tools/bash.md)
-- [python-repl.md](../../docs/python-repl.md), [notebook-tool-runtime.md](../../docs/notebook-tool-runtime.md), [tools/eval.md](../../docs/tools/eval.md), [tools/wait.md](../../docs/tools/wait.md)
+- [notebook-tool-runtime.md](../../docs/notebook-tool-runtime.md), [tools/wait.md](../../docs/tools/wait.md)
 - [tools/debug.md](../../docs/tools/debug.md), [tools/lsp.md](../../docs/tools/lsp.md), [lsp-config.md](../../docs/lsp-config.md)
 
 ### Task delegation and subagents

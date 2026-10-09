@@ -220,7 +220,6 @@ async function createContext() {
 		},
 		updatePendingMessagesDisplay,
 		isBashMode: false,
-		isPythonMode: false,
 		hideToolActivity: false,
 		toolOutputExpanded: false,
 		settings: Settings.isolated(),
@@ -337,42 +336,6 @@ describe("InputController keybinding setup", () => {
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(1, { temporaryOnly: true });
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(2);
 		expect(spies.resetDisplayAfterAppearanceRefresh).toHaveBeenCalledTimes(1);
-	});
-
-	it("enters Python mode only once whitespace follows a typed sigil", async () => {
-		const { InputController, ctx, editor } = await createContext();
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-
-		for (const draft of ["$", "$H", "$$", "$$a"]) {
-			editor.onChange?.(draft);
-			expect(ctx.isPythonMode).toBe(false);
-		}
-		expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
-
-		editor.onChange?.("$$ ");
-		expect(ctx.isPythonMode).toBe(true);
-		editor.onChange?.("$$ a");
-		expect(ctx.isPythonMode).toBe(true);
-		expect(ctx.updateEditorBorderColor).toHaveBeenCalledTimes(1);
-	});
-
-	it("does not mark pasted shell prompts as Python mode while editing", async () => {
-		const { InputController, ctx, editor } = await createContext();
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-
-		editor.onChange?.("$ cd ~/project && sudo ./build-and-push.sh o5.7 2>&1 | tail -4");
-
-		expect(ctx.isPythonMode).toBe(false);
-		expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
-
-		editor.onChange?.("$ print(1)");
-
-		expect(ctx.isPythonMode).toBe(true);
-		expect(ctx.updateEditorBorderColor).toHaveBeenCalledTimes(1);
 	});
 
 	it("registers retry as an editor action and retries the failed turn", async () => {

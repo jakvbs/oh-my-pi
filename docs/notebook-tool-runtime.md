@@ -1,6 +1,6 @@
 # Notebook file runtime internals
 
-This document describes current `.ipynb` handling in `coding-agent` and its relationship to the kernel-backed Python runtime.
+This document describes current `.ipynb` handling in `coding-agent`.
 
 The critical distinction: **notebook support is file conversion/editing, not notebook execution**. `.ipynb` files are exposed as editable cell-marked text through `read` and the edit pipeline; no notebook-specific tool starts or talks to a Python kernel.
 
@@ -9,12 +9,6 @@ The critical distinction: **notebook support is file conversion/editing, not not
 - [`crates/pi-edit/src/notebook.rs`](../crates/pi-edit/src/notebook.rs)
 - [`crates/pi-edit/src/files.rs`](../crates/pi-edit/src/files.rs)
 - [`src/tools/read.ts`](../packages/coding-agent/src/tools/read.ts)
-- [`src/tools/eval.ts`](../packages/coding-agent/src/tools/eval.ts)
-- [`src/eval/py/executor.ts`](../packages/coding-agent/src/eval/py/executor.ts)
-- [`src/eval/py/kernel.ts`](../packages/coding-agent/src/eval/py/kernel.ts)
-- [`src/eval/kernel-session-registry.ts`](../packages/coding-agent/src/eval/kernel-session-registry.ts)
-- [`src/eval/executor-base.ts`](../packages/coding-agent/src/eval/executor-base.ts)
-- [`packages/tui/src/tools/streaming-output.ts`](../packages/tui/src/tools/streaming-output.ts)
 
 ## 1) Runtime boundary: editing vs executing
 
@@ -38,12 +32,6 @@ No kernel lifecycle exists in this path:
 - no stream chunks from Python
 - no rich display capture
 - no output artifact pipeline from execution
-
-## Kernel-backed execution path (`src/tools/eval.ts` + `src/eval/py/*`)
-
-When the agent needs to run cell-style Python code with persistent state and rich displays, that goes through one **`eval` tool** call per cell with `language: "py"`, not through notebook file handling.
-
-That path is where Python subprocess lifecycle, reset/cancel behavior, chunk streaming, rich displays, and output artifact truncation live.
 
 ## 2) Notebook cell handling semantics
 
@@ -83,116 +71,10 @@ Hard failures are thrown for:
 
 These surface through notebook-aware callers such as `read` and the edit pipeline as normal tool errors. The standalone `write` path does not parse notebook JSON.
 
-## 3) Kernel session semantics (where they actually exist)
-
-Kernel semantics are implemented in `executePython` / `PythonKernel` and apply to the Python backend of the `eval` tool.
-
-## Modes
-
-`PythonKernelMode`:
-
-- `session` (default)
-  - kernels are cached by `(session id, cwd, interpreter)`
-  - multiple owners can share a retained kernel for the same key
-  - foreground eval tool calls use exclusive concurrency; this is not a blanket lock on background cells or kernel-defined tool requests
-  - dead kernels are replaced before execution
-- `per-call`
-  - creates a subprocess for the request
-  - executes
-  - always shuts down the subprocess in `finally`
-
-## Reset behavior
-
-Each eval call has an optional `reset` flag. `reset: true` resets the selected Python session before that call executes; it does not reset other enabled language runtimes.
-
-## Kernel death and restart
-
-In session mode:
-
-- if the retained subprocess is not alive before execution, it is replaced
-- if the subprocess dies during execution, completion is uncertain and the cell is **not replayed**; the next call starts a fresh kernel
-- concurrent resets for the same session key coalesce: a reset already in flight is awaited instead of starting another, and runs queued behind it proceed on the freshly-restarted kernel
-
-## 4) Environment/session variable injection
-
-Kernel startup and per-execution environment patching can receive:
-
-- `PI_SESSION_FILE`
-- `PI_ARTIFACTS_DIR`
-- `PI_TOOL_BRIDGE_URL`
-- `PI_TOOL_BRIDGE_TOKEN`
-- `PI_TOOL_BRIDGE_SESSION`
-- `PI_EVAL_LOCAL_ROOTS`
-
-The runner applies the requested cwd and managed environment patch before each cell, with cwd placed first on `sys.path`. A `%cd` or `os.chdir()` inside a cell does not override the host session cwd for the next eval call. Managed entries omitted from the patch are removed from `os.environ`.
-
-## 5) Streaming/chunk and display handling (kernel-backed path)
-
-The Python backend uses an NDJSON subprocess runner. The host processes frames per execution:
-
-- `stdout` / `stderr` -> text chunks to `onChunk`
-- `display` / `result` -> MIME bundle rendering
-- `error` -> traceback text and structured error metadata
-- `done` -> final status, execution count, cancellation state
-
-Display text MIME precedence:
-
-1. `text/markdown`
-2. `text/plain`
-3. converted `text/html`
-
-Structured outputs captured separately include:
-
-- `application/json` -> JSON display output
-- `image/png` / `image/jpeg` -> image output
-- `application/x-omp-status` -> status event
-
-Cancellation/timeout:
-
-- abort/timeout sends `SIGINT` to the runner
-- if the runner does not settle after the interrupt grace window, shutdown escalates and the kernel is recreated on the next call
-- timeout output is annotated with a timeout message
-
-## 6) Truncation and artifact behavior
-
-`OutputSink` in `packages/tui/src/tools/streaming-output.ts` is used by kernel execution paths:
-
-- sanitizes every chunk
-- tracks total/output lines and bytes
-- optionally spills full output to an artifact file
-- keeps a UTF-8-safe head/tail view within one inline byte budget (50 KiB by default), eliding the middle when head retention is enabled
-- caps individual lines using `tools.outputMaxColumns`, while preserving uncapped sanitized text in the artifact
-- reports artifact I/O failures separately and withholds the artifact ID if full capture failed
-
-`eval` converts this metadata into result truncation notices and TUI warnings.
-
-Notebook file conversion does **not** use `OutputSink`; it has no stream/artifact truncation pipeline because it does not execute code.
-
-## 7) Renderer assumptions and formatting
+## 3) Renderer assumptions and formatting
 
 ## Read/edit notebook representation
 
 Notebook files are rendered to the model as text. The visible cell markers are part of the editable representation, not comments that are ignored during serialization.
 
-## Python renderer (for actual execution output)
-
-Kernel-backed execution rendering expects:
-
-- per-cell status transitions (`pending` / `running` / `complete` / `error`)
-- optional structured status events
-- optional JSON output trees
-- image outputs
-- truncation warnings + optional `artifact://<id>` pointer
-
-This renderer behavior is unrelated to notebook JSON editing except that both reuse shared TUI primitives.
-
-## 8) Practical workflow
-
-If a workflow needs both notebook mutation and execution:
-
-1. read the `.ipynb` file in its default editable view and mutate that view with the edit pipeline
-2. copy one desired cell source into an `eval` call with `language: "py"`
-3. repeat for later cells; session-mode Python state persists across calls
-4. apply later source changes through the edit pipeline; a whole-file `write` must contain notebook JSON
-
-Current implementation does not provide a single tool that both mutates `.ipynb` and executes notebook cells through kernel context.
+The harness has no notebook execution path: cells are edited as text, never run.

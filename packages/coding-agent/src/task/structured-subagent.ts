@@ -18,7 +18,6 @@ import {
 import { type ServiceTierInheritSettingValue, validateAgentServiceTierOverrides } from "../config/service-tier";
 import { isProviderEnabled } from "../capability";
 import type { EffectiveExtensionRoots } from "../capability/types";
-import type { CustomTool } from "../extensibility/custom-tools/types";
 import { sessionLocalProtocolOptions } from "../internal-urls/context";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
 import { MCPManager } from "../mcp/manager";
@@ -141,8 +140,6 @@ export interface StructuredSubagentRequest {
 	enableIrc?: boolean;
 	/** `0` disables executor wall-clock timeout. Undefined inherits settings. */
 	maxRuntimeMs?: number;
-	/** Kernel-defined tools explicitly exposed to this child. */
-	customTools?: CustomTool[];
 	/** Workpool items accepted by the child yield tool during this turn. */
 	workPoolYieldItems?: WorkPoolYieldItem[];
 	signal?: AbortSignal;
@@ -243,9 +240,6 @@ function createPlanModeAgent(agent: AgentDefinition): AgentDefinition {
 
 function assertPlanControlsAllowed(request: StructuredSubagentRequest, planMode: boolean): void {
 	if (!planMode) return;
-	if (request.customTools?.length) {
-		throw new StructuredSubagentError("preflight", "Eval-defined tools are unavailable in plan mode.");
-	}
 	const isolation = request.isolation;
 	if (
 		isolation &&
@@ -541,7 +535,6 @@ function buildExecutorOptions(
 		inheritedSessionAgents: session.getSessionAgents?.(),
 		mcpManager: enableMCP ? (session.mcpManager ?? MCPManager.instance()) : undefined,
 		enableMCP,
-		customTools: request.customTools,
 		workPoolYieldItems: request.workPoolYieldItems,
 		contextFiles: session.contextFiles?.filter(file => path.basename(file.path).toLowerCase() !== "agents.md"),
 		skills,

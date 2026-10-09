@@ -105,7 +105,7 @@ Interactive sessions and RPC/RPC-UI hosts watch the main global file, project se
 
 Symlinked configs follow edits to their target and replacement of any intermediate file or directory symlink, including profile links. After a link switches targets, subsequent edits to the new target are watched too.
 
-Reloading changes the settings values available to consumers; startup-only work is not rerun. Provider-source switches take effect on the next discovery pass. Task/eval dispatch also reloads persisted settings before resolving a subagent's policy.
+Reloading changes the settings values available to consumers; startup-only work is not rerun. Provider-source switches take effect on the next discovery pass. Task dispatch also reloads persisted settings before resolving a subagent's policy.
 
 Routing changes to `modelRoles`, `retry.fallbackChains`, and `task.agentModelOverrides` apply to subsequent subagent launches and fallback decisions without restarting the host. `auth.accountPolicies` and `retry.usageReservePct` also update the long-lived account router for subsequent credential selection and quota checks. Reloading does not restart running subagents or switch a healthy active session's model; explicit runtime overrides still take precedence.
 
@@ -119,7 +119,7 @@ built-in defaults  <-  global config  <-  project config  <-  CLI overlays  <-  
 
 From highest to lowest:
 
-1. **Setting env var** — an environment variable declared on the setting's definition (for example `PI_PY` for `eval.py`, `OMP_AUTH_BROKER_URL` for `auth.broker.url`). Parsed by the setting's type unless it declares a custom parser; unparseable text (such as `PI_EDIT_VARIANT=auto`) counts as unset. Booleans follow the `parseFlag` convention: empty counts as unset, `1`/`y`/`true`/`yes`/`on` (all-lowercase or all-uppercase) mean true, and any other value means false. A few are declared as fallbacks instead (`SEARXNG_*`, `MNEMOPI_EMBEDDING_MODEL`): they only replace the built-in default, so any configured layer wins over them — except a configured `null`, which counts as unset. `SEARXNG_ENDPOINT`, `SEARXNG_TOKEN`, and `MNEMOPI_EMBEDDING_MODEL` also apply when the setting is a blank string.
+1. **Setting env var** — an environment variable declared on the setting's definition (for example `PI_INTENT_TRACING` for `tools.intentTracing`, `OMP_AUTH_BROKER_URL` for `auth.broker.url`). Parsed by the setting's type unless it declares a custom parser; unparseable text (such as `PI_EDIT_VARIANT=auto`) counts as unset. Booleans follow the `parseFlag` convention: empty counts as unset, `1`/`y`/`true`/`yes`/`on` (all-lowercase or all-uppercase) mean true, and any other value means false. A few are declared as fallbacks instead (`SEARXNG_*`, `MNEMOPI_EMBEDDING_MODEL`): they only replace the built-in default, so any configured layer wins over them — except a configured `null`, which counts as unset. `SEARXNG_ENDPOINT`, `SEARXNG_TOKEN`, and `MNEMOPI_EMBEDDING_MODEL` also apply when the setting is a blank string.
 2. **Runtime overrides** — settings applied in memory for the current process, including `--smol`, `--slow`, `--plan`, `--approval-mode`, `--auto-approve`/`--yolo`, `--hide-thinking`, `--advisor`, `--external-thinking`, and protocol-mode defaults. Never persisted. Other one-shot options such as `--model`, `--thinking`, `--service-tier`, `--no-lsp`, `--no-pty`, and `--api-key` affect session/model/transport options rather than all being registry settings. Protocol-mode defaults (RPC/ACP) hold only while nothing else configures the setting: a settings write or reset of it, a `config.yml` or project edit picked up by a reload, or an ACP session's own project config replaces them.
 3. **CLI config overlays** — each `--config <file>`; later overlay files override earlier ones.
 4. **Project settings** — `<cwd>/.omp/settings.json` then `<cwd>/.omp/config.yml` (and contributions from other discovery providers at project level).
@@ -138,8 +138,6 @@ Environment variables are never written back to `config.yml`. Variables declared
 | `PI_SLOW_MODEL`         | `modelRoles.slow`           | Also exposed as `--slow`.                                                                         |
 | `PI_PLAN_MODEL`         | `modelRoles.plan`           | Also exposed as `--plan`.                                                                         |
 | `PI_NO_PTY=1`           | (disables PTY bash)         | Equivalent to `--no-pty` for the process.                                                         |
-| `PI_PY`                 | `eval.py`                   | `PI_PY=0` disables the Python eval backend.                                                       |
-| `PI_JS`                 | `eval.js`                   | `PI_JS=0` disables the JavaScript eval backend.                                                   |
 | `PI_TINY_DEVICE`        | `providers.tinyModelDevice` | ONNX execution provider or `mlx` backend for local tiny models.                                   |
 | `PI_TINY_DTYPE`         | `providers.tinyModelDtype`  | ONNX precision for local tiny models.                                                             |
 | `OMP_AUTH_BROKER_URL`   | `auth.broker.url`           | Env value takes precedence over config.                                                           |
@@ -184,7 +182,7 @@ tools:
 
 ### Bash command approval patterns
 
-`tools.approval` is a record keyed by tool name; dotted forms such as `tools.approval.eval` and `tools.approval.computer` identify entries in that record, not separate setting ids. Each entry sets that tool's default policy. For bash, you can add ordered command rules with `bash.patterns`; the first matching rule wins. Patterns support literal text plus `*` as a wildcard. Whitespace is the exception: before matching, every run of spaces, tabs, or newlines in both the pattern and the command collapses to a single space, and leading/trailing whitespace is trimmed. A newline in a pattern therefore matches any whitespace: `match: "*\n*"` behaves like `"* *"` and matches every command containing a space. A newline-specific rule is unnecessary to catch dangerous commands in a newline-separated list: `deny` and `prompt` rules check each segment (see below). `allow` rules reject unquoted newline command separators, but can approve commands containing quoted or escaped literal newlines when the full command matches.
+`tools.approval` is a record keyed by tool name; dotted forms such as `tools.approval.bash` and `tools.approval.write` identify entries in that record, not separate setting ids. Each entry sets that tool's default policy. For bash, you can add ordered command rules with `bash.patterns`; the first matching rule wins. Patterns support literal text plus `*` as a wildcard. Whitespace is the exception: before matching, every run of spaces, tabs, or newlines in both the pattern and the command collapses to a single space, and leading/trailing whitespace is trimmed. A newline in a pattern therefore matches any whitespace: `match: "*\n*"` behaves like `"* *"` and matches every command containing a space. A newline-specific rule is unnecessary to catch dangerous commands in a newline-separated list: `deny` and `prompt` rules check each segment (see below). `allow` rules reject unquoted newline command separators, but can approve commands containing quoted or escaped literal newlines when the full command matches.
 
 By default, an `allow` rule must match the entire command and cannot approve a compound line. Set `bash.allowCompoundCommands: true` to also evaluate conservative chains of two or more literal commands joined only by `&&`:
 
@@ -213,7 +211,7 @@ The opt-in requires a positively identified POSIX-quoting shell: `sh`, `bash`, `
 
 Valid rule approvals are `allow`, `prompt`, and `deny`. Regardless of the opt-in, `deny` and `prompt` rules can match the whole command or a tokenized segment of other compound forms (split on `&&`, `||`, `;`, `|`, a single `&`, subshells, and newlines). This lets `match: "rm -rf *"` deny `cd /tmp && rm -rf build` and `sleep 1 & rm -rf build`.
 
-`bash.patterns` is an approval policy, not containment. An allowed program still has the bash process's filesystem, network, and subprocess access, and a seemingly narrow program can perform broader actions through its own options or configuration. The rules govern the `bash` tool only; they do not cover shells started through `eval`. To close that path, add a `tools.approval.eval` policy (`prompt` or `deny`) as well; see [Tool approval mode](./approval-mode.md).
+`bash.patterns` is an approval policy, not containment. An allowed program still has the bash process's filesystem, network, and subprocess access, and a seemingly narrow program can perform broader actions through its own options or configuration. The rules govern the `bash` tool only; see [Tool approval mode](./approval-mode.md).
 
 ### Bash interceptor patterns
 
@@ -519,7 +517,7 @@ For the numeric sampling settings, a negative value (normally `-1`) means "use t
 | `tier.anthropic`    | enum   | `none`    | `none`, `priority`. `priority` realizes fast mode on supported direct Claude models (ignored on Bedrock/Vertex and via OpenRouter).                                                                                                                                            |
 | `tier.google`       | enum   | `none`    | `none`, `flex`, `priority`. Gemini API sends it in the body; Vertex sends `priority` via header (`flex` is a no-op on Vertex).                                                                                                                                                 |
 | `tier.subagent`     | enum   | `inherit` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Applied to the spawned model's family; `inherit` tracks the main agent.                                                                                                                                     |
-| `task.agentServiceTierOverrides` | record | `{}` | Sparse exact-name overrides for agents spawned by task/eval dispatch. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. An entry overrides `tier.subagent`; concrete values apply only when supported by the resolved model's provider family. A non-mapping value fails settings load. |
+| `task.agentServiceTierOverrides` | record | `{}` | Sparse exact-name overrides for agents spawned by task dispatch. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. An entry overrides `tier.subagent`; concrete values apply only when supported by the resolved model's provider family. A non-mapping value fails settings load. |
 | `tier.advisor`      | enum   | `none`    | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Applied to the advisor model's family.                                                                                                                                                                      |
 | `personality`       | enum   | `default` | `default`, `friendly`, `pragmatic`, `none`. A user-level `<agent dir>/PERSONALITY.md` replaces the selected preset's text; `none` still omits the block. See [system-prompt-customization](./system-prompt-customization.md).                                                  |
 
@@ -580,8 +578,6 @@ providers:
 | `retry.usageReservePct` | number | `10` | Remaining quota percentage protected by usage-aware fallback. |
 | `retry.usageReservePolicy` | enum | `confirm` | `confirm`, `auto`, `fail-closed`. At reserve, `confirm` asks when an interactive confirmer is available and otherwise auto-falls back; exhausted quota can fall back without confirmation. `fail-closed` blocks known reserve/depleted quota rather than spending it. |
 | `providers.anthropic.serverSideFallback` | boolean | `false`           | Opt in to Anthropic's `server-side-fallback-2026-06-01` beta for eligible direct Claude Fable/Mythos requests. The catalog-owned server-side chain currently targets `claude-opus-5`, not `claude-opus-5-5`; unsupported models and hosts have no chain.                                                                                                                                          |
-| `providers.openai-codex.codeMode`           | enum    | `off`             | Codex Code Mode for `code_mode_only` models, mirroring codex-rs: the direct tool surface collapses to `eval`/`ask`/`todo` and every other session tool is invoked from `eval` cells via its `tool.<name>()` bridge, collapsing multi-step tool work into one model round trip. `auto` follows the model catalog's `tool_mode` flag; `on` forces it for any Codex model; `off` (default) leaves the full direct surface. The turn metadata carries codex-rs's `tool_namespaces_info` exposure snapshot while active. |
-| `providers.openai-codex.codeModeDirectTools` | array   | `[]`              | Extra tool names to keep directly callable alongside `eval`/`ask`/`todo` when Codex Code Mode is active; entries that are not enabled in the session are ignored. |
 
 When the active chat model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that owns the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default` — which also owns a live model that belongs to no role (`/model` switch, ephemeral hop). The effective chain is the owning role's primary followed by its configured entries, and a live selector that appears nowhere in it is offered the whole chain. If several roles assign the same model, yaml key order does not decide: the live session role wins, and `default` wins over other matching chat roles when the session is not on those roles. It skips chat candidates whose selectors are still cooling down and switches for the rest of the turn. Model-kind runners resolve their named role chain separately and never consume `default`. Subagents get their own per-spawn chains when their agent definition lists multiple model patterns — the first resolvable pattern is primary and the rest become its fallbacks; there is no `agent:<name>` key in `fallbackChains`.
 
@@ -612,7 +608,7 @@ tools:
 | `tools.artifactHeadBytes`      | number  | `20`    | KB of head kept inline on spill; `0` = tail-only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `tools.artifactTailBytes`      | number  | `20`    | KB of tail kept inline on spill.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `tools.artifactTailLines`      | number  | `500`   | Max tail lines kept inline on spill.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `tools.artifactMaxBytes` | number | `16` | MB cap on the artifact file saved for streaming tool output (bash, python, js eval); larger output keeps its beginning (up to 3 MB) and most recent remainder around a truncation notice. `0` = unlimited. |
+| `tools.artifactMaxBytes` | number | `16` | MB cap on the artifact file saved for streaming tool output (bash); larger output keeps its beginning (up to 3 MB) and most recent remainder around a truncation notice. `0` = unlimited. |
 | `tools.xdev` | boolean | `true` | Mount discoverable tools under `xd://` device URLs instead of exposing every schema directly. Disabling it exposes enabled tools top-level. |
 | `tools.xdevDocs` | enum | `catalog` | `inline` includes all mounted docs/schemas, `builtins` inlines built-ins only, `catalog` lists devices with docs fetched on demand. |
 | `tools.xdevInlineDevices` | array | `[]` | Dynamic-device name globs to inline in `builtins` mode; ignored in `catalog` mode. |
@@ -621,9 +617,9 @@ tools:
 
 Mounting still follows the session's explicit tool allow-list. A session that permits `read` but omits `write` can receive a device-only write transport; this does not grant filesystem writes.
 
-Individual built-in tools and Eval preludes are toggled by their own keys, e.g. `bash.enabled`, `launch.enabled`, `eval.py`, `eval.js`, `glob.enabled`, `grep.enabled`, `fetch.enabled`, `ratchet.enabled` (default `false`; the `ratchet(flow)` eval/hillclimb prelude, which `/ratchet` turns on for the current session only), `archive.enabled` (default `true`; the read-only `archive` eval prelude over prompt history, recent projects, past sessions, and recaps), `astEdit.enabled`, `astGrep.enabled`, `find.enabled` (`auto`/`on`/`off`; `auto` enables `find` only when the `judge` role resolves to a native TypeSafe jev model), and `web_search.enabled`. Image questions use `read <image>?q=<question>` and honor `images.questionTimeoutMs`.
+Individual built-in tools are toggled by their own keys, e.g. `bash.enabled`, `launch.enabled`, `glob.enabled`, `grep.enabled`, `fetch.enabled`, `astEdit.enabled`, `astGrep.enabled`, `find.enabled` (`auto`/`on`/`off`; `auto` enables `find` only when the `judge` role resolves to a native TypeSafe jev model), and `web_search.enabled`. Image questions use `read <image>?q=<question>` and honor `images.questionTimeoutMs`.
 
-### Shell, eval, and LSP
+### Shell and LSP
 
 ```yaml
 bash:
@@ -632,14 +628,6 @@ bash:
   autoBackground:
     enabled: true
     thresholdMs: 60000
-
-eval:
-  py: true
-  js: true
-
-python:
-  kernelMode: session # session, per-call
-  interpreter: ""
 
 lsp:
   enabled: true
@@ -659,13 +647,6 @@ lsp:
 | `bash.autoBackground.thresholdMs` | number  | `60000`   | Threshold before auto-backgrounding.                                                                                                                        |
 | `bash.direnv` | enum | `auto` | `auto` loads an allowed repository `.envrc` into the embedded bash session; `off` disables integration. It never bypasses `direnv allow`. |
 | `bash.direnvLoadTimeoutMs` | number | `30000` | Maximum wait for initial `direnv export`; a timeout leaves the session without the direnv environment. |
-| `eval.py`                         | boolean | `true`    | Python eval backend. `PI_PY=0` disables for the process.                                                                                                    |
-| `eval.js`                         | boolean | `true`    | JavaScript eval backend. `PI_JS=0` disables for the process.                                                                                                |
-| `eval.autoProvision`              | boolean | `true`    | Create the managed JavaScript eval package environment on first `%bun add`.                                                                                 |
-| `eval.tools.enabled`              | boolean | `true`    | Expose kernel-defined `@tool` / `tool(fn)` functions to `task`, `agent()`, and `workpool()` subagents.                                                      |
-| `eval.workpool.freshAgents`       | boolean | `false`   | Spawn a new workpool agent for every item instead of reusing idle workers or batching queued items.                                                        |
-| `python.kernelMode`               | enum    | `session` | `session` (persistent kernel) or `per-call`.                                                                                                                |
-| `python.interpreter`              | string  | `""`      | Path to a Python interpreter; empty = auto-detect.                                                                                                          |
 | `lsp.enabled`                     | boolean | `true`    | Language-server integration. `--no-lsp` disables for the run.                                                                                               |
 | `lsp.lazy`                        | boolean | `true`    | Start servers on demand.                                                                                                                                    |
 | `lsp.shared`                      | boolean | `true`    | Share one language server per project across local `omp` processes through the daemon broker; falls back to private servers when the broker is unavailable. |
@@ -754,7 +735,7 @@ memory:
 | `compaction.thresholdTokens`  | number  | `-1`                                     | Fixed token trigger when `> 0`.                                                                                                                                                                                                           |
 | `compaction.modelThresholds`  | record  | `{}`                                     | Per-model compaction trigger keyed by `provider/model-id` or a `*`-terminated prefix (`deepseek/*`): a token count (`90000`) or a percentage (`"80%"`). See below. |
 | `compaction.modelThresholdsEnabled` | boolean | `true`                             | Whether `compaction.modelThresholds` applies. Subagents with a `task.agentCompactionThresholdOverrides` entry run with it off. |
-| `task.agentCompactionThresholdOverrides` | record | `{}` | Exact-name task/eval agent → compaction trigger: a positive token count (`90000`) or a percentage string (`"80%"`). See below. |
+| `task.agentCompactionThresholdOverrides` | record | `{}` | Exact-name task agent → compaction trigger: a positive token count (`90000`) or a percentage string (`"80%"`). See below. |
 | `compaction.reserveTokens`    | number  | _(unset)_                                | Absolute reserve floor. When unset, the effective reserve is the larger of `16384` and 15% of the context window; if that default would leave no practical small-window budget, it falls back to the 15% reserve.                         |
 | `compaction.keepRecentTokens` | number  | `20000`                                  | Recent-history token budget for summary compaction.                                                                                                                                                                                                           |
 | `compaction.autoContinue`     | boolean | `true`                                   | Continue automatically after compaction.                                                                                                                                                                                                  |
@@ -784,7 +765,7 @@ compaction:
 - A `task.agentCompactionThresholdOverrides` entry outranks model entries for that agent, including entries added while it runs.
 - The hub refuses an edit when the project config sets the same model key; change it in the project config instead.
 
-Per-agent compaction triggers for task/eval subagents. This keeps the main session at 40,000 tokens while an `explore` agent compacts at 80% of its window and `task` at 90,000 tokens:
+Per-agent compaction triggers for task subagents. This keeps the main session at 40,000 tokens while an `explore` agent compacts at 80% of its window and `task` at 90,000 tokens:
 
 ```yaml
 compaction:
@@ -949,7 +930,7 @@ searxng:
 | `searxng.token`                     | string  | _(unset)_ | SearXNG token; also `searxng.basicUsername`/`searxng.basicPassword`/`searxng.categories`/`searxng.language`/`searxng.engines` (comma-separated engine names or bang shortcuts, e.g. `ddg, br, startpage`, sent as the API's `engines=` parameter)/`searxng.safesearch`.                                                                                                                                                                                                                                                                                                 |
 | `auth.broker.url`                   | string  | _(unset)_ | Auth-broker URL. The actual credential connection uses env then the main global config, not project/config-overlay values.                                                                                                                                                                                                                                                                                                                                                                                  |
 | `auth.broker.token`                 | string  | _(unset)_ | Auth-broker token. `OMP_AUTH_BROKER_TOKEN` wins over the main global config; the broker token file is a fallback. Project/config-overlay values do not redirect credentials.                                                                                                                                                                                                                                                                                                                                                                              |
-| `task.agentAccountPools`            | record  | `{}`      | Exact-name task/eval agent → provider id → OAuth identity keys (the `identityKey` values of [client account pools](./auth-broker-gateway.md#client-account-pools-routing-not-authorization), e.g. `email:<address>\|org:<id>` for Anthropic; `omp usage accounts` lists them). The agent authenticates for each listed provider only with those accounts, never another account or an API key, and fails when none can serve; an empty list allows no account. A malformed entry fails settings load. See [Task agent discovery](./task-agent-discovery.md#model-and-structured-output-precedence). |
+| `task.agentAccountPools`            | record  | `{}`      | Exact-name task agent → provider id → OAuth identity keys (the `identityKey` values of [client account pools](./auth-broker-gateway.md#client-account-pools-routing-not-authorization), e.g. `email:<address>\|org:<id>` for Anthropic; `omp usage accounts` lists them). The agent authenticates for each listed provider only with those accounts, never another account or an API key, and fails when none can serve; an empty list allows no account. A malformed entry fails settings load. See [Task agent discovery](./task-agent-discovery.md#model-and-structured-output-precedence). |
 | `secrets.enabled`                   | boolean | `false`   | Enable configured secret obfuscation and built-in credential-shaped token redaction before provider requests. See [Secret obfuscation](./secrets.md).                                                                                                                                                                                                                                                                                  |
 
 Provider credentials and custom model definitions are configured separately — see [Providers](./providers.md) and [Models](./models.md).
@@ -966,7 +947,7 @@ When a usage refresh detects an eligible banked reset expiring within the next *
 
 Every schema path not individually tabulated in this catalog is explicitly deferred to `omp config list`. Additional groups include:
 
-- Agent behavior and safety: `ask.*`, `dev.*`, `eval.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `sharpshooter.*`, `task.*`, `tools.*`, and `vault.*`.
+- Agent behavior and safety: `ask.*`, `dev.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `sharpshooter.*`, `task.*`, `tools.*`, and `vault.*`.
 - Execution and content: `commit.*`, `completion.*`, `edit.*`, `error.*`, `extensionHandlers.*`, `generate_image.*`, `git.*`, `images.*`, `live.*`, `paste.*`, `power.*`, `read.*`, `shellMinimizer.*`, `speech.*`, `terminal.*`, and `title.*`.
 - Interface and startup: `composer.*`, `display.*`, `input.*`, `marketplace.*`, `spelling.*`, `statusLine.*`, `startup.*`, `stt.*`, `tui.*`, `ttsr.*`, and `update.*`.
 - Discovery, sharing, and auth: `auth.*`, `browser.*`, `claudeResets.*`, `codexResets.*`, `commands.*`, `gc.*`, `ida.*`, `mcp.*`, `share.*`, `skills.*`, `stream.*`, and `telemetry.*`.
@@ -1054,7 +1035,7 @@ Arrays replace; they do not append. If a project sets `disabledProviders`, `enab
 
 ### An environment variable beats my config
 
-Some settings (model roles, eval backends, tiny-model device/precision, auth broker, PTY) are overridable by env vars or CLI flags for per-machine convenience, and those take precedence over `config.yml`. Unset the variable or drop the flag to let the persisted value win. See [Environment overrides](#environment-overrides) and [Environment variables](./environment-variables.md).
+Some settings (model roles, tiny-model device/precision, auth broker, PTY) are overridable by env vars or CLI flags for per-machine convenience, and those take precedence over `config.yml`. Unset the variable or drop the flag to let the persisted value win. See [Environment overrides](#environment-overrides) and [Environment variables](./environment-variables.md).
 
 ### `omp config set <key>` says "Unknown setting"
 

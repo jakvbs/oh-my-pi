@@ -7,7 +7,7 @@ import {
 	filterEnv,
 	resolveExplicitPythonRuntime,
 	resolvePythonRuntime,
-} from "@oh-my-pi/pi-coding-agent/eval/py/runtime";
+} from "@oh-my-pi/pi-coding-agent/ida/python-runtime";
 import * as piUtils from "@oh-my-pi/pi-utils";
 
 describe("Python gateway environment filtering", () => {

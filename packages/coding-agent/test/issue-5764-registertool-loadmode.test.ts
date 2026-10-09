@@ -23,7 +23,6 @@ function makeSession(): ToolSession {
 	return {
 		cwd: "/tmp/test",
 		hasUI: false,
-		skipPythonPreflight: true,
 		getSessionFile: () => null,
 		settings: Settings.isolated(),
 	};

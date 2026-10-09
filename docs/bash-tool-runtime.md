@@ -47,7 +47,7 @@ Literal quoted arguments are accepted, but expansions, assignments, other contro
 
 Pattern approval is not containment. Once approved, a process keeps the shell's ambient filesystem, network, and subprocess access. Interception and approval are also separate mechanisms: interception routes misuse toward dedicated tools; approval governs whether execution may proceed.
 
-These rules govern the **`bash` tool only**. They do not constrain shells started through other tools — notably `eval`, which can spawn a shell via subprocess (`subprocess.run(["bash", "-c", ...])`, `Bun.$`, etc.). A `bash.patterns` `deny` rule therefore does nothing when the same command is issued through `eval`. To harden against destructive commands across both surfaces, pair `bash.patterns` with a `tools.approval.eval` policy (`prompt` or `deny`); see [Tool approval mode](./approval-mode.md).
+These rules govern the **`bash` tool only**; see [Tool approval mode](./approval-mode.md).
 
 ## 2) Optional interception (blocked-command path)
 

@@ -82,7 +82,6 @@ async function createHarness(factory: ExtensionFactory) {
 		locallySubmittedUserSignatures: new Set<string>(),
 		mcpTestEscapeHandlers: new Set<() => void>(),
 		isBashMode: false,
-		isPythonMode: false,
 		lastSigintTime: 0,
 		hasActiveBtw: () => false,
 		hasActiveOmfg: () => false,
@@ -587,7 +586,7 @@ describe("interactive native input ingress", () => {
 				streamingBehavior: key === ENTER ? "steer" : "followUp",
 				images: undefined,
 			});
-			for (const text of ["/clear", "!echo blocked", "$ print('blocked')"]) {
+			for (const text of ["/clear", "!echo blocked"]) {
 				h.editor.setText(text);
 				await h.pressSubmit(key);
 			}

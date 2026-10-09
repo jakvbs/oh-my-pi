@@ -40,7 +40,6 @@ describe("createAgentSession MCP deferral (B1)", () => {
 		promptTemplates: [],
 		slashCommands: [],
 		enableLsp: false,
-		skipPythonPreflight: true,
 		rules: [],
 		preloadedCustomToolPaths: [],
 		// No .mcp.json in tempDir, so no real MCP server can ever back this name.

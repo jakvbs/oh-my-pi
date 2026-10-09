@@ -16,7 +16,7 @@ import {
 import { cfgSteeringMode } from "@oh-my-pi/pi-coding-agent/modes/settings";
 import { cfgEditFuzzyMatch, cfgEditModelVariants } from "@oh-my-pi/pi-coding-agent/edit/settings";
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
-import { cfgEvalPy } from "@oh-my-pi/pi-coding-agent/eval/settings";
+import { cfgToolsIntentTracing } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import { cfgModelRoles } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import { cfgSearxngBasicPassword, cfgSearxngEndpoint } from "@oh-my-pi/pi-coding-agent/web/settings";
 
@@ -58,15 +58,15 @@ describe("settings registry", () => {
 	});
 
 	it("parses a boolean env var like parseFlag: empty is unset, unlisted text is false", () => {
-		const configuredOff = Settings.isolated({ "eval.py": false });
-		withEnv({ PI_PY: "" }, () => {
-			expect(cfgEvalPy.get(configuredOff)).toBe(false);
-			expect(cfgEvalPy.provenance(configuredOff)).toBe("runtime");
+		const configuredOff = Settings.isolated({ "tools.intentTracing": false });
+		withEnv({ PI_INTENT_TRACING: "" }, () => {
+			expect(cfgToolsIntentTracing.get(configuredOff)).toBe(false);
+			expect(cfgToolsIntentTracing.provenance(configuredOff)).toBe("runtime");
 		});
-		withEnv({ PI_PY: "y" }, () => expect(cfgEvalPy.get(configuredOff)).toBe(true));
-		withEnv({ PI_PY: "disabled" }, () => {
-			expect(cfgEvalPy.get(Settings.isolated())).toBe(false);
-			expect(cfgEvalPy.provenance(Settings.isolated())).toBe("env");
+		withEnv({ PI_INTENT_TRACING: "y" }, () => expect(cfgToolsIntentTracing.get(configuredOff)).toBe(true));
+		withEnv({ PI_INTENT_TRACING: "disabled" }, () => {
+			expect(cfgToolsIntentTracing.get(Settings.isolated())).toBe(false);
+			expect(cfgToolsIntentTracing.provenance(Settings.isolated())).toBe("env");
 		});
 	});
 

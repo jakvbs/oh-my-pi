@@ -17,7 +17,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import type { Setting } from "../config/registry";
 import { isSettingsInitialized, settings } from "../config/settings";
 
-import { stageRunnerScript } from "../eval/runner-cache";
+import { stageRunnerScript } from "../utils/runner-cache";
 import { ModelDownloadActivity } from "../downloads/model-downloads";
 import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
 import {

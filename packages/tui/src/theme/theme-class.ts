@@ -449,10 +449,6 @@ export class Theme {
 		return (str: string) => this.fg("bashMode", str);
 	}
 
-	getPythonModeBorderColor(): (str: string) => string {
-		return (str: string) => this.fg("pythonMode", str);
-	}
-
 	// ============================================================================
 	// Symbol Methods
 	// ============================================================================

@@ -125,7 +125,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 		});
 		try {
@@ -162,7 +161,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 		});
 		try {
@@ -189,7 +187,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			hasUI: true,
 		});
@@ -237,7 +234,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			appendSystemPrompt: USER_APPEND_MARKER,
 		});
@@ -285,7 +281,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			hasUI: true,
 		});
@@ -341,7 +336,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			hasUI: true,
 		});
@@ -393,7 +387,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 		});
 		try {
@@ -432,7 +425,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 		});
 		try {
@@ -465,7 +457,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			hasUI: true,
 			toolNames: ["read"],
@@ -516,7 +507,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			hasUI: true,
 			toolNames: ["read", MCP_TOOL_NAME],
@@ -554,7 +544,6 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			promptTemplates: [],
 			slashCommands: [],
 			enableLsp: false,
-			skipPythonPreflight: true,
 			enableMCP: true,
 			hasUI: true,
 			toolNames: ["bash"],

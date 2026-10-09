@@ -100,13 +100,8 @@ import {
 	type McpConnectionStatusEvent,
 } from "../mcp/startup-events";
 import { humanizePlanTitle, type PlanApprovalDetails, resolvePlanTitle } from "../plan-mode/approved-plan";
-import {
-	isJudgmentBatchProgress,
-	JUDGMENT_BATCH_PROGRESS_EVENT_CHANNEL,
-	type JudgmentBatchProgress,
-} from "../eval/judgment-batch-events";
 import { onDownloadActivity } from "../downloads/activity";
-import { DownloadActivityHud, JudgmentBatchProgressHud } from "./progress-hud";
+import { DownloadActivityHud } from "./progress-hud";
 import { autosaveApprovedPlan, planSaveFileName } from "../plan-mode/plan-autosave";
 import { resolvePlanModelTransition } from "../plan-mode/model-transition";
 import guidedGoalInterviewPrompt from "../prompts/goals/guided-goal-interview.md" with { type: "text" };
@@ -232,7 +227,6 @@ import { type ComposerNativeState, CustomEditor } from "@oh-my-pi/pi-tui/prompt/
 import { DynamicBorder } from "@oh-my-pi/pi-tui/chrome/dynamic-border";
 import { EditorTopGap } from "@oh-my-pi/pi-tui/prompt/editor-top-gap";
 import { ErrorBannerComponent } from "@oh-my-pi/pi-tui/overlays/error-banner";
-import type { EvalExecutionComponent } from "@oh-my-pi/pi-tui/chat/eval-execution";
 import type { HookEditorComponent } from "@oh-my-pi/pi-tui/overlays/hook-editor";
 import type { HookInputComponent } from "@oh-my-pi/pi-tui/overlays/hook-input";
 import type { HookSelectorComponent, HookSelectorSlider } from "@oh-my-pi/pi-tui/overlays/hook-selector";
@@ -454,7 +448,6 @@ const cfgLiveUiSettings = combine({
 type LiveUiSettings = SettingValueOf<typeof cfgLiveUiSettings>;
 
 const STILL_CLOSING_DELAY_MS = 3_000;
-const JUDGMENT_BATCH_PROGRESS_RETAIN_MS = 1_000;
 /** Startup emits several status-bar changes within a second; persist only the settled one. */
 const COMPOSER_STATUS_PERSIST_DELAY_MS = 1_000;
 const DEFAULT_WORKING_MESSAGE = "Working…";
@@ -1201,9 +1194,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#todoAutoClearGeneration = 0;
 	#modelCycleClearTimer: NodeJS.Timeout | undefined;
 	#composerStatusPersistTimer: NodeJS.Timeout | undefined;
-	readonly #judgmentBatchProgressHud = new JudgmentBatchProgressHud();
 	readonly #downloadActivityHud = new DownloadActivityHud(() => this.ui.requestRender());
-	readonly #judgmentBatchProgressClearTimers = new Map<string, NodeJS.Timeout>();
 	#nextAppearanceRequestToken = 1;
 	#appearanceRefreshRequest: { token: TerminalAppearanceRequestToken; deadline: number } | undefined;
 	todoPhases: TodoPhase[] = [];
@@ -1247,9 +1238,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	transcriptMessageComponents = new WeakMap<AgentMessage, Component>();
 	pendingBashComponents: BashExecutionComponent[] = [];
 	bashComponent: BashExecutionComponent | undefined = undefined;
-	pendingPythonComponents: EvalExecutionComponent[] = [];
-	pythonComponent: EvalExecutionComponent | undefined = undefined;
-	isPythonMode = false;
 	streamingComponent: AssistantMessageComponent | undefined = undefined;
 	streamingMessage: AssistantMessage | undefined = undefined;
 	lastAssistantUsage: Usage | undefined = undefined;
@@ -1608,7 +1596,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		this.statusContainer.disposeChildren();
 		this.pendingMessagesContainer.disposeChildren();
-		this.#clearJudgmentBatchProgress();
 		this.#cancelModelCycleClearTimer();
 		this.modelCycleContainer.disposeChildren();
 		this.deferredCommandContainer.disposeChildren();
@@ -1761,7 +1748,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.chatContainer = new TranscriptContainer();
 		this.pendingMessagesContainer = new AnchoredLiveContainer();
 		this.progressHudContainer = new AnchoredLiveContainer();
-		this.progressHudContainer.addChild(this.#judgmentBatchProgressHud);
 		this.progressHudContainer.addChild(this.#downloadActivityHud);
 		this.#eventBusUnsubscribers.push(onDownloadActivity(activity => this.#downloadActivityHud.update(activity)));
 		this.statusContainer = new StatusHudContainer(this);
@@ -1773,17 +1759,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.modelCycleContainer = new AnchoredLiveContainer();
 		this.deferredCommandContainer = new AnchoredLiveContainer();
 		this.reportContainer = new AnchoredLiveContainer();
-		if (eventBus) {
-			this.#eventBusUnsubscribers.push(
-				eventBus.on(JUDGMENT_BATCH_PROGRESS_EVENT_CHANNEL, data => {
-					if (!isJudgmentBatchProgress(data)) {
-						logger.warn("Ignoring malformed eval:judgment-batch-progress event", { data });
-						return;
-					}
-					this.#handleJudgmentBatchProgress(data);
-				}),
-			);
-		}
 		this.#applyVimMode(this.editor);
 		this.editor.viewportRowsProvider = () => this.ui.terminal.rows;
 		this.editor.onAutocompleteCancel = () => {
@@ -1876,33 +1851,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#inputController = new InputController(this);
 		this.session.setPromptDropped?.(prompt => this.#restoreDroppedPrompt(prompt));
 		this.#observerRegistry = new SessionObserverRegistry();
-	}
-
-	#handleJudgmentBatchProgress(progress: JudgmentBatchProgress): void {
-		const pendingClear = this.#judgmentBatchProgressClearTimers.get(progress.id);
-		if (pendingClear) {
-			clearTimeout(pendingClear);
-			this.#judgmentBatchProgressClearTimers.delete(progress.id);
-		}
-
-		this.#judgmentBatchProgressHud.update(progress);
-		if (!progress.running) {
-			const timer = setTimeout(() => {
-				this.#judgmentBatchProgressClearTimers.delete(progress.id);
-				this.#judgmentBatchProgressHud.delete(progress.id);
-				this.ui.requestRender();
-			}, JUDGMENT_BATCH_PROGRESS_RETAIN_MS);
-			timer.unref?.();
-			this.#judgmentBatchProgressClearTimers.set(progress.id, timer);
-		}
-		this.ui.requestRender();
-	}
-
-	#clearJudgmentBatchProgress(requestRender = false): void {
-		for (const timer of this.#judgmentBatchProgressClearTimers.values()) clearTimeout(timer);
-		this.#judgmentBatchProgressClearTimers.clear();
-		this.#judgmentBatchProgressHud.clear();
-		if (requestRender) this.ui.requestRender();
 	}
 
 	#handleMcpConnectionStatusEvent(event: McpConnectionStatusEvent): void {
@@ -3592,8 +3540,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		const vimMode = this.editor.vimEnabled ? this.editor.vimMode : undefined;
 		if (this.isBashMode) {
 			this.editor.borderColor = theme.getBashModeBorderColor();
-		} else if (this.isPythonMode) {
-			this.editor.borderColor = theme.getPythonModeBorderColor();
 		} else if (vimMode === "visual" || vimMode === "visual-line") {
 			this.editor.borderColor = (str: string) => theme.fg("warning", str);
 		} else if (vimMode === "normal") {
@@ -3678,11 +3624,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#composerNativeState(): ComposerNativeState {
 		const draft = this.editor.getText().trimStart();
 		return {
-			shell: this.isBashMode
-				? { kind: "bash", excluded: draft.startsWith("!!") }
-				: this.isPythonMode
-					? { kind: "python", excluded: draft.startsWith("$$") }
-					: undefined,
+			shell: this.isBashMode ? { kind: "bash", excluded: draft.startsWith("!!") } : undefined,
 			thinking: thinkingLevelWord(this.viewSession),
 			thinkingInModel: cfgStatusLineCompactThinkingLevel.get(settings),
 			rate: this.#nativeTokenRate(),
@@ -5174,7 +5116,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			void this.#copyYankToClipboard(text);
 		};
 		// Recolor the prompt border on every mode switch: in a modal editor the mode has to be
-		// visible at a glance, and the border is where bash/python mode already signal themselves.
+		// visible at a glance, and the border is where bash mode already signals themselves.
 		editor.onVimModeChange = () => this.#syncVimStatus(editor);
 	}
 
@@ -6347,7 +6289,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		// stopAnimation would otherwise keep an 80ms interval pinning the process.
 		stopSharedSpinnerTicker();
 		this.#liveCommandController.dispose();
-		this.#clearJudgmentBatchProgress();
 		this.#downloadActivityHud.dispose();
 		this.#cancelTodoAutoClearTimer();
 		this.#cancelObserverUiSyncTimer();
@@ -7250,7 +7191,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async prepareSessionSwitch(): Promise<void> {
-		this.#clearJudgmentBatchProgress(true);
 		await this.#btwController.dispose();
 		this.#omfgController.dispose();
 		this.#extensionUiController.clearExtensionTerminalInputListeners();
@@ -7443,10 +7383,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void> {
 		return this.#commandController.handleBashCommand(command, excludeFromContext);
-	}
-
-	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void> {
-		return this.#commandController.handlePythonCommand(code, excludeFromContext);
 	}
 
 	async handleMCPCommand(text: string): Promise<void> {

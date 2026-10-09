@@ -157,11 +157,6 @@ function hasPasteText(value: unknown): value is PasteTarget {
 	return typeof value === "object" && value !== null && typeof (value as PasteTarget).pasteText === "function";
 }
 
-const SHELL_PROMPT_COMMAND_RE =
-	/^(?:\.{0,2}\/|~\/|cd(?:\s|$)|sudo(?:\s|$)|git(?:\s|$)|bun(?:\s|$)|npm(?:\s|$)|pnpm(?:\s|$)|yarn(?:\s|$)|node(?:\s|$)|python\d*(?:\s|$)|cargo(?:\s|$)|go(?:\s|$)|make(?:\s|$)|docker(?:\s|$)|kubectl(?:\s|$))/;
-const SHELL_PROMPT_OPERATOR_RE = /(?:^|\s)(?:&&|\|\||\||2>&1|[<>]{1,2})(?:\s|$)/;
-const OMP_STATUS_LINE_RE = /^\s*in:\s+\d+\s+out:\s+\d+(?:\s+cache\s+\S+)?\s+t:\s+\S+\s+tok\/s:\s+\S+/m;
-
 /**
  * Read-only slash commands that also run from a focused subagent view, keyed by name to
  * a check on their arguments; every other command (and mutating forms such as
@@ -178,39 +173,6 @@ const FOCUSED_VIEW_COMMANDS: Record<string, (args: string) => boolean> = {
 const FOCUSED_VIEW_COMMAND_LIST = Object.keys(FOCUSED_VIEW_COMMANDS)
 	.map(name => `/${name}`)
 	.join(", ");
-
-function looksLikePastedShellPrompt(code: string): boolean {
-	const firstLine = code.split("\n", 1)[0]?.trimStart() ?? "";
-	return (
-		SHELL_PROMPT_COMMAND_RE.test(firstLine) ||
-		SHELL_PROMPT_OPERATOR_RE.test(firstLine) ||
-		OMP_STATUS_LINE_RE.test(code)
-	);
-}
-
-/**
- * Length of the `$`/`$$` Python sigil, or 0 when the draft is not Python. The sigil
- * counts only once whitespace follows it: a bare `$` may still become prose such as
- * `$HOME` (#2944), so claiming Python mode before the next key would flip back.
- */
-function pythonCommandPrefixLength(trimmedText: string): 0 | 1 | 2 {
-	if (trimmedText.charCodeAt(0) !== 36 /* $ */) return 0;
-	const prefixLength = trimmedText.charCodeAt(1) === 36 /* $ */ ? 2 : 1;
-	const next = trimmedText.charCodeAt(prefixLength);
-	return next === 32 || next === 9 || next === 10 || next === 13 ? prefixLength : 0;
-}
-
-function parsePythonCommandInput(text: string): { code: string; isExcluded: boolean } | undefined {
-	const trimmed = text.trimStart();
-	const prefixLength = pythonCommandPrefixLength(trimmed);
-	if (prefixLength === 0) return undefined;
-	const code = trimmed.slice(prefixLength).trim();
-	if (prefixLength === 1 && looksLikePastedShellPrompt(code)) return undefined;
-	return {
-		code,
-		isExcluded: prefixLength === 2,
-	};
-}
 
 /** Wrap pasted text in `<attachment>` tags so the model treats it as one quoted block. */
 function wrapPasteInAttachmentBlock(content: string): string {
@@ -555,12 +517,6 @@ export class InputController {
 				this.ctx.editor.setText("");
 				this.ctx.isBashMode = false;
 				this.ctx.updateEditorBorderColor();
-			} else if (this.ctx.session.isEvalRunning) {
-				this.ctx.session.abortEval();
-			} else if (this.ctx.isPythonMode) {
-				this.ctx.editor.setText("");
-				this.ctx.isPythonMode = false;
-				this.ctx.updateEditorBorderColor();
 			} else if (this.ctx.session.isStreaming) {
 				this.#abortStreamingTurn();
 			} else if (this.ctx.editor.getText().trim()) {
@@ -716,11 +672,9 @@ export class InputController {
 		this.ctx.editor.onChange = (text: string) => {
 			this.#draftText = text;
 			const wasBashMode = this.ctx.isBashMode;
-			const wasPythonMode = this.ctx.isPythonMode;
 			const trimmed = text.trimStart();
 			this.ctx.isBashMode = trimmed.startsWith("!");
-			this.ctx.isPythonMode = parsePythonCommandInput(trimmed) !== undefined;
-			if (wasBashMode !== this.ctx.isBashMode || wasPythonMode !== this.ctx.isPythonMode) {
+			if (wasBashMode !== this.ctx.isBashMode) {
 				this.ctx.updateEditorBorderColor();
 			}
 			// Editor input repaints through the scoped fast path (only the editor
@@ -937,7 +891,7 @@ export class InputController {
 			if ((!isSettingsInitialized() || cfgEmojiAutocomplete.get(settings)) && text) text = expandEmoticons(text);
 
 			// Focused subagent session: the editor is a plain chat box for it.
-			// Everything below (slash/bash/python, loop,
+			// Everything below (slash/bash, loop,
 			// compaction queueing) is main-session-only.
 			if (this.ctx.focusedAgentId) {
 				await this.#submitToFocusedSession(text, "steer");
@@ -1069,7 +1023,7 @@ export class InputController {
 
 			// Handle skill commands (/skill:name [args]). Enter ⇒ steer (matches the
 			// free-text Enter semantics below); Ctrl+Enter routes through `handleFollowUp`.
-			// During compaction, queue immediately so bash/python/loop-mode branches do
+			// During compaction, queue immediately so bash/loop-mode branches do
 			// not consume the skill before the compaction-resume path re-parses it.
 			if (text && isKnownSkillCommand(this.ctx, text)) {
 				// Capture here too: this branch's own early returns below would
@@ -1113,33 +1067,12 @@ export class InputController {
 				}
 			}
 
-			// Handle python command (`$ <code>` for normal, `$$ <code>` for excluded from context).
-			// Shell-style variables such as `$HOME` are normal prose unless a space follows the sigil.
-			const pythonCommand = parsePythonCommandInput(text);
-			if (pythonCommand) {
-				const { code, isExcluded } = pythonCommand;
-				if (code) {
-					if (this.ctx.session.isEvalRunning) {
-						this.ctx.showWarning(
-							`A Python execution is already running. Press ${appKey(this.ctx.keybindings, "app.interrupt")} to cancel it first.`,
-						);
-						this.ctx.editor.setText(text);
-						return;
-					}
-					this.ctx.editor.addToHistory(text);
-					await this.ctx.handlePythonCommand(code, isExcluded);
-					this.ctx.isPythonMode = false;
-					this.ctx.updateEditorBorderColor();
-					return;
-				}
-			}
-
 			// Queue input during compaction
 			if (this.ctx.session.isCompacting) {
 				const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
 				this.ctx.queueCompactionMessage(text, "steer", images);
 				// An inline `/loop` body queued here arms the loop only when it is
-				// an actual model prompt. Skill/bash/python bodies never reach this
+				// an actual model prompt. Skill/bash bodies never reach this
 				// branch, but an extension-command body would otherwise be retained
 				// as loopPrompt while the drain executes it locally — and idle
 				// submissions never arm commands.
@@ -1392,7 +1325,7 @@ export class InputController {
 				}
 			}
 		}
-		if (text && (text.startsWith("/") || text.startsWith("!") || parsePythonCommandInput(text))) {
+		if (text && (text.startsWith("/") || text.startsWith("!"))) {
 			this.ctx.showStatus(
 				`Only ${FOCUSED_VIEW_COMMAND_LIST} run here; other commands run in the main session — press ${formatDoubleTap("left")} to return first`,
 			);

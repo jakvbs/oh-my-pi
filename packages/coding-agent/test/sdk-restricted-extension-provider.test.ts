@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
-import { $ } from "bun";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -146,7 +145,6 @@ describe("restricted sessions sharing extension providers", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 			rules: [],
 			preloadedCustomToolPaths: [],
 			toolNames: ["read"],
@@ -330,5 +328,4 @@ describe("restricted sessions sharing extension providers", () => {
 			await parent.dispose();
 		}
 	});
-
 });

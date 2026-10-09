@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { consoleAttached, shouldDetachKernel, shouldHideKernelWindow } from "../../src/eval/py/spawn-options";
+import { consoleAttached, shouldDetachKernel, shouldHideKernelWindow } from "../../src/utils/spawn-options";
 
 describe("shouldDetachKernel", () => {
 	it("starts POSIX kernels in a new session", () => {

@@ -123,7 +123,6 @@ function createStubInputControllerContext(opts: {
 		goalModeEnabled: false,
 		updatePendingMessagesDisplay,
 		isBashMode: false,
-		isPythonMode: false,
 		loopModeEnabled: opts.loopModeEnabled ?? false,
 		setLoopPrompt,
 		armLoopAutoSubmit,

@@ -190,36 +190,6 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 		expect(session?.getActiveToolNames()).toContain("write");
 	});
 
-	it("keeps write on the direct surface when plan mode starts under Code Mode", async () => {
-		// Plan approval is a top-level `write` to `xd://propose`. Code Mode demotes
-		// every non-direct tool behind `eval`, and the partition only keeps `write`
-		// direct while a transport needs it — so plan mode state must be visible
-		// before the entry partition runs, or approval strands inside an eval result.
-		const evalTool = { ...makeTool("eval"), supportsCodeModeTransport: () => true };
-		const created = createHarness(
-			Settings.isolated({
-				"plan.defaultOnStartup": true,
-				"compaction.enabled": false,
-				"providers.openai-codex.codeMode": "auto",
-			}),
-			{
-				extraRegistryTools: [makeTool("write"), evalTool],
-				builtInToolNames: ["read", "write"],
-				initialActiveTools: [evalTool],
-				initialModel: { provider: "openai-codex", id: "gpt-5.6-sol" },
-			},
-		);
-
-		await created.init({ suppressWelcomeIntro: true });
-
-		expect(created.planModeEnabled).toBe(true);
-		expect(session?.getActiveToolNames()).toContain("write");
-		// The eval tool advertises the bridge from this set, so a direct `write`
-		// must never appear as `tool.write()`.
-		expect(session?.getCodeModeDirectToolNames()).toContain("write");
-		expect(session?.getActiveToolNames()).toContain("eval");
-	});
-
 	it("does not activate an extension-shadowed write tool in plan mode", async () => {
 		const shadowWriteTool = makeTool("write");
 		const created = createHarness(Settings.isolated({ "plan.defaultOnStartup": true, "compaction.enabled": false }), {

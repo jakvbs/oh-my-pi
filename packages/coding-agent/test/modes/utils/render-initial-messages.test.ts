@@ -375,33 +375,6 @@ describe("UiHelpers.renderInitialMessages — responsiveness", () => {
 });
 
 describe("UiHelpers.renderInitialMessages — image replay", () => {
-	it("restores eval display image blocks onto rebuilt tool output", async () => {
-		await Settings.init({ inMemory: true, overrides: { "terminal.showImages": true } });
-		setTerminalImageProtocol(ImageProtocol.Sixel);
-		const transcript = transcriptWith([
-			assistantToolCall("eval-image", "eval", { language: "py", code: "display(image)" }),
-			{
-				role: "toolResult",
-				toolCallId: "eval-image",
-				toolName: "eval",
-				content: [{ type: "text", text: "(displayed 1 image; no text output)" }, pngImage],
-				details: {
-					language: "python",
-					cells: [{ index: 0, code: "display(image)", output: "display image 1: 1x1", status: "complete" }],
-				},
-				isError: false,
-				timestamp: 2,
-			},
-		]);
-
-		const { ctx, chatContainer } = makeRenderCtx(transcript);
-
-		await new UiHelpers(ctx).renderInitialMessages();
-
-		expect(hasImageComponent(chatContainer)).toBe(true);
-		expect(Bun.stripANSI(chatContainer.render(100).join("\n"))).toContain("display image 1: 1x1");
-	});
-
 	it("restores manual Bash image blocks from persisted message content", async () => {
 		await Settings.init({ inMemory: true, overrides: { "terminal.showImages": true } });
 		setTerminalImageProtocol(ImageProtocol.Sixel);

@@ -50,7 +50,6 @@ import { AsyncJobError, type AsyncJobManager } from "../async";
 import { hasResolvableTranscript } from "../internal-urls/registry-helpers";
 import { AgentRegistry } from "../registry/agent-registry";
 import { type DiscoveryResult, discoverAgents } from "./discovery";
-import { createEvalCustomTools, describeEvalTools, evalToolsEnabled } from "./eval-tools";
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimitAllSettled, Semaphore } from "./parallel";
@@ -141,7 +140,6 @@ interface TaskDescriptionOptions {
 	disabledAgents: string[];
 	batchEnabled: boolean;
 	effortEnabled: boolean;
-	evalToolsEnabled: boolean;
 	asyncEnabled: boolean;
 	ircEnabled: boolean;
 }
@@ -162,7 +160,6 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		applyIsolatedChanges: options.applyIsolatedChanges,
 		batchEnabled: options.batchEnabled,
 		effortEnabled: options.effortEnabled,
-		evalToolsEnabled: options.evalToolsEnabled,
 		asyncEnabled: options.asyncEnabled,
 		hasModelMentions: options.sessionAgents.length > 0,
 		ircEnabled: options.ircEnabled,
@@ -584,7 +581,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			isolationEnabled,
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
-			evalToolsEnabled: evalToolsEnabled(this.session),
 		});
 	}
 
@@ -607,7 +603,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			disabledAgents,
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
-			evalToolsEnabled: evalToolsEnabled(this.session),
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			ircEnabled: true,
 		});
@@ -758,19 +753,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			return createTaskModeError(plan);
 		}
 		const { params, items: spawnItems, spawns: normalizedSpawnParams } = plan;
-		const evalToolNames = spawnItems.flatMap(item => item.tools ?? []);
-		if (evalToolNames.length > 0) {
-			if (this.session.getPlanModeState?.()?.enabled === true) {
-				return createTaskModeError("Task execution failed: Eval-defined tools are unavailable in plan mode.");
-			}
-			try {
-				await describeEvalTools(this.session, evalToolNames, signal);
-			} catch (error) {
-				return createTaskModeError(
-					`Task execution failed: ${error instanceof Error ? error.message : String(error)}`,
-				);
-			}
-		}
 		// Resolve every item before choosing an execution path. No executor or
 		// job manager may observe a batch unless every effective policy is valid.
 		const preflights = await Promise.all(
@@ -1364,14 +1346,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
 				...(params.effort !== undefined ? { effort: params.effort } : {}),
 				solutionSpace: params.solutionSpace,
-				...(params.tools?.length
-					? {
-							customTools: createEvalCustomTools(
-								this.session,
-								await describeEvalTools(this.session, params.tools, signal),
-							),
-						}
-					: {}),
 				// `name` is the spawn handle: keep it for id allocation when this
 				// path did not pre-reserve one. Do not treat it as a HUD description.
 				identity: { id: preAllocatedId, label: params.name },

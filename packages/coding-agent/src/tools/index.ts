@@ -5,11 +5,9 @@ import { logger } from "@oh-my-pi/pi-utils";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { Rule } from "../capability/rule";
 import type { EffectiveExtensionRoots } from "../capability/types";
-import type { EvalPreludeDefinition } from "../eval/preludes";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import { EditTool } from "../edit";
-import { checkPythonKernelAvailability } from "../eval/py/kernel";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type {
 	BeforeSubagentSpawnEvent,
@@ -52,8 +50,6 @@ import { type CheckpointState, CheckpointTool, type CompletedRewindState, Rewind
 import { ContextNotesTool, NewContextTool } from "./context-notes";
 import { DebugTool } from "./debug";
 import { cfgIdaAvailable } from "../ida/install";
-import { EvalTool } from "./eval";
-import { resolveEvalBackends } from "./eval-backends";
 import { GithubTool } from "./gh";
 import { GlobTool } from "./glob";
 import { GrepTool } from "./grep";
@@ -94,7 +90,6 @@ import {
 import { cfgAutolearnEnabled } from "../autolearn/settings";
 import { cfgBashEnabled } from "../exec/settings";
 import { cfgCompactionExperimentalContextManagement } from "../session/context-settings";
-import { cfgPythonInterpreter } from "../eval/settings";
 import { cfgExternalThinking } from "../session/settings";
 import { cfgGoalEnabled } from "../goals/settings";
 import { cfgLspEnabled } from "../lsp/settings";
@@ -121,8 +116,6 @@ export * from "./context-notes";
 export * from "./debug";
 export * from "./ida";
 export * from "./essential-tools";
-export * from "./eval";
-export * from "./eval-backends";
 export * from "./file-write-fallback";
 export * from "./gh";
 export * from "./glob";
@@ -221,8 +214,6 @@ export interface ToolSession {
 	getApiKey?: AgentOptions["getApiKey"];
 	/** Current session whose stored credential affinities should seed a child session. */
 	getCredentialSourceSessionId?: () => string | undefined;
-	/** Skip subprocess-kernel availability checks and warmup */
-	skipPythonPreflight?: boolean;
 	/** Pre-loaded context files (AGENTS.md, etc) */
 	contextFiles?: ContextFileEntry[];
 	/** Pre-loaded workspace tree (forwarded to subagents to skip re-scanning) */
@@ -312,8 +303,6 @@ export interface ToolSession {
 	restrictToolNames?: boolean;
 	/** Whether this session is a subagent rather than the spawning root. */
 	isSubagent?: boolean;
-	/** Get this agent's eval executor session ID; keys its retained JS/Python/Ruby/Julia state. */
-	getEvalSessionId?: () => string | null;
 	/** Get session file */
 	getSessionFile: () => string | null;
 	/**
@@ -322,20 +311,6 @@ export interface ToolSession {
 	 */
 	sessionManager?: Pick<SessionManager, "appendCustomEntry" | "ensureOnDisk" | "flush" | "getBranch" | "getEntries"> &
 		Partial<Pick<SessionManager, "getSessionId" | "getLeafId" | "appendModelUsage">>;
-	/** Get eval kernel owner ID for session-scoped retained-kernel cleanup. */
-	getEvalKernelOwnerId?: () => string | null;
-	/** Current enabled eval prelude definitions. */
-	getEvalPreludes?: () => readonly EvalPreludeDefinition[];
-	/**
-	 * Eval preludes frozen into the system prompt and eval description at the
-	 * last base rebuild. Mid-session toggles ride a hidden notice instead of
-	 * rewriting the provider cache prefix.
-	 */
-	getAdvertisedEvalPreludes?: () => readonly EvalPreludeDefinition[];
-	/** Reject new eval work once session disposal has started. */
-	assertEvalExecutionAllowed?: () => void;
-	/** Track tool-owned eval work so session disposal can await/abort it like direct session eval runs. */
-	trackEvalExecution?<T>(execution: Promise<T>, abortController: AbortController): Promise<T>;
 	/** Get tool-state session ID (distinct from the owning session for advisors). */
 	getSessionId?: () => string | null;
 	/** Get Hindsight runtime state for this agent session. */
@@ -344,16 +319,10 @@ export interface ToolSession {
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
 	getAgentId?: () => string | null;
-	/** Look up a registered tool by name (used by the eval js backend's tool bridge). */
+	/** Look up a registered tool by name. */
 	getToolByName?: (name: string) => AgentTool | undefined;
-	/** Look up an enabled tool through the eval bridge's normal permission pipeline. */
-	getToolForEvalBridge?: (name: string) => AgentTool | undefined;
-	/** Current session context for eval-bridged tool execution. */
+	/** Current session context for tool execution. */
 	getToolContext?: () => AgentToolContext | undefined;
-	/** Names currently authorized for invocation through the eval bridge. */
-	getEvalBridgeToolNames?: () => readonly string[];
-	/** Direct partition of the active Code Mode surface; undefined when Code Mode is inactive. */
-	getCodeModeDirectToolNames?: () => readonly string[] | undefined;
 	/** Return whether a built-in tool is active in this turn's tool set. */
 	isToolActive?: (name: string) => boolean;
 	/** Update the active built-in tool predicate when a session changes tools mid-run. */
@@ -436,7 +405,7 @@ export interface ToolSession {
 	asyncJobManager?: AsyncJobManager;
 	/** MCP manager visible to subagents without relying on the process-global singleton. */
 	mcpManager?: MCPManager;
-	/** Local protocol root to propagate to nested subagents and eval-created agents. */
+	/** Local protocol root to propagate to nested subagents. */
 	localProtocolOptions?: LocalProtocolOptions;
 	/** Settings instance for passing to subagents */
 	settings: Settings;
@@ -450,9 +419,9 @@ export interface ToolSession {
 	getGoalRuntime?: () => GoalRuntime | undefined;
 	/** Get cumulative session usage statistics (input/output tokens, cost). */
 	getUsageStatistics?: () => UsageStatistics;
-	/** Current per-turn token budget {total, spent, hard} for the eval `budget` helper. */
+	/** Current per-turn token budget {total, spent, hard}. */
 	getTurnBudget?: () => { total: number | null; spent: number; hard: boolean };
-	/** Record output tokens consumed by an eval-spawned subagent toward the current turn budget. */
+	/** Record output tokens consumed by a spawned subagent toward the current turn budget. */
 	recordEvalSubagentUsage?: (output: number) => void;
 	/** Bridge to the connected client (e.g. ACP editor host). Tools should route fs/terminal/permission requests through this when available. */
 	getClientBridge?: () => ClientBridge | undefined;
@@ -462,7 +431,7 @@ export interface ToolSession {
 	setTodoPhases?: (phases: TodoPhase[]) => void;
 	/**
 	 * Record todo phases on the session branch. Direct `todo` calls persist via
-	 * their toolResult entry; callers that produce none (the eval bridge) use this
+	 * their toolResult entry; callers that produce none (the Cursor bridge) use this
 	 * so branch rehydration agrees with the in-memory list.
 	 */
 	persistTodoPhases?: (phases: TodoPhase[]) => void;
@@ -558,7 +527,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	ask: AskTool.createIf,
 	debug: DebugTool.createIf,
 	ida: IdaTool.createIf,
-	eval: s => new EvalTool(s),
 	github: GithubTool.createIf,
 	glob: s => new GlobTool(s, { rootPathAlias: true }),
 	grep: s => new GrepTool(s),
@@ -629,35 +597,6 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 	if (goalModeActive && requestedTools && !requestedTools.includes("goal")) {
 		requestedTools.push("goal");
 	}
-	const backends = resolveEvalBackends(session);
-	const allowPython = backends.python;
-	const allowJs = backends.js;
-	const skipEvalPreflight = session.skipPythonPreflight === true;
-	// Eval tool is enabled if ANY backend is reachable. JS needs no preflight, so
-	// we only probe Python when JS is disabled — otherwise allowEval is
-	// already true and per-backend availability is checked at first invocation.
-	let pythonAvailable = true;
-	const evalRequested = requestedTools === undefined || requestedTools.includes("eval");
-	if (!skipEvalPreflight && !allowJs && evalRequested) {
-		if (allowPython) {
-			const availability = await logger.time(
-				"createTools:pythonCheck",
-				checkPythonKernelAvailability,
-				session.cwd,
-				cfgPythonInterpreter.get(session.settings)?.trim() || undefined,
-			);
-			pythonAvailable = availability.ok;
-			if (!availability.ok) {
-				logger.warn("Python kernel unavailable and JS backend disabled", { reason: availability.reason });
-			}
-		}
-	}
-
-	const effectivePythonAllowed = allowPython && pythonAvailable;
-	// Eval is exposed whenever any backend is reachable. A backend may be
-	// unreachable, in which case eval dispatches exclusively to the others.
-	const allowEval = effectivePythonAllowed || allowJs;
-
 	// Checkpoint and rewind are a pair: listing one without the other strands
 	// the agent (it can checkpoint but not rewind, or vice versa). Auto-include
 	// the sister tool so a one-sided frontmatter `tools:` entry still works.
@@ -738,7 +677,6 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		if (name === "lsp") return enableLsp && cfgLspEnabled.get(session.settings);
 		if (name === "bash") return cfgBashEnabled.get(session.settings);
-		if (name === "eval") return allowEval;
 		if (name === "debug") return cfgDebugEnabled.get(session.settings);
 		if (name === "ida") return cfgIdaAvailable.get(session.settings);
 		if (name === "todo")

@@ -60,7 +60,7 @@ modelRoles:
   review: openai/gpt-5.4:high
 ```
 
-`@review` resolves through `modelRoles.review`. Each `modelRoles.<role>` value stores a concrete model selector and may append a thinking suffix such as `:high` (`src/config/model-resolver.ts`). Changing that mapping affects subsequent task resolutions without editing agent definitions. Task/eval preflight reloads the current global, project, and explicit overlay settings before rediscovering agents, so agent modules and their role aliases added during a live session resolve from one refreshed configuration state. Discovery re-imports a module whose mtime changed.
+`@review` resolves through `modelRoles.review`. Each `modelRoles.<role>` value stores a concrete model selector and may append a thinking suffix such as `:high` (`src/config/model-resolver.ts`). Changing that mapping affects subsequent task resolutions without editing agent definitions. Task preflight reloads the current global, project, and explicit overlay settings before rediscovering agents, so agent modules and their role aliases added during a live session resolve from one refreshed configuration state. Discovery re-imports a module whose mtime changed.
 
 With the default batched task schema, supply shared `context` and per-item `task` and `solutionSpace`. `solutionSpace` describes how open-ended the assignment is, rather than its size. Every item names its `agent`; an omitted `agent` fails with the list of available agents:
 
@@ -83,9 +83,9 @@ With the default batched task schema, supply shared `context` and per-item `task
 
 Type `^` in the composer to choose a model from the same scope and ranking as the `Alt+P` session picker. Accepting a completion inserts an atomic chip showing its display name. For example, type `Have ^`, pick a model, then finish with `review this change`.
 
-On submit, each first-mentioned model receives a branch-local pseudonym (`m1`, `m2`, …). The user message carries `<model agent="m1" name="Display Name"/>`; the task description lists its provider/model selector. `task`, eval `agent()`, and `workpool()` accept that pseudonym as their `agent`. These agents run with no agent-specific system prompt and are intended only for requests explicitly naming the tagged model.
+On submit, each first-mentioned model receives a branch-local pseudonym (`m1`, `m2`, …). The user message carries `<model agent="m1" name="Display Name"/>`; the task description lists its provider/model selector. `task` accepts that pseudonym as its `agent`. These agents run with no agent-specific system prompt and are intended only for requests explicitly naming the tagged model.
 
-Tagging a model never rewrites the model-facing `task` description mid-session: the description lists the pseudonyms baked into the current base prompt, and later tags arrive as a hidden `session-agents` system notice on the next user turn. The notice rides the same channel as the eval-prelude and tool-roster deltas, so the provider cache prefix stays byte-stable. The next base-prompt rebuild absorbs the live set into the description.
+Tagging a model never rewrites the model-facing `task` description mid-session: the description lists the pseudonyms baked into the current base prompt, and later tags arrive as a hidden `session-agents` system notice on the next user turn. The notice rides the same channel as the tool-roster deltas, so the provider cache prefix stays byte-stable. The next base-prompt rebuild absorbs the live set into the description.
 
 Pseudonyms survive `/resume`; rewinding before a model's first mention frees its number. Repeating a selector reuses its pseudonym. Unknown selectors remain literal, as do mentions in `!`/`$` local-execution drafts. Tokens require whitespace boundaries: autocomplete adds the trailing space. When two models share a display name in one draft, the second remains a literal selector to avoid ambiguous expansion.
 
@@ -136,7 +136,7 @@ Lookup is exact-name linear search:
 - `getAgent(agents, name)` => `agents.find(a => a.name === name)`
 - every launch requires an explicit `agent`; missing names fail preflight with the available agents
 
-`resolveEffectiveSubagentPolicy()` is shared by task and eval-backed subagent launches. Before allocating artifacts it:
+`resolveEffectiveSubagentPolicy()` resolves every task subagent launch. Before allocating artifacts it:
 
 1. atomically reloads the live session's persisted global, project, and explicit overlay settings while preserving runtime overrides
 2. trims the explicit agent name
@@ -159,7 +159,7 @@ For task dispatch, model precedence is:
 2. the agent's prioritized `model` list
 3. the parent's active model, then its configured/default model fallback
 
-Role aliases in either of the first two sources are expanded through `modelRoles`. The shared eval bridge can also supply an invocation-local model override ahead of the settings override; the task wire schema does not expose that field.
+Role aliases in either of the first two sources are expanded through `modelRoles`.
 
 After policy resolution, the `before_subagent_spawn` extension hook runs once for the actual dispatch. It can block the spawn or replace the resolved model patterns; a routing note is carried into progress metadata.
 
@@ -179,8 +179,8 @@ extension-registered models — and populates only that model's provider family 
 supports the value, so same-family retry fallbacks retain the tier and cross-family fallbacks never
 inherit it. The resolved map is persisted with the child's session, even when it is empty, so a
 parked agent revived after a restart keeps its per-agent tier instead of re-deriving
-`tier.subagent`. The entry is looked up by task/eval dispatch only. Service tiers are configuration-only; agent modules and
-the task/eval wire formats do not expose a tier field or automatic Fast policy.
+`tier.subagent`. The entry is looked up by task dispatch only. Service tiers are configuration-only; agent modules and
+the task wire format does not expose a tier field or automatic Fast policy.
 
 Account selection is independent of model and service-tier selection: an exact, case-sensitive
 `task.agentAccountPools[agentName]` entry maps provider ids to OAuth identity keys (the `identityKey`
@@ -236,7 +236,7 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 Only the root session (`isSubagent: false`) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Persisted legacy `spawns` metadata is ignored. Cold revival always marks the session as a subagent, including historical nested transcripts.
 
-For an explicit agent tool list, the legacy `exec` entry expands to `bash` plus `eval` when an eval backend is available. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
+For an explicit agent tool list, the legacy `exec` entry expands to `bash`. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
 
 ## Plan mode behavior
 
@@ -246,4 +246,4 @@ When parent plan mode is enabled, `resolveEffectiveSubagentPolicy()` builds an `
 - restricts tools to `read`, `grep`, `glob`, and `web_search`, plus `ast_grep` when the agent's own tool list declares it
 - clears `prewalk` (read-only exploration must not receive the prewalk plan/implement nudges)
 
-Plan mode also rejects eval-defined tools and per-spawn isolation, apply, and merge controls. The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.
+Plan mode also rejects per-spawn isolation, apply, and merge controls. The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.

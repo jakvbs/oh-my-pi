@@ -98,8 +98,6 @@ import type {
 	ToolResultEventResult,
 	UserBashEvent,
 	UserBashEventResult,
-	UserPythonEvent,
-	UserPythonEventResult,
 } from "./types";
 
 import { cfgExtensionHandlersToolCallTimeoutMs } from "../settings";
@@ -1868,14 +1866,7 @@ export class ExtensionRunner {
 		return this.emitUserEvent<UserBashEventResult>(event, "user_bash");
 	}
 
-	async emitUserPython(event: UserPythonEvent): Promise<UserPythonEventResult | undefined> {
-		return this.emitUserEvent<UserPythonEventResult>(event, "user_python");
-	}
-
-	private async emitUserEvent<R>(
-		event: UserBashEvent | UserPythonEvent,
-		eventName: "user_bash" | "user_python",
-	): Promise<R | undefined> {
+	private async emitUserEvent<R>(event: UserBashEvent, eventName: "user_bash"): Promise<R | undefined> {
 		const ctx = this.createContext();
 
 		for (const ext of this.extensions) {

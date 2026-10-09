@@ -539,26 +539,6 @@ describe("system prompt tool inventory", () => {
 		expect(await renderDelegation("gated", true)).toEqual([0, 0]);
 	});
 
-	it("appends each advertised prelude's guidance as its own block", async () => {
-		const { systemPrompt } = await buildSystemPrompt({
-			cwd: tempDir,
-			contextFiles: [],
-			skills: [],
-			rules: [],
-			toolNames: ["read"],
-			tools: new Map(TOOLS),
-			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-			nativeTools: true,
-			inlineToolDescriptors: false,
-			evalPreludes: [{ name: "browser" }, { name: "computer", guidance: "COMPUTER-GUIDANCE" }],
-		});
-		expect(systemPrompt[1]).toBe("COMPUTER-GUIDANCE");
-		expect(systemPrompt.filter(block => block.includes("COMPUTER-GUIDANCE"))).toHaveLength(1);
-		// Prelude names still drive the verification bullets.
-		expect(systemPrompt[0]).toContain("Native desktop: JS/Python eval `computer` helpers");
-		expect(systemPrompt[0]).not.toContain("No runtime for changed surface");
-	});
-
 	it("renders the functions namespace (not a name list) when tools are not native", async () => {
 		const text = await render({ nativeTools: false, inlineToolDescriptors: false });
 		expect(text).toContain("namespace functions {");
@@ -599,34 +579,6 @@ describe("system prompt tool inventory", () => {
 		if (!nativeTools) expect(inventory).toContain(DIRECT_WEB_SEARCH.description);
 	});
 
-	it("keeps Eval preludes out of the inventory while their guidance ships", async () => {
-		const tools = new Map(TOOLS);
-		tools.set("eval", {
-			label: "Eval",
-			description: "Runs code cells.",
-			parameters: { type: "object", properties: {} },
-		});
-		const { systemPrompt } = await buildSystemPrompt({
-			cwd: tempDir,
-			contextFiles: [],
-			skills: [],
-			rules: [],
-			toolNames: ["eval", "read"],
-			directToolNames: ["eval"],
-			tools,
-			evalPreludes: [{ name: "computer", guidance: "COMPUTER-GUIDANCE" }],
-			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-			nativeTools: true,
-			inlineToolDescriptors: true,
-		});
-		const text = systemPrompt.join("\n\n");
-		// Only the direct keep-set renders as provider-callable functions.
-		expect(text).toContain("Runs code cells.");
-		expect(text).not.toContain("Reads files from disk.");
-		// Guidance still ships for enabled Eval preludes.
-		expect(text).toContain("COMPUTER-GUIDANCE");
-	});
-
 	it("uses a conservative fallback inventory when no tools map is provided", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			cwd: tempDir,
@@ -642,37 +594,6 @@ describe("system prompt tool inventory", () => {
 		expect(inventory).not.toContain("- `browser`");
 		expect(inventory).not.toContain("- `task`");
 		expect(inventory).not.toContain("- `eval`");
-	});
-
-	it("omits eval prompt guidance when every eval backend is disabled", async () => {
-		const settings = Settings.isolated({
-			"eval.py": false,
-			"eval.js": false,
-		});
-		const session = makeToolSession(settings);
-		const tools = await createTools(session, ["bash", "eval"]);
-		const toolNames = tools.map(tool => tool.name);
-		const bash = tools.find(tool => tool.name === "bash");
-
-		expect(toolNames).toContain("bash");
-		expect(toolNames).not.toContain("eval");
-		expect(bash?.description).not.toContain("`eval`");
-
-		const { systemPrompt } = await buildSystemPrompt({
-			cwd: tempDir,
-			contextFiles: [],
-			skills: [],
-			rules: [],
-			toolNames,
-			tools: buildSystemPromptToolMetadata(new Map(tools.map(tool => [tool.name, tool]))),
-			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-			nativeTools: true,
-			inlineToolDescriptors: true,
-		});
-		const text = systemPrompt.join("\n\n");
-
-		expect(text).not.toContain("Default for any compute");
-		expect(text).not.toContain("use `eval` cells");
 	});
 
 	it("SDK wrapper renders provided tools instead of the fallback inventory", async () => {

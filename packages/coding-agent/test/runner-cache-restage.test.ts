@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { stageRunnerScript } from "../src/eval/runner-cache";
+import { stageRunnerScript } from "../src/utils/runner-cache";
 
 // stageRunnerScript memoizes the staged path per cache directory, but the warm
 // path must re-validate with fs.existsSync so a tmpdir sweep (macOS periodic

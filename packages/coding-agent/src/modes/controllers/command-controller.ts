@@ -41,7 +41,6 @@ import { memoryStatsUnavailableMessage, resolveMemoryBackend } from "../../memor
 import { BashExecutionComponent, bashPtyViewport } from "@oh-my-pi/pi-tui/chat/bash-execution";
 import { appKey } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { BorderedLoader } from "@oh-my-pi/pi-tui/overlays/bordered-loader";
-import { EvalExecutionComponent } from "@oh-my-pi/pi-tui/chat/eval-execution";
 import { MoveOverlay, type MoveOverlayResult } from "@oh-my-pi/pi-tui/overlays/move-overlay";
 import { moveDirectorySource } from "../move-directory-source";
 import { getMarkdownTheme, getSymbolTheme, theme, type Theme } from "@oh-my-pi/pi-tui/theme";
@@ -1691,48 +1690,6 @@ export class CommandController {
 		if (!isDirectory) return false;
 
 		return this.#relocateSession(resolvedPath);
-	}
-
-	async handlePythonCommand(code: string, excludeFromContext = false): Promise<void> {
-		const isDeferred = this.ctx.session.isStreaming;
-		this.ctx.pythonComponent = new EvalExecutionComponent(code, this.ctx.ui, excludeFromContext);
-
-		if (isDeferred) {
-			this.ctx.pendingMessagesContainer.addChild(this.ctx.pythonComponent);
-			this.ctx.pendingPythonComponents.push(this.ctx.pythonComponent);
-		} else {
-			this.ctx.present(this.ctx.pythonComponent);
-		}
-		this.ctx.ui.requestRender();
-
-		try {
-			const result = await this.ctx.session.executePython(
-				code,
-				chunk => {
-					if (this.ctx.pythonComponent) {
-						this.ctx.pythonComponent.appendOutput(chunk);
-					}
-				},
-				{ excludeFromContext },
-			);
-
-			if (this.ctx.pythonComponent) {
-				const meta = outputMeta().truncationFromSummary(result, { direction: "tail" }).get();
-				this.ctx.pythonComponent.setComplete(result.exitCode, result.cancelled, {
-					output: result.output,
-					truncation: meta?.truncation,
-					artifactError: meta?.artifactError,
-				});
-			}
-		} catch (error) {
-			if (this.ctx.pythonComponent) {
-				this.ctx.pythonComponent.setComplete(undefined, false);
-			}
-			this.ctx.showError(`Python execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-		}
-
-		this.ctx.pythonComponent = undefined;
-		this.ctx.ui.requestRender();
 	}
 
 	async handleCompactCommand(
