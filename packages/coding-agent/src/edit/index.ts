@@ -24,6 +24,7 @@ import {
 	type EditWriteRequest,
 	type EditWriteResponse,
 } from "@oh-my-pi/pi-natives";
+import { type } from "@oh-my-pi/omptype";
 import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
 import { extractUriScheme, InternalUrlRouter, type ResolveContext, sessionResolveContext } from "../internal-urls";
 import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCallback, writethroughNoop } from "../lsp";
@@ -46,6 +47,7 @@ import {
 	invalidateFsScanAfterWrite,
 } from "../tools/fs-cache-invalidation";
 import { outputMeta } from "../tools/output-meta";
+import { resolveToCwd } from "../tools/path-utils";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { type EditMode } from "@oh-my-pi/pi-tui/tools/edit";
 import { resolveEditMode } from "../utils/edit-mode";
@@ -96,6 +98,38 @@ type TInput =
 	| typeof sloppyEditSchema;
 
 type EditParams = ReplaceParams | ReplaceBatchParams | PatchParams | HashlineParams | ApplyPatchParams | SloppyParams;
+
+/**
+ * Applies the optional `cwd` of the replace and patch modes before anything reads the paths:
+ * relative `path` (and patch `rename`) become absolute and `cwd` is dropped, so the native
+ * session, approval tiers and the plan sandbox all judge the resolved target. `cwd` only
+ * rebases relative paths; it never widens what may be written. Arguments without `cwd` are
+ * returned unchanged (same object) so streamed-args comparison keeps reusing the session.
+ */
+function applyEditCwd(params: EditParams, sessionCwd: string): EditParams {
+	if (!("cwd" in params) || params.cwd === undefined) return params;
+	const base = resolveToCwd(params.cwd, sessionCwd);
+	const rebase = (target: string) => (extractUriScheme(target) === undefined ? resolveToCwd(target, base) : target);
+	const { cwd: _cwd, ...rest } = params;
+	if ("edits" in rest) {
+		return {
+			...rest,
+			path: rebase(rest.path),
+			edits: rest.edits.map(entry =>
+				entry.rename === undefined ? entry : { ...entry, rename: rebase(entry.rename) },
+			),
+		};
+	}
+	return { ...rest, path: rebase(rest.path) };
+}
+
+/** Streamed or hook-supplied arguments are unchecked; only a valid replace/patch payload carries a usable `cwd`. */
+function applyEditCwdToArgs(mode: EditMode, args: unknown, sessionCwd: string): unknown {
+	const schema = mode === "replace" ? replaceEditSchema : mode === "patch" ? patchEditSchema : undefined;
+	if (schema === undefined) return args;
+	const params = schema(args);
+	return params instanceof type.errors ? args : applyEditCwd(params, sessionCwd);
+}
 
 const PATCH_EXAMPLES = [
 	{
@@ -458,11 +492,13 @@ export class EditTool implements AgentTool<TInput> {
 
 	async execute(
 		toolCallId: string,
-		params: EditParams,
+		rawParams: EditParams,
 		signal?: AbortSignal,
 		_onUpdate?: AgentToolUpdateCallback<EditToolDetails, TInput>,
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<EditToolDetails, TInput>> {
+		// A rebased payload differs from the streamed one, so the session below is reopened from it.
+		const params = applyEditCwd(rawParams, this.session.cwd);
 		let open = this.#sessions.get(toolCallId);
 		const argsJson = JSON.stringify(params);
 		if (open && this.#streamedArgs.get(toolCallId) !== argsJson) {
@@ -564,7 +600,10 @@ export class EditTool implements AgentTool<TInput> {
 		if (cached?.mode === this.mode) return cached.inspection;
 		let inspection: EditInspection;
 		try {
-			inspection = editInspect(this.mode, JSON.stringify(args ?? {}));
+			inspection = editInspect(
+				this.mode,
+				JSON.stringify(applyEditCwdToArgs(this.mode, args ?? {}, this.session.cwd)),
+			);
 		} catch {
 			inspection = { paths: [], entries: [], fileOps: [] };
 		}

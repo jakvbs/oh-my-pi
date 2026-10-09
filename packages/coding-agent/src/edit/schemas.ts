@@ -1,10 +1,15 @@
 import { type } from "@oh-my-pi/omptype";
 
+/** Shared by the JSON edit modes whose target is the top-level `path` (and patch `rename`). */
+export const EDIT_CWD_DESCRIPTION =
+	"Base directory for a relative path (and patch rename), e.g. a worktree outside the session cwd; default: session cwd";
+
 export const replaceEditSchema = type({
 	path: "string",
 	old_string: "string",
 	new_string: "string",
 	"replace_all?": "boolean",
+	"cwd?": type("string").describe(EDIT_CWD_DESCRIPTION),
 });
 
 export type ReplaceParams = typeof replaceEditSchema.infer;
@@ -26,6 +31,7 @@ export type PatchEditEntry = typeof patchEditEntrySchema.infer;
 export const patchEditSchema = type({
 	path: "string",
 	edits: patchEditEntrySchema.array(),
+	"cwd?": type("string").describe(EDIT_CWD_DESCRIPTION),
 });
 
 export type PatchParams = typeof patchEditSchema.infer;
