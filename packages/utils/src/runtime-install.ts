@@ -7,7 +7,7 @@ import { isEexist, isEnoent } from "./fs-error";
 
 /**
  * On-demand runtime dependency support for native-heavy optional packages
- * (Transformers.js, fastembed) that are never bundled into the CLI or the
+ * (Transformers.js) that are never bundled into the CLI or the
  * compiled binary. Consumers `bun install` a pinned dependency set into a
  * cache directory on first use ({@link ensureRuntimeInstalled}) and load the
  * entrypoint via `createRequire`.
@@ -15,8 +15,7 @@ import { isEexist, isEnoent } from "./fs-error";
  * Bun's compiled-binary module resolver only finds `<pkg>/index.js` for bare
  * specifiers loaded from the *real* filesystem — it ignores `main`/`exports`
  * (issue #1763). Runtime-installed graphs (`@huggingface/transformers` →
- * `onnxruntime-node` → `onnxruntime-common`, `fastembed` →
- * `@anush008/tokenizers` → platform binding) all point `main`/`exports` at
+ * `onnxruntime-node` → `onnxruntime-common`) all point `main`/`exports` at
  * nested files, so the stock resolver cannot load any of them. We patch
  * `Module._resolveFilename` to resolve those bare specifiers against the
  * registered runtime caches ourselves, honoring `main`/`exports`.
@@ -245,7 +244,7 @@ export interface RuntimeResolverOptions {
  * never passed, so relative requires from a `createRequire` require fail with
  * "Cannot find module './x' from ''". The override cannot recover what it is
  * never given. Keep this patch scoped to dedicated worker/runtime processes
- * (tiny-inference, fastembed); never install it in the main agent process,
+ * (tiny-inference); never install it in the main agent process,
  * where legacy-pi extensions rely on `createRequire` relative requires.
  */
 export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }: RuntimeResolverOptions): () => void {

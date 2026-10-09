@@ -15,8 +15,7 @@ export const cfgAutolearnEnabled = register({
 		tab: "memory",
 		group: "Auto-Learn",
 		label: "Auto-Learn (experimental)",
-		description:
-			"After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills",
+		description: "After the agent stops, nudge it to create or enhance isolated managed skills",
 	},
 });
 

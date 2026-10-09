@@ -130,7 +130,7 @@ Edits that land on the first attempt. Reads that summarize files instead of dump
 
 Originally built on [Mario Zechner](https://github.com/mariozechner)'s wonderful [Pi](https://github.com/badlogic/pi-mono), omp adds everything you're missing.
 
-### 01 · LSP wired into every write
+### 1 · LSP wired into every write
 
 Ask for a rename and you get a rename. The call goes through workspace/willRenameFiles, so re-exports, barrel files, and aliased imports update before the file moves. Everything your IDE knows, the agent knows.
 
@@ -138,7 +138,7 @@ Ask for a rename and you get a rename. The call goes through workspace/willRenam
 
 _[Read the LSP config docs](docs/lsp-config.md)_
 
-### 02 · Drives a real debugger
+### 2 · Drives a real debugger
 
 A C binary segfaults: the agent attaches lldb, steps to the bad pointer, reads the frame. A Go service hangs: it attaches dlv and walks the goroutines. A Python process is wedged: debugpy, pause, inspect, evaluate. Most agents are still sprinkling print statements.
 
@@ -146,7 +146,7 @@ A C binary segfaults: the agent attaches lldb, steps to the bad pointer, reads t
 
 _[Watch the capture ↗](https://omp.sh/clips/dap.mp4)_
 
-### 03 · Time-traveling stream rules
+### 3 · Time-traveling stream rules
 
 Your rules sit dormant until the model goes off-script. A regex match aborts the stream mid-token, injects the rule as a system reminder, and retries from the same point. You get course-correction without paying context tax on every turn. Injections survive compaction, so the fix sticks.
 
@@ -154,7 +154,7 @@ Your rules sit dormant until the model goes off-script. A regex match aborts the
 
 _[Watch the capture ↗](https://omp.sh/clips/ttsr.mp4)_
 
-### 04 · First-class subagents
+### 4 · First-class subagents
 
 Split a job across workers and get typed results back. task fans out into isolated worktrees, each worker runs its own tool surface, and the final yield is a schema-validated object the parent reads directly. No prose to parse, no merge conflicts between siblings, no orphaned edits.
 
@@ -164,7 +164,7 @@ _[Watch the capture ↗](https://omp.sh/clips/irc.mp4)_
 
 Watch the fan-out while it runs: `Alt+A` opens [Agent Hub](docs/agent-hub.md), where the roster shows current activity and usage for every subagent. Open one to read its live transcript, type a steering message, revive a parked worker, or kill a stuck one without aborting the parent session.
 
-### 05 · A second model, watching every turn.
+### 5 · A second model, watching every turn.
 
 Pair a reviewer model to the 'advisor' role and it reads every turn the main agent takes, injecting notes inline — a quiet aside, a concern, or a hard blocker. It runs on its own context and its own model, so it catches what the doer rushed past. The main agent sees the note and course-corrects, or tells you why it won't.
 
@@ -172,7 +172,7 @@ Pair a reviewer model to the 'advisor' role and it reads every turn the main age
 
 _[Watch the capture ↗](https://omp.sh/clips/advisor.mp4)_
 
-### 06 · Read a pdf on arxiv, why not?
+### 6 · Read a pdf on arxiv, why not?
 
 web_search chains twenty-three ranked providers and hands whatever URLs it finds straight to read. Arxiv PDFs, GitHub pages, Stack Overflow threads come back as structured markdown with anchors intact — the same tool surface you use on local files. Cite, follow, quote, never lose where you came from.
 
@@ -180,17 +180,17 @@ web_search chains twenty-three ranked providers and hands whatever URLs it finds
 
 _[Watch the capture ↗](https://omp.sh/clips/web.mp4)_
 
-### 07 · Unapologetically native. Even on Windows.
+### 7 · Unapologetically native. Even on Windows.
 
 Other agents shell out to rg, grep, find, and bash. On many machines those binaries don't exist, and on the ones where they do, every call costs a fork-exec round-trip. omp links the real implementations into the process. ripgrep, glob, find: in-process. brush is the bash — with sessions that survive across calls, and 58 command-line utilities (ls, sed, sort, xargs, even jq) ported into the builtins crate and run in-process, zero fork/exec. The same omp binary runs on macOS, Linux, and Windows — no WSL bridge.
 
-### 08 · Code review with priorities and a verdict
+### 8 · Code review with priorities and a verdict
 
 Get a clear verdict on whether the change ships, with every issue ranked P0 through P3 and scored for confidence. /review spawns dedicated reviewer subagents that sweep branches, single commits, or uncommitted work in parallel. You tackle what blocks release first; nothing important hides in a wall of prose.
 
 Want to steer the review yourself? `/annotate code-review` opens the diff so you can pin notes to lines before the reviewers run. `/annotate` also takes the latest reply, a session message, a file, or quoted text and pastes your notes into the prompt. See [`/annotate`](docs/slash-command-internals.md#12-bundled-command-note-annotate).
 
-### 09 · Hashline: edit by content hash
+### 9 · Hashline: edit by content hash
 
 Perfect edits, fewer tokens. The model points at anchors instead of retyping the lines it wants to change, so whitespace battles and string-not-found loops just stop happening. Edit a stale file and the anchors diverge — we reject the patch before it corrupts anything. Grok 4 Fast spends 61% fewer output tokens on the same work.
 
@@ -198,27 +198,23 @@ Perfect edits, fewer tokens. The model points at anchors instead of retyping the
 
 Other harnesses bolt on gh_issue_view, gh_pr_view, gh_search — each with its own parameters the agent has to learn and you have to debug. We skipped that. read already handles paths; PRs are paths. One interface to teach the model, one surface to keep correct.
 
-### 11 · Memory the agent curates
-
-The agent remembers your codebase between sessions. It writes facts mid-run with retain, captures reusable lessons with learn, pulls them back with recall, and compresses each session into a mental model that loads on the first turn of the next one. Pick the engine with `memory.backend` — local, Hindsight, or Mnemopi. Project-scoped by default, so what it learns about this repo stays with this repo.
-
-### 12 · ACP: editor-drivable agent
+### 11 · ACP: editor-drivable agent
 
 Run omp inside Zed and you get the same agent you drive from the terminal — reading the buffer you're actually looking at, writing through the editor's save path, spawning shells in the editor's terminal. Destructive tools pause for a permission prompt you can answer once and forget. No bridge, no plugin, no second brain to keep in sync.
 
-### 13 · Inherits what your other tools already wrote
+### 12 · Inherits what your other tools already wrote
 
 Every other agent ships an importer and expects you to convert. omp reads the eight formats already on disk in their native shape — Cursor MDC, Cline .clinerules, Codex AGENTS.md, Copilot applyTo, and the rest. No migration script, no YAML-to-TOML port, no "supported subset" footnotes. The config your team wrote last quarter still works tonight.
 
-### 14 · omp commit: atomic splits, validated messages
+### 13 · omp commit: atomic splits, validated messages
 
 omp reads the working tree through git_overview, git_file_diff, and git_hunk, then splits unrelated changes into atomic commits ordered by their dependencies. Cycles are rejected before anything is written. Source files score above tests, docs, and configs, so the headline commit is the one that matters. Lock files are excluded from analysis entirely.
 
-### 15 · Read PRs. _Walk skills._ Pull JSON out of subagents.
+### 14 · Read PRs. _Walk skills._ Pull JSON out of subagents.
 
 Sixteen internal schemes — `pr://`, `issue://`, `agent://`, `skill://`, `ssh://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `grep` walks a diff like a directory. `agent://<id>/findings.0.path` pulls a field out of a subagent's output by path.
 
-### 16 · Conflict resolution, made easy.
+### 15 · Conflict resolution, made easy.
 
 Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@base` to `conflict://N` and the file resolves cleanly. Bulk form: `conflict://*`.
 
@@ -226,7 +222,7 @@ Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@b
 
 _[Watch the capture ↗](https://omp.sh/clips/conflict.mp4)_
 
-### 17 · Preview, then accept.
+### 16 · Preview, then accept.
 
 `ast_edit` returns a _(proposed)_ card with the replacement count. The change is staged. The agent writes a one-line reason to `xd://resolve`; the TUI turns it into an **Accept** card and the disk move happens — atomic, all or nothing.
 
@@ -271,18 +267,13 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 - `generate_image` — generate or edit raster images via Gemini, GPT, or xAI Grok image models.
 - `tts` — text-to-speech via xAI Grok Voice — five built-in voices, WAV or MP3.
 
-**Memory & skills**
+**Context & skills**
 
 - `checkpoint` — mark conversation state for a later collapse-and-report.
 - `rewind` — prune exploratory context, keep a concise report.
-- `retain` — queue durable facts into the active memory bank.
-- `recall` — search the memory bank for raw memories.
-- `reflect` — synthesize an answer over the bank.
-- `memory_edit` — update, forget, or invalidate stored memories by id.
-- `learn` — capture a reusable lesson; optionally promote it into a managed skill.
 - `manage_skill` — create, update, or delete an isolated managed skill.
 
-Setting-gated, off by default: `github`, `generate_image`, `tts`, `checkpoint`, `rewind`, and the memory tools (`retain`/`recall`/`reflect`/`memory_edit`, per `memory.backend`).
+Setting-gated, off by default: `github`, `generate_image`, `tts`, `checkpoint`, and `rewind`.
 
 [Full reference →](https://omp.sh/docs/tools)
 
@@ -631,7 +622,6 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[@oh-my-pi/omptype](packages/omptype)**                                     | ArkType-compatible schema validation with lazy JIT compilation              |
 | **[@oh-my-pi/pi-utils](packages/utils)**                                      | Shared utilities (logging, streams, dirs/env/process helpers)               |
 | **[@oh-my-pi/pi-wire](packages/wire)**                                        | Shared collab live-session protocol types and relay constants               |
-| **[@oh-my-pi/pi-mnemopi](packages/mnemopi)**                                  | Local SQLite memory engine for omp agents                                   |
 | **[@oh-my-pi/snapcompact](packages/snapcompact)**                             | Bitmap-frame context compression package and SQuAD eval suite               |
 
 ### Rust Crates

@@ -59,13 +59,9 @@ export function getTinyTitleModelSpec(key: TinyTitleLocalModelKey): (typeof TINY
 	return spec;
 }
 
-/** Recommended local model for memory tasks when none is named. */
-export const DEFAULT_MEMORY_LOCAL_MODEL_KEY = "lfm2-1.2b";
-
 /**
- * Local models for Mnemopi memory tasks (fact extraction + consolidation).
- * These are larger (1B-1.7B) than the title models: structured extraction and
- * faithful summarization need more capacity than 3-6 word titles. All q4.
+ * Larger local models (1B-3B) for structured tasks such as auto-thinking
+ * classification, which need more capacity than 3-6 word titles. All q4.
  * Ranking/recipe rationale lives in docs/local-models.md.
  */
 export const TINY_MEMORY_LOCAL_MODELS = [

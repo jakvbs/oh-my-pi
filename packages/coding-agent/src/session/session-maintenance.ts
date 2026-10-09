@@ -72,8 +72,6 @@ import type { Settings } from "../config/settings";
 import type { ExtensionRunner, SessionBeforeCompactResult } from "../extensibility/extensions";
 import type { CompactOptions, ContextUsage } from "../extensibility/extensions/types";
 import type { GoalModeState } from "../goals/state";
-import { resolveMemoryBackend } from "../memory-backend/resolve";
-import type { MemoryBackendOperationContext } from "../memory-backend/types";
 import { computeNonMessageTokens, type NonMessageTokenSource } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import { createPlanReadMatcher } from "../plan-mode/plan-protection";
 import { isCompleteReadResult } from "../tools/read-supersede";
@@ -420,7 +418,6 @@ export interface SessionMaintenanceHost {
 	hasExperimentalContextRolloverTools(): boolean;
 	takeExperimentalContextRolloverRequest(context: AgentTurnEndContext | undefined): boolean;
 	queueExperimentalContextNotesReminder(prompt: string): void;
-	memoryBackendSession(): MemoryBackendOperationContext["session"];
 	emitSessionEvent(event: AgentSessionEvent, options?: { detachExtensions?: boolean }): Promise<void>;
 	emitNotice(level: "info" | "warning" | "error", message: string, source?: string): void;
 	scheduleAgentContinue(options: {
@@ -1615,9 +1612,7 @@ export class SessionMaintenance {
 		) {
 			throw new CompactionCancelledError(undefined, { cause: signalController.signal.reason });
 		}
-		const prepared = await this.#prepareCompactionFromHooks(preparation, hookCompaction, {
-			collectMemoryContext: false,
-		});
+		const prepared = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
 		if (
 			signalController.signal.aborted ||
 			!this.#usesExperimentalContextManagement() ||
@@ -1763,9 +1758,7 @@ export class SessionMaintenance {
 				return COMPACTION_CHECK_NONE;
 			}
 
-			const prepared = await this.#prepareCompactionFromHooks(preparation, hookCompaction, {
-				collectMemoryContext: false,
-			});
+			const prepared = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
 			if (
 				controller.signal.aborted ||
 				!this.#usesExperimentalContextManagement() ||
@@ -1878,32 +1871,6 @@ export class SessionMaintenance {
 			if (this.#autoCompactionAbortController === controller) {
 				this.#autoCompactionAbortController = undefined;
 			}
-		}
-	}
-
-	/**
-	 * Ask the active memory backend for an extra-context block to splice into
-	 * the compaction summary prompt. Both the manual and auto compaction paths
-	 * funnel through this helper so the behaviour stays identical.
-	 *
-	 * Failures are swallowed: a memory backend going sideways MUST NOT block
-	 * compaction (which is itself the recovery path for context overflow).
-	 */
-	async #collectMemoryBackendContext(preparation: {
-		messagesToSummarize: AgentMessage[];
-		turnPrefixMessages: AgentMessage[];
-	}): Promise<string | undefined> {
-		const backend = await resolveMemoryBackend(this.#host.settings);
-		if (!backend.preCompactionContext) return undefined;
-		const messages = preparation.messagesToSummarize.concat(preparation.turnPrefixMessages);
-		try {
-			return await backend.preCompactionContext(messages, this.#host.settings, this.#host.memoryBackendSession());
-		} catch (err) {
-			logger.debug("Memory backend preCompactionContext failed", {
-				backend: backend.id,
-				error: String(err),
-			});
-			return undefined;
 		}
 	}
 
@@ -3522,18 +3489,6 @@ export class SessionMaintenance {
 	async #prepareCompactionFromHooks(
 		preparation: CompactionPreparation,
 		hookCompaction: CompactionResult | undefined,
-		options?: {
-			/**
-			 * Collect built-in remote memory-backend recall context for the LLM
-			 * summary. Notes-backed rollover consumes only preservation data, so
-			 * it passes `false`: no remote `recallForCompaction()` round-trip
-			 * whose recalled context would be discarded. Extension
-			 * `session.compacting` handlers still run for their preservation
-			 * data; this does not promise arbitrary extension hooks are
-			 * network-free.
-			 */
-			collectMemoryContext?: boolean;
-		},
 	): Promise<
 		| {
 				kind: "fromHook";
@@ -3566,13 +3521,6 @@ export class SessionMaintenance {
 			hookContext = result?.context;
 			hookPrompt = result?.prompt;
 			preserveData = result?.preserveData;
-		}
-
-		if (options?.collectMemoryContext !== false) {
-			const memoryBackendContext = await this.#collectMemoryBackendContext(preparation);
-			if (memoryBackendContext) {
-				hookContext = hookContext ? [...hookContext, memoryBackendContext] : [memoryBackendContext];
-			}
 		}
 
 		if (hookCompaction) {

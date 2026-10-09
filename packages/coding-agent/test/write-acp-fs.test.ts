@@ -186,20 +186,20 @@ describe("write tool ACP fs routing", () => {
 	});
 
 	it("rejects read-only internal URLs without creating scheme-looking paths on disk", async () => {
-		const targetPath = "memory://root/memory_summary.md";
-		const leakedPath = path.join(tmpDir, "memory:/root/memory_summary.md");
+		const targetPath = "omp://docs/summary.md";
+		const leakedPath = path.join(tmpDir, "omp:/docs/summary.md");
 		const session = createSession(tmpDir);
 		const tool = new WriteTool(session);
 
 		let rejection: unknown;
 		try {
-			await tool.execute("call-memory", { path: targetPath, content: "memory summary\n" });
+			await tool.execute("call-omp", { path: targetPath, content: "summary\n" });
 		} catch (error) {
 			rejection = error;
 		}
 
 		expect(await Bun.file(leakedPath).exists()).toBe(false);
-		if (!(rejection instanceof Error)) throw new Error("Expected memory:// write to reject");
-		expect(rejection.message).toContain("memory:// URLs are read-only for write");
+		if (!(rejection instanceof Error)) throw new Error("Expected omp:// write to reject");
+		expect(rejection.message).toContain("omp:// URLs are read-only for write");
 	});
 });

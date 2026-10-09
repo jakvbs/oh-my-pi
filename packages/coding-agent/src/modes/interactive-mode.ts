@@ -88,7 +88,6 @@ import type { Skill } from "../extensibility/skills";
 import type { FileSlashCommand } from "../extensibility/slash-commands";
 import { loadSlashCommands } from "../extensibility/slash-commands";
 import type { GoalModeState } from "../goals/state";
-import { rebindMemoryBackendForCwd } from "../hindsight/backend";
 import { copyLocalArtifacts, resolveLocalRoot } from "../internal-urls";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../lsp/startup-events";
 import type { MCPManager } from "../mcp";
@@ -118,7 +117,6 @@ import {
 	type AgentSessionEvent,
 	type DroppedPrompt,
 	type ResolvedRoleModel,
-	SHUTDOWN_CONSOLIDATE_BUDGET_MS,
 } from "../session/agent-session";
 import type { CompactMode } from "../session/compact-modes";
 import type { ForeignSessionSource } from "../session/foreign-session-store";
@@ -1938,10 +1936,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			saveDraft: text => this.sessionManager.saveDraft(text),
 			disposeSession: async reason => {
 				await this.#btwController.dispose();
-				await this.session.dispose({
-					mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS,
-					reason,
-				});
+				await this.session.dispose({ reason });
 			},
 		});
 		// Forward the postmortem reason (SIGTERM/SIGHUP/uncaughtException/…) so the
@@ -2600,10 +2595,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			// up the destination project's configuration.
 			if (isSettingsInitialized()) {
 				await settings.reloadForCwd(newCwd);
-				// The reload fired the memory scope hooks; complete the rebind
-				// before the move commits so the next prompt cannot recall or
-				// retain against the source project's memory.
-				await rebindMemoryBackendForCwd(this.session);
 			}
 			// Re-warm plugin roots, capabilities, slash commands, and the ssh tool so
 			// the next prompt sees everything scoped to the new project directory.
@@ -2620,7 +2611,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				setProjectDir(previousCwd);
 				if (isSettingsInitialized()) {
 					await settings.reloadForCwd(previousCwd);
-					await rebindMemoryBackendForCwd(this.session);
 				}
 				clearClaudePluginRootsCache();
 				await this.refreshTitleSystemPrompt(previousCwd);
@@ -2631,7 +2621,6 @@ export class InteractiveMode implements InteractiveModeContext {
 					setProjectDir(actual);
 					if (isSettingsInitialized()) {
 						await settings.reloadForCwd(actual);
-						await rebindMemoryBackendForCwd(this.session);
 					}
 					clearClaudePluginRootsCache();
 					await this.refreshTitleSystemPrompt(actual);
@@ -3026,7 +3015,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/**
 	 * Optimistically render a user-invoked `/skill:` row before its awaited
-	 * dispatch so a slow preflight (memory recall, `before_agent_start` hooks,
+	 * dispatch so a slow preflight (`before_agent_start` hooks,
 	 * auto-thinking classification, pre-prompt compaction) does not leave the
 	 * submission invisible — normal prompts paint their row via
 	 * {@link startPendingSubmission} the same way (issue #8895). The canonical
@@ -6495,7 +6484,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// `#beginClose()` already acknowledged the close; escalate only once the
 		// teardown itself lingers, so time spent in exit prompts never counts.
 		const stillClosingTimer = setTimeout(() => {
-			this.showStatus("Still closing… (flushing memory backend / network)");
+			this.showStatus("Still closing… (flushing network)");
 		}, STILL_CLOSING_DELAY_MS);
 		try {
 			this.#streamPublisher?.dispose();
@@ -6516,9 +6505,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			if (this.#signalTeardown) {
 				await this.#signalTeardown();
 			} else {
-				await this.session.dispose({
-					mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS,
-				});
+				await this.session.dispose();
 			}
 		} finally {
 			clearTimeout(stillClosingTimer);
@@ -7265,10 +7252,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handleRenameCommand(title: string): Promise<void> {
 		return this.#commandController.handleRenameCommand(title);
-	}
-
-	handleMemoryCommand(text: string): Promise<void> {
-		return this.#commandController.handleMemoryCommand(text);
 	}
 
 	async handleSTTToggle(): Promise<void> {

@@ -152,7 +152,6 @@ Environment variables are never written back to `config.yml`. Variables declared
 | `PI_NO_THINKING_LOOP_GUARD` | `model.loopGuard.enabled` | Only `1` disables; other values do not override the setting. |
 | `SEARXNG_ENDPOINT` / `SEARXNG_TOKEN` | `searxng.endpoint` / `searxng.token` | Fallbacks when the setting is absent, null, or blank. |
 | `SEARXNG_BASIC_USERNAME` / `SEARXNG_BASIC_PASSWORD` | `searxng.basicUsername` / `searxng.basicPassword` | Fallbacks only when absent or null; configured empty strings remain valid credentials. |
-| `MNEMOPI_EMBEDDING_MODEL` | `mnemopi.embeddingModel` | Fallback when absent, null, or blank. |
 | `PI_CONFIG_FILES`       | CLI config overlays         | Platform path-list (`:` on Unix, `;` on Windows); files load in order before `--config` overlays. |
 
 Provider API keys are resolved separately (stored auth, OAuth, `models.yml`, environment, and `.env` files); see [Providers](./providers.md) and the full [Environment variables](./environment-variables.md) reference.
@@ -388,7 +387,6 @@ modelRoles:
 
   # Lightweight chat/tiny workloads
   tiny: local/lfm2.5-230m
-  memory: local/lfm2-1.2b
 
   # Model-kind workloads
   image: openai/gpt-image-2
@@ -400,8 +398,6 @@ modelRoles:
 retry:
   fallbackChains:
     tiny: [] # explicit empty chain: do not fall back
-    memory:
-      - openai/gpt-4.1-mini
     web:
       - web/parallel
       - web/perplexity
@@ -428,7 +424,7 @@ enabledModels:
   - claude-sonnet-4-5
 ```
 
-Built-in chat roles are `default`, `smol`, `slow`, `vision`, `plan`, `commit`, `tiny`, `memory`, `task`, and `advisor`. The `tiny` and `memory` roles accept both `tiny` catalog models and ordinary chat models. Built-in model-kind roles are `image`, `web`, `speech`, `dictation`, and `judge`; they select image, search/grounded-chat, TTS, STT, and judgment runners respectively. `judge` also accepts tiny and chat models, which is why aliases such as `@tiny` are valid fallbacks. Catalog kinds are `chat`, `tiny`, `image`, `tts`, `stt`, `search`, and `judge`; a custom model with no `kind` remains a chat model.
+Built-in chat roles are `default`, `smol`, `slow`, `vision`, `plan`, `commit`, `tiny`, `task`, and `advisor`. The `tiny` role accepts both `tiny` catalog models and ordinary chat models. Built-in model-kind roles are `image`, `web`, `speech`, `dictation`, and `judge`; they select image, search/grounded-chat, TTS, STT, and judgment runners respectively. `judge` also accepts tiny and chat models, which is why aliases such as `@tiny` are valid fallbacks. Catalog kinds are `chat`, `tiny`, `image`, `tts`, `stt`, `search`, and `judge`; a custom model with no `kind` remains a chat model.
 
 Open `/model` and enter the **Roles** view to assign roles and edit their fallback rows. Chat roles and model-kind roles appear in separate capability sections, and the picker filters assignments to models accepted by the selected role. List the same catalog directly with `omp models --kind chat`, `omp models --kind tiny`, `omp models --kind image`, `omp models --kind tts`, `omp models --kind stt`, `omp models --kind search`, or `omp models --kind judge`; use `--kind all` for everything.
 
@@ -694,7 +690,7 @@ read:
 | `read.renderMarkdown` | boolean | `false` | Render Markdown document reads in the TUI. |
 | `readLineNumbers`         | boolean | `false`    | Show plain line numbers.                          |
 
-### Context, compaction, and memory
+### Context and compaction
 
 `/extended-context on` opts in to larger context windows; `/extended-context off` restores standard windows and premium-pricing caps. For `openai-codex/gpt-6-astra`, `openai-codex/gpt-6.1-sol`, and their `-wm` routes, off uses 272,000 tokens and on uses the curated 922,000-token input window (1.05M total context with 128K output), or a higher discovered maximum. The curated maximum corrects stale lower discovery values. Explicit per-model `contextWindow` overrides in `models.yml` take precedence in both modes; remove an override if you want the toggle to control that model again. Codex overrides still clamp to the effective server-honored ceiling, allowing the curated or higher live maximum rather than an arbitrary larger window.
 
@@ -718,8 +714,6 @@ compaction:
   midTurnEnabled: true # check thresholds between tool-loop provider requests
   thresholdPercent: -1 # -1 = default reserve-based behavior
   thresholdTokens: -1 # fixed token limit when > 0
-memory:
-  backend: off # off, local, hindsight, mnemopi
 ```
 
 | Key                           | Type    | Default                                  | Notes                                                                                                                                                                                                                                     |
@@ -739,8 +733,7 @@ memory:
 | `compaction.reserveTokens`    | number  | _(unset)_                                | Absolute reserve floor. When unset, the effective reserve is the larger of `16384` and 15% of the context window; if that default would leave no practical small-window budget, it falls back to the 15% reserve.                         |
 | `compaction.keepRecentTokens` | number  | `20000`                                  | Recent-history token budget for summary compaction.                                                                                                                                                                                                           |
 | `compaction.autoContinue`     | boolean | `true`                                   | Continue automatically after compaction.                                                                                                                                                                                                  |
-| `memory.backend`              | enum    | `off`                                    | `off`, `local`, `hindsight`, `mnemopi`. Each backend has its own `hindsight.*` / `mnemopi.*` / `memories.*` tuning keys.                                                                                                                  |
-| `autolearn.enabled`           | boolean | `false`       | Experimental: enable standing lesson-capture guidance and `manage_skill` (plus `learn` when a memory backend is active). Managed skills live under `<agent dir>/managed-skills`. |
+| `autolearn.enabled`           | boolean | `false`       | Experimental: enable standing lesson-capture guidance and `manage_skill`. Managed skills live under `<agent dir>/managed-skills`. |
 | `autolearn.autoContinue`      | boolean | `false`       | After an eligible primary stop, run a private capture turn (uses extra tokens). Off keeps only standing guidance; no hidden reminder is inserted into the next turn. Aborted, plan-mode, and goal-loop turns are skipped.                                                                                                           |
 | `autolearn.minToolCalls`      | number  | `5`           | Minimum completed tool calls in a primary turn before automatic capture is eligible.                                                                                                                                                                               |
 
@@ -947,7 +940,7 @@ When a usage refresh detects an eligible banked reset expiring within the next *
 
 Every schema path not individually tabulated in this catalog is explicitly deferred to `omp config list`. Additional groups include:
 
-- Agent behavior and safety: `ask.*`, `dev.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `sharpshooter.*`, `task.*`, `tools.*`, and `vault.*`.
+- Agent behavior and safety: `ask.*`, `dev.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `task.*`, `tools.*`, and `vault.*`.
 - Execution and content: `commit.*`, `completion.*`, `edit.*`, `error.*`, `extensionHandlers.*`, `generate_image.*`, `git.*`, `images.*`, `live.*`, `paste.*`, `power.*`, `read.*`, `shellMinimizer.*`, `speech.*`, `terminal.*`, and `title.*`.
 - Interface and startup: `composer.*`, `display.*`, `input.*`, `marketplace.*`, `spelling.*`, `statusLine.*`, `startup.*`, `stt.*`, `tui.*`, `ttsr.*`, and `update.*`.
 - Discovery, sharing, and auth: `auth.*`, `browser.*`, `claudeResets.*`, `codexResets.*`, `commands.*`, `gc.*`, `ida.*`, `mcp.*`, `share.*`, `skills.*`, `stream.*`, and `telemetry.*`.

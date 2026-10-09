@@ -10,7 +10,7 @@ import type { ImageContent } from "@oh-my-pi/pi-ai";
 import { $flag, logger, postmortem, sanitizeText } from "@oh-my-pi/pi-utils";
 import type { MCPManager } from "../mcp/manager";
 import { resolveMCPTimeoutMs } from "../mcp/timeout";
-import { type AgentSession, type AgentSessionEvent, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../session/agent-session";
+import { type AgentSession, type AgentSessionEvent } from "../session/agent-session";
 import { CREDENTIAL_DISABLED_NOTICE_SOURCE } from "../session/credential-disabled-notice";
 import { isSilentAbort } from "../session/messages";
 import { flushTelemetryExport } from "../telemetry-export";
@@ -116,7 +116,7 @@ export async function runPrintMode(session: AgentSession, options: PrintModeOpti
 	let signalReason: postmortem.Reason | undefined;
 	const cancelSignalTeardown = postmortem.register("print-mode-session", reason => {
 		signalReason = reason;
-		return session.dispose({ reason, mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS });
+		return session.dispose({ reason });
 	});
 	try {
 		return await runPrintModeCore(session, options, () => signalReason !== undefined);
@@ -362,7 +362,7 @@ async function runPrintModeCore(
 	// durability rather than letting it escape as a raw fatal dump.
 	let durabilityFailure = false;
 	try {
-		await session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS });
+		await session.dispose();
 	} catch (error) {
 		if (!persistenceFailure || error !== persistenceFailure) throw error;
 		durabilityFailure = true;

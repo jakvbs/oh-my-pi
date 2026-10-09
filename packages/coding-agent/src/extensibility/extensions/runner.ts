@@ -32,7 +32,6 @@ import { MAIN_AGENT_RULE_NAME } from "../../capability/rule";
 import type { ModelRegistry } from "../../config/model-registry";
 import { type Settings, withActiveSettings } from "../../config/settings";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
-import type { MemoryRuntimeContext } from "../../memory-backend";
 import { type Theme, theme } from "@oh-my-pi/pi-tui/theme";
 import type { AsyncJobSnapshot } from "../../session/agent-session";
 import { MAIN_AGENT_ID } from "../../registry/agent-registry";
@@ -515,7 +514,6 @@ export class ExtensionRunner {
 	#switchSessionHandler: SwitchSessionHandler = async () => ({ cancelled: false });
 	#reloadHandler: () => Promise<void> = async () => {};
 	#shutdownHandler: ShutdownHandler = () => {};
-	#getMemoryFn?: () => MemoryRuntimeContext | undefined;
 	#commandDiagnostics: Array<{ type: string; message: string; path: string }> = [];
 	#toolRegistrationScope = new AsyncLocalStorage<ToolRegistrationScope>();
 	#toolRegistrationBarrier: Promise<void> | undefined;
@@ -714,7 +712,6 @@ export class ExtensionRunner {
 		_initialCwd: string,
 		private readonly sessionManager: SessionManager,
 		private readonly modelRegistry: ModelRegistry,
-		getMemory?: () => MemoryRuntimeContext | undefined,
 		private readonly settings?: Settings,
 		private readonly localProtocolOptions?: LocalProtocolOptions,
 		getAsyncJobSnapshot?: () => AsyncJobSnapshot | null,
@@ -722,7 +719,6 @@ export class ExtensionRunner {
 		private readonly agent: ExtensionAgentIdentity = TOP_LEVEL_AGENT,
 	) {
 		this.#uiContext = noOpUIContext;
-		this.#getMemoryFn = getMemory;
 		this.#getAsyncJobSnapshotFn = getAsyncJobSnapshot ?? (() => null);
 	}
 
@@ -1415,7 +1411,6 @@ export class ExtensionRunner {
 				: undefined,
 			moveSession: this.#moveSessionFn,
 			localProtocolOptions: this.localProtocolOptions,
-			memory: this.#getMemoryFn?.(),
 			setInterval: (callback, ms, ...args) => this.#managedTimers.setInterval(callback, ms, ...args),
 			setTimeout: (callback, ms, ...args) => this.#managedTimers.setTimeout(callback, ms, ...args),
 			clearTimer: timer => this.#managedTimers.clear(timer),

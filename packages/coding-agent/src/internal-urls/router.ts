@@ -26,7 +26,6 @@ import { HistoryProtocolHandler } from "./history-protocol";
 import { IssueProtocolHandler, PrProtocolHandler } from "./issue-pr-protocol";
 import { LocalProtocolHandler } from "./local-protocol";
 import { McpProtocolHandler } from "./mcp-protocol";
-import { MemoryProtocolHandler } from "./memory-protocol";
 import { OmpProtocolHandler } from "./omp-protocol";
 import { extractUriScheme, parseInternalUrl } from "./parse";
 import { ProcProtocolHandler } from "./proc-protocol";
@@ -104,7 +103,6 @@ export class InternalUrlRouter {
 		// Registration order is system-prompt order (see describe()).
 		this.register(new SkillProtocolHandler());
 		this.register(new RuleProtocolHandler());
-		this.register(new MemoryProtocolHandler());
 		this.register(new AgentProtocolHandler());
 		this.register(new HistoryProtocolHandler());
 		this.register(new ArtifactProtocolHandler());
@@ -337,7 +335,7 @@ export class InternalUrlRouter {
 	/**
 	 * Whether `input` is a registered URL with a glob segment. The authority counts as the first
 	 * segment unless it is a host ({@link SchemeSpec.portAuthority}). The query (`?key=…`) and
-	 * fragment never glob, so `issue://?search=fix*` is no glob while `memory://root/?.md` is.
+	 * fragment never glob, so `issue://?search=fix*` is no glob while `skill://name/?.md` is.
 	 */
 	isGlob(input: string): boolean {
 		const glob = this.#globSegments(input);

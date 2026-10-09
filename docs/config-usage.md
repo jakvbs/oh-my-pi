@@ -177,7 +177,7 @@ Effective precedence, highest first:
 5. Global settings: the first present file among `~/.omp/agent/config.yml` and `config.yaml`
 6. Definition default
 
-A definition may instead declare `env: { name, fallback: true }`: that variable only replaces the default, and any layer configuring a non-null value wins over it (used by `SEARXNG_BASIC_*`). `fallback: "blank"` also lets the variable win over a configured empty or whitespace string (used by `SEARXNG_ENDPOINT`, `SEARXNG_TOKEN`, and `MNEMOPI_EMBEDDING_MODEL`).
+A definition may instead declare `env: { name, fallback: true }`: that variable only replaces the default, and any layer configuring a non-null value wins over it (used by `SEARXNG_BASIC_*`). `fallback: "blank"` also lets the variable win over a configured empty or whitespace string (used by `SEARXNG_ENDPOINT` and `SEARXNG_TOKEN`).
 
 Within the overlay list, later files override earlier files (`PI_CONFIG_FILES` entries load before `--config` files). Overlay paths are resolved relative to the active project directory (after `~` expansion).
 
@@ -367,7 +367,7 @@ Settings capability items are not deduplicated; `Settings.#loadProjectSettings()
 
 - `ConfigFile` JSON -> YAML migration for YAML-targeted files.
 - Settings migration from `settings.json` and `agent.db` to `config.yml`.
-- Field migrations cover renamed/removed settings and value-shape changes, including `queueMode`, changelog settings, flat `theme`, retired image-tool settings, task isolation/eager settings, removed edit and compaction modes, `inlineToolDescriptors`, status-line segments, provider/search settings, memories/hindsight settings, and nested-leaf renames. Consult `Settings.#migrateRawSettings()` for the current exhaustive list.
+- Field migrations cover renamed/removed settings and value-shape changes, including `queueMode`, changelog settings, flat `theme`, retired image-tool settings, task isolation/eager settings, removed edit and compaction modes, `inlineToolDescriptors`, status-line segments, provider/search settings, and nested-leaf renames. Consult `Settings.#migrateRawSettings()` for the current exhaustive list.
 - Legacy setting names `skills.enablePiUser` / `skills.enablePiProject` are still active gates for native skill source.
 
 If these compatibility paths are removed in code, update this document immediately; several runtime behaviors still depend on them today.

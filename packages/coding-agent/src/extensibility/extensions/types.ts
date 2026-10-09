@@ -77,7 +77,6 @@ import type { BashResult } from "../../exec/bash-executor";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
-import type { MemoryRuntimeContext } from "../../memory-backend";
 import type { CustomEditor } from "@oh-my-pi/pi-tui/prompt/custom-editor";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
 import type { NativeToolView } from "@oh-my-pi/pi-tui/tools/renderer";
@@ -539,8 +538,6 @@ export interface ExtensionContext {
 	 * Optional: only the interactive TUI host provides it.
 	 */
 	moveSession?(directory: string): Promise<boolean>;
-	/** Structured memory runtime for status/search/save across the configured backend. */
-	memory?: MemoryRuntimeContext;
 	/**
 	 * Schedule a repeating callback whose throws are contained. Unlike raw
 	 * `setInterval`, a synchronous throw or rejected promise from `callback` is

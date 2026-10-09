@@ -10,11 +10,7 @@ import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { runPrintMode } from "@oh-my-pi/pi-coding-agent/modes/print-mode";
-import {
-	type AgentSession,
-	type AgentSessionDisposeOptions,
-	SHUTDOWN_CONSOLIDATE_BUDGET_MS,
-} from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SILENT_ABORT_MARKER } from "@oh-my-pi/pi-coding-agent/session/messages";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
@@ -39,10 +35,7 @@ function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): Assist
 }
 
 /** Minimal mock of AgentSession for print-mode text output path */
-function createMockSession(
-	messages: AssistantMessage[],
-	dispose: (options?: AgentSessionDisposeOptions) => Promise<void> = async () => {},
-): AgentSession {
+function createMockSession(messages: AssistantMessage[]): AgentSession {
 	return {
 		state: { messages },
 		getLastAssistantMessage: () => messages.findLast(message => message.role === "assistant"),
@@ -60,7 +53,7 @@ function createMockSession(
 		prepareForHeadlessAdvisorDrain: () => {},
 		setTextOutputCommitted: () => {},
 		waitForAdvisorCatchup: async () => true,
-		dispose,
+		dispose: async () => {},
 	} as unknown as AgentSession;
 }
 
@@ -109,17 +102,6 @@ describe("Print-mode silent-abort regression", () => {
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
-	it("bounds final memory consolidation so print mode can exit", async () => {
-		let disposeOptions: AgentSessionDisposeOptions | undefined;
-		const session = createMockSession([makeAssistantMessage()], async options => {
-			disposeOptions = options;
-		});
-
-		await runPrintMode(session, { mode: "text" });
-
-		expect(disposeOptions?.mnemopiConsolidateTimeoutMs).toBe(SHUTDOWN_CONSOLIDATE_BUDGET_MS);
-	});
-
 	it("does not write bit-classified silent aborts to stderr or exit non-zero", async () => {
 		const silentAbortMsg = makeAssistantMessage({
 			stopReason: "aborted",
@@ -142,10 +124,7 @@ describe("Print-mode silent-abort regression", () => {
 			content: [],
 		});
 
-		let disposeOptions: AgentSessionDisposeOptions | undefined;
-		const session = createMockSession([errorMsg], async options => {
-			disposeOptions = options;
-		});
+		const session = createMockSession([errorMsg]);
 		const exitCode = await runPrintMode(session, { mode: "text" });
 
 		// A real error SHOULD be written to stderr
@@ -154,7 +133,6 @@ describe("Print-mode silent-abort regression", () => {
 		// The caller terminates with the returned code; runPrintMode never exits itself
 		expect(exitCode).toBe(1);
 		expect(exitSpy).not.toHaveBeenCalled();
-		expect(disposeOptions?.mnemopiConsolidateTimeoutMs).toBe(SHUTDOWN_CONSOLIDATE_BUDGET_MS);
 	});
 
 	it("prints thinking blocks only when printThoughts is enabled", async () => {

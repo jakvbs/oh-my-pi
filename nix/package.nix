@@ -236,7 +236,7 @@ stdenv.mkDerivation {
   '';
 
   # Prebuilt addons that omp bun-installs into its cache at first use
-  # (onnxruntime-node, sherpa-onnx-node, sharp, fastembed) are process.dlopen'd and
+  # (onnxruntime-node, sherpa-onnx-node, sharp) are process.dlopen'd and
   # need libstdc++.so.6 / libgcc_s.so.1, which nix glibc's default loader path lacks;
   # their own DT_RUNPATH means this executable's RPATH is never consulted for their
   # dependencies, so only LD_LIBRARY_PATH resolves them. The agent injects this value

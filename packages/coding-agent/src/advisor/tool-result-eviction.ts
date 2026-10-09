@@ -4,7 +4,7 @@ import type { ToolResultMessage } from "@oh-my-pi/pi-ai";
 
 /**
  * Tools whose output the advisor can get back by calling them again. Anything
- * else (e.g. `recall` memory) is not re-derivable from the deltas or the
+ * else (e.g. `web_search` results) is not re-derivable from the deltas or the
  * advisor's notes, so it is never evicted.
  */
 const EVICTABLE_TOOL_NAMES: Record<string, true> = { read: true, grep: true, glob: true };

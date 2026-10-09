@@ -543,8 +543,6 @@ export interface BuildSystemPromptOptions {
 	secretsEnabled?: boolean;
 	/** Pre-loaded workspace tree (skips discovery if provided). May be a Promise to allow early kick-off. */
 	workspaceTree?: WorkspaceTree | Promise<WorkspaceTree>;
-	/** Active `memory.backend` id; undefined when memory is off. */
-	memoryBackend?: string;
 	/** Whether the user approves `cfg://` writes for this session; gates advertising `cfg://`. */
 	settingsApproval?: boolean;
 	/** Active model identifier (e.g. "anthropic/claude-opus-4") surfaced in the workstation block. */
@@ -644,7 +642,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		secretsEnabled = false,
 		workspaceTree: providedWorkspaceTree,
 		delegationBias = "eager",
-		memoryBackend,
 		settingsApproval = false,
 		model,
 		includeModelInPrompt = true,
@@ -914,7 +911,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const schemeHost: SchemeHost = {
 		skillUriAccess: hasSkillUriAccess,
 		ruleCount: rules?.length ?? 0,
-		memoryBackend,
 		settingsApproval,
 	};
 	const filteredSkills = (options.skillDescriptions ?? new SkillDescriptionCatalog()).render(

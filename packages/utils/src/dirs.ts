@@ -845,16 +845,6 @@ export function getAvatarCacheDir(): string {
 	return dirs.rootSubdir(path.join("cache", "avatars"), "cache");
 }
 
-/** Get the local FastEmbed model cache directory (~/.omp/cache/fastembed). */
-export function getFastembedCacheDir(): string {
-	return dirs.rootSubdir(path.join("cache", "fastembed"), "cache");
-}
-
-/** Get the on-demand fastembed runtime install root (~/.omp/cache/fastembed-runtime). */
-export function getFastembedRuntimeDir(): string {
-	return dirs.rootSubdir(path.join("cache", "fastembed-runtime"), "cache");
-}
-
 /**
  * Get the directory the native addon loads downloaded tree-sitter wasm grammars
  * from (`<natives dir>/grammars`, ~/.omp/natives/grammars). The natives loader

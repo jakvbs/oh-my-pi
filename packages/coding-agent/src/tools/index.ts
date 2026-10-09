@@ -17,13 +17,10 @@ import type {
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
 import { GoalTool } from "../goals/tools/goal-tool";
-import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import type { DaemonCompletionNotification } from "../launch/protocol";
 import { LspTool } from "../lsp";
 import type { MCPManager } from "../mcp";
-import { MEMORY_BACKEND_TOOL_NAMES } from "../memory-backend/tool-names";
-import type { MnemopiSessionState } from "../mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
 import type { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import type { AgentRegistry } from "../registry/agent-registry";
@@ -55,12 +52,7 @@ import { GlobTool } from "./glob";
 import { GrepTool } from "./grep";
 import { IdaTool } from "./ida";
 import { FindTool, isFindEnabled } from "./jfind";
-import { LearnTool } from "./learn";
 import { ManageSkillTool } from "./manage-skill";
-import { MemoryEditTool } from "./memory-edit";
-import { MemoryRecallTool } from "./memory-recall";
-import { MemoryReflectTool } from "./memory-reflect";
-import { MemoryRetainTool } from "./memory-retain";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { ReadTool } from "./read";
 import type { PlanProposalHandler } from "./resolve";
@@ -93,7 +85,6 @@ import { cfgCompactionExperimentalContextManagement } from "../session/context-s
 import { cfgExternalThinking } from "../session/settings";
 import { cfgGoalEnabled } from "../goals/settings";
 import { cfgLspEnabled } from "../lsp/settings";
-import { cfgMemoryBackend } from "../memory-backend/settings";
 
 export * from "../edit";
 export * from "../goals";
@@ -123,12 +114,7 @@ export * from "./grep";
 export * from "./jfind";
 export type { AgentActivitySnapshot, CoordinationDetails, JobSnapshot } from "@oh-my-pi/pi-tui/tools/wait";
 export * from "./image-gen";
-export * from "./learn";
 export * from "./manage-skill";
-export * from "./memory-edit";
-export * from "./memory-recall";
-export * from "./memory-reflect";
-export * from "./memory-retain";
 export * from "./read";
 export * from "./report-tool-issue";
 export * from "./resolve";
@@ -313,10 +299,6 @@ export interface ToolSession {
 		Partial<Pick<SessionManager, "getSessionId" | "getLeafId" | "appendModelUsage">>;
 	/** Get tool-state session ID (distinct from the owning session for advisors). */
 	getSessionId?: () => string | null;
-	/** Get Hindsight runtime state for this agent session. */
-	getHindsightSessionState?: () => HindsightSessionState | undefined;
-	/** Get Mnemopi runtime state for this agent session. */
-	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
 	getAgentId?: () => string | null;
 	/** Look up a registered tool by name. */
@@ -541,11 +523,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	todo: s => new TodoTool(s),
 	web_search: s => new WebSearchTool(s),
 	write: s => new WriteTool(s),
-	memory_edit: MemoryEditTool.createIf,
-	retain: MemoryRetainTool.createIf,
-	recall: MemoryRecallTool.createIf,
-	reflect: MemoryReflectTool.createIf,
-	learn: LearnTool.createIf,
 	manage_skill: ManageSkillTool.createIf,
 };
 
@@ -557,14 +534,10 @@ export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
 
 export type ToolName = BuiltinToolName;
 
-/**
- * Built-ins whose registration follows live settings through the session's built-in
- * reconcile. Memory-backend tools other than `learn` follow `memory.backend` through
- * the memory backend's own tool replacement instead.
- */
-export const SETTINGS_GATED_BUILTIN_TOOL_NAMES: readonly BuiltinToolName[] = (
-	Object.keys(BUILTIN_TOOLS) as BuiltinToolName[]
-).filter(name => name === "learn" || !(MEMORY_BACKEND_TOOL_NAMES as readonly string[]).includes(name));
+/** Built-ins whose registration follows live settings through the session's built-in reconcile. */
+export const SETTINGS_GATED_BUILTIN_TOOL_NAMES: readonly BuiltinToolName[] = Object.keys(
+	BUILTIN_TOOLS,
+) as BuiltinToolName[];
 
 /** Built-in tool selection {@link createTools} constructs for a session under its current settings. */
 export interface BuiltinToolPlan {
@@ -637,31 +610,21 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		) {
 			requestedTools.push("ast_edit");
 		}
-		if (["hindsight", "mnemopi"].includes(cfgMemoryBackend.get(session.settings))) {
-			for (const name of ["recall", "retain", "reflect"]) {
-				if (!requestedTools.includes(name)) requestedTools.push(name);
-			}
-		}
-		if (cfgMemoryBackend.get(session.settings) === "mnemopi" && !requestedTools.includes("memory_edit")) {
-			requestedTools.push("memory_edit");
-		}
 		if (externalThinkingActive && !requestedTools.includes("think")) {
 			requestedTools.push("think");
 		}
-		// Auto-learn tools are gated by `autolearn.enabled` but, like the memory
-		// tools above, must also be force-included into an explicit requestedTools
-		// list so a restricted top-level session whose controller/guidance is
-		// active still exposes the tools the nudge points at. Gated to top-level
-		// sessions: the controller only runs there, so a subagent's explicit
-		// tool whitelist must never be silently widened with write-capable tools.
-		if (cfgAutolearnEnabled.get(session.settings) && !session.isSubagent) {
-			if (!requestedTools.includes("manage_skill")) requestedTools.push("manage_skill");
-			if (
-				["hindsight", "mnemopi", "local"].includes(cfgMemoryBackend.get(session.settings)) &&
-				!requestedTools.includes("learn")
-			) {
-				requestedTools.push("learn");
-			}
+		// `manage_skill` is gated by `autolearn.enabled` but must also be
+		// force-included into an explicit requestedTools list so a restricted
+		// top-level session whose controller/guidance is active still exposes the
+		// tool the nudge points at. Gated to top-level sessions: the controller
+		// only runs there, so a subagent's explicit tool whitelist must never be
+		// silently widened with write-capable tools.
+		if (
+			cfgAutolearnEnabled.get(session.settings) &&
+			!session.isSubagent &&
+			!requestedTools.includes("manage_skill")
+		) {
+			requestedTools.push("manage_skill");
 		}
 	}
 	const isToolAllowed = (name: string) => {
@@ -701,19 +664,8 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 				cfgLaunchEnabled.get(session.settings)
 			);
 		}
-		if (name === "retain" || name === "recall" || name === "reflect") {
-			return ["hindsight", "mnemopi"].includes(cfgMemoryBackend.get(session.settings));
-		}
-		if (name === "memory_edit") return cfgMemoryBackend.get(session.settings) === "mnemopi";
 		if (name === "manage_skill")
 			return cfgAutolearnEnabled.get(session.settings) && (!session.isSubagent || requestedTools !== undefined);
-		if (name === "learn") {
-			return (
-				cfgAutolearnEnabled.get(session.settings) &&
-				(!session.isSubagent || requestedTools !== undefined) &&
-				["hindsight", "mnemopi", "local"].includes(cfgMemoryBackend.get(session.settings))
-			);
-		}
 		if (name === "task") {
 			return !session.isSubagent;
 		}

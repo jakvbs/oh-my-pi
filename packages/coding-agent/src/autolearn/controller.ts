@@ -15,7 +15,6 @@
 import { logger } from "@oh-my-pi/pi-utils";
 import type { Settings } from "../config/settings";
 import autolearnGuidance from "../prompts/system/autolearn-guidance.md" with { type: "text" };
-import autolearnGuidanceLearn from "../prompts/system/autolearn-guidance-learn.md" with { type: "text" };
 import autolearnNudgeAutoContinue from "../prompts/system/autolearn-nudge-autocontinue.md" with { type: "text" };
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 
@@ -24,20 +23,16 @@ import { cfgAutolearnAutoContinue, cfgAutolearnEnabled, cfgAutolearnMinToolCalls
 const AUTOLEARN_NUDGE_AUTOCONTINUE = autolearnNudgeAutoContinue.trim();
 
 /**
- * Build the standing auto-learn guidance for the system prompt from the tools
- * actually present in the active set, or null when `manage_skill` is absent.
+ * Build the standing auto-learn guidance for the system prompt for a session whose active
+ * set has the built-in `manage_skill`, or null when it is absent.
  *
  * Driven by tool presence rather than settings: keying the guidance on
- * `autolearn.enabled` would let a subagent that filtered the tools out — or a
+ * `autolearn.enabled` would let a subagent that filtered the tool out — or a
  * session whose registry has not yet reconciled — inject guidance pointing at
- * tools the session does not have. The `learn` addendum is included only when
- * the `learn` tool is present (it requires a memory backend).
+ * a tool the session does not have.
  */
-export function buildAutoLearnInstructions(available: { manageSkill: boolean; learn: boolean }): string | null {
-	if (!available.manageSkill) return null;
-	const parts = [autolearnGuidance.trim()];
-	if (available.learn) parts.push(autolearnGuidanceLearn.trim());
-	return parts.join("\n\n");
+export function buildAutoLearnInstructions(manageSkillAvailable: boolean): string | null {
+	return manageSkillAvailable ? autolearnGuidance.trim() : null;
 }
 
 export interface AutoLearnControllerOptions {

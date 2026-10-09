@@ -77,7 +77,6 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/extensions.md), [hooks.md](../../docs/hooks.md), [skills.md](../../docs/skills.md) |
 | `capability/`, `discovery/` | Capability registry + provider discovery modules | [extension-loading.md](../../docs/extension-loading.md), [context-files.md](../../docs/context-files.md) |
 | `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/advisor-watchdog.md) |
-| `memories/`, `memory-backend/`, `mnemopi/`, `hindsight/` | Memory subsystems and backends | [memory.md](../../docs/memory.md), [mnemosyne-memory-backend.md](../../docs/mnemosyne-memory-backend.md) |
 | `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/tree.md) |
 | `tui/` | Low-level TUI primitives | [tui.md](../../docs/tui.md) |
 | `tts/`, `stt/` | Text-to-speech / speech-to-text | — |
@@ -128,10 +127,6 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 ### MCP
 - [mcp-config.md](../../docs/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/mcp-runtime-lifecycle.md)
 - [mcp-protocol-transports.md](../../docs/mcp-protocol-transports.md), [mcp-server-tool-authoring.md](../../docs/mcp-server-tool-authoring.md)
-
-### Memory
-- [memory.md](../../docs/memory.md), [mnemosyne-memory-backend.md](../../docs/mnemosyne-memory-backend.md)
-- Memory tools: [tools/recall.md](../../docs/tools/recall.md), [tools/retain.md](../../docs/tools/retain.md), [tools/reflect.md](../../docs/tools/reflect.md)
 
 ### Discovery, context, and rules
 - [context-files.md](../../docs/context-files.md), [rulebook-matching-pipeline.md](../../docs/rulebook-matching-pipeline.md)
