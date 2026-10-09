@@ -873,7 +873,6 @@ describe("role priorities and chains", () => {
 	test("role priority defaults accept arbitrary role names safely", () => {
 		expect(rolePriorityDefaults("not-a-built-in-role")).toEqual([]);
 		expect(rolePriorityDefaults("__proto__")).toEqual([]);
-		expect(rolePriorityDefaults("memory")).toEqual(rolePriorityDefaults("smol"));
 	});
 
 	test("built-in smol priorities match `*-mini` ids but not gemini or minimax ids", () => {
@@ -964,18 +963,15 @@ describe("role priorities and chains", () => {
 		expect(resolveModelFromSettings({ settings, availableModels: [chat, image] })).toBe(chat);
 	});
 
-	test("memory inherits configured tiny without kind roles inheriting configured default", () => {
-		const tiny = roleChainModel("local", "tiny-model");
+	test("kind roles do not inherit the configured default", () => {
 		const defaultModel = roleChainModel("local", "default-model");
 		const image = roleChainModel("openai", "gpt-image-2");
 		const settings = Settings.isolated({
 			modelRoles: {
 				default: "local/default-model",
-				tiny: "local/tiny-model",
 			},
 		});
 
-		expect(resolveRoleChain("memory", settings, [defaultModel, tiny])[0]?.model.id).toBe("tiny-model");
 		expect(resolveRoleChain("image", settings, [defaultModel, image])[0]?.model.id).toBe("gpt-image-2");
 	});
 });

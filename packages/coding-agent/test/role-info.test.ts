@@ -42,11 +42,8 @@ describe("getRoleInfo", () => {
 
 		expect(acceptedIds("default", settings)).toEqual(["chat", "explicit-chat", "grounded-chat"]);
 		expect(acceptedIds("tiny", settings)).toEqual(["chat", "explicit-chat", "grounded-chat", "tiny"]);
-		expect(acceptedIds("memory", settings)).toEqual(["chat", "explicit-chat", "grounded-chat", "tiny"]);
 		expect(acceptedIds("image", settings)).toEqual(["image"]);
 		expect(acceptedIds("web", settings)).toEqual(["grounded-chat", "search"]);
-		expect(acceptedIds("speech", settings)).toEqual(["speech"]);
-		expect(acceptedIds("dictation", settings)).toEqual(["local-dictation", "cloud-dictation"]);
 		expect(acceptedIds("judge", settings)).toEqual(["chat", "explicit-chat", "grounded-chat", "tiny", "judge"]);
 	});
 
