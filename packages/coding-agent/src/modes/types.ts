@@ -126,7 +126,6 @@ export interface InteractiveModeContext {
 	subagentContainer: Container;
 	btwContainer: Container;
 	omfgContainer: Container;
-	cleanseContainer: Container;
 	errorBannerContainer: Container;
 	modelCycleContainer: Container;
 	deferredCommandContainer: Container;
@@ -559,9 +558,6 @@ export interface InteractiveModeContext {
 	handleOmfgCommand(complaint: string): Promise<void>;
 	hasActiveOmfg(): boolean;
 	handleOmfgEscape(): boolean;
-	handleCleanseCommand(args: string): Promise<void>;
-	hasActiveCleanse(): boolean;
-	handleCleanseEscape(): boolean;
 	/**
 	 * Show a read-only command report outside the transcript: above the editor
 	 * like `/btw` (a full-screen page when taller) in text mode, a `/usage`-style

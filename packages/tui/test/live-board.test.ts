@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { createLiveBoard } from "../src/chrome/live-board";
 import { ensureThemeSync, setThemeInstance, theme } from "../src/theme/theme";
 import { loadThemeSync } from "../src/theme/loader";
-import { CleanseBoardModel } from "../src/apps/cleanse-board";
-import { visibleWidth } from "../src/utils";
 
 describe("live board", () => {
 	test("honors the active ASCII spinner preset", () => {
@@ -26,16 +24,6 @@ describe("live board", () => {
 			board.close();
 			setThemeInstance(previous);
 		}
-	});
-
-	test("bounds cleanse error previews by terminal cells rather than UTF-16 units", () => {
-		const model = new CleanseBoardModel();
-		const assignment = { index: 0, groups: [], weight: 1 };
-		const prefix = model.agentFinished({ name: "repair", success: false, error: "" }, assignment);
-		const result = model.agentFinished({ name: "repair", success: false, error: "界".repeat(300) }, assignment);
-		expect(visibleWidth(result) - visibleWidth(prefix)).toBeLessThanOrEqual(300);
-		expect(result).toContain("界");
-		expect(result).toContain("…");
 	});
 
 	test("repaints in place with cursor-up bookkeeping and interleaves permanent log lines", () => {

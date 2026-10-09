@@ -1,14 +1,12 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { TUI } from "@oh-my-pi/pi-tui";
-import { CleanseBoardModel } from "../src/apps/cleanse-board";
 import { showGitOverlay } from "../src/apps/git/git-tui";
 import type { ChangedFile, GitTuiModel } from "../src/apps/git/state";
 import { initTheme } from "../src/theme/theme";
 import { TspHarness } from "./native/tsp-harness";
 import type { PsScope, PsScopeReport } from "../src/apps/ps-data";
 import { type PsTopHost, PsTopComponent } from "../src/apps/ps-top";
-import type { DescribeContext, NativeChild, NativeNode } from "../src/native/node";
-import type { TspKind } from "@oh-my-pi/pi-wire";
+import type { NativeChild, NativeNode } from "../src/native/node";
 import type { DaemonSnapshot, DaemonSpec } from "../src/tools/daemon";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -241,43 +239,5 @@ describe("git native", () => {
 		expect(patches[0]).toContain("+changed 40");
 		expect(patches[0]).not.toContain("+changed 5");
 		expect(patches[0]).not.toContain("+changed 6");
-	});
-});
-
-function context(kinds: readonly TspKind[]): DescribeContext {
-	return { cols: 120, reduceMotion: false, dark: true, supports: kind => kinds.includes(kind), feature: () => true };
-}
-
-describe("cleanse board native", () => {
-	const assignment = { index: 0, groups: [{ file: "a.ts" }], weight: 1 };
-
-	it("keeps the live node until the board changes and meters repair progress", () => {
-		const cx = context([]);
-		const model = new CleanseBoardModel();
-		expect(model.describeLive(cx)).toBeUndefined();
-		model.agentStarted("CleanseA", assignment);
-		model.agentStarted("CleanseB", { ...assignment, index: 1 });
-		const first = model.describeLive(cx);
-		expect(model.describeLive(cx)).toBe(first);
-
-		model.agentFinished({ name: "CleanseA", success: true }, assignment);
-		const next = model.describeLive(cx);
-		expect(next).not.toBe(first);
-		const progress = nodes(next ? [next] : []).find(n => n.k === "progress");
-		expect(progress?.p).toMatchObject({ value: 0.5 });
-		expect(model.lastSettled?.p).toMatchObject({ role: "omp.cleanse.outcome" });
-	});
-
-	it("draws running lanes as agent rows under a meter when the terminal has those kinds", () => {
-		const model = new CleanseBoardModel();
-		model.agentStarted("CleanseA", assignment);
-		model.agentStarted("CleanseB", { ...assignment, index: 1, groups: [{ file: "b.ts" }, { file: "c.ts" }] });
-		model.agentFinished({ name: "CleanseA", success: true }, assignment);
-		const live = model.describeLive(context(["agent", "meter"]));
-		const described = nodes(live ? [live] : []);
-		expect(described.some(n => n.k === "progress")).toBe(false);
-		expect(described.find(n => n.k === "meter")?.p).toMatchObject({ value: 0.5 });
-		const lanes = described.filter(n => n.k === "agent");
-		expect(lanes.map(n => n.p)).toMatchObject([{ name: "B", status: "running", task: [{ t: "b.ts +1" }] }]);
 	});
 });

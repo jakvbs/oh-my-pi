@@ -24,10 +24,6 @@ export const browserRelayHelp = {
 	description: "Run the local CDP relay that lets the browser prelude drive your own Chrome tabs",
 } satisfies CommandMetadata;
 
-export const cleanseHelp = {
-	description: "Detect and fix project diagnostics with weighted parallel subagents",
-} satisfies CommandMetadata;
-
 export const collabHelp = {
 	description:
 		"List active local Collab host metadata without URLs; use collab link <instanceId|pid> to retrieve a control link (--view for view-only)",
