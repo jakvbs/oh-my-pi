@@ -68,11 +68,6 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.browserRelayHelp,
 	},
 	{
-		name: "cleanse",
-		load: () => import("./commands/cleanse").then(m => m.default),
-		help: commandHelp.cleanseHelp,
-	},
-	{
 		name: "collab",
 		// Keep implementation imports behind the command boundary: this table is
 		// also imported before profile bootstrap and by native-free worker entries.
