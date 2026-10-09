@@ -45,7 +45,7 @@
 1. Registration requires `ask.enabled` and `AskTool.createIf()` requires `session.canPromptUser ?? session.hasUI`. A protocol session with a prompt-capable tool UI can receive it even without a local terminal UI; a session with no prompt surface cannot.
 2. `execute()` also requires `context.hasUI` and `context.ui`; if missing it aborts the context and throws `ToolAbortError("Ask tool requires interactive mode")`.
 3. It normalizes carriage-return runs in all supplied strings and rejects duplicate question IDs, duplicate option labels within a question, and reserved runtime-label collisions. It reads `ask.timeout`, converts seconds to milliseconds (`0` disables timeout), and disables timeout entirely while plan mode is enabled.
-4. If the session has a local UI and `ask.notify` is not `off`, it sends a terminal notification: `Waiting for input`. When `speech.enabled` is true, it also sends all question text to the vocalizer before opening the dialog.
+4. If the session has a local UI and `ask.notify` is not `off`, it sends a terminal notification: `Waiting for input`.
 5. When the UI supplies `askDialog`, the tool opens one rich multi-question form. Rich options receive `header`, `description`, and `preview`; results may contain custom answers and notes with pasted images, or choose the dialog's `Chat about this` redirect.
 6. Otherwise it uses the selector/editor fallback for each question:
    - single-select list plus `Other (type your own)`
@@ -71,7 +71,6 @@
   - Opens a selection dialog via `context.ui.select(...)`.
   - Opens a text editor dialog via `context.ui.editor(...)` for `Other`.
   - Sends a terminal notification when the session has a local UI, unless `ask.notify=off`.
-  - Speaks the question text through the vocalizer when `speech.enabled=true`.
 - Session state
   - Reads plan-mode state to disable timeouts.
   - Calls `context.abort()` on headless use or user cancellation.

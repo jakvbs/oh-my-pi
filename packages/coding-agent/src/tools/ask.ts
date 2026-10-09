@@ -27,7 +27,6 @@ import { formatKeyHint, formatKeyHints } from "@oh-my-pi/pi-tui/app-keybindings"
 import { editorKey, editorKeys } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 import askDescription from "../prompts/tools/ask.md" with { type: "text" };
-import { vocalizer } from "../tts/vocalizer";
 
 import type { ToolSession } from ".";
 import {
@@ -41,7 +40,6 @@ import { ToolAbortError } from "./tool-errors";
 import { sessionLocalProtocolOptions } from "../internal-urls/context";
 import { cfgAskNotify, cfgAskTimeout } from "../modes/settings";
 import { renderAttachmentSourceNotice } from "../session/attachment-source-notice";
-import { cfgSpeechEnabled } from "../tts/settings";
 import { describeAttachedImagesForTextModel, shouldDescribeImagesForTextModel } from "../utils/image-vision-fallback";
 
 // =============================================================================
@@ -754,13 +752,6 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 				content: [{ type: "text" as const, text: "Error: questions must not be empty" }],
 				details: {},
 			};
-		}
-
-		// Speak the question(s) aloud before surfacing them. Ask vocalizes in every
-		// mode — it's the assistant addressing the user — gated only by speech.enabled
-		// (the vocalizer re-checks the setting and no-ops when disabled).
-		if (cfgSpeechEnabled.get(this.session.settings)) {
-			vocalizer.speak(params.questions.map(q => q.question).join("\n"));
 		}
 
 		const richAskDialog = extensionUi.askDialog;

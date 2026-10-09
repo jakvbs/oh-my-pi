@@ -1869,15 +1869,7 @@ describe("Settings", () => {
 				{ image: imageOrderedCandidates[0] },
 				{ image: imageOrderedCandidates.slice(1) },
 			],
-			["local speech provider", "providers.tts", "local", { speech: "local/kokoro" }, { speech: [] }],
-			["xAI speech provider", "providers.tts", "xai", { speech: "xai/grok-tts" }, { speech: [] }],
-			[
-				"DeepInfra speech provider",
-				"providers.tts",
-				"deepinfra",
-				{ speech: "deepinfra/hexgrad/Kokoro-82M" },
-				{ speech: [] },
-			],
+			["retired speech provider", "providers.tts", "local", {}, {}],
 			[
 				"judgment provider",
 				"providers.judgmentProvider",
@@ -1902,9 +1894,7 @@ describe("Settings", () => {
 			["tiny model", "providers.tinyModel", "lfm2.5-230m", { tiny: "local/lfm2.5-230m" }, {}],
 			["retired memory model", "providers.memoryModel", "lfm2-1.2b", {}, {}],
 			["local speech model", "tts.localModel", "kokoro", {}, {}],
-			["fast dictation model", "stt.modelName", "fast", { dictation: "local/whisper-base" }, {}],
-			["balanced dictation model", "stt.modelName", "balanced", { dictation: "local/whisper-small" }, {}],
-			["turbo dictation model", "stt.modelName", "turbo", { dictation: "local/whisper-large-v3-turbo" }, {}],
+			["retired dictation model", "stt.modelName", "fast", {}, {}],
 			[
 				"older web search preference",
 				"providers.webSearch",

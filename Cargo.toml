@@ -14,7 +14,6 @@ members = [
    "crates/pi-shell",
    "crates/pi-vcs",
    "crates/pi-vfs",
-   "crates/pi-voice",
    "crates/pi-walker",
    "crates/vendor/brush-core",
    "crates/vendor/brush-parser",
@@ -234,7 +233,6 @@ pi-edit = { path = "crates/pi-edit" }
 pi-iso = { path = "crates/pi-iso" }
 pi-shell = { path = "crates/pi-shell" }
 pi-predict = { path = "crates/pi-predict" }
-pi-voice = { path = "crates/pi-voice" }
 pi-walker = { path = "crates/pi-walker" }
 pi-vcs = { path = "crates/pi-vcs" }
 pi-vfs = { path = "crates/pi-vfs" }
@@ -296,12 +294,6 @@ smallvec = { version = "1.16.1", features = [
 # Hashing
 # ──────────────────────────────────────────────────────────────────────────────
 xxhash-rust = { version = "0.8", features = ["xxh64", "xxh32"] }
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Audio & Realtime Media
-# ──────────────────────────────────────────────────────────────────────────────
-opus = "0.4.0"
-webrtc = "0.17.2"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # System & Platform

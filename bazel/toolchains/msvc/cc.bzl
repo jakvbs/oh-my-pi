@@ -47,14 +47,7 @@ _ARCHES = {
         "machine": "ARM64",
         "cpu": "arm64_windows",
         "cmake_processor": "ARM64",
-        # opus' ARM runtime CPU detection (celt/arm/armcpu.c) uses the MSVC-only
-        # __emit intrinsic under _MSC_VER, which clang-cl lacks. Every aarch64
-        # Windows CPU has NEON, so presume it and compile RTCD out (opus only
-        # auto-presumes when CMAKE_SYSTEM_PROCESSOR matches "aarch64").
-        "cmake_extra": 'set(OPUS_PRESUME_NEON ON CACHE BOOL "aarch64 always has NEON")\nset(OPUS_MAY_HAVE_NEON OFF CACHE BOOL "no RTCD: armcpu.c needs MSVC __emit")\n' +
-                       # opus' arm headers declare the NEON kernels only under
-                       # MAY_HAVE_NEON_INTR (autotools defines it alongside PRESUME).
-                       "add_compile_definitions(OPUS_ARM_MAY_HAVE_NEON_INTR)\n",
+        "cmake_extra": "",
     },
 }
 
@@ -71,7 +64,7 @@ splat="$execroot/external/{xwin}/splat"
 LIB="$splat/crt/lib/{arch};$splat/sdk/lib/um/{arch};$splat/sdk/lib/ucrt/{arch}"
 export LIB
 # -msse4.1/-msse4.2: clang-cl enforces per-function target features (real MSVC
-# does not); opus' silk/x86 SSE4.1 units fail without the feature enabled
+# does not); C deps with SSE4.1 units fail without the feature enabled
 # globally. The win32-x64 addon floor is x86-64-v2 (SSE4.2 inclusive), so this
 # is safe for every C dep — same flags the cargo-xwin pipeline exported.
 exec "$llvm/bin/clang-cl" \\
@@ -165,7 +158,7 @@ _NOP_WRAPPER = """\
 exit 0
 """
 
-# CMake toolchain file for native dependencies such as opusic-sys.
+# CMake toolchain file for native dependencies built through cmake-rs.
 # CMake's MSVC ABI setup needs target compiler/linker/rc/mt tools.
 # CMAKE_CURRENT_LIST_DIR makes the file self-locating — no canonical repo names
 # involved. Handed to build scripts through the target-specific
@@ -188,8 +181,8 @@ set(CMAKE_MT "${CMAKE_CURRENT_LIST_DIR}/bin/llvm-mt")
 # the CRT (rustc +crt-static + the static_link_msvcrt cc feature; see
 # bazel/defs.bzl and crates/pi-natives/BUILD.bazel), so pin the runtime library
 # to the static release CRT /MT for every config as well — otherwise CMake's
-# authoritative CMAKE_MSVC_RUNTIME_LIBRARY (CMP0091 NEW) would emit /MD for the
-# bundled opus objects, which then import VCRUNTIME140.dll and conflict with the
+# authoritative CMAKE_MSVC_RUNTIME_LIBRARY (CMP0091 NEW) would emit /MD for
+# bundled C objects, which then import VCRUNTIME140.dll and conflict with the
 # static CRT the rest of the addon links (issue #8439). Keep this in lock-step
 # with the static_link_msvcrt feature: both must select the static CRT together.
 set(CMAKE_TRY_COMPILE_CONFIGURATION Release)

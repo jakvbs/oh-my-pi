@@ -29,7 +29,7 @@ export interface EditorComponent extends Component {
 	/** Called when user submits (e.g., Enter key) */
 	onSubmit?: (text: string) => void;
 
-	/** Programmatically trigger submission (optional, e.g. for voice submit). */
+	/** Programmatically trigger submission (optional). */
 	submit?(): void;
 
 	/** Called when text changes */

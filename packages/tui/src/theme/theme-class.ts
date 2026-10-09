@@ -638,7 +638,6 @@ export class Theme {
 			vimInsert: this.#symbols["icon.vimInsert"],
 			vimVisual: this.#symbols["icon.vimVisual"],
 			vimVisualLine: this.#symbols["icon.vimVisualLine"],
-			mic: this.#symbols["icon.mic"],
 			camera: this.#symbols["icon.camera"],
 		};
 	}
@@ -709,7 +708,6 @@ export class Theme {
 			host: this.#symbols["icon.host"],
 			package: this.#symbols["icon.package"],
 			fast: this.#symbols["icon.fast"],
-			voice: this.#symbols["icon.mic"],
 			tools: this.#symbols["icon.extensionTool"],
 			rule: this.#symbols["icon.extensionRule"],
 			skill: this.#symbols["icon.extensionSkill"],

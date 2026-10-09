@@ -3318,31 +3318,6 @@ export class Settings {
 				setRoleChain("image", dedupe([...orderedImageSelectors, ...MODEL_PRIO.image]));
 			}
 
-			const legacyTtsProvider = legacy(providerSettings, "tts", "providers.tts");
-			const speechSelector =
-				legacyTtsProvider === "local"
-					? "local/kokoro"
-					: legacyTtsProvider === "xai"
-						? "xai/grok-tts"
-						: legacyTtsProvider === "deepinfra"
-							? "deepinfra/hexgrad/Kokoro-82M"
-							: undefined;
-			if (speechSelector) setRoleChain("speech", [speechSelector]);
-
-			const legacySttModel = legacy(sttSettings, "modelName", "stt.modelName");
-			const dictationSelector =
-				legacySttModel === "fast" || legacySttModel === "whisper-base"
-					? "local/whisper-base"
-					: legacySttModel === "balanced" || legacySttModel === "whisper-small"
-						? "local/whisper-small"
-						: legacySttModel === "turbo" || legacySttModel === "whisper-large-v3-turbo"
-							? "local/whisper-large-v3-turbo"
-							: undefined;
-			if (dictationSelector && !Object.hasOwn(roles, "dictation")) {
-				roles.dictation = dictationSelector;
-				rolesChanged = true;
-			}
-
 			const legacyJudgmentProvider = legacy(providerSettings, "judgmentProvider", "providers.judgmentProvider");
 			const legacyAutoThinkingModel = legacy(providerSettings, "autoThinkingModel", "providers.autoThinkingModel");
 			const legacyUnexpectedStopModel = legacy(

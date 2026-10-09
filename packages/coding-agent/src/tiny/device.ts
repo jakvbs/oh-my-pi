@@ -62,8 +62,8 @@ export function resolveTinyModelDevicePreference(
 
 /**
  * ONNX execution providers to try, in order, for the requested device. `mlx`
- * is not an ONNX provider: workers that only speak ONNX (STT/TTS, or the tiny
- * worker after an MLX bootstrap failure) run CPU-only for it.
+ * is not an ONNX provider: the tiny worker falls back to CPU-only after an
+ * MLX bootstrap failure.
  */
 export function tinyModelDeviceLoadOrder(preference: TinyModelDevicePreference): readonly TinyOnnxDevice[] {
 	if (preference.device === CPU_DEVICE || preference.device === MLX_DEVICE) return CPU_ONLY_ORDER;

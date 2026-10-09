@@ -24,7 +24,7 @@ async function drainMicrotasks(): Promise<void> {
 function createAskTool(): AskTool {
 	return new AskTool({
 		hasUI: true,
-		settings: Settings.isolated({ "ask.timeout": 0.01, "ask.notify": "off", "speech.enabled": false }),
+		settings: Settings.isolated({ "ask.timeout": 0.01, "ask.notify": "off" }),
 		getPlanModeState: () => ({ enabled: false }),
 	} as unknown as ToolSession);
 }

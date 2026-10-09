@@ -23,7 +23,6 @@ export {
 	PREWALK_PLAN_MESSAGE_TYPE,
 	VIBE_MODE_CONTEXT_MESSAGE_TYPE,
 	DEFAULT_CUSTOM_MESSAGE_TYPE,
-	LIVE_DELEGATION_MESSAGE_TYPE,
 	type CustomMessageContent,
 	type CustomMessagePayload,
 	type NormalizedCustomMessagePayload,

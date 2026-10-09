@@ -68,7 +68,6 @@ async function createHarness(factory: ExtensionFactory) {
 		sessionManager,
 		settings: Settings.isolated({}),
 		keybindings: KeybindingsManager.inMemory(),
-		dictationSpaceHold: vi.fn(),
 		ui: {
 			requestRender: vi.fn(),
 			addInputListener: vi.fn(),

@@ -38,10 +38,6 @@ import type {
 	RpcHostUriRequest,
 	RpcHostUriResult,
 	RpcHostUriSchemeDefinition,
-	RpcLiveEndFrame,
-	RpcLiveLevelsFrame,
-	RpcLivePhaseFrame,
-	RpcLiveTranscriptFrame,
 	RpcOpenSessionResult,
 	RpcPromptError,
 	RpcPromptResultFrame,
@@ -206,10 +202,6 @@ export type Frames = Assert<
 		subagentProgressPayload: Outbound<RpcSubagentProgressFrame["payload"], Wire.SubagentProgressPayload>;
 		subagentEvent: Outbound<RpcSubagentEventFrame, Wire.SubagentEvent>;
 		subagentEventPayload: Outbound<RpcSubagentEventFrame["payload"], Wire.SubagentEventPayload>;
-		livePhase: Outbound<RpcLivePhaseFrame, Wire.LivePhaseEvent>;
-		liveLevels: Outbound<RpcLiveLevelsFrame, Wire.LiveLevelsEvent>;
-		liveTranscript: Outbound<RpcLiveTranscriptFrame, Wire.LiveTranscriptEvent>;
-		liveEnd: Outbound<RpcLiveEndFrame, Wire.LiveEndEvent>;
 		btwDelta: Outbound<RpcBtwDeltaFrame, Wire.BtwDeltaEvent>;
 		btwRecord: Outbound<RpcBtwRecordFrame, Wire.BtwRecordEvent>;
 		hostToolCall: Outbound<RpcHostToolCallRequest, Wire.HostToolCallRequest>;

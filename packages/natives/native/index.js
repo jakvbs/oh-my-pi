@@ -22,14 +22,11 @@ import { loadNative, missingNativeExport } from "./loader-state.js";
 const nativeBindings = loadNative();
 // --- generated native exports (do not edit) ---
 // classes
-export const AudioCapture = nativeBindings.AudioCapture;
-export const AudioPlayback = nativeBindings.AudioPlayback;
 export const DiffStream = nativeBindings.DiffStream;
 export const EditSession = nativeBindings.EditSession;
 export const EditStore = nativeBindings.EditStore;
 export const FileLock = nativeBindings.FileLock;
 export const HighlightStream = nativeBindings.HighlightStream;
-export const LiveWebRtcPeer = nativeBindings.LiveWebRtcPeer;
 export const MacAppearanceObserver = nativeBindings.MacAppearanceObserver;
 export const NativeOAuthCallback = nativeBindings.NativeOAuthCallback;
 export const PowerAssertion = nativeBindings.PowerAssertion;

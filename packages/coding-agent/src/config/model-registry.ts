@@ -50,7 +50,7 @@ import { toModelSpec } from "@oh-my-pi/pi-catalog/provider-models/bundled-refere
 import { apiServesKind, modelKind, type ModelKind } from "@oh-my-pi/pi-catalog/types";
 import { getAgentDir, isBunTestRuntime, logger, wrapFetchForExtraCa } from "@oh-my-pi/pi-utils";
 import { resolveProviderModelReference } from "../config/model-resolver";
-import { generateCodexAttestation } from "../live/attestation";
+import { generateCodexAttestation } from "./codex-attestation";
 import type { AuthStorage } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
 import type { ConfigError, ConfigFile } from "./config-file";

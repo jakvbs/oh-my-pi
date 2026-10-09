@@ -25,9 +25,6 @@ import * as idaSettings from "../ida/settings";
 import * as mcpSettings from "../mcp/settings";
 import * as blobBrokerSettings from "../blob-broker/settings";
 import * as secretsSettings from "../secrets/settings";
-import * as ttsSettings from "../tts/settings";
-import * as sttSettings from "../stt/settings";
-import * as liveSettings from "../live/settings";
 import * as commandsSettings from "../commands/settings";
 import * as streamSettings from "../stream/settings";
 import * as commitSettings from "../commit/settings";
@@ -57,7 +54,6 @@ const DOMAINS: readonly Readonly<Record<string, unknown>>[] = [
 	mcpSettings,
 	blobBrokerSettings,
 	secretsSettings,
-	sttSettings,
 	commandsSettings,
 	streamSettings,
 	commitSettings,
@@ -65,10 +61,7 @@ const DOMAINS: readonly Readonly<Record<string, unknown>>[] = [
 ];
 
 /** Domains listed immediately before `before` (a setting of a DOMAINS entry) instead of in DOMAINS order. */
-const PLACED_DOMAINS: readonly { domain: Readonly<Record<string, unknown>>; before: AnySetting }[] = [
-	{ domain: liveSettings, before: sessionSettings.cfgProvidersFetch },
-	{ domain: ttsSettings, before: sessionSettings.cfgProvidersFetch },
-];
+const PLACED_DOMAINS: readonly { domain: Readonly<Record<string, unknown>>; before: AnySetting }[] = [];
 
 let ordered: readonly AnySetting[] | undefined;
 
