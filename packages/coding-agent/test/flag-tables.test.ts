@@ -118,12 +118,12 @@ describe("--tools discovered-registry validation", () => {
 	it("reports an unregistered built-in as unavailable, not unknown", () => {
 		let error: unknown;
 		try {
-			validateToolNames(["eval"], ["read"]);
+			validateToolNames(["lsp"], ["read"]);
 		} catch (caught) {
 			error = caught;
 		}
 		expect(error).toBeInstanceOf(CliUsageError);
-		expect((error as Error).message).toBe("Built-in tool unavailable in this session: eval.");
+		expect((error as Error).message).toBe("Built-in tool unavailable in this session: lsp.");
 	});
 });
 

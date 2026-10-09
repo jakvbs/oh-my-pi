@@ -28,34 +28,6 @@ describe("ToolExecutionComponent live preview spinners", () => {
 		resetSettingsForTest();
 	});
 
-	it("animates the eval pending cell while the call is live", () => {
-		vi.useFakeTimers();
-		const requestRender = vi.fn();
-		const requestComponentRender = vi.fn();
-		const component = new ToolExecutionComponent(
-			"eval",
-			{ language: "py", code: "import time\ntime.sleep(10)" },
-			{},
-			undefined,
-			{ requestRender, requestComponentRender } as unknown as TUI,
-			process.cwd(),
-		);
-
-		try {
-			const firstFrame = stripVTControlCharacters(component.render(80).join("\n"));
-			vi.advanceTimersByTime(120);
-			const secondFrame = stripVTControlCharacters(component.render(80).join("\n"));
-
-			expect(requestComponentRender).toHaveBeenCalledWith(component);
-			expect(requestRender).not.toHaveBeenCalled();
-			expect(firstFrame).toContain("time.sleep(10)");
-			expect(secondFrame).toContain("time.sleep(10)");
-			expect(secondFrame).not.toBe(firstFrame);
-		} finally {
-			component.stopAnimation();
-		}
-	});
-
 	it("does not tick headerless bash pending previews", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();

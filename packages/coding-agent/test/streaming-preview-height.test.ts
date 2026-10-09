@@ -374,12 +374,9 @@ describe("streaming edit preview height (stable, full tail window)", () => {
 
 describe("streaming tool call preview height (bounded across renderers)", () => {
 	beforeAll(async () => {
-		// `evalToolRenderer.renderCall` walks the theme during highlighting; the
-		// bash/eval pending previews exercised below DO NOT read
-		// `settings.*`, so the global Settings singleton is intentionally left
-		// untouched here. Resetting/initialising it in `beforeEach` raced with
-		// parallel test files that do the same dance (issue #2582), flipping the
-		// proxy under us and timing the eval test out.
+		// The bash pending previews below do not read `settings.*`, so the global
+		// Settings singleton stays untouched. Resetting it in `beforeEach` raced with
+		// parallel test files doing the same (issue #2582).
 		await initTheme();
 	});
 	function renderPending(toolName: string, args: unknown): { lines: readonly string[]; text: string } {
@@ -440,31 +437,5 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 				`… ${hidden} earlier lines`,
 			);
 		}
-	}, 30_000);
-
-	test("eval pending preview windows the code to the viewport tail", () => {
-		// Eval cell code is capped to the same viewport-sized TAIL window as
-		// bash: the live edge stays visible behind an "… N earlier lines"
-		// marker on top; ctrl+o uncaps. Unlike bash, the marker row sits above
-		// the window, so previewWindowRows() code lines stay visible.
-		const window = previewWindowRows();
-		const total = window + 5;
-		const hidden = total - window;
-		// Underscore identifiers: the display formatter would space `line-1` as a
-		// subtraction, and this test asserts windowing, not operator layout.
-		const longLines = Array.from({ length: total }, (_, i) => `line_${i}`);
-		const { lines, text } = renderPending("eval", {
-			language: "js",
-			title: "big",
-			code: longLines.map(line => `const ${line} = 1;`).join("\n"),
-		});
-
-		expect(lines.length, "eval code preview should stay bounded").toBeLessThan(window + 10);
-		const renderedLines = getRenderedLines(lines);
-		expect(renderedLines).toContain(`const line_${total - 1} = 1;`);
-		expect(renderedLines).toContain(`const line_${hidden} = 1;`);
-		expect(renderedLines).not.toContain("const line_0 = 1;");
-		expect(renderedLines).not.toContain(`const line_${hidden - 1} = 1;`);
-		expect(text).toContain(`… ${hidden} earlier lines`);
 	}, 30_000);
 });
