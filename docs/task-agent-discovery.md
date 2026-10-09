@@ -49,7 +49,7 @@ Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.
 
 ## Role-backed custom agents
 
-OMP discovers user agents from `~/.omp/agent/agents/*.md` and project agents from `.omp/agents/*.md`.
+OMP discovers user agents from `~/.omp/agent/agents/*.md` and project agents from `.omp/agents/*.md`. The same directories also load `*.ts` modules whose default export is an `AgentSpec` (`name`, `description`, `systemPrompt`, optional `tools`, `model`, `thinkingLevel`, `cwd`, `skills`, `mcp`); unknown keys reject the module. `cwd` resolves against the spawning session's cwd (the isolation worktree for isolated runs, where a path leaving it fails the spawn), `skills` filters the inherited skills, and `mcp` names the only MCP servers whose proxy tools the subagent gets (absent = no MCP), e.g. a `jira-agent` with `mcp: ["jira"]`.
 
 Give the agent a role alias in frontmatter, then dispatch it by name. For model routing, task dispatch sets only `agent`; it does not set a worker model:
 
@@ -176,7 +176,7 @@ Implications:
 - Earlier extension roots override later extension roots, Claude marketplace plugins, and bundled agents.
 - Non-bundled agents override bundled agents with the same name.
 - Name matching is case-sensitive (`Task` and `task` are distinct).
-- Within one directory, markdown files are read in lexicographic filename order before dedup.
+- Within one directory, agent files (`.md` and `.ts`) are read in lexicographic filename order before dedup.
 
 ## Invalid/missing agent file behavior
 
@@ -312,11 +312,11 @@ If denied: `Cannot spawn '...'. Allowed: ...`.
 
 `PI_BLOCKED_AGENT` (or the internal request override) rejects an attempt to spawn the same blocked agent before discovery.
 
-### Recursion-depth gating
+### One subagent level
 
-`task.maxRecursionDepth` defaults to `2`; a negative value disables the cap. The shared policy rejects a spawn when the current task depth has already reached the cap. When a child reaches the cap, `runSubprocess` also removes `task` from its tool list and sets its spawn policy empty.
+Only the root session (task depth 0) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. A `spawns` frontmatter field no longer grants children `task`.
 
-For an explicit agent tool list, `runSubprocess` auto-adds `task` when `spawns` is declared and depth permits it. The legacy `exec` entry expands to `bash` plus `eval` when an eval backend is available. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
+For an explicit agent tool list, the legacy `exec` entry expands to `bash` plus `eval` when an eval backend is available. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
 
 ## Plan mode behavior
 

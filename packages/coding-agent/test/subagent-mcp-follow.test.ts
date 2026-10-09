@@ -112,6 +112,25 @@ describe("subagent session MCP tools follow the shared manager", () => {
 		expect(serversOf(child)).toEqual(["bravo"]);
 	}, 20_000);
 
+	it("keeps a manager-less child restricted to its allowed MCP servers across a reload", async () => {
+		await connectReady({ alpha: fixtureConfig(), bravo: fixtureConfig() });
+		const follower = followMCPTools(manager, undefined, ["alpha"]);
+		const { session: child } = await createAgentSession({
+			...sessionOptions(),
+			enableMCP: false,
+			mcpTools: createMCPProxyTools(manager, ["alpha"]),
+			parentTaskPrefix: "Follow-3",
+		});
+		sessions.push(child);
+		follower.bind(child);
+		expect(serversOf(child)).toEqual(["alpha"]);
+
+		await manager.disconnectAll();
+		await connectReady({ alpha: fixtureConfig(), bravo: fixtureConfig() });
+		await child.runToolRegistryMutation(async () => undefined);
+		expect(serversOf(child)).toEqual(["alpha"]);
+	}, 20_000);
+
 	it("keeps a child's explicitly supplied same-name tool over the MCP proxy, before and after a reload", async () => {
 		await connectReady({ alpha: fixtureConfig() });
 		const collidingName = `mcp__alpha_${manyToolName(0)}`;

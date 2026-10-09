@@ -402,22 +402,43 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		);
 	});
 
-	it("retains inherited MCP proxy tools for normal children", async () => {
+	it("gives a child without AgentSpec.mcp no MCP access", async () => {
 		const session = yieldEmittingSession();
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
-		const mcpManager = {
-			getTools: () => [{ name: "mcp__private_read", label: "private/read" }],
-			addToolsChangedListener: () => () => {},
-		} as unknown as MCPManager;
+		const mcpManager = { getTools: () => [] } as unknown as MCPManager;
 
 		const result = await runSubprocess({ ...baseOptions, id: "normal-child", mcpManager });
 
 		expect(result.exitCode).toBe(0);
 		const forwarded = spy.mock.calls[0]?.[0];
-		expect(forwarded?.enableMCP).toBe(true);
-		expect(forwarded?.mcpManager).toBe(mcpManager);
-		expect(forwarded?.mcpTools?.map(tool => tool.name)).toEqual(["mcp__private_read"]);
-		expect(forwarded?.customTools).toBeUndefined();
+		expect(forwarded?.enableMCP).toBe(false);
+		expect(forwarded?.mcpManager).toBeUndefined();
+		expect(forwarded?.mcpTools).toBeUndefined();
+	});
+
+	it("gives a child only proxies for the MCP servers its AgentSpec names", async () => {
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [
+				{ name: "mcp__jira_read", label: "jira/read", mcpServerName: "jira" },
+				{ name: "mcp__figma_read", label: "figma/read", mcpServerName: "figma" },
+			],
+			addToolsChangedListener: () => () => {},
+		} as unknown as MCPManager;
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "jira-child",
+			agent: { ...baseAgent, mcp: ["jira"] },
+			mcpManager,
+		});
+
+		expect(result.exitCode).toBe(0);
+		const forwarded = spy.mock.calls[0]?.[0];
+		expect(forwarded?.enableMCP).toBe(false);
+		expect(forwarded?.mcpManager).toBeUndefined();
+		expect(forwarded?.mcpTools?.map(tool => tool.name)).toEqual(["mcp__jira_read"]);
 	});
 
 	it("preserves the legacy result shape when no output schema is selected", async () => {
@@ -806,6 +827,12 @@ describe("runSubprocess follows the parent's MCP manager", () => {
 		removeSyncWithRetries(workDir);
 	});
 
+	const mcpAgentOptions = (servers: string[]) => ({
+		...baseOptions,
+		agent: { ...baseAgent, mcp: servers },
+		mcpManager: manager,
+	});
+
 	/** A live child that records MCP rebinds and the teardowns it registers. */
 	function followingChild(onPrompt: (child: { refreshedWith: (names: string[]) => Promise<void> }) => Promise<void>) {
 		const refreshed: string[][] = [];
@@ -849,7 +876,7 @@ describe("runSubprocess follows the parent's MCP manager", () => {
 		});
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(child.session));
 
-		const result = await runSubprocess({ ...baseOptions, id: "mcp-follow-reload", mcpManager: manager });
+		const result = await runSubprocess({ ...mcpAgentOptions(["alpha", "bravo"]), id: "mcp-follow-reload" });
 
 		expect(result.exitCode).toBe(0);
 		const spawnTools = spy.mock.calls[0]?.[0]?.mcpTools?.map(tool => tool.name) ?? [];
@@ -875,7 +902,7 @@ describe("runSubprocess follows the parent's MCP manager", () => {
 			return createSessionResult(child.session);
 		});
 
-		const result = await runSubprocess({ ...baseOptions, id: "mcp-follow-startup", mcpManager: manager });
+		const result = await runSubprocess({ ...mcpAgentOptions(["alpha"]), id: "mcp-follow-startup" });
 
 		expect(result.exitCode).toBe(0);
 		expect(spy.mock.calls[0]?.[0]?.mcpTools).toBeUndefined();
@@ -902,9 +929,8 @@ describe("runSubprocess follows the parent's MCP manager", () => {
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(child.session));
 
 		const result = await runSubprocess({
-			...baseOptions,
+			...mcpAgentOptions(["alpha"]),
 			id: "mcp-follow-collision",
-			mcpManager: manager,
 			customTools: [kernelTool],
 		});
 

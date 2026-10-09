@@ -228,6 +228,23 @@ function normalizeModelPatterns(value: string | string[] | undefined): string[] 
 		.filter(Boolean);
 }
 
+/**
+ * Session cwd for a subagent: the agent's `cwd` resolves against the isolation
+ * worktree when there is one, else the spawning session's cwd.
+ * @throws Error when an isolated agent's `cwd` leaves the worktree.
+ */
+export function resolveSubagentCwd(cwd: string, worktree: string | undefined, agentCwd: string | undefined): string {
+	const base = worktree ?? cwd;
+	if (!agentCwd) return base;
+	const resolved = path.resolve(base, agentCwd);
+	const relative = path.relative(base, resolved);
+	const escapes = relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+	if (worktree !== undefined && escapes) {
+		throw new Error(`Agent cwd "${agentCwd}" leaves the isolation worktree; use a path inside the repository.`);
+	}
+	return resolved;
+}
+
 /** Session-scoped role owning subagent `id`'s retry fallback chain; cold revival reinstalls it under this name. */
 export function subagentRetryFallbackRole(id: string): string {
 	return `subagent:${id}`;
@@ -3675,8 +3692,12 @@ interface SubagentSessionSpec {
 		| "onFirstChatDispatch"
 	>;
 	prompt: SubagentPromptInputs;
-	/** MCP servers the agent definition allows; absent = every server. */
-	mcpServers?: readonly string[];
+	/**
+	 * Present only when the agent definition names MCP servers. The session never
+	 * receives the manager itself (no server instructions, `mcp://` resources or
+	 * discovery), only proxies for these servers.
+	 */
+	mcp?: { manager: MCPManager; servers: readonly string[] };
 }
 
 /** Launch-only session inputs: a revived session restores these from its transcript or goes without. */
@@ -3701,7 +3722,7 @@ function buildSubagentSessionOptions(
 	const inputs = spec.prompt;
 	// MCP proxies are minted per build, not captured in the spec: a kept-alive
 	// subagent revived after `/mcp reload` must see the manager's current tools.
-	const mcpTools = spec.options.mcpManager ? createMCPProxyTools(spec.options.mcpManager, spec.mcpServers) : [];
+	const mcpTools = spec.mcp ? createMCPProxyTools(spec.mcp.manager, spec.mcp.servers) : [];
 	const customTools = spec.options.customTools ?? [];
 	return {
 		...spec.options,
@@ -3825,9 +3846,9 @@ function createWarmSubagentReviver(capture: WarmReviveCapture): AgentReviver {
 			reopened.adoptArtifactManager(capture.parentArtifactManager);
 		}
 		await refreshSubagentIrcRoot(capture.spec.prompt, reopened, capture.sessionFile);
-		const mcpManager = capture.spec.options.mcpManager;
-		const mcpFollower = mcpManager
-			? followMCPTools(mcpManager, explicitSubagentToolNames(capture.spec), capture.spec.mcpServers)
+		const mcp = capture.spec.mcp;
+		const mcpFollower = mcp
+			? followMCPTools(mcp.manager, explicitSubagentToolNames(capture.spec), mcp.servers)
 			: undefined;
 		let revived: AgentSession;
 		// Account pools are owner policy: take the live exact-name entry, as
@@ -3959,7 +3980,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	const configuredDefaultBudget = Math.max(0, Math.trunc(Number(cfgTaskSoftRequestBudget.get(settings)) || 0));
 	const softRequestBudget = resolveSoftRequestBudget(agent.name, configuredDefaultBudget);
 	const softRequestBudgetNotice = cfgTaskSoftRequestBudgetNotice.get(settings);
-	const childDepth = (options.taskDepth ?? 0) + 1;
+	const parentDepth = options.taskDepth ?? 0;
+	const childDepth = parentDepth + 1;
 
 	let toolNames = agent.tools?.filter(name => name !== "task");
 	if (toolNames?.includes("exec")) {
@@ -4016,7 +4038,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		softRequestBudget,
 		softRequestBudgetNotice,
 		maxRuntimeMs,
-		completionProbe: isCompletionProbeEnabled(settings, childDepth - 1),
+		completionProbe: isCompletionProbeEnabled(settings, parentDepth),
 	});
 	const progress = monitor.progress;
 	let unsubscribe: (() => void) | null = null;
@@ -4201,7 +4223,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			const effectiveThinkingLevel =
 				effortLevel ?? (explicitThinkingLevel ? resolvedThinkingLevel : (thinkingLevel ?? resolvedThinkingLevel));
 			resolvedAt = performance.now();
-			const effectiveCwd = worktree ?? (agent.cwd ? path.resolve(cwd, agent.cwd) : cwd);
+			const effectiveCwd = resolveSubagentCwd(cwd, worktree, agent.cwd);
 			const sessionManagerPromise = sessionFile
 				? SessionManager.open(sessionFile, undefined, undefined, {
 						initialCwd: effectiveCwd,
@@ -4247,8 +4269,10 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			}
 
 			const restrictToolNames = options.restrictToolNames === true;
-			const enableMCP = !restrictToolNames && (options.enableMCP ?? true);
-			const mcpManager = enableMCP ? options.mcpManager : undefined;
+			const mcp =
+				!restrictToolNames && (options.enableMCP ?? true) && options.mcpManager && agent.mcp?.length
+					? { manager: options.mcpManager, servers: agent.mcp }
+					: undefined;
 
 			// Derive subagent-scoped telemetry from the parent's config so the
 			// child loop's spans nest under the parent's active execute_tool span
@@ -4344,8 +4368,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					enableLsp: lspEnabled,
 					enableIrc: options.enableIrc,
 					skipPythonPreflight,
-					enableMCP,
-					mcpManager,
+					enableMCP: false,
 					// MCP proxies are minted per build as `mcpTools` in buildSubagentSessionOptions.
 					customTools: options.customTools,
 					localProtocolOptions: options.localProtocolOptions,
@@ -4363,7 +4386,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					ircEnabled,
 					ircRoot: {},
 				},
-				mcpServers: agent.mcp,
+				mcp,
 			};
 
 			const sessionManager = await awaitAbortable(sessionManagerPromise);
@@ -4376,8 +4399,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			const hasExistingModelRole = sessionManager.getLastModelChangeRole() !== undefined;
 			// Subscribe before the builder mints proxies so a manager change during
 			// session startup is replayed on bind instead of lost.
-			const mcpFollower = mcpManager
-				? followMCPTools(mcpManager, explicitSubagentToolNames(sessionSpec), sessionSpec.mcpServers)
+			const mcpFollower = sessionSpec.mcp
+				? followMCPTools(sessionSpec.mcp.manager, explicitSubagentToolNames(sessionSpec), sessionSpec.mcp.servers)
 				: undefined;
 			let session: AgentSession;
 			let sessionPromise: Promise<CreateAgentSessionResult> | undefined;
@@ -4502,6 +4525,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				readOnly: isReadOnlyAgent(agent),
 				spawns: spawnsEnv,
 				readSummarize: agent.readSummarize,
+				mcp: agent.mcp,
 				advisor: advisorSelection ? (advisorRolePattern ?? "on") : undefined,
 				compactionThreshold: options.compactionThresholdOverride,
 				outputSchema,

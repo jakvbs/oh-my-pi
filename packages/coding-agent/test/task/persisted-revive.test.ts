@@ -56,7 +56,7 @@ function makeTempDir(prefix: string): string {
 }
 
 /** Inert shared manager exposing the members a revived subagent reads: its tools and change feed. */
-function fakeMcpManager(getTools: () => Array<{ name: string; label: string }>): MCPManager {
+function fakeMcpManager(getTools: () => Array<{ name: string; label: string; mcpServerName?: string }>): MCPManager {
 	return { getTools, addToolsChangedListener: () => () => {} } as unknown as MCPManager;
 }
 
@@ -158,6 +158,7 @@ async function createPersistedSession(
 		isolated?: boolean;
 		retryFallback?: RetryFallbackRole;
 		compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
+		mcp?: string[];
 	},
 ): Promise<string> {
 	const manager = SessionManager.create(cwd, path.join(cwd, "sessions"));
@@ -175,6 +176,7 @@ async function createPersistedSession(
 		agent: contract?.agent,
 		isolated: contract?.isolated,
 		retryFallback: contract?.retryFallback,
+		mcp: contract?.mcp,
 		...(contract?.compactionThreshold !== undefined
 			? { compactionThreshold: contract.compactionThreshold }
 			: undefined),
@@ -510,11 +512,10 @@ describe("persisted subagent revival", () => {
 		expect(activeToolNames).toEqual([["read", "write", "yield"]]);
 	});
 
-	it("preserves normal revival capability wiring for contracts without the marker", async () => {
+	it("revives a contract without mcp with no MCP access", async () => {
 		const cwd = makeTempDir("@pi-normal-revive-");
 		const sessionFile = await createPersistedSession(cwd);
-		const hostileMcp = fakeMcpManager(() => [{ name: "mcp__server_read", label: "server/read" }]);
-		MCPManager.setInstance(hostileMcp);
+		MCPManager.setInstance(fakeMcpManager(() => [{ name: "mcp__server_read", label: "server/read" }]));
 		let capturedOptions: CreateAgentSessionOptions | undefined;
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
 			capturedOptions = options;
@@ -528,9 +529,34 @@ describe("persisted subagent revival", () => {
 
 		expect(capturedOptions?.restrictToolNames).toBeUndefined();
 		expect(capturedOptions?.enableLsp).toBe(true);
-		expect(capturedOptions?.mcpManager).toBe(hostileMcp);
-		expect(capturedOptions?.mcpTools?.map(tool => tool.name)).toEqual(["mcp__server_read"]);
+		expect(capturedOptions?.enableMCP).toBe(false);
+		expect(capturedOptions?.mcpManager).toBeUndefined();
+		expect(capturedOptions?.mcpTools).toBeUndefined();
 		expect(capturedOptions?.customTools).toBeUndefined();
+	});
+
+	it("revives a contract with mcp with proxies for only those servers", async () => {
+		const cwd = makeTempDir("@pi-mcp-revive-");
+		const sessionFile = await createPersistedSession(cwd, undefined, undefined, undefined, { mcp: ["jira"] });
+		MCPManager.setInstance(
+			fakeMcpManager(() => [
+				{ name: "mcp__jira_read", label: "jira/read", mcpServerName: "jira" },
+				{ name: "mcp__figma_read", label: "figma/read", mcpServerName: "figma" },
+			]),
+		);
+		let capturedOptions: CreateAgentSessionOptions | undefined;
+		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
+			capturedOptions = options;
+			return { session: createRevivedSession([]).session } as CreateAgentSessionResult;
+		});
+
+		const ref = createRef(sessionFile);
+		const reviver = await createFactory(cwd)(ref);
+		if (!reviver) throw new Error("Expected a persisted reviver");
+		await reviver(ref);
+
+		expect(capturedOptions?.mcpManager).toBeUndefined();
+		expect(capturedOptions?.mcpTools?.map(tool => tool.name)).toEqual(["mcp__jira_read"]);
 	});
 
 	it("leaves isolated sessions transcript-only even when the workspace still exists", async () => {
