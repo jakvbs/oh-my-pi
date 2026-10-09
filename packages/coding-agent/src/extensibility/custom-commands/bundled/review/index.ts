@@ -1,20 +1,13 @@
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
-import { prompt } from "@oh-my-pi/pi-utils";
-import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
+import type { CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
-import reviewCustomRequestTemplate from "../../../../prompts/review-custom-request.md" with { type: "text" };
-import reviewHeadlessRequestTemplate from "../../../../prompts/review-headless-request.md" with { type: "text" };
 import * as gh from "../../../../tools/gh";
 import { github } from "../../../../utils/github";
-import { buildReviewPrompt } from "./prompt";
 import {
 	createResolvedReviewTarget,
-	getReviewTargetIssue,
 	LOCAL_REVIEW_CHOICES,
 	type LocalReviewKind,
 	type ResolvedReviewTarget,
-	readUncommittedReviewTarget,
-	resolveLocalReviewTarget,
 } from "./target";
 
 interface ParsedReviewArgs {
@@ -33,8 +26,6 @@ export interface ReviewPrRef {
 export type ReviewTargetChoice =
 	| { label: string; kind: "pr"; ref: ReviewPrRef }
 	| { label: string; kind: LocalReviewKind };
-
-export type ReviewChoice = ReviewTargetChoice | { label: string; kind: "custom" };
 
 const REVIEW_CONTEXT_PR_LIMIT = 3;
 const PICK_PR_CHOICE_LABEL = "4. Review a specific PR";
@@ -112,16 +103,6 @@ function extractReviewPrRefsFromText(text: string): ReviewPrRef[] {
 	);
 }
 
-function buildPrLargeDiffInstruction(ref: ReviewPrRef): string {
-	const prDiffUrl = `pr://${ref.repo}/${ref.number}/diff`;
-	return `MUST read assigned PR file diffs from \`${prDiffUrl}/all\` or per-file \`${prDiffUrl}/<index>\`; NEVER use local \`git diff\`/\`git show\` for PR diff content`;
-}
-
-function buildPrContextInstruction(ref: ReviewPrRef): string {
-	const prDiffUrl = `pr://${ref.repo}/${ref.number}/diff`;
-	return `MUST NOT read local workspace files for PR file context; use the fetched PR diff and \`${prDiffUrl}/all\` or per-file \`${prDiffUrl}/<index>\` only`;
-}
-
 /** Fetch one PR patch and freeze it before any overlay or LLM prompt is built. */
 export async function resolvePrReviewTarget(
 	cwd: string,
@@ -135,10 +116,6 @@ export async function resolvePrReviewTarget(
 			`PR ${ref.repo}#${ref.number}`,
 			lookup.payload.unified,
 			`PR ${ref.repo}#${ref.number} has no diff content available`,
-			{
-				diffInstruction: buildPrLargeDiffInstruction(ref),
-				contextInstruction: buildPrContextInstruction(ref),
-			},
 		);
 	} catch (error) {
 		const failure = `Failed to fetch PR diff for ${ref.repo}#${ref.number}: ${error instanceof Error ? error.message : String(error)}`;
@@ -309,24 +286,17 @@ async function selectPullRequestRef(cwd: string, ctx: HookCommandContext): Promi
 	}
 }
 
-type ReviewMenuChoice = ReviewChoice | { label: string; kind: "pick-pr" };
+type ReviewMenuChoice = ReviewTargetChoice | { label: string; kind: "pick-pr" };
 
 /**
- * Review target menu shared by `/review` and `/annotate code-review`. Picking
- * "Review a specific PR" opens the open-PR picker and resolves to a `pr`
- * choice, so callers never see the picker step.
+ * Diff target menu for `/annotate code-review`. Picking "Review a specific PR"
+ * opens the open-PR picker and resolves to a `pr` choice, so callers never see
+ * the picker step.
  */
-export async function selectReviewChoice(ctx: HookCommandContext, cwd: string): Promise<ReviewTargetChoice | undefined>;
 export async function selectReviewChoice(
 	ctx: HookCommandContext,
 	cwd: string,
-	options: { includeCustom: boolean },
-): Promise<ReviewChoice | undefined>;
-export async function selectReviewChoice(
-	ctx: HookCommandContext,
-	cwd: string,
-	options: { includeCustom: boolean } = { includeCustom: false },
-): Promise<ReviewChoice | undefined> {
+): Promise<ReviewTargetChoice | undefined> {
 	const choices: ReviewMenuChoice[] = [
 		...findRecentPrRefs(ctx, REVIEW_CONTEXT_PR_LIMIT).map(ref => ({
 			label: `Review PR ${ref.repo}#${ref.number} from conversation`,
@@ -336,7 +306,6 @@ export async function selectReviewChoice(
 		...LOCAL_REVIEW_CHOICES.map(choice => ({ label: choice.label, kind: choice.kind })),
 		{ label: PICK_PR_CHOICE_LABEL, kind: "pick-pr" },
 	];
-	if (options.includeCustom) choices.push({ label: "5. Custom review instructions", kind: "custom" });
 	const selected = await ctx.ui.select(
 		"Review Mode",
 		choices.map(choice => choice.label),
@@ -347,23 +316,6 @@ export async function selectReviewChoice(
 	return ref ? { label: `Review PR ${ref.repo}#${ref.number}`, kind: "pr", ref } : undefined;
 }
 
-function reviewTargetPrompt(
-	ctx: HookCommandContext,
-	target: ResolvedReviewTarget,
-	instructions?: string,
-): string | undefined {
-	const issue = getReviewTargetIssue(target);
-	if (issue) {
-		if (ctx.hasUI) ctx.ui.notify(issue, "warning");
-		return undefined;
-	}
-	return buildReviewPrompt(target, instructions);
-}
-
-function buildHeadlessReviewPrompt(focus?: string): string {
-	return prompt.render(reviewHeadlessRequestTemplate, { focus });
-}
-
 /**
  * `api.cwd` freezes at command-load time; after /move or /wt the live session
  * cwd comes from the session manager (issue #12501).
@@ -371,64 +323,3 @@ function buildHeadlessReviewPrompt(focus?: string): string {
 export function liveCommandCwd(api: CustomCommandAPI, ctx: HookCommandContext): string {
 	return ctx.sessionManager?.getCwd?.() || api.cwd;
 }
-
-function buildCustomReviewPrompt(instructions: string): string {
-	return prompt.render(reviewCustomRequestTemplate, { instructions });
-}
-
-export class ReviewCommand implements CustomCommand {
-	name = "review";
-	description = "Launch interactive code review";
-
-	constructor(private readonly api: CustomCommandAPI) {}
-
-	async execute(args: string[], ctx: HookCommandContext): Promise<string | undefined> {
-		const cwd = liveCommandCwd(this.api, ctx);
-		const parsedArgs = extractReviewPrRefFromArgs(args);
-		if (parsedArgs.prRef) {
-			try {
-				const target = await resolvePrReviewTarget(cwd, ctx, parsedArgs.prRef);
-				const result = target
-					? reviewTargetPrompt(ctx, target, parsedArgs.extraInstructions || undefined)
-					: undefined;
-				return (
-					result ??
-					(ctx.hasUI
-						? undefined
-						: `Unable to review PR ${parsedArgs.prRef.repo}#${parsedArgs.prRef.number}: no diff content available.`)
-				);
-			} catch (error) {
-				return error instanceof Error ? error.message : String(error);
-			}
-		}
-		const extraInstructions = parsedArgs.extraInstructions || undefined;
-		if (!ctx.hasUI) return buildHeadlessReviewPrompt(extraInstructions);
-		const selectedChoice = await selectReviewChoice(ctx, cwd, { includeCustom: !extraInstructions });
-		if (!selectedChoice) return undefined;
-		if (selectedChoice.kind === "pr") {
-			const target = await resolvePrReviewTarget(cwd, ctx, selectedChoice.ref);
-			return target ? reviewTargetPrompt(ctx, target, extraInstructions) : undefined;
-		}
-		if (selectedChoice.kind === "custom") {
-			const instructions = await ctx.ui.editor(
-				"Enter custom review instructions",
-				"Review the following:\n\n",
-				undefined,
-				{ promptStyle: true },
-			);
-			if (!instructions?.trim()) return undefined;
-			const target = await readUncommittedReviewTarget(cwd).catch(() => undefined);
-			if (target?.rawDiff.trim()) {
-				return buildReviewPrompt(
-					{ ...target, mode: `Custom review: ${instructions.split("\n")[0].slice(0, 60)}…` },
-					instructions,
-				);
-			}
-			return buildCustomReviewPrompt(instructions);
-		}
-		const target = await resolveLocalReviewTarget(selectedChoice.kind, cwd, ctx.ui);
-		return target ? reviewTargetPrompt(ctx, target, extraInstructions) : undefined;
-	}
-}
-
-export default ReviewCommand;

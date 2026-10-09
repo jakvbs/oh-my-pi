@@ -62,7 +62,6 @@ function fit(text: string, width: number): string {
 	return truncatedWidth < width ? truncated + padding(width - truncatedWidth) : truncated;
 }
 
-export const CONTINUE_CODE_REVIEW_ACTION = "Continue with LLM review";
 export const PASTE_CODE_REVIEW_ACTION = "Paste annotations into prompt";
 
 export interface AnnotationOverlayCallbacks {
@@ -130,8 +129,7 @@ const MIN_BODY_ROWS = 3;
 const SIDEBAR_MIN_TOTAL_WIDTH = 64;
 const SIDEBAR_MIN_BODY_WIDTH = 40;
 const MAX_ANNOTATION_EDITOR_ROWS = 6;
-const CODE_REVIEW_ACTIONS = [CONTINUE_CODE_REVIEW_ACTION, PASTE_CODE_REVIEW_ACTION] as const;
-const TEXT_REVIEW_ACTIONS = [PASTE_CODE_REVIEW_ACTION] as const;
+const ACTIONS = [PASTE_CODE_REVIEW_ACTION] as const;
 
 function isSourceRow(row: ReviewDiffRow): row is ReviewSourceRow {
 	return row.kind === "context" || row.kind === "added" || row.kind === "removed";
@@ -176,7 +174,7 @@ export class AnnotationOverlay implements Focusable {
 	#textAnnotations: CommittedTextAnnotation[] = [];
 	/** Annotation lists before each create/edit/delete, restored by `u`. */
 	#undoStack: Array<{ annotations: CommittedAnnotation[]; textAnnotations: CommittedTextAnnotation[] }> = [];
-	#actions: readonly string[] = CODE_REVIEW_ACTIONS;
+	#actions: readonly string[] = ACTIONS;
 	#textSource: TextReviewSource | undefined;
 	#textLines: readonly string[] = [];
 	#viewportDriven = false;
@@ -227,7 +225,6 @@ export class AnnotationOverlay implements Focusable {
 		this.#keybindings = keybindings;
 		if (isTextSource(filesOrSource)) {
 			this.#files = [];
-			this.#actions = TEXT_REVIEW_ACTIONS;
 			this.#mode = "Annotating text";
 			this.#callbacks = modeOrCallbacks as TextReviewOverlayCallbacks;
 			this.#textSource = { ...filesOrSource };
@@ -487,39 +484,27 @@ export class AnnotationOverlay implements Focusable {
 	#handleActions(data: string): void {
 		const actionCount = this.#actions.length;
 		if (actionCount === 0) return;
-		const hasAnnotations = this.#textSource ? this.#textAnnotations.length > 0 : this.#annotations.length > 0;
 		if (this.#keybindings.matches(data, "tui.select.up") || matchesKey(data, "k")) {
-			this.#actionIndex = this.#textSource ? (this.#actionIndex - 1 + actionCount) % actionCount : 0;
+			this.#actionIndex = (this.#actionIndex - 1 + actionCount) % actionCount;
 			return;
 		}
 		if (this.#keybindings.matches(data, "tui.select.down") || matchesKey(data, "j")) {
-			if (this.#textSource) {
-				this.#actionIndex = (this.#actionIndex + 1) % actionCount;
-			} else if (hasAnnotations) {
-				this.#actionIndex = Math.min(actionCount - 1, this.#actionIndex + 1);
-			}
+			this.#actionIndex = (this.#actionIndex + 1) % actionCount;
 			return;
 		}
 		if (this.#keybindings.matches(data, "tui.select.confirm")) this.#confirmAction();
 	}
 
-	#actionDisabled(index: number): boolean {
-		const hasAnnotations = this.#textSource ? this.#textAnnotations.length > 0 : this.#annotations.length > 0;
-		return this.#textSource ? !hasAnnotations : index === 1 && !hasAnnotations;
+	#actionDisabled(): boolean {
+		return this.#textSource ? this.#textAnnotations.length === 0 : this.#annotations.length === 0;
 	}
 
 	#confirmAction(): void {
-		if (this.#actionDisabled(this.#actionIndex)) return;
+		if (this.#actionDisabled()) return;
 		if (this.#textSource) {
-			this.#finish({
-				action: "paste",
-				annotations: this.getTextAnnotations(),
-			});
+			this.#finish({ action: "paste", annotations: this.getTextAnnotations() });
 		} else {
-			this.#finish({
-				action: this.#actionIndex === 0 ? "review" : "paste",
-				annotations: this.getAnnotations(),
-			});
+			this.#finish({ action: "paste", annotations: this.getAnnotations() });
 		}
 	}
 
@@ -806,7 +791,6 @@ export class AnnotationOverlay implements Focusable {
 		this.#annotationRev++;
 		this.#annotations = snapshot.annotations;
 		this.#textAnnotations = snapshot.textAnnotations;
-		if (this.#annotations.length === 0 && this.#actionIndex === 1) this.#actionIndex = 0;
 	}
 
 	async #openAnnotationEditor(): Promise<void> {
@@ -1011,9 +995,8 @@ export class AnnotationOverlay implements Focusable {
 	}
 
 	#renderActions(): string[] {
-		const hasAnnotations = this.#textSource ? this.#textAnnotations.length > 0 : this.#annotations.length > 0;
+		const disabled = this.#actionDisabled();
 		return this.#actions.map((label, index) => {
-			const disabled = this.#textSource ? !hasAnnotations : index === 1 && !hasAnnotations;
 			const selected = index === this.#actionIndex;
 			const cursor = selected ? `${this.#theme.nav.cursor} ` : "  ";
 			const text = disabled
@@ -1311,7 +1294,7 @@ export class AnnotationOverlay implements Focusable {
 			selectList(
 				"actions",
 				this.#actions.map((label, index) =>
-					item(`a${index}`, { label, disabled: this.#actionDisabled(index) || undefined }),
+					item(`a${index}`, { label, disabled: this.#actionDisabled() || undefined }),
 				),
 				{ selected: `a${this.#actionIndex}`, tone: this.#focus === "actions" ? "accent" : undefined },
 			),
@@ -1369,7 +1352,7 @@ export class AnnotationOverlay implements Focusable {
 			}
 			case "actions": {
 				const index = itemIndex(event.item, "a");
-				if (index < 0 || index >= this.#actions.length || this.#actionDisabled(index)) return;
+				if (index < 0 || index >= this.#actions.length || this.#actionDisabled()) return;
 				this.#focus = "actions";
 				this.#actionIndex = index;
 				if (activate) this.#confirmAction();

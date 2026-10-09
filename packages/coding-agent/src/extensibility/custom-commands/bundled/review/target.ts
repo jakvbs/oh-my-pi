@@ -3,7 +3,7 @@ import { parseReviewDiffSnapshot, type ReviewDiffSnapshot } from "./diff";
 
 export type LocalReviewKind = "base-branch" | "uncommitted" | "commit";
 
-/** One frozen diff: the annotation view and the reviewer prompt both read this snapshot. */
+/** One frozen diff snapshot read by the annotation view. */
 export interface ResolvedReviewTarget {
 	kind: LocalReviewKind | "pr";
 	mode: string;
@@ -11,8 +11,6 @@ export interface ResolvedReviewTarget {
 	snapshot: ReviewDiffSnapshot;
 	emptyMessage: string;
 	filteredMessage?: string;
-	diffInstruction?: string;
-	contextInstruction?: string;
 }
 
 export interface ReviewTargetUI {
@@ -26,16 +24,12 @@ export const LOCAL_REVIEW_CHOICES: ReadonlyArray<{ label: string; kind: LocalRev
 	{ label: "3. Review a specific commit", kind: "commit" },
 ];
 
-const GIT_UNCOMMITTED_DIFF_INSTRUCTION =
-	"MUST run both `git diff -- <path>` and `git diff --cached -- <path>` for assigned files";
-const JJ_UNCOMMITTED_DIFF_INSTRUCTION = "MUST run `jj --ignore-working-copy diff --git -- <path>` for assigned files";
-
 export function createResolvedReviewTarget(
 	kind: ResolvedReviewTarget["kind"],
 	mode: string,
 	rawDiff: string,
 	emptyMessage: string,
-	options: Pick<ResolvedReviewTarget, "filteredMessage" | "diffInstruction" | "contextInstruction"> = {},
+	options: Pick<ResolvedReviewTarget, "filteredMessage"> = {},
 ): ResolvedReviewTarget {
 	return {
 		kind,
@@ -60,7 +54,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Read staged + unstaged (or jj working-copy) changes; throws when no repository is available. */
-export async function readUncommittedReviewTarget(cwd: string): Promise<ResolvedReviewTarget> {
+async function readUncommittedReviewTarget(cwd: string): Promise<ResolvedReviewTarget> {
 	const repository = vcs.require(cwd);
 	const diffText = await repository.uncommittedDiff([]);
 	const isJj = repository.kind() === "jj";
@@ -69,7 +63,6 @@ export async function readUncommittedReviewTarget(cwd: string): Promise<Resolved
 		isJj ? "Reviewing JJ working-copy changes" : "Reviewing uncommitted changes (staged + unstaged)",
 		diffText,
 		isJj || !diffText.trim() ? "No uncommitted changes found" : "No diff content found",
-		{ diffInstruction: isJj ? JJ_UNCOMMITTED_DIFF_INSTRUCTION : GIT_UNCOMMITTED_DIFF_INSTRUCTION },
 	);
 }
 

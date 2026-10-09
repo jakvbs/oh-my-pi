@@ -262,15 +262,27 @@ describe("/annotate contracts", () => {
 		expect(pasteToEditor.mock.calls[0]?.[0]).toContain("picked PR note");
 	});
 
-	it("freezes an explicit PR target before opening the overlay and keeps PR annotations and context exact", async () => {
+	it("refuses code-review without an interactive UI and sends no message", async () => {
+		const { ctx, notify } = createContext();
+		const headless = { ...ctx, hasUI: false } as CustomCommandContext;
+		const resolvePrReviewTarget = vi.fn();
+
+		const result = await runAnnotateCommand(API, "code-review https://github.com/acme/project/pull/42", headless, {
+			resolvePrReviewTarget,
+		});
+
+		expect(result).toBeUndefined();
+		expect(resolvePrReviewTarget).not.toHaveBeenCalled();
+		expect(notify).toHaveBeenCalledWith(
+			"Code review annotation requires the interactive UI; no message was sent.",
+			"error",
+		);
+	});
+
+	it("freezes an explicit PR target before opening the overlay and pastes PR annotations exactly once", async () => {
 		const { ctx, pasteToEditor } = createContext();
 		const prUrl = "https://github.com/acme/project/pull/42";
-		const contextInstruction =
-			"MUST NOT read local workspace files for PR file context; use the fetched PR diff only";
-		const target = createResolvedReviewTarget("pr", "PR acme/project#42", SAMPLE_DIFF, "PR has no diff", {
-			diffInstruction: "MUST read the fetched PR diff",
-			contextInstruction,
-		});
+		const target = createResolvedReviewTarget("pr", "PR acme/project#42", SAMPLE_DIFF, "PR has no diff");
 		const exactNote = "exact annotation note: preserve once";
 		const annotation: CodeReviewAnnotation = {
 			scope: "line",
@@ -289,25 +301,24 @@ describe("/annotate contracts", () => {
 			return target;
 		});
 		const showCodeReviewOverlay = vi.fn(async () => ({
-			action: "review" as const,
+			action: "paste" as const,
 			annotations: [annotation],
 		}));
 
-		const prompt = await runAnnotateCommand(API, `code-review ${prUrl} focus on this line`, ctx, {
+		const result = await runAnnotateCommand(API, `code-review ${prUrl} focus on this line`, ctx, {
 			resolvePrReviewTarget,
 			showCodeReviewOverlay,
 		});
 
-		expect(prompt).toBeDefined();
+		expect(result).toBeUndefined();
 		expect(resolvePrReviewTarget).toHaveBeenCalledTimes(1);
 		expect(showCodeReviewOverlay).toHaveBeenCalledTimes(1);
 		expect(showCodeReviewOverlay).toHaveBeenCalledWith(ctx, target);
-		expect(prompt).toContain(contextInstruction);
-		expect(prompt).not.toContain("MAY read full file context as needed via `read`");
-		expect(countOccurrences(prompt!, "focus on this line")).toBe(1);
-		expect(countOccurrences(prompt!, exactNote)).toBe(1);
-		expect(prompt).toContain(SAMPLE_DIFF.trim());
-		expect(pasteToEditor).not.toHaveBeenCalled();
+		expect(pasteToEditor).toHaveBeenCalledTimes(1);
+		const pasted = pasteToEditor.mock.calls[0]?.[0] as string;
+		expect(countOccurrences(pasted, "focus on this line")).toBe(1);
+		expect(countOccurrences(pasted, exactNote)).toBe(1);
+		expect(pasted).toContain("+const value = 2;");
 	});
 
 	it("pastes the latest reply as a text annotation and never auto-submits it", async () => {
