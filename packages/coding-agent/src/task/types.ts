@@ -214,13 +214,9 @@ export function getTaskSchema(options: {
 	return schema;
 }
 
-/**
- * Whether an agent at `taskDepth` may still spawn children — i.e. it currently
- * holds the `task` tool. Mirrors the task-tool availability gate;
- * `maxRecursionDepth < 0` disables the cap entirely.
- */
-export function canSpawnAtDepth(maxRecursionDepth: number, taskDepth: number): boolean {
-	return maxRecursionDepth < 0 || taskDepth < maxRecursionDepth;
+/** Only the root session holds the `task` tool; subagents never spawn their own. */
+export function canSpawnAtDepth(taskDepth: number): boolean {
+	return taskDepth === 0;
 }
 
 /** Agent definition (bundled or discovered) */
@@ -243,4 +239,16 @@ export interface AgentDefinition {
 	advisor?: boolean | string;
 	source: AgentSource;
 	filePath?: string;
+	/** Working directory for the subagent, resolved against the spawning session's cwd. */
+	cwd?: string;
+	/** Skill names the subagent sees; absent = every skill of the spawning session. */
+	skills?: string[];
+	/** MCP server names whose tools the subagent gets; absent = every connected server, `[]` = none. */
+	mcp?: string[];
 }
+
+/** Default export of a `.omp/agents/<name>.ts` or `~/.omp/agent/agents/<name>.ts` module. */
+export type AgentSpec = Pick<
+	AgentDefinition,
+	"name" | "description" | "systemPrompt" | "tools" | "thinkingLevel" | "cwd" | "skills" | "mcp"
+> & { model?: string | string[] };

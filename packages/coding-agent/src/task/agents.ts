@@ -3,6 +3,7 @@
  *
  * Agents are embedded at build time via Bun's import with { type: "text" }.
  */
+import { type } from "@oh-my-pi/omptype";
 import { Effort } from "@oh-my-pi/pi-ai";
 import { parseFrontmatter, prompt } from "@oh-my-pi/pi-utils";
 import { parseAgentFields } from "../discovery/helpers";
@@ -117,6 +118,45 @@ export function parseAgent(
 	return {
 		...fields,
 		systemPrompt: body,
+		source,
+		filePath,
+	};
+}
+
+const agentModuleSchema = type({
+	name: "string",
+	description: "string",
+	systemPrompt: "string",
+	"tools?": "string[]",
+	"model?": "string | string[]",
+	"thinkingLevel?": "string",
+	"cwd?": "string",
+	"skills?": "string[]",
+	"mcp?": "string[]",
+});
+
+/** Parse the default export of a TypeScript agent module (`AgentSpec`). */
+export function parseAgentModule(filePath: string, exported: unknown, source: AgentSource): AgentDefinition {
+	const spec = agentModuleSchema(exported);
+	if (spec instanceof type.errors) {
+		throw new AgentParsingError(new Error(`${filePath}: ${spec.summary}`), filePath);
+	}
+	const fields = parseAgentFields({
+		name: spec.name,
+		description: spec.description,
+		tools: spec.tools,
+		model: spec.model,
+		thinkingLevel: spec.thinkingLevel,
+	});
+	if (!fields) {
+		throw new AgentParsingError(new Error(`${filePath}: reserved or empty agent name`), filePath);
+	}
+	return {
+		...fields,
+		systemPrompt: spec.systemPrompt,
+		cwd: spec.cwd,
+		skills: spec.skills,
+		mcp: spec.mcp,
 		source,
 		filePath,
 	};

@@ -153,6 +153,48 @@ describe("discoverAgents", () => {
 		expect(projectAgentsDir).toBe(path.join(projectDir, ".omp", "agents"));
 	});
 
+	test("loads a TypeScript agent module with its session shape", async () => {
+		const agentsDir = path.join(projectDir, ".omp", "agents");
+		await fs.mkdir(agentsDir, { recursive: true });
+		await fs.writeFile(
+			path.join(agentsDir, "probe.ts"),
+			`export default {
+				name: "probe",
+				description: "TS-defined probe.",
+				systemPrompt: "You probe.",
+				tools: ["read", "task"],
+				model: "p/m",
+				cwd: "packages/api",
+				skills: ["tdd"],
+				mcp: [],
+			} satisfies import("@oh-my-pi/pi-coding-agent/task/types").AgentSpec;`,
+		);
+
+		const { agents } = await discoverAgents(projectDir, tempHome);
+		const probe = agents.find(agent => agent.name === "probe");
+
+		expect(probe).toMatchObject({
+			description: "TS-defined probe.",
+			systemPrompt: "You probe.",
+			tools: ["read", "task", "yield"],
+			model: ["p/m"],
+			cwd: "packages/api",
+			skills: ["tdd"],
+			mcp: [],
+			source: "project",
+		});
+	});
+
+	test("skips a TypeScript agent module whose default export is not an AgentSpec", async () => {
+		const agentsDir = path.join(projectDir, ".omp", "agents");
+		await fs.mkdir(agentsDir, { recursive: true });
+		await fs.writeFile(path.join(agentsDir, "broken.ts"), `export default { name: "broken" };`);
+
+		const { agents } = await discoverAgents(projectDir, tempHome);
+
+		expect(agents.map(agent => agent.name)).not.toContain("broken");
+	});
+
 	test("loads agents from OMP npm plugins under <home>/.omp/plugins/node_modules", async () => {
 		await writeOmpPluginAgent(tempHome);
 

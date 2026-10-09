@@ -27,7 +27,7 @@ import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
 import { pluginUsesClaudeModelDialect } from "../discovery/agent-plugin-format";
 import { listClaudePluginRoots } from "../discovery/helpers";
 import { listOmpExtensionRoots } from "../discovery/omp-extension-roots";
-import { loadBundledAgents, parseAgent } from "./agents";
+import { loadBundledAgents, parseAgent, parseAgentModule } from "./agents";
 import type { AgentSource } from "@oh-my-pi/pi-tui/tools/task";
 import type { AgentDefinition } from "./types";
 
@@ -53,24 +53,26 @@ interface AgentDirectory {
 async function loadAgentsFromDir({ dir, source, ignoreModel }: AgentDirectory): Promise<AgentDefinition[]> {
 	const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
 	const files = entries
-		.filter(entry => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md"))
+		.filter(
+			entry =>
+				(entry.isFile() || entry.isSymbolicLink()) && (entry.name.endsWith(".md") || entry.name.endsWith(".ts")),
+		)
 		.sort((a, b) => a.name.localeCompare(b.name))
-		.map(file => {
+		.map(async file => {
 			const filePath = path.join(dir, file.name);
-			return fs
-				.readFile(filePath, "utf-8")
-				.then(content => {
-					const agent = parseAgent(filePath, content, source, "warn");
-					if (ignoreModel) agent.model = undefined;
-					return agent;
-				})
-				.catch(error => {
-					logger.warn("Failed to read agent file", { filePath, error });
-					return null;
-				});
+			try {
+				const agent = filePath.endsWith(".ts")
+					? parseAgentModule(filePath, (await import(filePath)).default, source)
+					: parseAgent(filePath, await fs.readFile(filePath, "utf-8"), source, "warn");
+				if (ignoreModel) agent.model = undefined;
+				return agent;
+			} catch (error) {
+				logger.warn("Failed to load agent file", { filePath, error });
+				return null;
+			}
 		});
 
-	return (await Promise.all(files)).filter(Boolean) as AgentDefinition[];
+	return (await Promise.all(files)).filter((agent): agent is AgentDefinition => agent !== null);
 }
 
 /**

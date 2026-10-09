@@ -102,7 +102,6 @@ import { cfgExternalThinking } from "../session/settings";
 import { cfgGoalEnabled } from "../goals/settings";
 import { cfgLspEnabled } from "../lsp/settings";
 import { cfgMemoryBackend } from "../memory-backend/settings";
-import { cfgTaskMaxRecursionDepth } from "../task/settings";
 
 export * from "../edit";
 export * from "../goals";
@@ -797,7 +796,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 			);
 		}
 		if (name === "task") {
-			return canSpawnAtDepth(cfgTaskMaxRecursionDepth.get(session.settings), session.taskDepth ?? 0);
+			return canSpawnAtDepth(session.taskDepth ?? 0);
 		}
 		return true;
 	};

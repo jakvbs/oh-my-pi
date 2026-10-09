@@ -258,7 +258,6 @@ describe("ACP lazy startup", () => {
 			"task.eager": "always",
 			"task.batch": false,
 			"task.maxConcurrency": 4,
-			"task.maxRecursionDepth": 5,
 			"task.disabledAgents": ["scout"],
 			"task.agentModelOverrides": { task: "claude-sonnet-4-20250514" },
 			"task.agentAdvisor": { task: "on" },
