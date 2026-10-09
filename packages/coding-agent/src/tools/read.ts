@@ -1106,34 +1106,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 	}
 
-	/**
-	 * Recover the active approved plan when a model rewrites its internal URL
-	 * as a same-basename path in the working-directory root.
-	 *
-	 * Only missing cwd-root paths qualify, so a real working-tree file always
-	 * wins and unrelated paths cannot escape into the session artifact sandbox.
-	 */
-	async #approvedPlanAlias(missingAbsolutePath: string, signal?: AbortSignal): Promise<string | undefined> {
-		const planReferencePath = this.session.getPlanReferencePath?.();
-		if (!planReferencePath) return undefined;
-
-		const requestedPath = path.resolve(missingAbsolutePath);
-		if (path.dirname(requestedPath) !== path.resolve(this.session.cwd)) return undefined;
-
-		let approvedPlanPath: string | null;
-		try {
-			approvedPlanPath = await InternalUrlRouter.instance().locate(
-				planReferencePath,
-				sessionResolveContext(this.session, { signal }),
-			);
-		} catch {
-			return undefined;
-		}
-		return approvedPlanPath !== null && path.basename(requestedPath) === path.basename(approvedPlanPath)
-			? approvedPlanPath
-			: undefined;
-	}
-
 	async #tryReadDelimitedPaths(
 		readPath: string,
 		signal?: AbortSignal,
@@ -1882,30 +1854,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 							suffixResolution = { from: localReadPath, to: suffixMatch.displayPath };
 						} catch {
 							// Suffix match candidate no longer stats — continue through
-							// approved-plan recovery and the original not-found error.
+							// the original not-found error.
 						}
 					}
 				}
 
-				let recoveredApprovedPlan = false;
 				if (!suffixResolution) {
-					const approvedPlanPath = await this.#approvedPlanAlias(absolutePath, signal);
-					if (approvedPlanPath) {
-						try {
-							const approvedPlanStat = await Bun.file(approvedPlanPath).stat();
-							absolutePath = approvedPlanPath;
-							fileSize = approvedPlanStat.size;
-							isDirectory = approvedPlanStat.isDirectory();
-							specialKind = specialFileKind(approvedPlanStat);
-							recoveredApprovedPlan = true;
-						} catch {
-							// The referenced plan disappeared after resolution; continue through
-							// the ordinary delimited-path fallback and not-found error.
-						}
-					}
-				}
-
-				if (!recoveredApprovedPlan && !suffixResolution) {
 					const delimitedResult = await this.#tryReadDelimitedPaths(readPath, signal);
 					if (delimitedResult) return delimitedResult;
 					throw new ToolError(`Path '${localReadPath}' not found`);

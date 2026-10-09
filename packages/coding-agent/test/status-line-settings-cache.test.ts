@@ -60,7 +60,8 @@ function makeSession(sessionName = "Cache Session") {
 		isAdvisorActive: () => false,
 		getAdvisorStatusOverview: () => ({ configured: false, advisors: [] }),
 		getAsyncJobSnapshot: () => ({ running: [] }),
-		settings: { get: () => false },
+		getGoalModeState: () => undefined,
+		settings: Settings.isolated(),
 		modelRegistry: { isUsingOAuth: () => false },
 		sessionManager: {
 			getSessionName: () => sessionName,
@@ -113,9 +114,9 @@ describe("StatusLineComponent effective settings cache", () => {
 		component.getTopBorder(120);
 		expect(snapshotCalls).toBe(2);
 
-		component.setPlanModeStatus({ enabled: true, paused: false });
-		const withPlan = stripVTControlCharacters(component.getTopBorder(120).content);
-		expect(withPlan).toContain("Plan");
+		component.setGoalModeStatus({ enabled: true, paused: false });
+		const withGoal = stripVTControlCharacters(component.getTopBorder(120).content);
+		expect(withGoal).toContain("Goal");
 		expect(snapshotCalls).toBe(3);
 
 		const mutableModel = session.state.model as { name: string };
@@ -218,13 +219,13 @@ describe("StatusLineComponent effective settings cache", () => {
 		expect(content).not.toContain("agents");
 	});
 
-	it("keeps plan and hook state dynamic without settings invalidation", () => {
+	it("keeps goal and hook state dynamic without settings invalidation", () => {
 		const component = makeComponent({ preset: "custom", leftSegments: ["mode"], rightSegments: [] });
 		const effective = component.getEffectiveSettingsForTest();
 		expect(component.getTopBorder(80).content).toBe("");
 
-		component.setPlanModeStatus({ enabled: true, paused: false });
-		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain("Plan");
+		component.setGoalModeStatus({ enabled: true, paused: false });
+		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain("Goal");
 		expect(component.getEffectiveSettingsForTest()).toBe(effective);
 
 		component.setHookStatus("hook", "hook running");

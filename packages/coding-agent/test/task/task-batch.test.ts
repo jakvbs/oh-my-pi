@@ -43,7 +43,6 @@ function createSession(
 		manager?: AsyncJobManager;
 		settings?: Record<string, unknown>;
 		agentId?: string;
-		planMode?: boolean;
 	} = {},
 ): ToolSession {
 	return {
@@ -52,7 +51,6 @@ function createSession(
 		settings: Settings.isolated(options.settings ?? {}),
 		getSessionFile: () => null,
 		getAgentId: () => options.agentId ?? null,
-		getPlanModeState: options.planMode ? () => ({ enabled: true }) : undefined,
 		asyncJobManager: options.manager,
 	} as unknown as ToolSession;
 }
@@ -173,19 +171,6 @@ describe("task.batch schema gating", () => {
 		}
 		expect(isolatedSchema.type).toBe("boolean");
 		expect(itemProperties.apply).toBeUndefined();
-	});
-
-	it("hides isolation from the dynamic batch schema in plan mode", async () => {
-		mockDiscovery();
-		const tool = await TaskTool.create(
-			createSession({
-				planMode: true,
-				settings: { "task.batch": true, "task.isolation.enabled": true },
-			}),
-		);
-		const itemProperties = getBatchItemProperties(tool);
-		expect(itemProperties.isolated).toBeUndefined();
-		expect(tool.description).not.toContain("`isolated`");
 	});
 
 	it("exposes outputSchema but never the stale schema field", async () => {

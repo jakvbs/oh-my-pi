@@ -396,9 +396,8 @@ export interface CompactOptions {
 	/**
 	 * Internal summarizer guidance — piped only to native summarization, never
 	 * exposed as `customInstructions` on the `session_before_compact` extension
-	 * hook. Used by plan-mode "Approve and compact context" so extensions that
-	 * treat `customInstructions` as user focus don't mistake plan-mode
-	 * boilerplate for the operator's intent (issue #4359).
+	 * hook, so extensions that treat `customInstructions` as user focus don't
+	 * mistake caller boilerplate for the operator's intent (issue #4359).
 	 *
 	 * When both `customInstructions` and `internalGuidance` are set, the
 	 * summarizer uses `internalGuidance`; the hook still sees only the public
@@ -409,8 +408,7 @@ export interface CompactOptions {
 	 * A manual compaction aborts any turn in flight and, once the summary is
 	 * committed (or at once when there was nothing to compact), resumes it with
 	 * the auto-continue nudge. Set this when the caller dispatches its own
-	 * follow-up turn after compaction — plan-mode "Approve and compact context" —
-	 * so the two don't double-prompt. Compactions that interrupt nothing never
+	 * follow-up turn after compaction so the two don't double-prompt. Compactions that interrupt nothing never
 	 * continue. Steer/follow-up messages queued during the compaction are
 	 * unaffected: they always drain once compaction ends (issue #5800), before
 	 * and independent of this option.
@@ -1564,8 +1562,7 @@ export interface ExtensionAPI {
 	 * an internal continuation that consumes the message on the next turn.
 	 *
 	 * `deliverAs: "aside"` injects the message at the next agent step boundary without interrupting
-	 * the in-flight tool batch; when the session is idle it starts a turn regardless of `triggerTurn`
-	 * (plan mode folds it into context instead).
+	 * the in-flight tool batch; when the session is idle it starts a turn regardless of `triggerTurn`.
 	 *
 	 * `deliverAs: "displayOnly"` paints a `display: true` message in the transcript right away, idle
 	 * or mid-turn, and persists it with `excludeFromContext`; the model never sees it, not in the
@@ -1806,7 +1803,7 @@ export type SendMessageHandler = <T = unknown>(
 	 * When paired with `triggerTurn: true` during prompt teardown, the session schedules
 	 * an internal continuation without surfacing the message in the editable pending queue.
 	 * `deliverAs: "aside"` injects at the next step boundary without interrupting the in-flight
-	 * tool batch, except that it ends a running interruptible `wait`; idle starts a turn regardless of `triggerTurn` (plan mode folds into context).
+	 * tool batch, except that it ends a running interruptible `wait`; idle starts a turn regardless of `triggerTurn`.
 	 * `deliverAs: "displayOnly"` paints and persists a transcript-only message the model never sees.
 	 */
 	options?: SendCustomMessageOptions,

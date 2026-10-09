@@ -67,14 +67,13 @@ pub struct EditPolicy {
 	pub fuzzy_threshold:      f64,
 	pub enforce_seen_lines:   bool,
 	pub block_auto_generated: bool,
-	pub plan_active:          bool,
 	/// Registered internal URL schemes (router spec keys).
 	pub url_schemes:          Vec<String>,
 	/// The `urlSchemes` whose single-slash `scheme:/x` spelling aliases
 	/// `scheme://x` (spec `singleSlashAlias`).
 	pub url_alias_schemes:    Vec<String>,
-	/// Plain-path roots writable in plan mode.
-	pub plan_writable_roots:  Vec<String>,
+	/// Session sandbox roots that hashline tag recovery may rebind into.
+	pub sandbox_roots:        Vec<String>,
 	pub home_dir:             String,
 	/// The payload is a verbatim custom-format string, not JSON.
 	pub raw_input:            bool,
@@ -89,12 +88,7 @@ impl EditPolicy {
 				home_dir:             PathBuf::from(self.home_dir),
 				url_schemes:          self.url_schemes,
 				url_alias_schemes:    self.url_alias_schemes,
-				plan_writable_roots:  self
-					.plan_writable_roots
-					.into_iter()
-					.map(PathBuf::from)
-					.collect(),
-				plan_active:          self.plan_active,
+				sandbox_roots:        self.sandbox_roots.into_iter().map(PathBuf::from).collect(),
 				block_auto_generated: self.block_auto_generated,
 			},
 			allow_fuzzy:        self.allow_fuzzy,
@@ -109,11 +103,9 @@ impl EditPolicy {
 #[napi(object)]
 pub struct EditUrlResolution {
 	/// Absolute backing file; null when no local file backs the URL.
-	pub path:          Option<String>,
+	pub path:  Option<String>,
 	/// Model-facing refusal (read-only, disabled…); wins over `path`.
-	pub error:         Option<String>,
-	/// Writable while plan mode is active (sandbox-scoped scheme).
-	pub plan_writable: bool,
+	pub error: Option<String>,
 }
 
 /// One file's streamed diff preview.
@@ -490,16 +482,10 @@ async fn resolve_one(resolver: &ResolverCallback, url: &str) -> UrlResolution {
 		Err(err) => Err(err),
 	};
 	match answer {
-		Ok(answer) => UrlResolution {
-			absolute:      answer.path.map(PathBuf::from),
-			error:         answer.error,
-			plan_writable: answer.plan_writable,
+		Ok(answer) => {
+			UrlResolution { absolute: answer.path.map(PathBuf::from), error: answer.error }
 		},
-		Err(err) => UrlResolution {
-			absolute:      None,
-			error:         Some(err.reason),
-			plan_writable: false,
-		},
+		Err(err) => UrlResolution { absolute: None, error: Some(err.reason) },
 	}
 }
 
@@ -848,8 +834,7 @@ pub fn edit_auto_generated_message(absolute_path: String, display_path: String) 
 		home_dir:             PathBuf::new(),
 		url_schemes:          Vec::new(),
 		url_alias_schemes:    Vec::new(),
-		plan_writable_roots:  Vec::new(),
-		plan_active:          false,
+		sandbox_roots:        Vec::new(),
 		block_auto_generated: true,
 	};
 	let mut head = [0u8; 1024];
@@ -964,8 +949,7 @@ mod tests {
 				home_dir:             cwd.to_path_buf(),
 				url_schemes:          Vec::new(),
 				url_alias_schemes:    Vec::new(),
-				plan_writable_roots:  Vec::new(),
-				plan_active:          false,
+				sandbox_roots:        Vec::new(),
 				block_auto_generated: true,
 			},
 			allow_fuzzy:        true,

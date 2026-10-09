@@ -44,7 +44,6 @@ function createPathContext(): SegmentContext {
 				stripWorkPrefix: true,
 			},
 		},
-		planMode: null,
 		loopMode: null,
 		prewalk: null,
 		goalMode: null,

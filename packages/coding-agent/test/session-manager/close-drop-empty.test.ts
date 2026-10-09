@@ -54,17 +54,16 @@ describe("SessionManager close() drops empty metadata-only sessions", () => {
 		expect(await fileExists(sessionFile)).toBe(false);
 	});
 
-	// `plan.defaultOnStartup` records a `mode_change` before the composer
-	// restores its draft. Clearing that draft and closing must still drop the
-	// otherwise metadata-only file — mode changes are startup selector state,
-	// not durable conversation.
+	// A mode toggle records a `mode_change`. Clearing the draft and closing must
+	// still drop the otherwise metadata-only file — mode changes are selector
+	// state, not durable conversation.
 	it("drops the session file when only mode/model changes precede a cleared draft", async () => {
-		using tempDir = TempDir.createSync("@pi-session-close-drop-plan-startup-");
+		using tempDir = TempDir.createSync("@pi-session-close-drop-mode-");
 		const session = SessionManager.create(tempDir.path(), tempDir.path());
 		session.appendModelChange("hai-proxy/anthropic--claude-4.6-opus");
-		session.appendModeChange("plan", { planFilePath: "local://PLAN.md" });
+		session.appendModeChange("goal");
 
-		await session.saveDraft("plan-mode draft");
+		await session.saveDraft("mode draft");
 		await session.saveDraft("");
 
 		const sessionFile = session.getSessionFile();

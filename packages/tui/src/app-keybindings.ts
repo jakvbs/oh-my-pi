@@ -58,7 +58,6 @@ interface AppKeybindings {
 	"app.session.deleteNoninvasive": true;
 	"app.tree.foldOrUp": true;
 	"app.tree.unfoldOrDown": true;
-	"app.plan.toggle": true;
 	"app.history.search": true;
 }
 
@@ -227,10 +226,6 @@ export const KEYBINDINGS = {
 		defaultKeys: ["ctrl+right", "alt+right"],
 		description: "Unfold or move down",
 	},
-	"app.plan.toggle": {
-		defaultKeys: "alt+shift+p",
-		description: "Toggle plan mode",
-	},
 	"app.history.search": {
 		defaultKeys: "ctrl+r",
 		description: "Search history",
@@ -252,7 +247,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	cycleModelBackward: "app.model.cycleBackward",
 	selectModel: "app.model.select",
 	selectModelTemporary: "app.model.selectTemporary",
-	togglePlanMode: "app.plan.toggle",
 	historySearch: "app.history.search",
 	expandTools: "app.tools.expand",
 	toggleThinking: "app.thinking.toggle",

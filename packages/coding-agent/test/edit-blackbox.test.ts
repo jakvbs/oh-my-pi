@@ -22,7 +22,6 @@ function makeSession(cwd: string, settings: Settings): ToolSession {
 		settings,
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
-		getPlanModeState: () => undefined,
 	} as unknown as ToolSession;
 }
 

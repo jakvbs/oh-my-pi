@@ -44,7 +44,7 @@
 ## Flow
 1. Registration requires `ask.enabled` and `AskTool.createIf()` requires `session.canPromptUser ?? session.hasUI`. A protocol session with a prompt-capable tool UI can receive it even without a local terminal UI; a session with no prompt surface cannot.
 2. `execute()` also requires `context.hasUI` and `context.ui`; if missing it aborts the context and throws `ToolAbortError("Ask tool requires interactive mode")`.
-3. It normalizes carriage-return runs in all supplied strings and rejects duplicate question IDs, duplicate option labels within a question, and reserved runtime-label collisions. It reads `ask.timeout`, converts seconds to milliseconds (`0` disables timeout), and disables timeout entirely while plan mode is enabled.
+3. It normalizes carriage-return runs in all supplied strings and rejects duplicate question IDs, duplicate option labels within a question, and reserved runtime-label collisions. It reads `ask.timeout`, converts seconds to milliseconds (`0` disables timeout).
 4. If the session has a local UI and `ask.notify` is not `off`, it sends a terminal notification: `Waiting for input`.
 5. When the UI supplies `askDialog`, the tool opens one rich multi-question form. Rich options receive `header`, `description`, and `preview`; results may contain custom answers and notes with pasted images, or choose the dialog's `Chat about this` redirect.
 6. Otherwise it uses the selector/editor fallback for each question:
@@ -72,14 +72,13 @@
   - Opens a text editor dialog via `context.ui.editor(...)` for `Other`.
   - Sends a terminal notification when the session has a local UI, unless `ask.notify=off`.
 - Session state
-  - Reads plan-mode state to disable timeouts.
   - Calls `context.abort()` on headless use or user cancellation.
 - Background work / cancellation
   - Wraps UI waits in `untilAborted(...)` so abort signals interrupt pending dialogs.
 
 ## Limits & Caps
 - `questions` must contain at least 1 item. Unknown fields are rejected because `AskTool.strict=true`.
-- `ask.timeout` defaults to `0` seconds (disabled); configured non-zero values are seconds. Plan mode always disables it.
+- `ask.timeout` defaults to `0` seconds (disabled); configured non-zero values are seconds.
 - Prompt guidance says provide 2–5 options, but code only requires the `options` array field and does not enforce a minimum or maximum length.
 - Option labels must not equal the reserved runtime labels `Other (type your own)`, `Chat about this`, or `Next →`. Multi-select labels also cannot equal the theme-prefixed `Done selecting` control.
 - IDs must be unique across questions, and option labels unique within each question; these guards run after carriage-return normalization.

@@ -21,8 +21,6 @@ import type { EffectiveExtensionRoots } from "../capability/types";
 import { sessionLocalProtocolOptions } from "../internal-urls/context";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
 import { MCPManager } from "../mcp/manager";
-import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
-import planModeSubagentPrompt from "../prompts/system/plan-mode-subagent.md" with { type: "text" };
 import subagentUserPromptTemplate from "../prompts/system/subagent-user-prompt.md" with { type: "text" };
 import isolationRecoveryHintTemplate from "../prompts/tools/isolation-recovery-hint.md" with { type: "text" };
 import salvagedChildHintTemplate from "../prompts/tools/salvaged-child-hint.md" with { type: "text" };
@@ -136,7 +134,7 @@ export interface StructuredSubagentRequest {
 	keepAlive?: boolean;
 	/** Task frontends may inherit LSP; eval frontends normally set this false. */
 	enableLsp?: boolean;
-	/** Explicitly pass false for plan mode or invocation kinds that must not use IRC. */
+	/** Explicitly pass false for invocation kinds that must not use IRC. */
 	enableIrc?: boolean;
 	/** `0` disables executor wall-clock timeout. Undefined inherits settings. */
 	maxRuntimeMs?: number;
@@ -165,7 +163,6 @@ export interface EffectiveSubagentPolicy {
 	oauthAccountPools?: OAuthAccountPools;
 	parentActiveModelPattern?: string;
 	schema: StructuredSubagentSchemaResolution;
-	planMode: boolean;
 	isIsolated: boolean;
 	mergeMode: "patch" | "branch";
 	applyChanges: boolean;
@@ -201,8 +198,6 @@ export class StructuredSubagentError extends Error {
 	}
 }
 
-const PLAN_MODE_TOOLS = ["read", "grep", "glob", "web_search"] as const;
-
 function renderSubagentPrompt(assignment: string): string {
 	return prompt.render(subagentUserPromptTemplate, { assignment: assignment.trim() });
 }
@@ -227,29 +222,6 @@ function resolveSchema(request: StructuredSubagentRequest): StructuredSubagentSc
 		return { schema: request.session.outputSchema, source: "session", mode, outputSchemaOverridesAgent: false };
 	}
 	return { schema: undefined, source: "none", mode, outputSchemaOverridesAgent: false };
-}
-
-function createPlanModeAgent(agent: AgentDefinition): AgentDefinition {
-	const tools = [...PLAN_MODE_TOOLS, ...(agent.tools ?? []).filter(tool => tool === "ast_grep")];
-	return {
-		...agent,
-		systemPrompt: `${planModeSubagentPrompt}\n\n${agent.systemPrompt}`,
-		tools,
-	};
-}
-
-function assertPlanControlsAllowed(request: StructuredSubagentRequest, planMode: boolean): void {
-	if (!planMode) return;
-	const isolation = request.isolation;
-	if (
-		isolation &&
-		(Object.hasOwn(isolation, "requested") || Object.hasOwn(isolation, "apply") || Object.hasOwn(isolation, "merge"))
-	) {
-		throw new StructuredSubagentError(
-			"preflight",
-			"Subagent isolation, apply, and merge controls are unavailable in plan mode.",
-		);
-	}
 }
 
 function assertSpawnAllowed(request: StructuredSubagentRequest, agentName: string): void {
@@ -302,8 +274,6 @@ export async function resolveEffectiveSubagentPolicy(
 ): Promise<EffectiveSubagentPolicy> {
 	await request.session.settings.reloadFromDisk();
 	const agentName = request.agent?.trim() || "";
-	const planMode = request.session.getPlanModeState?.()?.enabled === true;
-	assertPlanControlsAllowed(request, planMode);
 	assertSpawnAllowed(request, agentName);
 
 	const discovery = await discoverAgentsShared(request.session.cwd, request.session.effectiveExtensionRoots?.());
@@ -326,7 +296,6 @@ export async function resolveEffectiveSubagentPolicy(
 		);
 	}
 
-	const effectiveAgent = planMode ? createPlanModeAgent(agent) : agent;
 	const schema = resolveSchema(request);
 	if (schema.source === "caller" || (schema.source !== "none" && schema.mode === "strict")) {
 		const { error } = buildOutputValidator(schema.schema);
@@ -355,7 +324,7 @@ export async function resolveEffectiveSubagentPolicy(
 	const modelResolution = {
 		requestModel: request.model,
 		settingsOverride: agentModelOverrides[agentName],
-		agentModel: effectiveAgent.model,
+		agentModel: agent.model,
 		settings: request.session.settings,
 		activeModelPattern: parentActiveModelPattern,
 		fallbackModelPattern: request.session.getModelString?.(),
@@ -376,7 +345,7 @@ export async function resolveEffectiveSubagentPolicy(
 		discovery,
 		agentName,
 		agent,
-		effectiveAgent,
+		effectiveAgent: agent,
 		modelOverride,
 		modelRole,
 		serviceTierOverride,
@@ -384,16 +353,14 @@ export async function resolveEffectiveSubagentPolicy(
 		oauthAccountPools,
 		parentActiveModelPattern,
 		schema,
-		planMode,
 		isIsolated,
 		mergeMode: request.isolation?.merge ?? cfgTaskIsolationMerge.get(request.session.settings),
 		applyChanges:
 			request.isolation?.apply ??
 			(request.invocationKind === "task" ? cfgTaskIsolationApply.get(request.session.settings) : true),
 		enableLsp:
-			!planMode &&
-			(request.enableLsp ?? ((request.session.enableLsp ?? true) && cfgTaskEnableLsp.get(request.session.settings))),
-		enableIrc: !planMode && (request.enableIrc ?? request.session.enableIrc !== false),
+			request.enableLsp ?? ((request.session.enableLsp ?? true) && cfgTaskEnableLsp.get(request.session.settings)),
+		enableIrc: request.enableIrc ?? request.session.enableIrc !== false,
 	};
 }
 
@@ -478,7 +445,7 @@ function buildExecutorOptions(
 	const { session } = request;
 	const skills = [...(session.skills ?? [])];
 	const localProtocolOptions = sessionLocalProtocolOptions(session);
-	const restrictToolNames = policy.planMode || session.restrictToolNames === true;
+	const restrictToolNames = session.restrictToolNames === true;
 	const enableMCP = !restrictToolNames && (session.enableMCP ?? true);
 	return {
 		cwd: session.cwd,
@@ -489,7 +456,6 @@ function buildExecutorOptions(
 		task: renderSubagentPrompt(request.assignment),
 		assignment: request.assignment.trim(),
 		context: request.context?.trim() || undefined,
-		planReference: undefined,
 		// Task `name` is the spawn handle (id allocation). Eval `label` is a
 		// real UI description. Copy it only for eval so generateTaskLabel can run.
 		description: request.invocationKind === "eval" ? trimToUndefined(request.identity?.label) : undefined,
@@ -554,17 +520,6 @@ function buildExecutorOptions(
 		parentAgentId: session.getAgentId?.() ?? MAIN_AGENT_ID,
 		parentServiceTier: session.getServiceTierByFamily ? (session.getServiceTierByFamily() ?? null) : undefined,
 	};
-}
-
-async function loadPlanReference(
-	request: StructuredSubagentRequest,
-	policy: EffectiveSubagentPolicy,
-): Promise<{ path: string; content: string } | undefined> {
-	if (policy.planMode) return undefined;
-	return loadOverallPlanReference(
-		request.session.getPlanReferencePath?.() ?? "local://PLAN.md",
-		sessionLocalProtocolOptions(request.session),
-	);
 }
 
 function buildFailureResult(
@@ -722,7 +677,6 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
 		baseOptions.onCleanupDeferred = completion => {
 			deferredCleanup = completion;
 		};
-		baseOptions.planReference = await loadPlanReference(request, policy);
 		let isolationContext: IsolationContext | null = null;
 		if (policy.isIsolated) {
 			try {

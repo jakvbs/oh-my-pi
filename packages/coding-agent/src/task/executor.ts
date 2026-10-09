@@ -379,12 +379,6 @@ export interface ExecutorOptions {
 	assignment?: string;
 	/** Shared background from the task call (`task.batch`), rendered into the subagent's system prompt. */
 	context?: string;
-	/**
-	 * The session's active overall plan, handed off so subagents spawned during
-	 * plan execution share the same plan context as the main agent. Omitted when
-	 * the session did not start with a plan (or while plan mode is still active).
-	 */
-	planReference?: { path: string; content: string };
 	/** Pre-set UI label (e.g. eval bridge label). When absent, a tiny-model label is generated from the assignment. */
 	description?: string;
 	index: number;
@@ -3623,8 +3617,6 @@ interface SubagentPromptInputs {
 	id: string;
 	agentSystemPrompt: string;
 	context: string;
-	planReference: string;
-	planReferencePath: string;
 	worktree: string;
 	outputSchema: unknown;
 	outputSchemaOverridesAgent: boolean;
@@ -3697,8 +3689,6 @@ function buildSubagentSessionOptions(
 			const subagentPrompt = prompt.render(subagentSystemPromptTemplate, {
 				agent: inputs.agentSystemPrompt,
 				context: inputs.context,
-				planReference: inputs.planReference,
-				planReferencePath: inputs.planReferencePath,
 				worktree: inputs.worktree,
 				outputSchema: inputs.outputSchema,
 				outputSchemaOverridesAgent: inputs.outputSchemaOverridesAgent,
@@ -4314,8 +4304,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					id,
 					agentSystemPrompt: agent.systemPrompt,
 					context: options.context?.trim() ?? "",
-					planReference: options.planReference?.content ?? "",
-					planReferencePath: options.planReference?.path ?? "",
 					worktree: worktree ?? "",
 					outputSchema: normalizedOutputSchema,
 					outputSchemaOverridesAgent: options.outputSchemaOverridesAgent === true,

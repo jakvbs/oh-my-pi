@@ -51,7 +51,6 @@ const host: SessionToolsHost = {
 	isDisposed: () => false,
 	isStreaming: () => false,
 	queuedMessageCount: () => 0,
-	planModeEnabled: () => false,
 	model: () => undefined,
 	clearInheritedProviderPromptCacheKey: () => {},
 	emitNotice: () => {},

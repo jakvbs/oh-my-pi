@@ -983,12 +983,10 @@ describe("buildSessionContext", () => {
 		});
 
 		it("trimmed prefix entries still drive cache-miss reset tracking", () => {
-			// Regression (autoreview): a mode_change inside the trimmed orphan
-			// head must still update the reset tracker. Skipping it leaves the
-			// tracker in "none", so the retained plan-exit mode_change computes
-			// none→none and the following warm-to-cold assistant loses (or, in
-			// mirrored sequences, gains) its cache-miss marker relative to the
-			// untrimmed transcript.
+			// Regression (autoreview): a model_change inside the trimmed orphan
+			// head must still update the reset tracker, so the first kept
+			// assistant keeps the cache-miss marker it has in the untrimmed
+			// transcript.
 			const base = { type: "message" as const, timestamp: "2025-01-01T00:00:00Z" };
 			const spawnResult: SessionMessageEntry = {
 				...base,
@@ -1007,10 +1005,10 @@ describe("buildSessionContext", () => {
 				msg("1", null, "user", "spawn request"),
 				msg("2", "1", "assistant", "delegating"),
 				spawnResult,
-				{ type: "mode_change", id: "4", parentId: "3", timestamp: "2025-01-01T00:00:00Z", mode: "plan" },
+				modelChange("4", "3", "anthropic", "claude-test"),
 				msg("5", "4", "user", "kept question"),
 				msg("6", "5", "assistant", "kept response"),
-				{ type: "mode_change", id: "7", parentId: "6", timestamp: "2025-01-01T00:00:00Z", mode: "none" },
+				modelChange("7", "6", "anthropic", "claude-test"),
 				msg("8", "7", "user", "later question"),
 				msg("9", "8", "assistant", "later response"),
 				compaction("10", "9", "Compacted mid-turn", "2"),
@@ -1030,10 +1028,9 @@ describe("buildSessionContext", () => {
 				"compactionSummary",
 				"user",
 			]);
-			// Both assistants that follow plan transitions are marked, matching
-			// the untrimmed walk: the trimmed prefix's plan entry marks the first
-			// kept assistant (index 1), and the retained plan-exit marks index 3.
-			// Without prefix tracking, neither is marked (tracker stuck in "none").
+			// Both assistants that follow model changes are marked, matching the
+			// untrimmed walk: the trimmed prefix's change marks the first kept
+			// assistant (index 1), and the retained change marks index 3.
 			expect(transcript.cacheMissExplainedAt).toEqual([false, true, false, true, false, false]);
 		});
 	});

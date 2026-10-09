@@ -488,18 +488,6 @@ function formatLoopLimit(
 const modeSegment: StatusLineSegment = {
 	id: "mode",
 	render(ctx) {
-		const pauseSuffix = theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
-
-		const plan = ctx.planMode;
-		if (plan && (plan.enabled || plan.paused)) {
-			const label = plan.paused ? `Plan${pauseSuffix}` : "Plan";
-			const content = withIcon(theme.icon.plan, label);
-			return {
-				content: plan.paused ? theme.fg("warning", content) : accentFg(ctx, "accent", content),
-				visible: true,
-			};
-		}
-
 		const prewalk = ctx.prewalk;
 		if (prewalk?.enabled) {
 			const content = withIcon(theme.icon.prewalk, "Prewalk");
@@ -529,12 +517,6 @@ const modeSegment: StatusLineSegment = {
 		return { content: "", visible: false };
 	},
 	describe(ctx) {
-		const plan = ctx.planMode;
-		if (plan && (plan.enabled || plan.paused)) {
-			return plan.paused
-				? segView([span("Plan (paused)", "warning")], "plan", "warning")
-				: segView([span("Plan", accentToken(ctx, "accent"))], "plan");
-		}
 		if (ctx.prewalk?.enabled) return segView([span("Prewalk", accentToken(ctx, "accent"))], "prewalk");
 		const goal = ctx.goalMode;
 		if (goal && (goal.enabled || goal.paused)) return describeGoalMode(ctx, goal);

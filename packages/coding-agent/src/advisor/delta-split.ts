@@ -35,7 +35,6 @@ export interface AdvisorObfuscator {
 export const ADVISOR_RENDER_OPTIONS = {
 	includeToolIntent: true,
 	watchedRoles: true,
-	expandPrimaryContext: true,
 	expandEditDiffs: true,
 	expandToolIO: true,
 } as const;

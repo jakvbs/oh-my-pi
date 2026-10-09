@@ -7,15 +7,12 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "./agent-session-events";
 import { escapeHarnessTags } from "./harness-tags";
 import type { CustomMessage } from "./messages";
-import type { SessionManager } from "./session-manager";
 
 /** Capabilities the IRC bridge borrows from its owning session. */
 export interface IrcBridgeHost {
 	agent: Agent;
-	sessionManager: SessionManager;
 	isDisposed(): boolean;
 	isStreaming(): boolean;
-	planModeEnabled(): boolean;
 	emitSessionEvent(event: AgentSessionEvent): Promise<void>;
 	wakeForIrc(records: AgentMessage[]): void;
 }
@@ -181,12 +178,11 @@ export class IrcBridge {
 	async deliver(msg: IrcMessage): Promise<"injected" | "woken"> {
 		if (this.#host.isDisposed()) throw new Error("Recipient session is disposed.");
 		const streaming = this.#host.isStreaming();
-		const planModeIdle = !streaming && this.#host.planModeEnabled();
 		const fromParent = AgentRegistry.global().get(msg.to)?.parentId === msg.from;
 		// An idle subagent runs a monitored wake turn whose output is relayed
 		// back to the sender (task executor `relayWakeTurnOutput`); the main
 		// agent and mid-turn asides have no such relay.
-		const relayOnStop = !streaming && !planModeIdle && msg.to !== MAIN_AGENT_ID && msg.wakeRelay !== true;
+		const relayOnStop = !streaming && msg.to !== MAIN_AGENT_ID && msg.wakeRelay !== true;
 		// The body is agent-authored (a peer's message, or a wake relay's
 		// `<task-result>` around a subagent's output), so it must not close the
 		// harness envelope it is rendered into or open a forged one, e.g. a parent
@@ -227,17 +223,6 @@ export class IrcBridge {
 			} else {
 				this.#interrupts.push(record);
 			}
-			return "injected";
-		}
-		if (this.#host.planModeEnabled()) {
-			this.#host.agent.appendMessage(record);
-			this.#host.sessionManager.appendCustomMessageEntry(
-				record.customType,
-				record.content,
-				record.display,
-				record.details,
-				record.attribution ?? "agent",
-			);
 			return "injected";
 		}
 		this.#host.wakeForIrc([record]);

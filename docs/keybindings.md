@@ -13,7 +13,7 @@ With a named profile, bindings from the default profile's agent directory are lo
 ```yaml
 app.model.cycleForward: Ctrl+P
 app.model.selectTemporary: Alt+P
-app.plan.toggle: Alt+Shift+P
+app.model.select: Alt+M
 ```
 
 Chord names are case-insensitive and use the same notation shown in the UI, such as `Ctrl+P`, `Alt+Shift+P`, `Shift+Enter`, and `Ctrl+Backspace`.
@@ -32,7 +32,6 @@ app.history.search: []
 | `app.model.cycleBackward`    | `Shift+Ctrl+P`                                                        | Cycle role models backward                                                                                                                                                           |
 | `app.model.selectTemporary`  | `Alt+P`                                                               | Pick a model temporarily for this session                                                                                                                                            |
 | `app.model.select`           | `Alt+M`                                                               | Open the model selector and set roles                                                                                                                                                |
-| `app.plan.toggle`            | `Alt+Shift+P`                                                         | Toggle plan mode                                                                                                                                                                     |
 | `app.history.search`         | `Ctrl+R`                                                              | Search prompt history                                                                                                                                                                |
 | `app.tools.expand`           | `Ctrl+O`                                                              | Toggle tool-output expansion                                                                                                                                                         |
 | `app.tools.toggleVisibility` | `Ctrl+Shift+O`                                                        | Show or hide tool activity                                                                                                                                                           |

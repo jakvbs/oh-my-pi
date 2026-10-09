@@ -20,7 +20,7 @@ use std::{
 use regex::Regex;
 
 use crate::{
-	engine::{FileOp, Resolved},
+	engine::Resolved,
 	error::{EditError, EditResult},
 };
 
@@ -29,13 +29,10 @@ use crate::{
 pub struct UrlResolution {
 	/// Absolute backing file; `None` → the URL has no local file (the edit
 	/// fails with `error` or a generic message).
-	pub absolute:      Option<PathBuf>,
+	pub absolute: Option<PathBuf>,
 	/// Model-facing refusal (read-only scheme, immutable, disabled…); wins
 	/// over `absolute`.
-	pub error:         Option<String>,
-	/// Writable while plan mode is active (the scheme's write scope is the
-	/// session sandbox).
-	pub plan_writable: bool,
+	pub error:    Option<String>,
 }
 
 /// Session-wide path policy supplied by the host once per tool call.
@@ -49,9 +46,8 @@ pub struct PathPolicy {
 	/// The [`Self::url_schemes`] whose single-slash `scheme:/x` spelling
 	/// aliases `scheme://x` (host spec `singleSlashAlias`).
 	pub url_alias_schemes:    Vec<String>,
-	/// Plain-path roots that stay writable in plan mode (sandbox directories).
-	pub plan_writable_roots:  Vec<PathBuf>,
-	pub plan_active:          bool,
+	/// Session sandbox directories that hashline tag recovery may rebind into.
+	pub sandbox_roots:        Vec<PathBuf>,
 	pub block_auto_generated: bool,
 }
 
@@ -157,7 +153,7 @@ impl PathPolicy {
 	}
 
 	/// Resolve a filesystem path (never a URL) against `cwd` and `home_dir`,
-	/// lexically normalized so the path written is the path plan mode judged.
+	/// lexically normalized.
 	fn resolve_path(&self, display: &str) -> PathBuf {
 		let expanded = expand_path(display, &self.home_dir);
 		if expanded.chars().all(|c| c == '/') {
@@ -205,55 +201,14 @@ impl PathPolicy {
 		Some(Resolved { absolute: self.cwd.join(&display), display })
 	}
 
-	/// Enforce plan-mode write restrictions: renames and deletes are refused;
-	/// other writes are allowed only for URL targets whose host answer in
-	/// `urls` is plan-writable and for plain paths under
-	/// [`Self::plan_writable_roots`].
-	///
-	/// # Errors
-	/// [`EditError::Plan`] carrying the model-facing refusal.
-	pub fn enforce_write(
-		&self,
-		display: &str,
-		op: FileOp,
-		move_to: Option<&str>,
-		urls: &HashMap<String, UrlResolution>,
-	) -> EditResult<()> {
-		if !self.plan_active {
-			return Ok(());
-		}
-		if move_to.is_some() {
-			return Err(EditError::Plan("Plan mode: renaming files is not allowed.".into()));
-		}
-		if op == FileOp::Delete {
-			return Err(EditError::Plan("Plan mode: deleting files is not allowed.".into()));
-		}
-		let display = unwrap_hashline_header_path(display);
-		let writable = match self.address(display) {
-			Address::Url(url) => urls
-				.get(url.as_ref())
-				.is_some_and(|resolution| resolution.plan_writable),
-			Address::Path => self.in_plan_writable_root(&self.resolve_path(display)),
-			Address::Refused(_) => false,
-		};
-		if writable {
-			return Ok(());
-		}
-		Err(EditError::Plan(
-			"Plan mode: the working tree is read-only. Write your plan to a local://<slug>-plan.md \
-			 file instead."
-				.into(),
-		))
-	}
-
 	/// True when `absolute` physically lies inside one of
-	/// [`Self::plan_writable_roots`]: both sides are compared by
+	/// [`Self::sandbox_roots`]: both sides are compared by
 	/// [`physical_path`], so a symlink under a root cannot lead outside it.
-	fn in_plan_writable_root(&self, absolute: &Path) -> bool {
+	fn in_sandbox_root(&self, absolute: &Path) -> bool {
 		let Some(target) = physical_path(&lexical_absolute(absolute, &self.cwd)) else {
 			return false;
 		};
-		self.plan_writable_roots.iter().any(|root| {
+		self.sandbox_roots.iter().any(|root| {
 			physical_path(&lexical_absolute(root, &self.cwd))
 				.is_some_and(|root| is_within(&target, &root))
 		})
@@ -271,7 +226,7 @@ impl PathPolicy {
 		// store-key form `C:\…`, silently rejecting every recovery.
 		let recovered = strip_windows_verbatim_path(lexical_absolute(recovered, &self.cwd));
 		let root = strip_windows_verbatim_path(lexical_absolute(&self.cwd, &self.cwd));
-		is_within(&recovered, &root) || self.in_plan_writable_root(&recovered)
+		is_within(&recovered, &root) || self.in_sandbox_root(&recovered)
 	}
 
 	/// Return the model-facing generated-file rejection, when applicable.
@@ -683,14 +638,13 @@ mod tests {
 			home_dir:             root.join("home"),
 			url_schemes:          vec!["sbx".into(), "ro".into()],
 			url_alias_schemes:    vec!["sbx".into()],
-			plan_writable_roots:  vec![root.join("sandbox")],
-			plan_active:          false,
+			sandbox_roots:        vec![root.join("sandbox")],
 			block_auto_generated: true,
 		}
 	}
 
-	fn answer(absolute: Option<PathBuf>, error: Option<&str>, plan_writable: bool) -> UrlResolution {
-		UrlResolution { absolute, error: error.map(str::to_owned), plan_writable }
+	fn answer(absolute: Option<PathBuf>, error: Option<&str>) -> UrlResolution {
+		UrlResolution { absolute, error: error.map(str::to_owned) }
 	}
 
 	#[test]
@@ -792,36 +746,6 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn plan_mode_judges_where_the_write_physically_lands() {
-		let tmp = tempfile::tempdir().unwrap();
-		let sandbox = tmp.path().join("sandbox");
-		let outside = tmp.path().join("outside");
-		std::fs::create_dir_all(&sandbox).unwrap();
-		std::fs::create_dir_all(&outside).unwrap();
-		std::os::unix::fs::symlink(&outside, sandbox.join("link")).unwrap();
-		std::os::unix::fs::symlink(outside.join("victim.txt"), sandbox.join("dangling")).unwrap();
-		let mut p = policy(tmp.path());
-		p.plan_active = true;
-		let urls = HashMap::new();
-		let refused = |target: PathBuf| {
-			p.enforce_write(target.to_str().unwrap(), FileOp::Create, None, &urls)
-				.is_err()
-		};
-		assert!(refused(sandbox.join("link/escape.txt")));
-		assert!(refused(sandbox.join("link/new-dir/escape.txt")));
-		assert!(refused(sandbox.join("dangling")));
-		assert!(!refused(sandbox.join("nested/new/plan.md")));
-		// `link/..` is lexical: it names `sandbox/plan.md`, and that is the
-		// path the writer receives.
-		let dotted = sandbox.join("link/../plan.md");
-		assert!(!refused(dotted.clone()));
-		assert_eq!(
-			p.resolve(dotted.to_str().unwrap(), &urls).unwrap().absolute,
-			sandbox.join("plan.md")
-		);
-	}
-
-	#[test]
 	fn url_targets_miss_until_provided_then_use_the_host_answer() {
 		let tmp = tempfile::tempdir().unwrap();
 		let mut files = FileCache::new(policy(tmp.path()));
@@ -833,20 +757,20 @@ mod tests {
 		assert!(files.take_unresolved().is_empty());
 
 		let backing = tmp.path().join("elsewhere/plan.md");
-		files.provide("sbx://plan.md".into(), answer(Some(backing.clone()), None, true));
+		files.provide("sbx://plan.md".into(), answer(Some(backing.clone()), None));
 		let resolved = files.resolve("[sbx://plan.md#AB12]", true).unwrap();
 		assert_eq!(resolved.absolute, backing);
 		assert_eq!(resolved.display, "sbx://plan.md");
 
 		files.provide(
 			"ro://a.md".into(),
-			answer(Some(tmp.path().join("a.md")), Some("ro://a.md is read-only"), false),
+			answer(Some(tmp.path().join("a.md")), Some("ro://a.md is read-only")),
 		);
 		assert_eq!(
 			files.resolve("ro://a.md", false).unwrap_err().to_string(),
 			"ro://a.md is read-only"
 		);
-		files.provide("ro://gone.md".into(), answer(None, None, false));
+		files.provide("ro://gone.md".into(), answer(None, None));
 		assert_eq!(
 			files
 				.resolve("ro://gone.md", false)
@@ -855,47 +779,6 @@ mod tests {
 			"No local file backs ro://gone.md"
 		);
 		assert!(files.take_unresolved().is_empty());
-	}
-
-	#[test]
-	fn plan_mode_allows_only_plan_writable_targets() {
-		let tmp = tempfile::tempdir().unwrap();
-		let mut p = policy(tmp.path());
-		p.plan_active = true;
-		let urls = HashMap::from([
-			("sbx://plan.md".to_owned(), answer(Some(tmp.path().join("x/plan.md")), None, true)),
-			("ro://a.md".to_owned(), answer(Some(tmp.path().join("sandbox/a.md")), None, false)),
-		]);
-		let sandboxed = tmp.path().join("sandbox/plan.md");
-		assert!(
-			p.enforce_write("sbx://plan.md", FileOp::Update, None, &urls)
-				.is_ok()
-		);
-		assert!(
-			p.enforce_write(sandboxed.to_str().unwrap(), FileOp::Create, None, &urls)
-				.is_ok()
-		);
-		for refused in ["ro://a.md", "sbx://other.md", "a"] {
-			assert!(
-				p.enforce_write(refused, FileOp::Update, None, &urls)
-					.unwrap_err()
-					.to_string()
-					.contains("working tree is read-only"),
-				"{refused}"
-			);
-		}
-		assert_eq!(
-			p.enforce_write("sbx://plan.md", FileOp::Delete, None, &urls)
-				.unwrap_err()
-				.to_string(),
-			"Plan mode: deleting files is not allowed."
-		);
-		assert_eq!(
-			p.enforce_write(sandboxed.to_str().unwrap(), FileOp::Update, Some("b"), &urls)
-				.unwrap_err()
-				.to_string(),
-			"Plan mode: renaming files is not allowed."
-		);
 	}
 
 	#[test]

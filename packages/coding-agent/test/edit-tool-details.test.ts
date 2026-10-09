@@ -17,7 +17,6 @@ function makeSession(cwd: string, settings: Record<string, unknown> = {}): ToolS
 		getSessionFile: () => null,
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
-		getPlanModeState: () => undefined,
 		settings: Settings.isolated(settings),
 	} as unknown as ToolSession;
 }

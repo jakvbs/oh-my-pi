@@ -367,7 +367,7 @@ describe("AgentSession eager todo enforcement", () => {
 	it("forwards the configured title system prompt to the replan refresh path", async () => {
 		// Issue #3734: TITLE_SYSTEM.md must apply on todo-init replan refresh,
 		// not just first-input titling. Without the threaded override, the
-		// bundled prompt silently overwrote auto titles in Plan Mode.
+		// bundled prompt silently overwrote auto titles.
 		const customPrompt = "Generate kebab-case titles prefixed with `plan/`.";
 		await recreateSession({ "title.refreshOnReplan": true });
 		session.setTitleSystemPrompt(customPrompt);

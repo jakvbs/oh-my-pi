@@ -4,7 +4,6 @@ import { getKeybindings, setKeybindings, type TUI } from "@oh-my-pi/pi-tui";
 import type { NativeChild, NativeNode } from "@oh-my-pi/pi-tui/native/node";
 import { AnnotationOverlay } from "@oh-my-pi/pi-tui/overlays/annotation-overlay";
 import type { CodeReviewOverlayResult, ReviewDiffFile } from "@oh-my-pi/pi-tui/overlays/annotation-types";
-import { PlanReviewOverlay } from "@oh-my-pi/pi-tui/overlays/plan-review-overlay";
 import { getThemeByName, setThemeInstance, type Theme } from "@oh-my-pi/pi-tui/theme";
 
 const ENTER = "\r";
@@ -44,9 +43,6 @@ function itemLabel(node: NativeNode): string {
 	return typeof label === "string" ? label : label.map(s => s.t).join("");
 }
 
-const PLAN = "# Plan\n\n## Alpha\n\nfirst\n\n## Beta\n\nsecond\n\n## Gamma\n\nthird\n";
-const OPTIONS = ["Approve", "Refine plan"];
-
 describe("review overlays under a native surface", () => {
 	beforeAll(async () => {
 		darkTheme = await getThemeByName("dark");
@@ -61,61 +57,6 @@ describe("review overlays under a native surface", () => {
 
 	afterEach(() => {
 		setKeybindings(previousKeybindings);
-	});
-
-	it("plan review: a Contents click retargets the section that `a` annotates", () => {
-		const onFeedbackChange = vi.fn();
-		const overlay = new PlanReviewOverlay(
-			PLAN,
-			{ options: OPTIONS },
-			{ onPick: vi.fn(), onCancel: vi.fn(), onFeedbackChange },
-		);
-		const toc = list(overlay.describe(), "toc");
-		expect(toc.items.map(itemLabel)).toEqual(["Alpha", "Beta", "Gamma"]);
-		const beta = toc.items[1]!;
-
-		overlay.handleNativeEvent({ type: "select", key: toc.path, item: beta.key! });
-		expect(list(overlay.describe(), "toc").selected).toBe(beta.key);
-
-		overlay.handleInput("a");
-		overlay.handleInput("tighten this");
-		overlay.handleInput(ENTER);
-		const feedback = String(onFeedbackChange.mock.lastCall?.[0]);
-		expect(feedback).toContain("## Beta");
-		expect(feedback).toContain("tighten this");
-		// The note shows next to its section and the Contents entry counts it.
-		const root = overlay.describe();
-		const betaSection = findKeyed(root, "s2");
-		expect(betaSection?.node.k).toBe("col");
-		expect(JSON.stringify(betaSection?.node)).toContain("tighten this");
-		expect(JSON.stringify(list(root, "toc").items[1])).toContain("✎1");
-	});
-
-	it("plan review: activating an option picks it; disabled options ignore events", () => {
-		const onPick = vi.fn();
-		const overlay = new PlanReviewOverlay(
-			PLAN,
-			{ options: OPTIONS, disabledIndices: [1] },
-			{ onPick, onCancel: vi.fn() },
-		);
-		const options = list(overlay.describe(), "options");
-		overlay.handleNativeEvent({ type: "activate", key: options.path, item: options.items[1]!.key! });
-		expect(onPick).not.toHaveBeenCalled();
-
-		overlay.handleNativeEvent({ type: "activate", key: options.path, item: options.items[0]!.key! });
-		expect(onPick).toHaveBeenCalledWith("Approve");
-		// Committed: the options give way to a submitting spinner.
-		expect(findKeyed(overlay.describe(), "options")?.node.k).toBe("spinner");
-	});
-
-	it("plan review: describe returns the same tree until visible state changes", () => {
-		const overlay = new PlanReviewOverlay(PLAN, { options: OPTIONS }, { onPick: vi.fn(), onCancel: vi.fn() });
-		const first = overlay.describe();
-		expect(overlay.describe()).toBe(first);
-		overlay.handleInput("\x1b[B");
-		const moved = overlay.describe();
-		expect(moved).not.toBe(first);
-		expect(list(moved, "options").selected).toBe("o1");
 	});
 
 	it("code review: selecting a diff row anchors the next line note to it", () => {

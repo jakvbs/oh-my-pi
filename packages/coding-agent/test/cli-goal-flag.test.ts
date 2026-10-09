@@ -152,16 +152,13 @@ describe("--goal launch option", () => {
 		);
 	});
 
-	it("rejects plan startup, resumed sessions, and disabled goal mode", () => {
-		expect(() => validateGoalStartup(parseArgs(["--goal", "x", "--plan-yolo"]), true)).toThrow("--plan-yolo");
+	it("rejects --no-tools, resumed sessions, and disabled goal mode", () => {
+		expect(() => validateGoalStartup(parseArgs(["--goal", "x", "--no-tools"]), true)).toThrow("--no-tools");
 		expect(() => validateGoalLaunch(parseArgs(["--goal", "x", "--continue"]), true)).toThrow(
 			"requires a fresh session",
 		);
 		expect(() => validateGoalLaunch(parseArgs(["--goal", "x"]), false)).toThrow("requires an interactive terminal");
 		expect(() => validateGoalStartup(parseArgs(["--goal", "x"]), false)).toThrow("goal.enabled");
-		expect(() => validateGoalStartup(parseArgs(["--goal", "x"]), true, undefined, true)).toThrow(
-			"plan.defaultOnStartup",
-		);
 	});
 
 	it("starts a fresh goal instead of implicitly resuming a previous transcript", async () => {

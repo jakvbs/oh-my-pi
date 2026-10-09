@@ -274,14 +274,13 @@ impl Session {
 	/// Stage and apply the finished arguments through `writer`.
 	///
 	/// Order: reread every target fresh, stage all files in memory (any
-	/// failure aborts before the first write), enforce the plan-mode guard
-	/// for every file, then write in payload order. A writer failure aborts
+	/// failure aborts before the first write), then write in payload order. A writer failure aborts
 	/// the loop; files already written stay written and the error is
 	/// returned verbatim. URL targets never reuse preview-time answers (see
 	/// [`Self::begin_apply_url_targets`]).
 	///
 	/// # Errors
-	/// Staging and plan-mode failures, all raised before the first write —
+	/// Staging failures, all raised before the first write —
 	/// including [`EditError::UnresolvedUrl`], after which the host may
 	/// [`Self::provide`] the URL and retry — or the writer's error.
 	pub async fn apply(
@@ -296,13 +295,6 @@ impl Session {
 			return Err(EditError::parse("Edit arguments were incomplete"));
 		}
 		let staged = self.engine.stage(&snapshot, &mut self.files, &self.store)?;
-		for file in &staged {
-			self.files.enforce_write(
-				&file.display,
-				file.op,
-				file.move_to.as_ref().map(|m| m.display.as_str()),
-			)?;
-		}
 
 		let last_write = staged.iter().rposition(|file| file.op != FileOp::Noop);
 		let mut files = Vec::with_capacity(staged.len());

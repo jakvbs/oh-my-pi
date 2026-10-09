@@ -8,7 +8,6 @@ function makeBridge() {
 	const host = {
 		isDisposed: () => false,
 		isStreaming: () => false,
-		planModeEnabled: () => false,
 		emitSessionEvent: async () => {},
 		wakeForIrc: (records: AgentMessage[]) => {
 			woken.push(records);

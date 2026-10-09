@@ -36,8 +36,6 @@ import {
 import { formatApprovalPrompt, resolveApproval } from "../../tools/approval";
 import { recoverAskQuestions } from "../../tools/ask";
 import { previewLine, PREVIEW_LIMITS, TRUNCATE_LENGTHS } from "@oh-my-pi/pi-tui/render/render-utils";
-import { PROPOSE_DEVICE_NAME } from "@oh-my-pi/pi-tui/tools/resolve";
-import { writeDeviceDispatch } from "../../tools/resolve";
 import { nextActionableTask } from "../../tools/todo";
 import { canonicalizeMessage } from "@oh-my-pi/pi-tui/chat/thinking-display";
 import { type RunStatus, setRunStatus } from "../../utils/run-status";
@@ -2078,47 +2076,6 @@ export class EventController {
 				{ hideWithToolActivity: true },
 			);
 		}
-		// Plan approval rides a `write` to xd://propose: the dispatch metadata on
-		// the write details carries the approval payload as `inner`.
-		if (!event.isError) {
-			const dispatch = writeDeviceDispatch(event.toolName, event.result);
-			const details =
-				dispatch?.tool === PROPOSE_DEVICE_NAME && dispatch.mode === "execute" ? dispatch.inner : undefined;
-			if (
-				details &&
-				typeof details === "object" &&
-				"planFilePath" in details &&
-				"title" in details &&
-				"planExists" in details &&
-				typeof details.planFilePath === "string" &&
-				typeof details.title === "string" &&
-				typeof details.planExists === "boolean"
-			) {
-				// Dispatch the approval WITHOUT blocking the serialized event
-				// dispatch chain. `handlePlanApproval` -> `#approvePlan` awaits
-				// `session.prompt` for the ENTIRE approved-execution turn; awaiting
-				// it here (this handler runs inside `#runSerialized`) would hold the
-				// single dispatch link for the whole run, so the run's own
-				// agent_start / message_start / tool / coalesced message_update
-				// events queue behind it on `#dispatchTail` and the chat stays blank
-				// until execution finishes (issue #7684, follow-up to #5688 which
-				// only closed the overlay). Detaching frees the link the moment this
-				// handler returns; the approval overlay and the turn's live events
-				// then render. The approval flow surfaces its own failures via
-				// `showError`, so only an unexpected rejection is logged here.
-				void this.ctx
-					.handlePlanApproval({
-						planFilePath: details.planFilePath,
-						title: details.title,
-						planExists: details.planExists,
-					})
-					.catch(err => {
-						logger.warn("Plan approval dispatch failed", {
-							error: err instanceof Error ? err.message : String(err),
-						});
-					});
-			}
-		}
 	}
 	async #handleAgentEnd(event: Extract<AgentSessionEvent, { type: "agent_end" }>): Promise<void> {
 		// A superseded agent_end: the agent is already streaming a fresh turn, so
@@ -2137,10 +2094,6 @@ export class EventController {
 		// Skip the idle title/loader teardown; the continuation's terminal
 		// `agent_end` performs it, or the settle watch does when that continuation
 		// never starts (an abort cancels it, background work ends without a wake).
-		// Still flush a deferred model switch — the plan-mode reconciler queues it
-		// to apply once the current stream ends, and `#finishAgentEnd` is otherwise
-		// its only flush site, so the automatic continuation would otherwise run
-		// on the old model/thinking level until the terminal settle.
 		if (event.isTerminal === false) {
 			// `awaitingAsyncWork`: the model handed control back and only a
 			// background-job result can resume it. The title tracks the model, so it
@@ -2149,7 +2102,6 @@ export class EventController {
 			// the run is not over, it resumes or settles without the user.
 			if (event.awaitingAsyncWork === true) setTerminalTitleState("idle");
 			void this.#finishWhenRunSettles(event);
-			await this.ctx.flushPendingModelSwitch();
 			// Reaching here means the first guard passed, so `isStreaming` is already
 			// false: a command issued from now on mounts immediately. Leaving earlier
 			// panels queued would render them out of order, minutes later, after the
@@ -2238,7 +2190,6 @@ export class EventController {
 			this.ctx.loadingAnimation = undefined;
 			this.ctx.statusContainer.disposeChildren();
 		}
-		await this.ctx.flushPendingModelSwitch();
 		this.#sealAbandonedForegroundTools();
 		this.#blockingPrompts.clear();
 		this.#readToolCallArgs.clear();

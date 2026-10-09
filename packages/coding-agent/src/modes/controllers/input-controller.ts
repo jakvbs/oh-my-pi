@@ -598,11 +598,6 @@ export class InputController {
 		this.ctx.editor.clearCustomKeyHandlers();
 		// Wire up extension shortcuts
 		this.registerExtensionShortcuts();
-		const planModeKeys = this.ctx.keybindings.getKeys("app.plan.toggle");
-		for (const key of planModeKeys) {
-			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.handlePlanModeCommand());
-		}
-
 		for (const key of this.ctx.keybindings.getKeys("app.session.new")) {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.handleClearCommand());
 		}
@@ -935,7 +930,7 @@ export class InputController {
 				hasInputImages = (inputImages?.length ?? 0) > 0;
 			}
 			const submittedMode = parseSlashCommand(text)?.name;
-			const draftDetached = submittedMode === "plan" || submittedMode === "goal" || submittedMode === "guided-goal";
+			const draftDetached = submittedMode === "goal" || submittedMode === "guided-goal";
 			if (
 				draftDetached &&
 				submittedImages?.length &&
@@ -981,7 +976,7 @@ export class InputController {
 				try {
 					slashResult = await executeBuiltinSlashCommand(text, { ctx: this.ctx, input, draftDetached });
 				} catch (error) {
-					// Detached mode commands (plan/goal/guided-goal) rethrow so
+					// Detached mode commands (goal/guided-goal) rethrow so
 					// this caller — the one that took the draft's images out of the
 					// editor before dispatch — restores the submission and reports
 					// the error, mirroring `handleFollowUp`'s Ctrl+Enter path.
@@ -2547,7 +2542,7 @@ export class InputController {
 			this.ctx.updateEditorBorderColor();
 			// The status line already reports the resolved model + thinking level, so
 			// the cycle status is just a status-line-style chip track (active role
-			// filled), matching the plan-approval model slider. It renders into its
+			// filled). It renders into its
 			// own anchored container above the editor (cleared+rebuilt each cycle),
 			// so it updates in place instead of stacking duplicates in the scrollback.
 			this.ctx.showModelCycleTrack(

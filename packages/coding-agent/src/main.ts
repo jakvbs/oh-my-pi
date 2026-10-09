@@ -130,7 +130,6 @@ import { getChangelogPath, resolveStartupChangelogForDisplay, type StartupChange
 import { EventBus } from "./utils/event-bus";
 import { CliUsageError } from "./cli/usage-error";
 import { cfgGoalEnabled } from "./goals/settings";
-import { cfgPlanDefaultOnStartup, cfgPlanEnabled } from "./plan-mode/settings";
 
 import { cfgAdvisorEnabled } from "./advisor/settings";
 import { cfgToolsApprovalMode } from "./tools/settings";
@@ -1527,29 +1526,6 @@ export async function buildSessionOptions(
 		}
 	}
 
-	if (parsed.planYoloInto !== undefined && !parsed.planYolo) {
-		throw new Error("--plan-yolo-into requires --plan-yolo");
-	}
-	if (parsed.planYolo) {
-		const rolePattern = expandRoleAlias(parsed.planYoloInto ?? "@smol", activeSettings);
-		const resolved = resolveCliModel({ cliModel: rolePattern, modelRegistry, preferences: modelMatchPreferences });
-		if (resolved.warning) {
-			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
-		}
-		if (resolved.error || !resolved.model) {
-			throw new Error(resolved.error ?? `Model "${parsed.planYoloInto ?? "@smol"}" not found`);
-		}
-		if (disabledProviders.has(resolved.model.provider)) {
-			throw new Error(
-				`Provider "${resolved.model.provider}" is disabled. Remove it from disabledProviders to hand off to "${rolePattern}".`,
-			);
-		}
-		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
-			throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
-		}
-		options.planYolo = { target: resolved.model, thinkingLevel: resolved.thinkingLevel };
-	}
-
 	// Thinking level
 	if (parsed.thinking) {
 		options.thinkingLevel = parsed.thinking;
@@ -1864,12 +1840,10 @@ export async function runRootCommand(
 		// Apply model role overrides from CLI args or env vars (ephemeral, not persisted)
 		const smolModel = parsedArgs.smol ?? $env.PI_SMOL_MODEL;
 		const slowModel = parsedArgs.slow ?? $env.PI_SLOW_MODEL;
-		const planModel = parsedArgs.plan ?? $env.PI_PLAN_MODEL;
-		if (smolModel || slowModel || planModel) {
+		if (smolModel || slowModel) {
 			settingsInstance.overrideModelRoles({
 				smol: smolModel,
 				slow: slowModel,
-				plan: planModel,
 			});
 		}
 
@@ -2304,12 +2278,7 @@ export async function runRootCommand(
 			}
 			rejectNoUiWithoutRpc(parsedArgs);
 			if (initialArgs.goal !== undefined) {
-				validateGoalStartup(
-					initialArgs,
-					cfgGoalEnabled.get(settingsInstance),
-					pipedInput,
-					cfgPlanDefaultOnStartup.get(settingsInstance) && cfgPlanEnabled.get(settingsInstance),
-				);
+				validateGoalStartup(initialArgs, cfgGoalEnabled.get(settingsInstance), pipedInput);
 			}
 			if (autoPrintNeedsArgPrompt && initialArgs.messages.length === 0 && initialArgs.fileArgs.length === 0) {
 				exitWithoutTerminal();
@@ -2549,7 +2518,6 @@ export async function runRootCommand(
 					initialMessage,
 					initialImages,
 					printThoughts: initialArgs.printThoughts,
-					planYolo: parsedArgs.planYolo,
 					mcpManager,
 				});
 				if ($env.PI_TIMING) {

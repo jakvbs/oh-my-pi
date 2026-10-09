@@ -420,7 +420,7 @@ Take queued user input back and abort, atomically — the RPC equivalent of pres
 {"id":"req_4","type":"response","command":"abort_and_restore_queue","success":true,"data":{"steering":[{"text":"Use the existing parser"}],"followUp":[{"text":"Then run the tests","images":[{"type":"image","mimeType":"image/png","data":"..."}]}]}}
 ```
 
-Before aborting, the server withdraws every user-authored steering and follow-up message, including input the run already took from the queue but never recorded in the transcript: steering the aborted response claimed live, and steering or follow-ups dequeued for its next model call. Non-user internal steers (goal/plan/budget notices, IRC and extension asides) are dropped, except advisor cards, which the abort keeps as visible advice. Nothing withdrawn runs after the abort, so no new turn starts from the old queue. A plain `abort` instead requeues stranded steers and drains them into a fresh turn; withdrawing them first with `remove_queued_message` races the agent loop.
+Before aborting, the server withdraws every user-authored steering and follow-up message, including input the run already took from the queue but never recorded in the transcript: steering the aborted response claimed live, and steering or follow-ups dequeued for its next model call. Non-user internal steers (goal/budget notices, IRC and extension asides) are dropped, except advisor cards, which the abort keeps as visible advice. Nothing withdrawn runs after the abort, so no new turn starts from the old queue. A plain `abort` instead requeues stranded steers and drains them into a fresh turn; withdrawing them first with `remove_queued_message` races the agent loop.
 
 `data.steering` and `data.followUp` list the withdrawn messages oldest first, as `{ text, images? }` with `text` being the queue-chip text, so a client can put them back in its editor. The command otherwise behaves like `abort`: it stops goal continuation, cancels input received before it that is not yet admitted (that input is dropped, not returned), and responds after the abort completes. Older runtimes reject this command. The TypeScript client exposes `abortAndRestoreQueue(): Promise<{ steering, followUp }>`.
 
@@ -539,9 +539,9 @@ including those made by the agent's `goal` tool.
 
 - `get` only reads. It never starts a turn.
 - `create` needs `goal.enabled`, a non-empty `objective`, and no active or paused
-  goal. It is refused in plan mode, and `token_budget` must be a positive integer.
+  goal, and `token_budget` must be a positive integer.
   It adds the `goal` tool to the active tools.
-- `resume` resumes a paused goal (refused in plan mode). `pause` and `drop` restore
+- `resume` resumes a paused goal. `pause` and `drop` restore
   the active tools from before the goal started.
 - Failures are ordinary `success: false` responses.
 
@@ -551,7 +551,7 @@ contains `"rpc"`; this covers both `--mode rpc` and `--mode rpc-ui`. When enable
 turn, sent as a hidden `goal-continuation` message.
 
 - The turn starts once the yielding run has fully unwound. At that moment the goal
-  must still be active, the session idle with nothing queued, plan mode off, open
+  must still be active, the session idle with nothing queued, open
   todos not all blocked, and the session not being disposed.
 - While the turn is decided but not yet started, `get_state.isSettled`,
   `prompt_result.sessionSettled` and `session_settled` treat the session as busy.

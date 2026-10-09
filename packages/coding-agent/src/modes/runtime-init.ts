@@ -79,14 +79,14 @@ export async function initializeExtensions(session: AgentSession, options: Initi
 				trackExtensionSend?.(sendTask);
 				if (sendOptions?.triggerTurn || sendOptions?.deliverAs === "aside") {
 					// sendCustomMessage resolves `false` for outcomes that provably start no turn
-					// (streaming queue, idle plan-mode fold, deferred ACP turn) — only a `true`
+					// (streaming queue, post-interrupt fold, deferred ACP turn) — only a `true`
 					// result should mark this send as agent-invoking, so downstream trackers (RPC's
 					// hasAgentMessageTask) don't wait on agent events that will never arrive.
 					const invokingTask = sendTask.then(started => {
 						if (!started) throw new Error("send did not invoke the agent");
 					});
 					// A send that starts no turn (idle steer superseded by a concurrent turn,
-					// plan-mode fold, deferred ACP turn) is a normal outcome, not a process error.
+					// post-interrupt fold, deferred ACP turn) is a normal outcome, not a process error.
 					// `trackAgentInvokingMessage` only attaches a handler while a prompt scope is
 					// active (RpcExtensionUserMessageTracker); outside that window this rejection
 					// would otherwise be unobserved and fatal the process. Mark it handled up front.

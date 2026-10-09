@@ -86,7 +86,6 @@ import type { Settings } from "../config/settings";
 import { CursorExecHandlers, type CursorMcpResourceAdapter } from "../cursor";
 import { bridgeToolMap } from "../cursor-bridge-tools";
 import { estimateToolSchemaTokens } from "@oh-my-pi/pi-tui/status-line/context-usage";
-import type { PlanModeState } from "../plan-mode/state";
 import advisorBoundaryGuidance from "../prompts/advisor/boundary-guidance.md" with { type: "text" };
 import advisorSystemPrompt from "../prompts/advisor/system.md" with { type: "text" };
 import type { SecretObfuscator } from "../secrets/obfuscator";
@@ -469,7 +468,6 @@ export interface SessionAdvisorsHost {
 	isDisposed(): boolean;
 	abortInProgress(): boolean;
 	allowAgentInitiatedTurns(): boolean;
-	planModeState(): PlanModeState | undefined;
 	clientBridge(): ClientBridge | undefined;
 	emitSessionEvent(event: AgentSessionEvent): Promise<void>;
 	emitNotice(level: "info" | "warning" | "error", message: string, source?: string): void;
@@ -1828,14 +1826,11 @@ export class SessionAdvisors {
 	#deliverAdvisorBatch(notes: AdvisorNote[], content: string, steer: boolean): void {
 		const details = { notes } satisfies AdvisorMessageDetails;
 		if (steer) {
-			// Plan mode preserves would-be-steering advice as a visible card:
-			// only user-driven turns converge on ask/resolve.
-			const planModePreservesAdvice = this.#host.planModeState()?.enabled === true;
 			const cannotAutoTrigger =
 				!this.#host.agent.state.isStreaming &&
 				this.#host.clientBridge()?.deferAgentInitiatedTurns === true &&
 				!this.#host.allowAgentInitiatedTurns();
-			if (!planModePreservesAdvice && !cannotAutoTrigger) {
+			if (!cannotAutoTrigger) {
 				// Arm the post-interrupt immune window only now that a turn is actually
 				// being steered/triggered. A merely preserved card never interrupts, so
 				// arming earlier would downgrade the next `advisor.immuneTurns` worth of

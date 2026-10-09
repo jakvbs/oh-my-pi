@@ -330,7 +330,7 @@ describe("reportPromptResult", () => {
 			startsTurn: boolean;
 		}> = [
 			{
-				// `false` means sendCustomMessage provably started no turn (e.g. idle plan-mode fold).
+				// `false` means sendCustomMessage provably started no turn (e.g. post-interrupt fold).
 				name: "aside that starts no turn",
 				send: actions =>
 					actions.sendMessage(

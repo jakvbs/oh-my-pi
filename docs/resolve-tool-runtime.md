@@ -1,12 +1,11 @@
 # Resolution devices runtime
 
-Pending previews and plan approval do not use a `resolve` tool. They finalize through plain-text `write` calls to virtual `xd://` devices implemented in `packages/coding-agent/src/tools/resolve.ts`:
+Pending previews do not use a `resolve` tool. They finalize through plain-text `write` calls to virtual `xd://` devices implemented in `packages/coding-agent/src/tools/resolve.ts`:
 
 - `xd://resolve` — apply the pending staged preview; body = a one-sentence reason
 - `xd://reject` — discard the pending staged preview; body = a one-sentence reason
-- `xd://propose` — submit a plan for approval while plan mode is active; body = the plan slug (`<slug>` for `local://<slug>-plan.md`)
 
-These are internal URLs, not filesystem paths. `read xd://resolve`, `read xd://reject`, and `read xd://propose` return a one-line usage hint. Bodies are trimmed plain text, not JSON; the runtime does not enforce sentence count or a nonempty reason. Completed device writes carry `details.xdev` metadata; `writeDeviceDispatch()` exposes the envelope and `resolveDispatchDetails()` extracts apply/discard details from `xdev.inner`.
+These are internal URLs, not filesystem paths. `read xd://resolve` and `read xd://reject` return a one-line usage hint. Bodies are trimmed plain text, not JSON; the runtime does not enforce sentence count or a nonempty reason. Completed device writes carry `details.xdev` metadata; `writeDeviceDispatch()` exposes the envelope and `resolveDispatchDetails()` extracts apply/discard details from `xdev.inner`.
 
 ## Preview flows
 
@@ -28,25 +27,13 @@ Dispatch selects the in-flight queue invoker first, then the pending-preview hea
 - Resolving with no pending action throws.
 - An apply callback's ordinary error becomes `ToolError("Apply failed: ...")`; an existing `ToolError` is preserved.
 
-## Plan approval
-
-Plan mode installs a separate proposal handler through `setPlanProposalHandler(...)`.
-
-- Interactive mode hands `PlanApprovalDetails` to the plan-review UI.
-- ACP mode runs elicitation/approval and emits mode updates.
-- PlanYolo auto-approves and switches to the execution target.
-
-`xd://propose` dispatches the written slug to the installed plan proposal handler and is valid only while plan mode is active. The handler validates that a real plan artifact exists. Slug-based `local://<slug>-plan.md` lookup can fall back to the recorded plan path or discovered plan artifacts; proposal does not rename the file.
-
-Ordinary print mode has no interactive review surface and ignores `plan.defaultOnStartup`; use `--plan-yolo` for the supported headless approval-and-execution flow.
-
 ## Keeping `write` available
 
-Because previews and plan approval ride `write`, normal session assembly retains the transport:
+Because previews ride `write`, normal session assembly retains the transport:
 
 - `createTools(...)` auto-appends `write` when a deferrable tool such as `ast_edit` is active and `restrictToolNames` is not set.
-- `createAgentSession(...)` ensures registration for deferrable tools, available plan mode, or deferred MCP discovery, subject to the same restriction.
-- Active-tool reconciliation retains `write` while mounted devices, deferrable tools, or active plan mode need it. This may be a device-only transport, not a general filesystem-write grant.
+- `createAgentSession(...)` ensures registration for deferrable tools or deferred MCP discovery, subject to the same restriction.
+- Active-tool reconciliation retains `write` while mounted devices or deferrable tools need it. This may be a device-only transport, not a general filesystem-write grant.
 
 Low-level or restricted SDK hosts must explicitly supply the queue and write transport required by their preview flow.
 

@@ -589,7 +589,6 @@ export class Theme {
 	get icon() {
 		return {
 			model: this.#symbols["icon.model"],
-			plan: this.#symbols["icon.plan"],
 			prewalk: this.#symbols["icon.prewalk"],
 			goal: this.#symbols["icon.goal"],
 			pause: this.#symbols["icon.pause"],
@@ -690,7 +689,6 @@ export class Theme {
 			power: this.#symbols["cmd.power"],
 			cart: this.#symbols["cmd.cart"],
 			model: this.#symbols["icon.model"],
-			plan: this.#symbols["icon.plan"],
 			prewalk: this.#symbols["icon.prewalk"],
 			goal: this.#symbols["icon.goal"],
 			pause: this.#symbols["icon.pause"],

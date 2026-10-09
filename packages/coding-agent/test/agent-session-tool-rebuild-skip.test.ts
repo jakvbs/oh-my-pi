@@ -1510,27 +1510,6 @@ These tools became available:
 		expect(session.getActiveToolNames()).toEqual(activeBefore);
 	});
 
-	it("restores full write mode when transport reactivation fails", async () => {
-		let failRebuild = false;
-		const { session, isDeviceOnlyWrite } = newSession(
-			async toolNames => {
-				if (failRebuild) throw new Error("rebuild failed");
-				return `tools:${toolNames.join(",")}`;
-			},
-			{ xdev: createTestXdevState() },
-		);
-		await session.setActiveToolsByName(["read"]);
-		expect(isDeviceOnlyWrite()).toBe(false);
-		const activeBefore = session.getActiveToolNames();
-
-		session.setPlanModeState({ enabled: true, planFilePath: "local://PLAN.md" });
-		failRebuild = true;
-		await expect(session.setActiveToolsByName(["read", "write"])).rejects.toThrow("rebuild failed");
-
-		expect(isDeviceOnlyWrite()).toBe(false);
-		expect(session.getActiveToolNames()).toEqual(activeBefore);
-	});
-
 	it("revokes the active write predicate during rebuild and restores it on failure", async () => {
 		let blockRebuild = false;
 		const rebuildStarted = Promise.withResolvers<void>();

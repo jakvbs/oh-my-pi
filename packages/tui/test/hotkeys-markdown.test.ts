@@ -48,7 +48,6 @@ describe("buildHotkeysMarkdown", () => {
 		expect(markdown).toContain("| `Alt+M` | Select model (set roles) |");
 		expect(markdown).toContain("| `Alt+L` | Reset terminal display |");
 		expect(markdown).toContain("| `Alt+R` | Retry last failed assistant turn |");
-		expect(markdown).toContain("| `Alt+Shift+P` | Toggle plan mode |");
 		expect(markdown).toContain("| `Ctrl+Shift+O` | Toggle tool activity visibility |");
 		expect(markdown).toContain("| `#<number>` | GitHub issue/PR reference");
 		expect(markdown).toContain("| `#` / `#<text>` | Prompt actions");

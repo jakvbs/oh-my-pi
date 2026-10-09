@@ -44,7 +44,6 @@ describe("AgentSession resolve reminder", () => {
 			peekQueueInvoker: () => session.peekQueueInvoker(),
 			peekPendingInvoker: () => session.peekPendingInvoker(),
 			clearPendingInvokers: () => session.clearPendingInvokers(),
-			peekPlanProposalHandler: () => session.peekPlanProposalHandler(),
 		} as unknown as ToolSession;
 
 		const agent = new Agent({
@@ -167,7 +166,6 @@ describe("AgentSession resolve reminder", () => {
 			...toolSession,
 			peekQueueInvoker: () => undefined,
 			peekPendingInvoker: () => undefined,
-			peekPlanProposalHandler: () => undefined,
 		} as ToolSession;
 
 		const { result } = await dispatchResolutionDevice(facade, "reject", "drain stale gate");

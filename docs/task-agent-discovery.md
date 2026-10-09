@@ -143,7 +143,7 @@ Lookup is exact-name linear search:
 3. enforces the root-only spawning boundary and blocked-self-recursion guard
 4. rediscovers agents with the session's cwd and effective extension-root configuration, appends user-tagged session agents, and performs exact lookup
 5. checks `task.disabledAgents`
-6. resolves plan-mode restrictions, output schema, model policy, and isolation policy
+6. resolves output schema, model policy, and isolation policy
 
 A missing name fails preflight with `Unknown agent "...". Available: ...`; no subprocess runs.
 
@@ -237,13 +237,3 @@ An agent can be discoverable but still unavailable to run because of execution g
 Only the root session (`isSubagent: false`) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Persisted legacy `spawns` metadata is ignored. Cold revival always marks the session as a subagent, including historical nested transcripts.
 
 For an explicit agent tool list, the legacy `exec` entry expands to `bash`. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
-
-## Plan mode behavior
-
-When parent plan mode is enabled, `resolveEffectiveSubagentPolicy()` builds an `effectiveAgent` before launching subprocesses:
-
-- prepends the plan-mode subagent system prompt
-- restricts tools to `read`, `grep`, `glob`, and `web_search`, plus `ast_grep` when the agent's own tool list declares it
-- clears `prewalk` (read-only exploration must not receive the prewalk plan/implement nudges)
-
-Plan mode also rejects per-spawn isolation, apply, and merge controls. The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.

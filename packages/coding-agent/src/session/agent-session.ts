@@ -160,7 +160,7 @@ import { expandSlashCommand, type FileSlashCommand, loadSlashCommands } from "..
 import { normalizeToolEventInput, resolveToolEventInput } from "../extensibility/tool-event-input";
 import { GoalRuntime } from "../goals/runtime";
 import type { GoalModeState, GoalTokenUsage } from "../goals/state";
-import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
+import type { LocalProtocolOptions } from "../internal-urls";
 import { type ChainJudge, hasNativeJudge, journalJudgmentUsage, resolveJudge, sharedJudgmentCache } from "../judgment";
 import type { IrcMessage } from "@oh-my-pi/pi-tui/tools/irc";
 import type { DaemonCompletionNotification } from "../launch/protocol";
@@ -169,19 +169,12 @@ import { containsMagicKeyword } from "@oh-my-pi/pi-tui/prompt/magic-keywords";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 import { parseTurnBudget } from "../modes/turn-budget";
 import { computeNonMessageTokens } from "@oh-my-pi/pi-tui/status-line/context-usage";
-import { type PlanApprovalDetails, resolveApprovedPlan } from "../plan-mode/approved-plan";
-import { listPlanFiles, readPlanFile, resolvePlanFilePath } from "../plan-mode/plan-files";
-import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
-import type { PlanModeState } from "../plan-mode/state";
 import goalModeContextPrompt from "../prompts/goals/goal-mode-context.md" with { type: "text" };
 import goalTodoContextPrompt from "../prompts/goals/goal-todo-context.md" with { type: "text" };
 import anthropicUsageWrapUpPrompt from "../prompts/system/anthropic-usage-wrap-up.md" with { type: "text" };
 import autoContinuePrompt from "../prompts/system/auto-continue.md" with { type: "text" };
 import checkpointActiveNoticeTemplate from "../prompts/system/checkpoint-active-notice.md" with { type: "text" };
 import interruptedThinkingTemplate from "../prompts/system/interrupted-thinking.md" with { type: "text" };
-import planModeActivePrompt from "../prompts/system/plan-mode-active.md" with { type: "text" };
-import planModeReferencePrompt from "../prompts/system/plan-mode-reference.md" with { type: "text" };
-import planModeToolDecisionReminderPrompt from "../prompts/system/plan-mode-tool-decision-reminder.md" with { type: "text" };
 import rewindReportTemplate from "../prompts/system/rewind-report.md" with { type: "text" };
 import sessionStopBlockedPrompt from "../prompts/system/session-stop-blocked.md" with { type: "text" };
 import sideChannelNoToolsReminder from "../prompts/system/side-channel-no-tools.md" with { type: "text" };
@@ -211,23 +204,14 @@ import { type AskToolDetails } from "@oh-my-pi/pi-tui/tools/ask";
 import { type AskToolInput, recoverAskQuestions } from "../tools/ask";
 import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint";
 import { isAutoQaEnabled } from "../tools/report-tool-issue";
-import {
-	buildResolveReminderMessage,
-	isPreviewResolutionToolCall,
-	isProposeToolCall,
-	type PlanProposalHandler,
-	writeDeviceDispatch,
-} from "../tools/resolve";
-import { PROPOSE_DEVICE_NAME } from "@oh-my-pi/pi-tui/tools/resolve";
+import { buildResolveReminderMessage, isPreviewResolutionToolCall, writeDeviceDispatch } from "../tools/resolve";
 import { supportsExternalThinking } from "../tools/think";
 import type { TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
-import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { WorkPoolYieldItem } from "../task/workpool-yield";
 import type { AgentDefinition } from "../task/types";
 import type { ModelMention } from "@oh-my-pi/pi-tui/prompt/model-mention-syntax";
 import { ModelMentionRegistry } from "./model-mentions";
 import { parseCommandArgs } from "../utils/command-args";
-import type { EditMode } from "@oh-my-pi/pi-tui/tools/edit";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import { extractFileMentions, generateFileMentionMessages } from "../utils/file-mentions";
 import { normalizeModelContextImages } from "../utils/image-loading";
@@ -350,7 +334,6 @@ import {
 	normalizeCustomMessagePayload,
 	operatorTitleText,
 	type PythonExecutionMessage,
-	SILENT_ABORT_MARKER,
 	SKILL_PROMPT_MESSAGE_TYPE,
 	sanitizeAssistantForReparentedHistory,
 	USER_INTERRUPT_LABEL,
@@ -485,7 +468,6 @@ const cfgWorkspacePromptInputs = combine({
 	autoqaConsent: cfgDevAutoqaConsent,
 });
 
-const PLAN_MODE_REMINDER_MAX = 3;
 const POST_PROMPT_DRAIN_TIMEOUT_MS = 5_000;
 const AGENT_START_POLICY_MAX_ATTEMPTS = 3;
 /** Vision descriptions gate admission; stay under the RPC clients' 30 s request timeout. */
@@ -768,15 +750,12 @@ export class AgentSession implements SettingsScope {
 	#queuedMessageDrainScheduled = false;
 	/** A single model-only notebook reminder queued for the current prompt generation. */
 	#experimentalContextNotesReminder: { prompt: string; generation: number } | undefined;
-	#planModeState: PlanModeState | undefined;
 	#goalModeState: GoalModeState | undefined;
 	#goalRuntime: GoalRuntime;
 	readonly #advisors: SessionAdvisors;
 	/** Resolves once the resume-time advisor spend backfill settles. */
 	#advisorCostRestore: Promise<void> = Promise.resolve();
 	#goalTurnCounter = 0;
-	#planReferenceSent = false;
-	#planReferencePath = "local://PLAN.md";
 	#clientBridge: ClientBridge | undefined;
 	#allowAcpAgentInitiatedTurns = false;
 	/** Session file created by this session's `/move`; removed on dispose if it stayed empty. */
@@ -792,8 +771,6 @@ export class AgentSession implements SettingsScope {
 	// Retry state
 	readonly #recovery: TurnRecovery;
 	#textOutputCommitted = true;
-	#planModeReminderCount = 0;
-	#planModeReminderAwaitingProgress = false;
 	readonly #todo: TodoTracker;
 	readonly #modelMentions: ModelMentionRegistry;
 	#workPoolYieldItems: readonly WorkPoolYieldItem[] = [];
@@ -933,12 +910,6 @@ export class AgentSession implements SettingsScope {
 	readonly #ttsr: TtsrCoordinator;
 	readonly #stats: SessionStatsTracker;
 
-	/** One-shot flag for expected internal plan-mode aborts. Approval actions may
-	 *  abort the post-approval continuation before compaction, execution, or
-	 *  manual refinement. Consumed inside `#handleAgentEvent` for the matching
-	 *  `message_end` + `stopReason: "aborted"`; callers clear it in `finally` so
-	 *  it cannot leak into later unrelated aborts. */
-	#planInternalAbortPending = false;
 	#pendingAbortErrorId?: number;
 
 	#postPromptTasks = new Set<Promise<unknown>>();
@@ -1151,18 +1122,12 @@ export class AgentSession implements SettingsScope {
 		// Parked wake records resume alongside ordinary stranded asides; they were
 		// already decided wake-intended at deferral time.
 		const records = [...this.#irc.drainDeferredWakes(), ...this.#irc.drainPending()];
-		if (this.#planModeState?.enabled) {
-			// Plan mode: fold stranded IRC asides into context without waking an
-			// autonomous turn. Convergence to ask/resolve stays user-driven.
-			this.#foldStrandedIrcAsidesIntoContext(records);
-			return;
-		}
 		if (this.#advisors.autoResumeSuppressed) {
 			// A user interrupt is still in effect (clearQueue({ forInterrupt: true }) already
 			// dropped these same records from the agent-core queues to keep the run the user
 			// stopped from auto-resuming). Only a real peer IRC message justifies waking a fresh
-			// turn here; extension/user asides fold into context like the plan-mode branch above,
-			// staying user-driven until the next deliberate prompt.
+			// turn here; extension/user asides fold into context, staying user-driven until the
+			// next deliberate prompt.
 			const wake: AgentMessage[] = [];
 			const fold: AgentMessage[] = [];
 			for (const record of records) {
@@ -1176,8 +1141,8 @@ export class AgentSession implements SettingsScope {
 		this.#wakeForIrc(records);
 	}
 
-	/** Persist stranded IRC/extension asides into context without starting a turn — shared by the
-	 *  plan-mode branch and the post-interrupt fold branch of #resumeStrandedIrcAsides. All records
+	/** Persist stranded IRC/extension asides into context without starting a turn — used by the
+	 *  post-interrupt fold branch of #resumeStrandedIrcAsides. All records
 	 *  (custom and non-custom alike) route through emitExternalEvent so message_end both appends to
 	 *  context and notifies event listeners — #persistMessageEnd handles custom-role persistence
 	 *  (sessionManager.appendCustomMessageEntry) from that event, and a displayable custom aside that
@@ -1448,12 +1413,7 @@ export class AgentSession implements SettingsScope {
 			!this.#queuedMessageDrainBlocked &&
 			this.#canAutoContinueForFollowUp() &&
 			this.agent.hasQueuedMessages();
-		const ircContinuation =
-			canDrain &&
-			!this.#abortInProgress &&
-			!this.#isDisposed &&
-			!this.#planModeState?.enabled &&
-			this.#irc.hasPending();
+		const ircContinuation = canDrain && !this.#abortInProgress && !this.#isDisposed && this.#irc.hasPending();
 		this.#emit(queuedContinuation || ircContinuation ? { ...pending, isTerminal: false } : pending);
 	}
 
@@ -1477,37 +1437,6 @@ export class AgentSession implements SettingsScope {
 		targetThinkingLevel: ConfiguredThinkingLevel | undefined,
 	): Promise<PrewalkRestartResult> {
 		return this.#prewalk.restart(source, sourceThinkingLevel, target, targetThinkingLevel);
-	}
-
-	/** Validate the active plan artifact and shape an `xd://propose` result for review-mode hosts. */
-	async preparePlanForReview(title: string): Promise<AgentToolResult<PlanApprovalDetails>> {
-		const state = this.getPlanModeState();
-		if (!state?.enabled) {
-			throw new ToolError("Plan mode is not active.");
-		}
-		const { planFilePath, title: resolvedTitle } = await resolveApprovedPlan({
-			suppliedTitle: title,
-			statePlanFilePath: state.planFilePath,
-			readPlan: url => this.#readPlanFile(url),
-			listPlanFiles: () => this.#listPlanFiles(),
-		});
-		return {
-			content: [{ type: "text", text: "Plan ready for review." }],
-			details: { planFilePath, title: resolvedTitle, planExists: true },
-		};
-	}
-
-	async #readPlanFile(planFilePath: string): Promise<string | null> {
-		return readPlanFile(planFilePath, {
-			localProtocolOptions: this.#localProtocolOptions(),
-			cwd: this.sessionManager.getCwd(),
-		});
-	}
-
-	/** `local://` URLs of plan files in the session-local root, newest first —
-	 *  a fallback for `resolveApprovedPlan` when the agent dropped `extra.title`. */
-	async #listPlanFiles(): Promise<string[]> {
-		return listPlanFiles({ localProtocolOptions: this.#localProtocolOptions() });
 	}
 
 	/** Live generation tok/s for the working row; fed by this session's own streamed deltas. */
@@ -1548,18 +1477,14 @@ export class AgentSession implements SettingsScope {
 		// Power assertions are taken per turn (see #beginInFlight); nothing acquired here.
 		const ircHost: IrcBridgeHost = {
 			agent: this.agent,
-			sessionManager: this.sessionManager,
 			isDisposed: () => this.#isDisposed,
 			isStreaming: () => this.isStreaming,
-			planModeEnabled: () => this.#planModeState?.enabled === true,
 			emitSessionEvent: event => this.#emitSessionEvent(event),
 			wakeForIrc: records => this.#wakeForIrc(records),
 		};
 		this.#irc = new IrcBridge(ircHost);
 		const prewalkHost: PrewalkCoordinatorHost = {
 			agent: this.agent,
-			sessionManager: this.sessionManager,
-			settings: this.settings,
 			model: () => this.model,
 			configuredThinkingLevel: () => this.configuredThinkingLevel(),
 			restoreThinkingLevel: level => this.#models.restoreThinkingLevel(level),
@@ -1567,24 +1492,10 @@ export class AgentSession implements SettingsScope {
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
 			setModelTemporary: (model, thinkingLevel, options) =>
 				this.#models.setModelTemporary(model, thinkingLevel, options, "automatic"),
-			setActiveToolsByName: names => this.setActiveToolsByName(names),
-			restoreNonMCPToolPresentation: (nonMCPToolNames, nonMCPMountedToolNames) =>
-				this.restoreNonMCPToolPresentation(nonMCPToolNames, nonMCPMountedToolNames),
 			getActiveToolNames: () => this.getActiveToolNames(),
-			getEnabledToolNames: () => this.getEnabledToolNames(),
-			getMountedXdevToolNames: () => this.getMountedXdevToolNames(),
-			hasBuiltInTool: name => this.hasBuiltInTool(name),
-			getPlanModeState: () => this.getPlanModeState(),
-			setPlanModeState: state => this.setPlanModeState(state),
-			getPlanReferencePath: () => this.getPlanReferencePath(),
-			setPlanProposalHandler: handler => this.setPlanProposalHandler(handler),
 			waitForSessionMessagePersistence: message => this.#waitForSessionMessagePersistence(message),
-			localProtocolOptions: () => this.#localProtocolOptions(),
 		};
-		this.#prewalk = new PrewalkCoordinator(prewalkHost, {
-			prewalk: config.prewalk,
-			planYolo: config.planYolo,
-		});
+		this.#prewalk = new PrewalkCoordinator(prewalkHost, { prewalk: config.prewalk });
 		const todoHost: TodoTrackerHost = {
 			agent: this.agent,
 			sessionManager: this.sessionManager,
@@ -1598,7 +1509,6 @@ export class AgentSession implements SettingsScope {
 			getActiveToolNames: () => this.getActiveToolNames(),
 			getEnabledToolNames: () => this.getEnabledToolNames(),
 			toolRegistry: () => this.#tools.registry,
-			planModeEnabled: () => this.#planModeState?.enabled === true,
 			prewalkWillHandoff: () => this.#prewalk.willHandoff,
 			consumeLastServedToolChoiceLabel: () => this.#toolChoiceQueue.consumeLastServedLabel(),
 		};
@@ -1880,7 +1790,6 @@ export class AgentSession implements SettingsScope {
 			isDisposed: () => this.#isDisposed,
 			isStreaming: () => this.isStreaming,
 			queuedMessageCount: () => this.queuedMessageCount,
-			planModeEnabled: () => this.#planModeState?.enabled === true,
 			model: () => this.model,
 			clearInheritedProviderPromptCacheKey: () => this.#clearInheritedProviderPromptCacheKey(),
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
@@ -2061,7 +1970,6 @@ export class AgentSession implements SettingsScope {
 			isDisposed: () => this.#isDisposed,
 			abortInProgress: () => this.#abortInProgress,
 			allowAgentInitiatedTurns: () => this.#allowAcpAgentInitiatedTurns,
-			planModeState: () => this.#planModeState,
 			clientBridge: () => this.#clientBridge,
 			emitSessionEvent: event => this.#emitSessionEvent(event),
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
@@ -2127,7 +2035,6 @@ export class AgentSession implements SettingsScope {
 			messages: () => this.messages,
 			baseSystemPrompt: () => this.#tools.baseSystemPrompt,
 			goalModeState: () => this.#goalModeState,
-			planReferencePath: () => this.#planReferencePath,
 			nonMessageTokenSource: () => this,
 			hasExperimentalContextRolloverTools: () => {
 				const enabled = this.#tools.getEnabledToolNames();
@@ -2198,9 +2105,6 @@ export class AgentSession implements SettingsScope {
 			obfuscatePreparationForProvider: preparation => this.#obfuscatePreparationForProvider(preparation),
 			closeCodexProviderSessionsForHistoryRewrite: () => this.#closeCodexProviderSessionsForHistoryRewrite(),
 			resetCodexProviderAfterCompaction: compaction => this.#resetCodexProviderAfterCompaction(compaction),
-			resetPlanReference: () => {
-				this.#planReferenceSent = false;
-			},
 			syncTodoPhasesFromBranch: () => {
 				this.#todo.syncFromBranch();
 				this.#modelMentions.syncFromBranch();
@@ -2517,17 +2421,6 @@ export class AgentSession implements SettingsScope {
 		return this.#toolChoiceQueue.peekInFlightInvoker();
 	}
 
-	/** Plan-proposal handler consulted by `xd://propose` while plan mode is active. */
-	#planProposalHandler: PlanProposalHandler | undefined;
-
-	peekPlanProposalHandler(): PlanProposalHandler | undefined {
-		return this.#planProposalHandler;
-	}
-
-	setPlanProposalHandler(handler: PlanProposalHandler | null): void {
-		this.#planProposalHandler = handler ?? undefined;
-	}
-
 	#sessionSwitchReconciler: (() => Promise<void>) | undefined;
 
 	setSessionSwitchReconciler(reconciler: (() => Promise<void>) | null): void {
@@ -2537,7 +2430,7 @@ export class AgentSession implements SettingsScope {
 	/**
 	 * Re-anchor mode state to the session a branch or `/new` just minted. Both
 	 * mint a new session id/file, so without this the interactive-mode reconciler
-	 * keeps the previous session's transient mode: plan/goal mode keeps running
+	 * keeps the previous session's transient mode: goal mode keeps running
 	 * in a new session that records no mode (issue #14653). Mirrors the
 	 * reconcile step `switchSession` runs for the same reason. Best-effort: a
 	 * reconcile failure must not roll back an otherwise-successful transition.
@@ -2581,26 +2474,6 @@ export class AgentSession implements SettingsScope {
 	/** Whether a TTSR abort is pending (stream was aborted to inject rules) */
 	get isTtsrAbortPending(): boolean {
 		return this.#ttsr.abortPending;
-	}
-
-	/** Whether an expected internal plan-mode abort is pending. Consumed by
-	 *  `#handleAgentEvent` to stamp `SILENT_ABORT_MARKER` on the next aborted
-	 *  assistant message_end; callers clear it in `finally`. */
-	get isPlanInternalAbortPending(): boolean {
-		return this.#planInternalAbortPending;
-	}
-
-	/** Arm the silent-abort marker for the next aborted assistant message_end.
-	 *  Caller MUST clear via `clearPlanInternalAbortPending()` in a `finally`
-	 *  to guarantee no leak. */
-	markPlanInternalAbortPending(): void {
-		this.#planInternalAbortPending = true;
-	}
-
-	/** Unconditionally clear the silent-abort flag. Idempotent: safe when the
-	 *  flag was never set OR was already consumed by `#handleAgentEvent`. */
-	clearPlanInternalAbortPending(): void {
-		this.#planInternalAbortPending = false;
 	}
 
 	getAsyncJobSnapshot(options?: { recentLimit?: number }): AsyncJobSnapshot | null {
@@ -3588,10 +3461,7 @@ export class AgentSession implements SettingsScope {
 		// `let displayEvent = event; ... displayEvent = { ...event, message: { ...message, content: deobfuscated } }`
 		// block. After stamping, both `displayEvent.message` (via the spread)
 		// and `event.message` (in-place mutation, used by SessionManager
-		// persistence) carry the flag. The one-shot plan flag is consumed here,
-		// scoped strictly to this aborted message_end; callers still clear it in
-		// `finally` so a leaked flag cannot silence a later unrelated abort. TTSR
-		// keys off the coordinator's live `abortPending` state instead of a
+		// persistence) carry the flag. TTSR keys off the coordinator's live `abortPending` state instead of a
 		// one-shot flag: the aborted message_end always fires before the deferred
 		// retry clears it.
 		if (
@@ -3600,11 +3470,7 @@ export class AgentSession implements SettingsScope {
 			event.message.stopReason === "aborted"
 		) {
 			const message = event.message as AssistantMessage;
-			if (this.#planInternalAbortPending) {
-				message.errorMessage = SILENT_ABORT_MARKER;
-				message.errorId = AIError.create(AIError.Flag.SilentAbort);
-				this.#planInternalAbortPending = false;
-			} else if (this.#pendingAbortErrorId) {
+			if (this.#pendingAbortErrorId) {
 				message.errorId = this.#pendingAbortErrorId;
 				this.#pendingAbortErrorId = undefined;
 			} else if (this.#ttsr.abortPending) {
@@ -3754,14 +3620,6 @@ export class AgentSession implements SettingsScope {
 				await this.#goalRuntime.onGoalToolCompleted();
 			} else {
 				await this.#goalRuntime.onToolCompleted(event.toolName);
-			}
-			this.#planModeReminderAwaitingProgress = false;
-			if (
-				event.toolName === "ask" ||
-				writeDeviceDispatch(event.toolName, event.result)?.tool === PROPOSE_DEVICE_NAME
-			) {
-				this.#planModeReminderCount = 0;
-				this.#planModeReminderAwaitingProgress = false;
 			}
 		}
 
@@ -4238,11 +4096,6 @@ export class AgentSession implements SettingsScope {
 			// must not restart it after recovery has declared the turn terminal.
 			if (msg.stopReason !== "error" && emptyOutputRecovery !== "terminal") {
 				if (this.#enforceRewindBeforeYield()) {
-					await emitAgentEndNotification({ willContinue: true });
-					return;
-				}
-				const planModeContinuationScheduled = await this.#enforcePlanModeDecisionAtSettle();
-				if (planModeContinuationScheduled) {
 					await emitAgentEndNotification({ willContinue: true });
 					return;
 				}
@@ -5552,14 +5405,6 @@ export class AgentSession implements SettingsScope {
 		this.#syncAgentSessionId();
 		this.agent.appendOnlyContext?.invalidateForModelChange();
 
-		// Re-arm the approved-plan reference: the reset dropped the plan-approved
-		// prompt/reference from agent.state, so mark it unsent (preserving the
-		// path — the plan file on disk is still the active plan) to let
-		// #buildPlanReferenceMessage re-read and re-inject it on the next turn.
-		// Mirrors the sent-flag reset newSession() and compaction perform after a
-		// history rewrite (issue #1246).
-		this.#planReferenceSent = false;
-
 		// Re-prime the advisors across the conversation boundary and undo any
 		// memory promotion so the next turn rebuilds from the base system prompt.
 		this.#advisors.resetSessionState();
@@ -5937,10 +5782,6 @@ export class AgentSession implements SettingsScope {
 		return this.#tools.getAllToolInfos();
 	}
 
-	#resolveActiveEditMode(): EditMode {
-		return this.#tools.resolveActiveEditMode();
-	}
-
 	/** Enabled MCP tools in their current presentation partition. */
 	getSelectedMCPToolNames(): string[] {
 		return this.#tools.getSelectedMCPToolNames();
@@ -6189,28 +6030,9 @@ export class AgentSession implements SettingsScope {
 		this.#models.setScopedModels(scopedModels);
 	}
 
-	/** Prompt templates */
-	getPlanModeState(): PlanModeState | undefined {
-		return this.#planModeState;
-	}
-
 	/** Prewalk state, if armed and active */
 	getPrewalkState(): Prewalk | undefined {
 		return this.#prewalk.state;
-	}
-
-	setPlanModeState(state: PlanModeState | undefined): void {
-		this.#planModeState = state;
-		if (state?.enabled) {
-			this.#planReferenceSent = false;
-			this.#planReferencePath = state.planFilePath;
-		} else {
-			this.#planModeReminderCount = 0;
-			this.#planModeReminderAwaitingProgress = false;
-			// Drop any unconsumed forced decision so a post-plan execution turn
-			// does not inherit a stale `required` tool choice.
-			this.#toolChoiceQueue.removeByLabel("plan-mode-decision");
-		}
 	}
 
 	getGoalModeState(): GoalModeState | undefined {
@@ -6235,18 +6057,6 @@ export class AgentSession implements SettingsScope {
 
 	get goalRuntime(): GoalRuntime {
 		return this.#goalRuntime;
-	}
-
-	markPlanReferenceSent(): void {
-		this.#planReferenceSent = true;
-	}
-
-	setPlanReferencePath(path: string): void {
-		this.#planReferencePath = path;
-	}
-
-	getPlanReferencePath(): string {
-		return this.#planReferencePath;
 	}
 
 	get clientBridge(): ClientBridge | undefined {
@@ -6339,23 +6149,6 @@ export class AgentSession implements SettingsScope {
 		}
 	}
 
-	/**
-	 * Inject the plan mode context message into the conversation history.
-	 */
-	async sendPlanModeContext(options?: { deliverAs?: "steer" | "followUp" | "nextTurn" | "aside" }): Promise<void> {
-		const message = await this.#buildPlanModeMessage();
-		if (!message) return;
-		await this.sendCustomMessage(
-			{
-				customType: message.customType,
-				content: message.content,
-				display: message.display,
-				details: message.details,
-			},
-			options ? { deliverAs: options.deliverAs } : undefined,
-		);
-	}
-
 	async sendGoalModeContext(options?: { deliverAs?: "steer" | "followUp" | "nextTurn" | "aside" }): Promise<void> {
 		const message = this.#buildGoalModeMessage();
 		if (!message) return;
@@ -6425,72 +6218,6 @@ export class AgentSession implements SettingsScope {
 	// =========================================================================
 	// Prompting
 	// =========================================================================
-
-	/**
-	 * Build the approved-plan reference message re-injected after a history
-	 * rewrite (new session, compaction, edit). Inlines the plan body so the
-	 * executor need not re-read it; the durable `local://` path stays in the
-	 * prompt as the recovery route when a compressor expires the inline copy.
-	 * Returns null during plan mode, once already sent, or when no plan exists.
-	 */
-	async #buildPlanReferenceMessage(): Promise<CustomMessage | null> {
-		if (this.#planModeState?.enabled) return null;
-		if (this.#planReferenceSent) return null;
-
-		const plan = await loadOverallPlanReference(this.#planReferencePath, this.#localProtocolOptions());
-		if (!plan) return null;
-
-		const content = prompt.render(planModeReferencePrompt, {
-			planFilePath: plan.path,
-			planContent: plan.content,
-		});
-
-		return {
-			role: "custom",
-			customType: "plan-mode-reference",
-			content,
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-	}
-
-	async #buildPlanModeMessage(): Promise<CustomMessage | null> {
-		const state = this.#planModeState;
-		if (!state?.enabled) return null;
-		const sessionPlanUrl = "local://PLAN.md";
-		const planPathOptions = { localProtocolOptions: this.#localProtocolOptions(), cwd: this.sessionManager.getCwd() };
-		const resolvedPlanPath = resolvePlanFilePath(state.planFilePath, planPathOptions);
-		const resolvedSessionPlan = resolvePlanFilePath(sessionPlanUrl, planPathOptions);
-		const displayPlanPath =
-			InternalUrlRouter.instance().canHandle(state.planFilePath) || resolvedPlanPath !== resolvedSessionPlan
-				? state.planFilePath
-				: sessionPlanUrl;
-
-		const planExists = fs.existsSync(resolvedPlanPath);
-		const capableToolNames = this.getEnabledToolNames();
-		const content = prompt.render(planModeActivePrompt, {
-			planFilePath: displayPlanPath,
-			planExists,
-			askToolName: "ask",
-			writeToolName: "write",
-			editToolName: "edit",
-			askAvailable: capableToolNames.includes("ask"),
-			taskAvailable: capableToolNames.includes("task"),
-			isHashlineEditMode: this.#resolveActiveEditMode() === "hashline",
-			reentry: state.reentry ?? false,
-			iterative: state.workflow === "iterative",
-		});
-
-		return {
-			role: "custom",
-			customType: "plan-mode-context",
-			content,
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-	}
 
 	#buildGoalModeMessage(): CustomMessage | null {
 		const content = this.#goalRuntime.buildActivePrompt();
@@ -6724,14 +6451,9 @@ export class AgentSession implements SettingsScope {
 
 		// A user-initiated prompt (typed message or the `.`/`c` continue shortcut)
 		// re-enables advisor auto-resume that a prior user interrupt suppressed.
-		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
+		// Agent-initiated synthetic prompts (auto-continue, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
 			this.#advisors.autoResumeSuppressed = false;
-			this.#planModeReminderCount = 0;
-			this.#planModeReminderAwaitingProgress = false;
-			// A user turn owns the next decision; drop a queued forced choice from
-			// a reminder continuation this prompt just preempted.
-			this.#toolChoiceQueue.removeByLabel("plan-mode-decision");
 		}
 
 		const promptAttribution = options?.attribution ?? (options?.synthetic ? "agent" : "user");
@@ -7256,18 +6978,8 @@ export class AgentSession implements SettingsScope {
 				await this.#maintenance.checkCompaction(lastAssistant, false, false);
 			}
 
-			await this.#prewalk.armPlanYoloIfNeeded();
-
 			// Build messages array (session context, eager todo prelude, then active prompt message)
 			const messages: AgentMessage[] = [];
-			const planReferenceMessage = await this.#buildPlanReferenceMessage?.();
-			if (planReferenceMessage) {
-				messages.push(planReferenceMessage);
-			}
-			const planModeMessage = await this.#buildPlanModeMessage();
-			if (planModeMessage) {
-				messages.push(planModeMessage);
-			}
 			const goalModeMessage = this.#buildGoalModeMessage();
 			if (goalModeMessage) {
 				messages.push(goalModeMessage);
@@ -7395,17 +7107,6 @@ export class AgentSession implements SettingsScope {
 				nonMessageTokens,
 				cutoffCount: this.messages.length + messages.length,
 			});
-			// Commit the plan-reference delivery flag only now that the message is
-			// actually handed to agent.prompt. Every pre-send setup step above can
-			// return (generation-bail) or throw (@-mention reads, before_agent_start
-			// hooks, pre-prompt compaction) before this point; setting the flag at
-			// construction time (#buildPlanReferenceMessage) stranded it `true` with
-			// nothing delivered, so the retry skipped re-injection and the executor
-			// lost the approved plan (issue #4094). The compaction-success resets
-			// (issue #1246) still clear it for re-injection on the next turn.
-			if (planReferenceMessage) {
-				this.#planReferenceSent = true;
-			}
 			try {
 				await this.#recovery.promptAgentWithIdleRetry(messages, agentPromptOptions);
 			} finally {
@@ -7648,7 +7349,7 @@ export class AgentSession implements SettingsScope {
 			content,
 			attribution: options.attribution ?? "agent",
 			timestamp: Date.now(),
-			// Run-initiating synthetic prompt (e.g. approved-plan execution queued
+			// Run-initiating synthetic prompt (e.g. a hidden continuation queued
 			// behind a busy turn): replay uses the marker to clear the preceding
 			// user's prompt anchor, matching the live agent_start clear.
 			synthetic: true,
@@ -8226,21 +7927,13 @@ export class AgentSession implements SettingsScope {
 
 		if (options?.deliverAs === "aside") {
 			if (await this.#sessionGenerationChanged(sessionGeneration)) return false;
-			if (this.#planModeState?.enabled) {
-				// Plan mode stays user-driven: fold into context without an autonomous turn, same as
-				// IrcBridge.deliver()/#resumeStrandedIrcAsides do in plan mode. Routed through the
-				// event-emitting fold path (not a direct append) so a displayable aside that began
-				// streaming still gets the message_end its sender's rebuild-skip decision expects.
-				this.#foldStrandedIrcAsidesIntoContext([normalizedAppMessage]);
-				return false;
-			}
 			if (this.#advisors.autoResumeSuppressed) {
 				// A user interrupt (Esc) is still in effect. isStreaming was true when this method
 				// was entered but image normalization above outlasted the interrupt, landing here
 				// instead of the streaming branch's queueAside — starting a fresh autonomous turn
-				// would undo the user's deliberate stop. Fold into context (same event-emitting path
-				// as the plan-mode branch above) and stay user-driven, matching
-				// #resumeStrandedIrcAsides's post-interrupt fold branch.
+				// would undo the user's deliberate stop. Fold into context through the event-emitting
+				// path so a displayable aside that began streaming still gets its message_end, and
+				// stay user-driven, matching #resumeStrandedIrcAsides's post-interrupt fold branch.
 				this.#foldStrandedIrcAsidesIntoContext([normalizedAppMessage]);
 				return false;
 			}
@@ -9241,8 +8934,6 @@ export class AgentSession implements SettingsScope {
 			this.sessionManager.appendServiceTierChange(this.#models.serviceTierEntry());
 
 			this.#todo.resetCycle();
-			this.#planReferenceSent = false;
-			this.#planReferencePath = "local://PLAN.md";
 			this.#advisors.resetSessionState();
 			advisorRecordersDetached = false;
 			this.#reconnectToAgent();
@@ -9983,76 +9674,6 @@ export class AgentSession implements SettingsScope {
 		this.#checkpointState = undefined;
 		this.#pendingRewindReport = undefined;
 	}
-	/** Plan-mode decision affordances: `ask`, or plan approval via `write xd://propose`. */
-	#isPlanDecisionTool(toolCall: { name: string; arguments?: Record<string, unknown> }): boolean {
-		return toolCall.name === "ask" || isProposeToolCall(toolCall);
-	}
-
-	async #enforcePlanModeDecisionAtSettle(): Promise<boolean> {
-		if (!this.#planModeState?.enabled) {
-			return false;
-		}
-		const assistantMessage = this.#findLastAssistantMessage();
-		if (!assistantMessage) {
-			return false;
-		}
-		if (assistantMessage.stopReason === "error" || assistantMessage.stopReason === "aborted") {
-			return false;
-		}
-
-		const calledDecisionTool = assistantMessage.content.some(
-			content => content.type === "toolCall" && this.#isPlanDecisionTool(content),
-		);
-		if (calledDecisionTool) {
-			this.#planModeReminderCount = 0;
-			this.#planModeReminderAwaitingProgress = false;
-			return false;
-		}
-
-		const hasToolCall = assistantMessage.content.some(content => content.type === "toolCall");
-		if (hasToolCall) {
-			return false;
-		}
-		if (this.#planModeReminderAwaitingProgress) {
-			return false;
-		}
-		if (this.#planModeReminderCount >= PLAN_MODE_REMINDER_MAX) {
-			logger.debug("Plan mode convergence: reminder cap reached; yielding to user");
-			return false;
-		}
-		const hasRequiredTools = this.#tools.registry.has("ask") && this.#tools.registry.has("write");
-		if (!hasRequiredTools) {
-			logger.warn("Plan mode enforcement skipped because ask/write tools are unavailable", {
-				activeToolNames: this.agent.state.tools.map(tool => tool.name),
-			});
-			return false;
-		}
-
-		this.#planModeReminderCount++;
-		this.#planModeReminderAwaitingProgress = true;
-		this.#toolChoiceQueue.pushOnce("required", { label: "plan-mode-decision" });
-		const reminder = prompt.render(planModeToolDecisionReminderPrompt, {
-			askToolName: "ask",
-		});
-		const reminderMessage: Message = {
-			role: "developer",
-			content: [{ type: "text", text: reminder }],
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-
-		this.agent.appendMessage(reminderMessage);
-		this.sessionManager.appendMessage(reminderMessage);
-		this.#scheduleAgentContinue({
-			source: "plan-mode-reminder",
-			generation: this.#promptGeneration,
-			// If the continuation never runs (new prompt, dispose, compaction,
-			// handoff), the forced choice must not leak onto an unrelated turn.
-			onSkip: () => this.#toolChoiceQueue.removeByLabel("plan-mode-decision"),
-		});
-		return true;
-	}
-
 	/**
 	 * Rebuild the model catalog after an `extendedContext` toggle and rebind the
 	 * active model when its effective context window changed. Same-model rebinds

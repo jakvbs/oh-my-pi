@@ -836,7 +836,7 @@ describe("device-only write transport for explicit lists omitting write", () => 
 		}
 	});
 
-	it("allows the local sandbox outside plan mode while other targets stay rejected", async () => {
+	it("allows the local sandbox in device-only sessions while other targets stay rejected", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "write-xdev-local-sandbox-"));
 		try {
 			const getArtifactsDir = () => path.join(tempDir, "artifacts");

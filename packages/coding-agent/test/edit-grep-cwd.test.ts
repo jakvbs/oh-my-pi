@@ -4,19 +4,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { EditTool } from "@oh-my-pi/pi-coding-agent/edit";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { GrepTool } from "@oh-my-pi/pi-coding-agent/tools/grep";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
-function createSession(cwd: string, planMode?: PlanModeState): ToolSession {
+function createSession(cwd: string): ToolSession {
 	return {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
 		getArtifactsDir: () => path.join(cwd, "artifacts"),
 		settings: Settings.isolated(),
-		...(planMode ? { getPlanModeState: () => planMode } : {}),
 	} satisfies ToolSession;
 }
 
@@ -74,22 +72,6 @@ describe("cwd for edit and grep", () => {
 		});
 
 		expect(result.isError).toBe(true);
-		expect(await Bun.file(path.join(worktree, "src", "x.ts")).text()).toBe("alpha\nbeta\n");
-	});
-
-	it("cwd does not widen the plan-mode sandbox", async () => {
-		const session = createSession(sessionDir, {
-			enabled: true,
-			planFilePath: path.join(sessionDir, "plan.md"),
-		});
-		const result = await new EditTool(session, "replace").execute("e4", {
-			path: "src/x.ts",
-			old_string: "beta",
-			new_string: "delta",
-			cwd: worktree,
-		});
-
-		expect(text(result)).toMatch(/plan mode/i);
 		expect(await Bun.file(path.join(worktree, "src", "x.ts")).text()).toBe("alpha\nbeta\n");
 	});
 

@@ -85,7 +85,7 @@ class LazyFakeSession {
 	queuedMessageCount = 0;
 	systemPrompt = "system";
 	disposed = false;
-	settings = Settings.isolated({ "plan.enabled": false });
+	settings = Settings.isolated();
 
 	constructor(cwd: string) {
 		this.sessionManager = SessionManager.inMemory(cwd);
@@ -148,10 +148,6 @@ class LazyFakeSession {
 	}
 	setActiveToolsByName(): void {}
 	setClientBridge(): void {}
-	getPlanModeState(): undefined {
-		return undefined;
-	}
-	setPlanModeState(): void {}
 	async sendCustomMessage(): Promise<void> {}
 	async sendUserMessage(): Promise<void> {}
 	async compact(): Promise<void> {}

@@ -271,7 +271,7 @@ export interface SessionInitEntry extends SessionEntryBase {
 	workPoolYieldItems?: WorkPoolYieldItem[];
 }
 
-/** Mode change entry - tracks agent mode transitions (e.g. plan mode). */
+/** Mode change entry - tracks agent mode transitions (e.g. goal mode). */
 export interface ModeChangeEntry extends SessionEntryBase {
 	type: "mode_change";
 	/** Current mode name, or "none" when exiting a mode */

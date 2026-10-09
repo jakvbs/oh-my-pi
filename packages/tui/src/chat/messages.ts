@@ -71,7 +71,7 @@ export interface SkillPromptDetails {
 }
 
 /** Sentinel value for `AssistantMessage.errorMessage` indicating that the abort
- *  was an *expected internal transition* (plan-mode → execution compaction)
+ *  was an *expected internal transition* (e.g. a TTSR rule interruption)
  *  and must NOT surface as a red "Operation aborted" line. Distinct from
  *  `undefined` (default) so user-cancel aborts with no errorMessage still
  *  render normally. Persists through SessionManager so history replay

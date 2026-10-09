@@ -16,7 +16,6 @@ import { cfgAutolearnEnabled } from "@oh-my-pi/pi-coding-agent/autolearn/setting
 class FakeSession {
 	readonly listeners: Array<(event: AgentSessionEvent) => void> = [];
 	readonly captures: string[] = [];
-	planEnabled = false;
 	goalEnabled = false;
 	captureGate: Promise<void> | undefined;
 	captureError: Error | undefined;
@@ -32,10 +31,6 @@ class FakeSession {
 		const error = this.captureError;
 		if (gate) await gate;
 		if (error) throw error;
-	}
-
-	getPlanModeState(): { enabled: boolean } | undefined {
-		return this.planEnabled ? { enabled: true } : undefined;
 	}
 
 	getGoalModeState(): { enabled: boolean } | undefined {
@@ -163,18 +158,6 @@ describe("AutoLearnController", () => {
 		session.toolCalls(3);
 		session.agentEnd();
 		// Neither turn reached the threshold; the counter must not accumulate.
-		expect(session.captures).toHaveLength(0);
-	});
-
-	it("discards plan-mode tool calls instead of leaking them into the next turn", () => {
-		const session = new FakeSession();
-		session.planEnabled = true;
-		install(session, { "autolearn.autoContinue": true });
-		session.toolCalls(5);
-		session.agentEnd(); // plan mode: no fire, counter reset
-		session.planEnabled = false;
-		session.toolCalls(1);
-		session.agentEnd(); // 1 < threshold -> no fire (no plan-mode leak)
 		expect(session.captures).toHaveLength(0);
 	});
 

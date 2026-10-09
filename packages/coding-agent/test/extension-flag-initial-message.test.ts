@@ -74,13 +74,13 @@ describe("extension flags vs initial message", () => {
 		expect(parsed.messages).toEqual(["hello"]);
 	});
 	it("lets a registered flag shadow a same-named built-in instead of consuming the next token (bot P2)", () => {
-		// A boolean extension flag colliding with the value-taking built-in --plan
-		// must be parsed as the extension's boolean, NOT the built-in plan-model
-		// selector — otherwise it eats the following message and corrupts result.plan.
-		const planFlags = new Map<string, { type: "boolean" | "string" }>([["plan", { type: "boolean" }]]);
-		const parsed = parseArgs(["--plan", "review the diff"], planFlags);
-		expect(parsed.unknownFlags.get("plan")).toBe(true);
-		expect(parsed.plan).toBeUndefined();
+		// A boolean extension flag colliding with the value-taking built-in --model
+		// must be parsed as the extension's boolean, NOT the built-in model
+		// selector — otherwise it eats the following message and corrupts result.model.
+		const modelFlags = new Map<string, { type: "boolean" | "string" }>([["model", { type: "boolean" }]]);
+		const parsed = parseArgs(["--model", "review the diff"], modelFlags);
+		expect(parsed.unknownFlags.get("model")).toBe(true);
+		expect(parsed.model).toBeUndefined();
 		expect(parsed.messages).toEqual(["review the diff"]);
 	});
 

@@ -476,21 +476,21 @@ describe("interactive native input ingress", () => {
 				await release.promise;
 			});
 		});
-		// Goal mode is active, so /plan warns and declines without submitting.
-		const handlePlanModeCommand = vi.fn(async (_prompt?: string, _input?: unknown) => false);
-		h.ctx.handlePlanModeCommand = handlePlanModeCommand;
-		h.draftWithImage("/plan fix [Image #1]");
+		// The goal handler declines without submitting.
+		const handleGoalModeCommand = vi.fn(async (_prompt?: string, _input?: unknown) => false);
+		h.ctx.handleGoalModeCommand = handleGoalModeCommand;
+		h.draftWithImage("/goal fix [Image #1]");
 		const submitting = h.pressSubmit(FOLLOW_UP);
 		await entered.promise;
 		h.draftWithImage("newer [Image #1]", newerImage, "local://newer.jpg");
 		release.resolve();
 		await submitting;
 
-		expect(handlePlanModeCommand).toHaveBeenCalledWith("fix [Image #1]", {
+		expect(handleGoalModeCommand).toHaveBeenCalledWith("fix [Image #1]", {
 			images: [originalImage],
 			imageLinks: ["local://original.png"],
 		});
-		expect(h.editor.getExpandedText()).toBe("/plan fix [Image #2]\n\nnewer [Image #1]");
+		expect(h.editor.getExpandedText()).toBe("/goal fix [Image #2]\n\nnewer [Image #1]");
 		expect(h.editor.pendingImages).toEqual([newerImage, originalImage]);
 		expect(h.editor.pendingImageLinks).toEqual(["local://newer.jpg", "local://original.png"]);
 		expect(h.editor.imageLinks).toEqual(["local://newer.jpg", "local://original.png"]);

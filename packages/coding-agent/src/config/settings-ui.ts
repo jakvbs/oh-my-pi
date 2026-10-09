@@ -5,7 +5,6 @@ import { isSettingsInitialized, Settings, settings } from "./settings";
 import { orderedSettings } from "./all-settings";
 import { type AnySetting, lookup } from "./registry";
 
-import { cfgPlanAutosave, cfgPlanEnabled } from "../plan-mode/settings";
 import {
 	cfgRetryUsageAwareFallback,
 	cfgDefaultThinkingLevel,
@@ -30,8 +29,6 @@ const CONDITIONS: Record<string, () => boolean> = {
 	autolearnActive: whenSettings(s => cfgAutolearnEnabled.get(s) === true),
 	autoThinkingActive: whenSettings(s => cfgDefaultThinkingLevel.get(s) === "auto"),
 	usageAwareFallbackEnabled: whenSettings(s => cfgRetryUsageAwareFallback.get(s) === true),
-	planModeEnabled: whenSettings(s => cfgPlanEnabled.get(s)),
-	planAutosaveEnabled: whenSettings(s => cfgPlanEnabled.get(s) && cfgPlanAutosave.get(s)),
 };
 
 /** Description suffix telling the panel user that an environment variable is in play. */

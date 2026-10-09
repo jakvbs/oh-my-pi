@@ -158,7 +158,7 @@ import {
 	obfuscateProviderContext,
 	type SecretObfuscator,
 } from "./secrets";
-import { AgentSession, type InitialRetryFallbackState, type PlanYolo, type Prewalk } from "./session/agent-session";
+import { AgentSession, type InitialRetryFallbackState, type Prewalk } from "./session/agent-session";
 import {
 	createAuthStorageSettingsSync,
 	discoverAuthStorage as discoverAuthStorageFromConfig,
@@ -346,7 +346,6 @@ import {
 	cfgMcpNotifications,
 	cfgMcpStartupTimeoutMs,
 } from "./mcp/settings";
-import { cfgPlanEnabled } from "./plan-mode/settings";
 import { cfgSecretsEnabled } from "./secrets/settings";
 import {
 	cfgSnapcompactShape,
@@ -587,8 +586,6 @@ export interface CreateAgentSessionOptions {
 	deferredPrewalk?: { target: string; patterns: string[] };
 	/** Host-owned display sink for non-fatal startup prewalk warnings. */
 	onPrewalkWarning?: (warning: string) => void;
-	/** Force read-only plan mode at start, auto-approve on the model's first resolve call, then switch to execute. */
-	planYolo?: PlanYolo;
 
 	/** Provider-facing system prompt override. Replaces the fully rendered default blocks. */
 	systemPrompt?: string | string[] | ((defaultPrompt: string[]) => string | string[]);
@@ -2245,8 +2242,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getActiveModel: () => agent?.state.model ?? model,
 			getServiceTierByFamily: () => session?.serviceTierByFamily,
 			getImageAttachments: () => session?.getImageAttachments() ?? [],
-			getPlanModeState: () => session?.getPlanModeState(),
-			getPlanReferencePath: () => session?.getPlanReferencePath() ?? "local://PLAN.md",
 			getGoalModeState: () => session?.getGoalModeState(),
 			getGoalRuntime: () => session?.goalRuntime,
 			getUsageStatistics: () => sessionManager.getUsageStatistics(),
@@ -2298,8 +2293,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			peekQueueInvoker: () => session.peekQueueInvoker(),
 			peekPendingInvoker: () => session.peekPendingInvoker(),
 			clearPendingInvokers: () => session.clearPendingInvokers(),
-			peekPlanProposalHandler: () => session.peekPlanProposalHandler(),
-			setPlanProposalHandler: handler => session.setPlanProposalHandler(handler),
 			allocateOutputArtifact: async toolType => {
 				try {
 					return await sessionManager.allocateArtifactPath(toolType);
@@ -3479,8 +3472,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// granted write tool or registered a device-only transport one for an
 		// explicit-list session that omitted it, so xdev state always implies one.
 		const hasDeferrableTools = Array.from(toolRegistry.values()).some(tool => tool.deferrable === true);
-		const planModeAvailable = cfgPlanEnabled.get(settings);
-		if (!restrictToolNames && (hasDeferrableTools || planModeAvailable || deferMCPDiscoveryForUI)) {
+		if (!restrictToolNames && (hasDeferrableTools || deferMCPDiscoveryForUI)) {
 			await ensureWriteRegistered();
 		}
 
@@ -3934,9 +3926,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			for (const name of mountedNames) toolSession.xdev.mountedNames.add(name);
 			initialToolNames = topLevelToolNames;
 			const deviceTransportNeeded =
-				mountedNames.length > 0 ||
-				initialToolNames.some(name => toolRegistry.get(name)?.deferrable === true) ||
-				toolSession.getPlanModeState?.()?.enabled === true;
+				mountedNames.length > 0 || initialToolNames.some(name => toolRegistry.get(name)?.deferrable === true);
 			if (deviceTransportNeeded && xdevWriteAvailable && !initialToolNames.includes("write")) {
 				initialToolNames.push("write");
 			}
@@ -4375,7 +4365,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			initialRetryFallback,
 			deferRetryFallbackValidation: options.deferRetryFallbackValidation,
 			prewalk,
-			planYolo: options.planYolo,
 			serviceTierByFamily: initialServiceTierByFamily,
 			sessionManager,
 			settings,

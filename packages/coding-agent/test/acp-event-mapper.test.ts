@@ -94,10 +94,6 @@ class ReplayTestSession {
 		return [];
 	}
 
-	getPlanModeState(): undefined {
-		return undefined;
-	}
-
 	setClientBridge(_bridge: unknown): void {}
 
 	subscribe(_listener: (event: AgentSessionEvent) => void): () => void {

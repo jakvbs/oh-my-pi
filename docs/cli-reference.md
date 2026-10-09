@@ -103,7 +103,6 @@ or `--fork`.
 | `--model <id-or-role>` | Model or configured role to use (role: `slow` or `@slow`; fuzzy model match: `opus`, `gpt-5.2`, or `openai/gpt-5.2`). |
 | `--smol <id>` | Smol/fast model for lightweight tasks (or `PI_SMOL_MODEL`). |
 | `--slow <id>` | Slow/reasoning model for thorough analysis (or `PI_SLOW_MODEL`). |
-| `--plan <id>` | Plan model for architectural planning (or `PI_PLAN_MODEL`). |
 | `--models <a,b,c>` | Comma-separated model patterns for `Ctrl+P` cycling. |
 | `--provider <name>` | Provider to use (legacy; prefer `--model`). |
 | `--api-key <key>` | API key (defaults to env vars). |
@@ -122,16 +121,14 @@ See [providers](./providers.md) and [models](./models.md) for model resolution.
 | `--print-thoughts` | Include thinking blocks in print-mode text output. |
 | `--external-thinking` | Use a private scratchpad while disabling supported GPT/Claude/Gemini reasoning. Use at your own risk: providers have flagged this request shape as abuse. |
 
-#### Prewalk and plan modes
+#### Prewalk and goal modes
 
 | Flag | Description |
 | --- | --- |
 | `--prewalk` | Arm a one-shot handoff at the first eligible edit/write turn, gated on a successful todo call when `todo` is active (default off). See [prewalk](./prewalk.md). |
 | `--no-prewalk` | Disable prewalk even if `prewalk.enabled` is set; incompatible with `--prewalk`/`--prewalk-into`. |
 | `--prewalk-into <id-or-role>` | Arm prewalk with this target instead of the `smol` role. |
-| `--plan-yolo` | Start in read-only plan mode, auto-approve the model's plan proposal, then switch to the execution target to implement it. |
-| `--plan-yolo-into <id-or-role>` | Target model for plan-yolo execution (default the `smol` role); requires `--plan-yolo`. |
-| `--goal <objective>` | Start a fresh interactive session in goal mode and begin working on the objective, without typing `/goal`. Requires `goal.enabled`; interactive only. Bypasses `autoResume`, and is rejected with a positional prompt, `@file` or stdin input, `--resume`/`--continue`/`--fork`/imports, `--plan-yolo`, `--no-tools`, or startup plan mode (`plan.defaultOnStartup`). |
+| `--goal <objective>` | Start a fresh interactive session in goal mode and begin working on the objective, without typing `/goal`. Requires `goal.enabled`; interactive only. Bypasses `autoResume`, and is rejected with a positional prompt, `@file` or stdin input, `--resume`/`--continue`/`--fork`/imports, or `--no-tools`. |
 
 #### Tools, approvals, and runtime
 
@@ -214,9 +211,6 @@ Related flags for headless runs:
 Incremental `message_update` events omit full partial-message snapshots; completed
 messages arrive in `message_end`, and opaque provider replay payloads are omitted.
 Terminal turn failures produce a nonzero exit status in both text and JSON modes.
-
-`plan.defaultOnStartup` is ignored in print mode because there is no plan-review
-UI. Use `--plan-yolo` for unattended planning and implementation.
 
 The [advisor / watchdog](./advisor-watchdog.md#headless-runs) doc describes
 print-mode disposal semantics when the advisor runtime is enabled.

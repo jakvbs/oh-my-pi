@@ -34,14 +34,11 @@ export interface Args {
 	config?: string[];
 	smol?: string;
 	slow?: string;
-	plan?: string;
 	/** Objective for a fresh interactive goal session. */
 	goal?: string;
 	prewalk?: boolean;
 	noPrewalk?: boolean;
 	prewalkInto?: string;
-	planYolo?: boolean;
-	planYoloInto?: string;
 	maxTime?: number;
 	apiKey?: string;
 	systemPrompt?: string;
@@ -134,21 +131,13 @@ export function validateGoalLaunch(args: Args, interactive: boolean): void {
  * session. Runs on the extension-aware reparse: an extension flag's value can
  * look like a positional prompt to the startup parse.
  */
-export function validateGoalStartup(
-	args: Args,
-	goalEnabled: boolean,
-	pipedInput?: string,
-	planStartsOnStartup = false,
-): void {
+export function validateGoalStartup(args: Args, goalEnabled: boolean, pipedInput?: string): void {
 	if (args.goal === undefined) return;
 	if (args.messages.length > 0 || args.fileArgs.length > 0 || pipedInput !== undefined) {
 		throw new CliUsageError("--goal cannot be combined with a positional message, @file, or stdin prompt.");
 	}
-	if (args.planYolo || args.noTools) {
-		throw new CliUsageError("--goal cannot be combined with --plan-yolo or --no-tools.");
-	}
-	if (planStartsOnStartup) {
-		throw new CliUsageError("--goal cannot be combined with plan.defaultOnStartup; disable startup plan mode first.");
+	if (args.noTools) {
+		throw new CliUsageError("--goal cannot be combined with --no-tools.");
 	}
 	if (!goalEnabled) {
 		throw new CliUsageError("--goal requires goal.enabled to be enabled.");
@@ -241,9 +230,9 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		}
 
 		// Extension-registered flags take precedence over built-ins: a flag an
-		// extension owns (e.g. plan-mode's boolean `--plan`) is parsed with the
-		// extension's semantics rather than falling into a built-in branch. For a
-		// value-taking built-in (`--plan`, `--model`, …) that branch would consume
+		// extension owns is parsed with the extension's semantics rather than
+		// falling into a built-in branch. For a value-taking built-in (`--model`, …)
+		// that branch would consume
 		// the following token — eating the user's message and setting the wrong
 		// built-in field — so registered flags shadow same-named built-ins here.
 		const extFlag = arg.startsWith("--") ? extensionFlags?.get(arg.slice(2)) : undefined;
@@ -264,9 +253,8 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			// Built-in string flags consume the next token even when it is flag-looking
 			// (`--system-prompt --profile foo` ⇒ the prompt is the literal "--profile").
 			// The one token they must never absorb is the profile bootstrap's internal
-			// boundary sentinel: an extension-shadowable built-in like `--plan` (parsed
-			// here only when its boolean extension is NOT loaded) would otherwise swallow
-			// the marker as its value and drop the user's trailing message.
+			// boundary sentinel, which would otherwise be swallowed as the value and
+			// drop the user's trailing message.
 			if (
 				arg === "--goal" &&
 				(i + 1 >= args.length ||
@@ -330,8 +318,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.prewalk = true;
 		} else if (arg === "--no-prewalk") {
 			result.noPrewalk = true;
-		} else if (arg === "--plan-yolo") {
-			result.planYolo = true;
 		} else if (arg === "--print" || arg === "-p") {
 			result.print = true;
 		} else if (arg === "--print-thoughts") {

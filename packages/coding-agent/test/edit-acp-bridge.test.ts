@@ -7,14 +7,12 @@ import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config
 import { EditTool } from "@oh-my-pi/pi-coding-agent/edit";
 import { type EditToolDetails } from "@oh-my-pi/pi-tui/tools/edit";
 import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
 import type { ClientBridge } from "@oh-my-pi/pi-coding-agent/session/client-bridge";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 interface SessionOptions {
 	bridge?: ClientBridge;
-	planMode?: PlanModeState;
 }
 
 function createSession(cwd: string, options: SessionOptions = {}): ToolSession {
@@ -31,7 +29,6 @@ function createSession(cwd: string, options: SessionOptions = {}): ToolSession {
 		allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 		settings: Settings.isolated({ "edit.enforceSeenLines": false }),
 		getClientBridge: options.bridge ? () => options.bridge : undefined,
-		getPlanModeState: options.planMode ? () => options.planMode : undefined,
 	} as ToolSession;
 }
 
@@ -96,13 +93,10 @@ describe("EditTool ACP write routing", () => {
 		expect((result.details as EditToolDetails).newText).toBe("b\n");
 	});
 
-	it("keeps local plan writes off the ACP bridge", async () => {
+	it("keeps local:// writes off the ACP bridge", async () => {
 		const planUrl = "local://PLAN.md";
 		const { bridge, spy } = makeBridge();
-		const session = createSession(tmpDir, {
-			bridge,
-			planMode: { enabled: true, planFilePath: planUrl, workflow: "parallel", reentry: false },
-		});
+		const session = createSession(tmpDir, { bridge });
 		const target = resolveLocalUrlToPath(planUrl, session.localProtocolOptions!);
 		await Bun.write(target, "old plan\n");
 

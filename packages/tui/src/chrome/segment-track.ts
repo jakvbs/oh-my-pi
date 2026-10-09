@@ -5,8 +5,8 @@
  * background, a luminance-matched label, flanked by triangle caps) and the
  * rest are plain colored labels joined by a thin separator.
  *
- * Used by the plan-mode model-tier slider ({@link HookSelectorComponent}) and
- * the ctrl+p role-cycle status so both surfaces read identically.
+ * Used by the {@link HookSelectorComponent} slider and the ctrl+p role-cycle
+ * status so both surfaces read identically.
  */
 import { type ThemeColor, theme } from "../theme/index";
 import { BG_RESET, FG_RESET } from "../theme/color";

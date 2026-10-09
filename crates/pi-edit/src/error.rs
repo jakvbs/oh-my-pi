@@ -25,9 +25,6 @@ pub enum EditError {
 	/// A search anchor could not be located in the target text.
 	#[error("{0}")]
 	Match(String),
-	/// Plan mode rejected a working-tree write.
-	#[error("{0}")]
-	Plan(String),
 	/// An internal URL target has no host answer yet. Raised before any
 	/// write, so the host can resolve the URL, `provide` it, and retry.
 	#[error("Internal URL not resolved yet: {0}")]

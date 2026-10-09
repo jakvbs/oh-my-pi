@@ -23,11 +23,8 @@ export const RESOLVE_DEVICE_NAME = "resolve";
 /** Device name for discarding a staged action. */
 export const REJECT_DEVICE_NAME = "reject";
 
-/** Device name for submitting a plan. */
-export const PROPOSE_DEVICE_NAME = "propose";
-
 /** Plain-text staged-action device names. */
-export type ResolutionDeviceName = typeof RESOLVE_DEVICE_NAME | typeof REJECT_DEVICE_NAME | typeof PROPOSE_DEVICE_NAME;
+export type ResolutionDeviceName = typeof RESOLVE_DEVICE_NAME | typeof REJECT_DEVICE_NAME;
 
 /** Resolution applied to a staged action. */
 export type ResolveAction = "apply" | "discard";
@@ -47,15 +44,15 @@ export interface ResolveInvocation {
 	reason: string;
 }
 
-/** Streaming-safe call preview for a resolution-device write: `Resolve/Reject/Propose: <text>`. */
+/** Streaming-safe call preview for a resolution-device write: `Resolve/Reject: <text>`. */
 export function renderResolutionDeviceCall(device: ResolutionDeviceName, content: unknown, uiTheme: Theme): Component {
-	const title = device === PROPOSE_DEVICE_NAME ? "Propose" : device === REJECT_DEVICE_NAME ? "Reject" : "Resolve";
+	const title = device === REJECT_DEVICE_NAME ? "Reject" : "Resolve";
 	return renderDeviceCallPreview(title, content, uiTheme, Ellipsis.Omit);
 }
 
-/** Native form of {@link renderResolutionDeviceCall}: `Resolve/Reject/Propose` head with the first content line. */
+/** Native form of {@link renderResolutionDeviceCall}: `Resolve/Reject` head with the first content line. */
 export function describeResolutionDeviceCall(device: ResolutionDeviceName, content: unknown): NativeToolView {
-	const title = device === PROPOSE_DEVICE_NAME ? "Propose" : device === REJECT_DEVICE_NAME ? "Reject" : "Resolve";
+	const title = device === REJECT_DEVICE_NAME ? "Reject" : "Resolve";
 	return describeDeviceCallPreview(title, content);
 }
 
@@ -197,5 +194,5 @@ export const resolveRenderer = {
 
 /** Whether an xd:// device name is one of the plain-text resolution devices. */
 export function isResolutionDeviceName(name: string): name is ResolutionDeviceName {
-	return name === RESOLVE_DEVICE_NAME || name === REJECT_DEVICE_NAME || name === PROPOSE_DEVICE_NAME;
+	return name === RESOLVE_DEVICE_NAME || name === REJECT_DEVICE_NAME;
 }

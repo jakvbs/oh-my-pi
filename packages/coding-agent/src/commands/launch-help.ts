@@ -20,10 +20,9 @@ export const launchHelp = {
 		}),
 		smol: Flags.string({ description: "Smol/fast model for lightweight tasks (or PI_SMOL_MODEL env)" }),
 		slow: Flags.string({ description: "Slow/reasoning model for thorough analysis (or PI_SLOW_MODEL env)" }),
-		plan: Flags.string({ description: "Plan model for architectural planning (or PI_PLAN_MODEL env)" }),
 		goal: Flags.string({
 			description:
-				"Start fresh in goal mode (interactive only; bypasses autoResume; no positional prompt, startup plan mode, or explicit resume)",
+				"Start fresh in goal mode (interactive only; bypasses autoResume; no positional prompt or explicit resume)",
 		}),
 		prewalk: Flags.boolean({
 			description:
@@ -31,11 +30,6 @@ export const launchHelp = {
 		}),
 		"no-prewalk": Flags.boolean({ description: "Disable prewalk even if prewalk.enabled is set" }),
 		"prewalk-into": Flags.string({ description: 'Target model for prewalk (default the "smol" role)' }),
-		"plan-yolo": Flags.boolean({
-			description:
-				"Force read-only plan mode at start, auto-approve the plan on the model's first resolve call, then switch to --plan-yolo-into to implement it",
-		}),
-		"plan-yolo-into": Flags.string({ description: 'Target model for plan-yolo execution (default the "smol" role)' }),
 		provider: Flags.string({ description: "Provider to use (legacy; prefer --model)" }),
 		"api-key": Flags.string({ description: "API key (defaults to env vars)" }),
 		"system-prompt": Flags.string({ description: "System prompt (default: coding assistant prompt)" }),

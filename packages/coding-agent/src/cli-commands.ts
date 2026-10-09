@@ -10,13 +10,7 @@
  */
 import type { CommandEntry } from "@oh-my-pi/pi-utils/cli";
 import * as commandHelp from "./cli/command-help";
-import {
-	EXTENSION_SHADOWABLE_STRING_FLAGS,
-	flagConsumesValue,
-	OPTIONAL_VALUE_FLAGS,
-	STRING_VALUE_FLAGS,
-	VALUELESS_FLAGS,
-} from "./cli/flag-tables";
+import { flagConsumesValue, OPTIONAL_VALUE_FLAGS, STRING_VALUE_FLAGS, VALUELESS_FLAGS } from "./cli/flag-tables";
 import type * as LaunchHelp from "./commands/launch-help";
 
 function loadLaunchHelp(): typeof LaunchHelp.launchHelp {
@@ -357,12 +351,7 @@ function leadingSubcommandIndex(argv: string[]): number {
 function isLaunchGlobalFlag(arg: string): boolean {
 	const eq = arg.indexOf("=");
 	const name = arg.startsWith("--") && eq !== -1 ? arg.slice(0, eq) : arg;
-	return (
-		STRING_VALUE_FLAGS.has(name) ||
-		OPTIONAL_VALUE_FLAGS.has(name) ||
-		VALUELESS_FLAGS.has(name) ||
-		EXTENSION_SHADOWABLE_STRING_FLAGS.has(name)
-	);
+	return STRING_VALUE_FLAGS.has(name) || OPTIONAL_VALUE_FLAGS.has(name) || VALUELESS_FLAGS.has(name);
 }
 
 /**
