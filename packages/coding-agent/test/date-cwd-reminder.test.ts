@@ -231,7 +231,7 @@ describe("date-cwd reminder on the provider wire", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		sessions.push(session);
@@ -338,7 +338,7 @@ describe("date-cwd reminder on the provider wire", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		sessions.push(session);

@@ -773,11 +773,11 @@ export interface CreateAgentSessionOptions {
 	 * Whether this top-level session takes over, until disposed, the process-global state that
 	 * follows one settings instance: setting effects and capability provider toggles. Helper
 	 * sessions a host session spawns on its behalf (security scan, agent-spec generation) pass
-	 * `false`. Subagents (`parentTaskPrefix`/`taskDepth`) never bind. Default: true.
+	 * `false`. Subagents (`parentTaskPrefix`/`isSubagent`) never bind. Default: true.
 	 */
 	bindProcessState?: boolean;
-	/** Task recursion depth (for subagent sessions). Default: 0 */
-	taskDepth?: number;
+	/** Whether this is a subagent session. Default: false. */
+	isSubagent?: boolean;
 	/** Parent Hindsight state to alias for subagent memory tools. */
 	parentHindsightSessionState?: HindsightSessionState;
 	/** Parent Mnemopi state to alias for subagent memory tools. */
@@ -1688,7 +1688,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	// follow the newest holder: each top-level session holds both on its settings until disposed,
 	// then hands them back to the previous holder. Subagents and helper sessions never take them,
 	// so a parent's live edits keep reaching discovery and effects.
-	const bindsProcessState = options.bindProcessState !== false && !options.parentTaskPrefix && !options.taskDepth;
+	const isSubagentSession = options.isSubagent === true || Boolean(options.parentTaskPrefix);
+	const bindsProcessState = options.bindProcessState !== false && !isSubagentSession;
 	const restoreProviderToggles = bindsProcessState
 		? logger.time("initializeWithSettings", initializeWithSettings, settings)
 		: undefined;
@@ -2009,8 +2010,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		});
 	}
 
-	const taskDepth = options.taskDepth ?? 0;
-
 	// Resolves the session/agent thinking level using the same precedence we
 	// apply at startup: explicit option → persisted session entry → restored
 	// model selector suffix → default role's explicit selector → selected
@@ -2087,7 +2086,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 
 	// Agent identity must resolve before rule discovery: `agents` frontmatter decides
 	// which rules are bucketed into this session at all.
-	const isSubagentSession = (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
 	const agentKind: AgentKind = isSubagentSession ? SUB_AGENT_RULE_NAME : MAIN_AGENT_RULE_NAME;
 	// Visuals (Mermaid, SVG figures, table charts) are drawn only in the top-level TUI transcript.
 	const tuiTranscript = options.tuiTranscript === true && !isSubagentSession;
@@ -2290,7 +2288,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			get prewalkArmed() {
 				return prewalk !== undefined || deferredPrewalk !== undefined;
 			},
-			taskDepth: options.taskDepth ?? 0,
+			isSubagent: isSubagentSession,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
 			sessionManager,
 			getEvalKernelOwnerId: () => evalKernelOwnerId,
@@ -3287,7 +3285,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				kind: isSubagentSession ? "sub" : "main",
 				id: resolvedAgentId,
 				name: resolvedAgentName,
-				depth: taskDepth,
+				depth: options.isSubagent ? 1 : 0,
 				...(options.parentAgentId ? { parentId: options.parentAgentId } : {}),
 			}),
 		);
@@ -4573,7 +4571,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				: undefined,
 			memoryEnabled: !restrictToolNames,
 			memoryAgentDir: agentDir,
-			memoryTaskDepth: taskDepth,
+			memoryIsSubagent: isSubagentSession,
 			createMemoryTools: restrictToolNames
 				? undefined
 				: async () => {
@@ -5104,7 +5102,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				settings,
 				modelRegistry,
 				agentDir,
-				taskDepth,
+				isSubagent: isSubagentSession,
 				parentHindsightSessionState: options.parentHindsightSessionState,
 				parentMnemopiSessionState: options.parentMnemopiSessionState,
 			});
@@ -5190,12 +5188,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// tools per run. The subscription lives for the session's lifetime; the
 		// reference is intentionally discarded (the listener retains it).
 		if (!restrictToolNames) {
-			if (cfgAutolearnEnabled.get(settings) && taskDepth === 0) {
+			if (cfgAutolearnEnabled.get(settings) && !isSubagentSession) {
 				await logger.time("startMemoryStartupTask", startMemoryBackend);
 			} else {
 				void logger.time("startMemoryStartupTask", startMemoryBackend);
 			}
-			if (taskDepth === 0) {
+			if (!isSubagentSession) {
 				new AutoLearnController({
 					session,
 					settings,

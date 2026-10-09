@@ -259,7 +259,7 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 ### One subagent level
 
-Only the root session (task depth 0) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Legacy `spawns` frontmatter and persisted metadata are ignored.
+Only the root session (`isSubagent: false`) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Legacy `spawns` frontmatter and persisted metadata are ignored. Cold revival always marks the session as a subagent, including historical nested transcripts.
 
 For an explicit agent tool list, the legacy `exec` entry expands to `bash` plus `eval` when an eval backend is available. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
 

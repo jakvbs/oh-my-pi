@@ -829,7 +829,7 @@ describe("AgentSession message pipeline", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -909,7 +909,7 @@ describe("AgentSession message pipeline", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -2036,7 +2036,7 @@ describe("AgentSession message pipeline", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -2106,7 +2106,7 @@ describe("AgentSession message pipeline", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 		});
 		try {
 			await session.sendUserMessage("rewrite this");
@@ -2184,7 +2184,7 @@ describe("AgentSession message pipeline", () => {
 			enableMCP: false,
 			enableLsp: false,
 			skipPythonPreflight: true,
-			taskDepth: 1,
+			isSubagent: true,
 		});
 		try {
 			const turn = session.sendUserMessage("rewrite this");

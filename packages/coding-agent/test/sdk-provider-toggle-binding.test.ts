@@ -49,7 +49,10 @@ describe("discovery provider toggles with subagents and helper sessions", () => 
 		const modelRegistry = new ModelRegistry(authStorage, tempDir.join("models.yml"));
 		const start = async (
 			settings: Settings,
-			extra: Pick<CreateAgentSessionOptions, "parentTaskPrefix" | "taskDepth" | "agentId" | "bindProcessState"> = {},
+			extra: Pick<
+				CreateAgentSessionOptions,
+				"parentTaskPrefix" | "isSubagent" | "agentId" | "bindProcessState"
+			> = {},
 		): Promise<AgentSession> => {
 			const { session } = await createAgentSession({
 				cwd: tempDir.path(),
@@ -83,7 +86,7 @@ describe("discovery provider toggles with subagents and helper sessions", () => 
 		await start(parentSettings);
 		await start(createSubagentSettings(parentSettings), {
 			parentTaskPrefix: "0-Sub",
-			taskDepth: 1,
+			isSubagent: true,
 			agentId: "0-Sub",
 		});
 

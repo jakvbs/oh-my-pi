@@ -6,7 +6,7 @@
  * prompt-cache neutral: the standing system guidance remains available, but no
  * hidden mid-session reminder is inserted into the conversation.
  *
- * Installed once per top-level session (taskDepth 0) regardless of
+ * Installed once per top-level session regardless of
  * `autolearn.enabled`: every stop re-reads the live setting, so toggling it
  * mid-session takes effect at the next stop. The subscription lives for the
  * session's lifetime — `newSession` resets the session in place without

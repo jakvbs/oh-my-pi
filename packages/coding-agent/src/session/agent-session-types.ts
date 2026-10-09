@@ -233,8 +233,8 @@ export interface AgentSessionConfig {
 	memoryEnabled?: boolean;
 	/** Agent directory used when changing memory backends in a live session. */
 	memoryAgentDir?: string;
-	/** Recursion depth used to suppress live backend replacement in subagents. */
-	memoryTaskDepth?: number;
+	/** Subagents alias parent memory state and never replace its backend live. */
+	memoryIsSubagent?: boolean;
 	/** Creates built-in memory tools for the current backend. */
 	createMemoryTools?: () => Promise<AgentTool[]>;
 	/** Creates the private `think` scratchpad tool for runtime setting changes. */

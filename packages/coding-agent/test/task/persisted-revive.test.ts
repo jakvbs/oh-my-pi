@@ -512,28 +512,33 @@ describe("persisted subagent revival", () => {
 		expect(activeToolNames).toEqual([["read", "write", "yield"]]);
 	});
 
-	it("revives a contract without mcp with no MCP access", async () => {
-		const cwd = makeTempDir("@pi-normal-revive-");
-		const sessionFile = await createPersistedSession(cwd);
-		MCPManager.setInstance(fakeMcpManager(() => [{ name: "mcp__server_read", label: "server/read" }]));
-		let capturedOptions: CreateAgentSessionOptions | undefined;
-		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
-			capturedOptions = options;
-			return { session: createRevivedSession([]).session } as CreateAgentSessionResult;
-		});
+	it.each(["Main", "legacy-parent"])(
+		"revives children of %s as subagents without implicit MCP access",
+		async parentId => {
+			const cwd = makeTempDir("@pi-normal-revive-");
+			const sessionFile = await createPersistedSession(cwd);
+			MCPManager.setInstance(fakeMcpManager(() => [{ name: "mcp__server_read", label: "server/read" }]));
+			let capturedOptions: CreateAgentSessionOptions | undefined;
+			vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
+				capturedOptions = options;
+				return { session: createRevivedSession([]).session } as CreateAgentSessionResult;
+			});
 
-		const ref = createRef(sessionFile);
-		const reviver = await createFactory(cwd)(ref);
-		if (!reviver) throw new Error("Expected a persisted reviver");
-		await reviver(ref);
+			const ref = createRef(sessionFile);
+			ref.parentId = parentId;
+			const reviver = await createFactory(cwd)(ref);
+			if (!reviver) throw new Error("Expected a persisted reviver");
+			await reviver(ref);
 
-		expect(capturedOptions?.restrictToolNames).toBeUndefined();
-		expect(capturedOptions?.enableLsp).toBe(true);
-		expect(capturedOptions?.enableMCP).toBe(false);
-		expect(capturedOptions?.mcpManager).toBeUndefined();
-		expect(capturedOptions?.mcpTools).toBeUndefined();
-		expect(capturedOptions?.customTools).toBeUndefined();
-	});
+			expect(capturedOptions?.isSubagent).toBe(true);
+			expect(capturedOptions?.restrictToolNames).toBeUndefined();
+			expect(capturedOptions?.enableLsp).toBe(true);
+			expect(capturedOptions?.enableMCP).toBe(false);
+			expect(capturedOptions?.mcpManager).toBeUndefined();
+			expect(capturedOptions?.mcpTools).toBeUndefined();
+			expect(capturedOptions?.customTools).toBeUndefined();
+		},
+	);
 
 	it("revives a contract with mcp with proxies for only those servers", async () => {
 		const cwd = makeTempDir("@pi-mcp-revive-");

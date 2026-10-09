@@ -40,7 +40,7 @@ export const hindsightBackend: MemoryBackend = {
 		// persist to the same Hindsight bank. Auto-recall and auto-retain stay
 		// with the parent — running them per subagent would double-recall and
 		// pollute the bank with internal exploration transcripts.
-		if (options.taskDepth > 0) {
+		if (options.isSubagent) {
 			const parent = options.parentHindsightSessionState;
 			if (!parent) return;
 			const previous = session.setHindsightSessionState(

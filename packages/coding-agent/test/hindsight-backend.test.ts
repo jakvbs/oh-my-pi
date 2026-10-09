@@ -112,7 +112,7 @@ describe("hindsightBackend.start", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		expect(session.getHindsightSessionState()).toBeUndefined();
@@ -135,7 +135,7 @@ describe("hindsightBackend.start", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		// Turn 1: not enough turns yet
@@ -154,7 +154,7 @@ describe("hindsightBackend.start", () => {
 		expect(retainSpy.mock.calls[0]?.[2]?.timestamp).toBeInstanceOf(Date);
 	});
 
-	it("aliases parent state on subagent runs (taskDepth > 0) so tools share the parent bank", async () => {
+	it("aliases parent state on subagent runs so tools share the parent bank", async () => {
 		const settings = Settings.isolated({
 			"memory.backend": "hindsight",
 			"hindsight.apiUrl": "http://localhost:8888",
@@ -167,18 +167,17 @@ describe("hindsightBackend.start", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		const parentState = parentSession.getHindsightSessionState();
 
-		// Subagent runs with taskDepth > 0 should alias the parent.
 		const subSession = makeFakeSession({ sessionId: "sub" });
 		await hindsightBackend.start({
 			session: subSession as never,
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 1,
+			isSubagent: true,
 			parentHindsightSessionState: parentState,
 		});
 		const subState = subSession.getHindsightSessionState();
@@ -204,7 +203,7 @@ describe("hindsightBackend.start", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 1,
+			isSubagent: true,
 		});
 
 		expect(session.getHindsightSessionState()).toBeUndefined();
@@ -238,7 +237,7 @@ describe("hindsightBackend.preCompactionContext", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		vi.spyOn(HindsightApi.prototype, "recall").mockResolvedValue({
@@ -262,7 +261,7 @@ describe("hindsightBackend.preCompactionContext", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		vi.spyOn(HindsightApi.prototype, "recall").mockResolvedValue({ results: [] } as never);
@@ -295,7 +294,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		vi.spyOn(HindsightApi.prototype, "recall").mockResolvedValue({
@@ -328,7 +327,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		vi.spyOn(HindsightApi.prototype, "recall").mockResolvedValue({
@@ -363,7 +362,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		// A slow recall server: the request never resolves on its own and only
@@ -416,7 +415,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const prompt = await hindsightBackend.buildDeveloperInstructions("/tmp", settings, session as never);
@@ -439,7 +438,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		const state = session.getHindsightSessionState();
 		state!.mentalModelsSnippet = "<mental_models>\n# User Preferences\nprefers tabs\n</mental_models>";
@@ -475,7 +474,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		// Wait for the kicked-off load to settle.
 		await session.getHindsightSessionState()?.mentalModelsLoadPromise;
@@ -523,7 +522,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		const child = makeFakeSession({ sessionId: "alias-child" });
 		await hindsightBackend.start({
@@ -531,7 +530,7 @@ describe("hindsightBackend first-turn injection", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 1,
+			isSubagent: true,
 			parentHindsightSessionState: parent.getHindsightSessionState(),
 		});
 		const ok = await reloadMentalModelsForSession(child as never);
@@ -559,7 +558,7 @@ describe("hindsightBackend.clear", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		expect(session.getHindsightSessionState()).toBeDefined();
 
@@ -586,7 +585,7 @@ describe("hindsightBackend.clear", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		await hindsightBackend.clear("/tmp", "/tmp", session as never);
@@ -627,7 +626,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const initial = session.getHindsightSessionState();
@@ -658,7 +657,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const initial = session.getHindsightSessionState();
@@ -690,7 +689,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const initial = session.getHindsightSessionState();
@@ -714,7 +713,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		cfgHindsightRecallBudget.set(settings, "high");
@@ -747,7 +746,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		const initial = session.getHindsightSessionState();
 		expect(initial?.bankId).toBe("Minigames-_new_xengamekit");
@@ -789,7 +788,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		expect(session.getHindsightSessionState()?.bankId).toBe("Minigames-_NEW_XenGameKit");
 
@@ -827,7 +826,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		expect(session.listenerCount()).toBe(1);
 
@@ -889,7 +888,7 @@ describe("hindsightBackend live bank routing", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		await session.getHindsightSessionState()?.mentalModelsLoadPromise;
 
@@ -934,7 +933,7 @@ describe("hindsightBackend cwd rebind", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		expect(session.getHindsightSessionState()?.bankId).toBe("omp-source");
 
@@ -971,7 +970,7 @@ describe("hindsightBackend cwd rebind", () => {
 				settings,
 				modelRegistry: {} as never,
 				agentDir: "/tmp",
-				taskDepth: 0,
+				isSubagent: false,
 			});
 			const initial = session.getHindsightSessionState();
 			if (!initial) throw new Error("Hindsight fixture did not start");
@@ -1022,7 +1021,7 @@ describe("hindsightBackend cwd rebind", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		cfgHindsightBankId.set(settings, "first");
@@ -1085,7 +1084,7 @@ describe("hindsightBackend cwd rebind", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		try {
@@ -1138,7 +1137,7 @@ describe("hindsightBackend retain queue flush on session teardown", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		const state = session.getHindsightSessionState();
 
@@ -1178,7 +1177,7 @@ describe("hindsightBackend retain queue flush on session teardown", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: "/tmp",
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		const state = session.getHindsightSessionState();
 		state!.enqueueRetain("dropped fact");

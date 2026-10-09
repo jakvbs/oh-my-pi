@@ -144,7 +144,7 @@ describe("issue #846: phase1 stage1 failures must be logged", () => {
 			settings,
 			modelRegistry: modelRegistry as unknown as Parameters<typeof startMemoryStartupTask>[0]["modelRegistry"],
 			agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		// Wait until the failure is recorded in the DB so we know phase1 finished.

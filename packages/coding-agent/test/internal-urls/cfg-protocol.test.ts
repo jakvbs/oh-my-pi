@@ -16,7 +16,7 @@ import { cfgSearxngEndpoint } from "@oh-my-pi/pi-coding-agent/web/settings";
 import type { InternalWriteResult } from "@oh-my-pi/pi-coding-agent/internal-urls/types";
 
 function sessionWith(settings: Settings, caller: Partial<ToolSession> = {}): ToolSession {
-	return { settings, hasUI: true, settingsApproval: true, taskDepth: 0, ...caller } as unknown as ToolSession;
+	return { settings, hasUI: true, settingsApproval: true, isSubagent: false, ...caller } as unknown as ToolSession;
 }
 
 const handler = new CfgProtocolHandler();
@@ -64,7 +64,7 @@ describe("CfgProtocolHandler", () => {
 			persistentSettings: settings,
 		});
 
-		await expect(write("cfg://advisor/enabled", "true", settings, { taskDepth: 1 })).rejects.toThrow(
+		await expect(write("cfg://advisor/enabled", "true", settings, { isSubagent: true })).rejects.toThrow(
 			"Subagents cannot change settings",
 		);
 		await expect(write("cfg://advisor/enabled/save", "true", settings, { settingsApproval: false })).rejects.toThrow(

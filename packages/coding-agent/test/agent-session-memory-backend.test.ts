@@ -100,7 +100,7 @@ describe("AgentSession memory backend lifecycle", () => {
 			settings,
 			modelRegistry: new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml")),
 			memoryAgentDir: tempDir.path(),
-			memoryTaskDepth: 0,
+			memoryIsSubagent: false,
 			createMemoryTools,
 			toolRegistry,
 			builtInToolNames: [read.name],

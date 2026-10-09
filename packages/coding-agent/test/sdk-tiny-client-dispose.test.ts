@@ -91,7 +91,10 @@ describe("tiny-model client shutdown on session dispose", () => {
 		const modelRegistry = new ModelRegistry(authStorage, tempDir.join("models.yml"));
 		const start = async (
 			settings: Settings,
-			extra: Pick<CreateAgentSessionOptions, "parentTaskPrefix" | "taskDepth" | "agentId" | "bindProcessState"> = {},
+			extra: Pick<
+				CreateAgentSessionOptions,
+				"parentTaskPrefix" | "isSubagent" | "agentId" | "bindProcessState"
+			> = {},
 		): Promise<AgentSession> => {
 			const { session } = await createAgentSession({
 				cwd: tempDir.path(),
@@ -130,7 +133,7 @@ describe("tiny-model client shutdown on session dispose", () => {
 			const parent = await start(parentSettings);
 			const sub = await start(createSubagentSettings(parentSettings), {
 				parentTaskPrefix: "0-Sub",
-				taskDepth: 1,
+				isSubagent: true,
 				agentId: "0-Sub",
 			});
 			const helper = await start(await parentSettings.cloneForCwd(tempDir.path()), { bindProcessState: false });

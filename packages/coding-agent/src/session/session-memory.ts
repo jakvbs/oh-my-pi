@@ -59,7 +59,7 @@ export interface SessionMemoryHost {
 export class SessionMemory {
 	readonly #host: SessionMemoryHost;
 	readonly #memoryAgentDir: string | undefined;
-	readonly #memoryTaskDepth: number;
+	readonly #memoryIsSubagent: boolean;
 	readonly #createMemoryTools: (() => Promise<AgentTool[]>) | undefined;
 	#memoryBackendTransition: Promise<void> = Promise.resolve();
 	#localMemoryStartupAbort: AbortController | undefined;
@@ -79,17 +79,17 @@ export class SessionMemory {
 			/** Session-start memory policy; false disables live backend changes. */
 			memoryEnabled?: boolean;
 			memoryAgentDir?: string;
-			memoryTaskDepth?: number;
+			memoryIsSubagent?: boolean;
 			createMemoryTools?: () => Promise<AgentTool[]>;
 		},
 	) {
 		this.#host = host;
 		this.#memoryAgentDir = options.memoryAgentDir;
-		this.#memoryTaskDepth = options.memoryTaskDepth ?? 0;
+		this.#memoryIsSubagent = options.memoryIsSubagent ?? false;
 		this.#createMemoryTools = options.createMemoryTools;
 		if (this.#memoryAgentDir) this.#runtimeCwd = host.cwd();
 		// Subagents alias the parent's backend state and never replace it live.
-		if (options.memoryEnabled !== false && this.#memoryAgentDir && this.#memoryTaskDepth === 0) {
+		if (options.memoryEnabled !== false && this.#memoryAgentDir && !this.#memoryIsSubagent) {
 			const value = memorySettingsValue();
 			this.#observedSettings = value.get(host.settings);
 			value.listen(host, () => this.#observeSettings());
@@ -330,14 +330,14 @@ export class SessionMemory {
 		try {
 			await this.#disposeMemoryBackendState(true, retain);
 			this.#runtimeCwd = cwd;
-			if (this.#memoryAgentDir && this.#memoryTaskDepth === 0 && !this.#host.isDisposed()) {
+			if (this.#memoryAgentDir && !this.#memoryIsSubagent && !this.#host.isDisposed()) {
 				const backend = await resolveMemoryBackend(this.#host.settings);
 				await backend.start({
 					session: this.#host.memoryBackendSession(),
 					settings: this.#host.settings,
 					modelRegistry: this.#host.modelRegistry,
 					agentDir: this.#memoryAgentDir,
-					taskDepth: this.#memoryTaskDepth,
+					isSubagent: this.#memoryIsSubagent,
 				});
 			}
 			if (this.#host.isDisposed()) return;

@@ -391,18 +391,9 @@ function mergeSyncPayloads(
 	};
 }
 
-/**
- * Suggestion — never a rejection — nudging the spawner to coordinate via the
- * peer messages when one call creates ≥2 live siblings and it still holds spawn
- * capacity. Returns undefined when there is nothing to coordinate or peer
- * messaging is unavailable.
- */
-export function buildCoordinationAdvisory(
-	items: TaskItem[],
-	depthCapacity: boolean,
-	ircEnabled: boolean,
-): string | undefined {
-	if (!depthCapacity || !ircEnabled || items.length < 2) return undefined;
+/** Coordination guidance for a root call creating multiple live siblings. */
+export function buildCoordinationAdvisory(items: TaskItem[]): string | undefined {
+	if (items.length < 2) return undefined;
 	return prompt.render(taskCoordinationAdvisoryTemplate, { count: items.length }).trim();
 }
 
@@ -832,7 +823,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			run.discard("task execution mode changed after speculative launch");
 			adopted.delete(index);
 		}
-		const depthCapacity = (this.session.taskDepth ?? 0) === 0;
 		const ircEnabled = true;
 
 		if (!manager || asyncItems.length === 0) {
@@ -854,9 +844,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// Coordination only makes sense for spawns that keep running after this
 		// call returns (the async subset). Blocking items have already completed
 		// by then, so a "coordinate while they run" hint would misfire.
-		const advisory = this.session.suppressSpawnAdvisory
-			? undefined
-			: buildCoordinationAdvisory(asyncItems, depthCapacity, ircEnabled);
+		const advisory = this.session.suppressSpawnAdvisory ? undefined : buildCoordinationAdvisory(asyncItems);
 		// Returns a fresh result (copied content array, copied text part) rather
 		// than mutating the caller's — task results are short-lived here, but an
 		// in-place edit on a shared/cached AgentToolResult would be a hidden trap.

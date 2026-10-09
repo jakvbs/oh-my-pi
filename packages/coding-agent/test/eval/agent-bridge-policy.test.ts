@@ -78,7 +78,7 @@ interface SessionOptions {
 	cwd?: string;
 	sessionFile?: string | null;
 	artifactsDir?: string | null;
-	depth?: number;
+	isSubagent?: boolean;
 	activeModel?: string;
 	modelString?: string;
 	enableLsp?: boolean;
@@ -104,7 +104,7 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 		hasUI: false,
 		settings,
 		asyncJobManager,
-		taskDepth: options.depth ?? 0,
+		isSubagent: options.isSubagent,
 		enableLsp: options.enableLsp ?? true,
 		agentOutputManager: options.outputManager,
 		getSessionFile: () => options.sessionFile ?? null,
@@ -224,9 +224,9 @@ describe("runEvalAgent", () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
 
-		await expect(runEvalAgentAndWait({ prompt: "hello" }, { session: makeSession({ depth: 1 }) })).rejects.toThrow(
-			"Subagents cannot spawn agents; only the root session can.",
-		);
+		await expect(
+			runEvalAgentAndWait({ prompt: "hello" }, { session: makeSession({ isSubagent: true }) }),
+		).rejects.toThrow("Subagents cannot spawn agents; only the root session can.");
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
@@ -271,7 +271,6 @@ describe("runEvalAgent", () => {
 		const firstOptions = runSpy.mock.calls[0]?.[0];
 		const secondOptions = runSpy.mock.calls[1]?.[0];
 		if (!firstOptions || !secondOptions) throw new Error("runSubprocess was not called");
-		expect(firstOptions.taskDepth).toBe(0);
 		expect(firstOptions.signal).not.toBe(abortController.signal);
 		expect(firstOptions.signal?.aborted).toBe(false);
 		expect(firstOptions.parentActiveModelPattern).toBe("p/current");

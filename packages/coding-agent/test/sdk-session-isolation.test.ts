@@ -229,7 +229,7 @@ describe("createAgentSession session storage isolation", () => {
 				agentDisplayName: "late A",
 				parentTaskPrefix: "shared-worker",
 				parentAgentId: "Main",
-				taskDepth: 1,
+				isSubagent: true,
 				expectedAgentRef: null,
 			}),
 		).rejects.toThrow("already owned by another session generation");
@@ -275,7 +275,7 @@ describe("createAgentSession session storage isolation", () => {
 				agentDisplayName: "fresh generation",
 				parentTaskPrefix: "reused-worker",
 				parentAgentId: "Main",
-				taskDepth: 1,
+				isSubagent: true,
 				expectedAgentRef: null,
 			}));
 			const replacement = registry.get("reused-worker");
@@ -327,7 +327,7 @@ describe("createAgentSession session storage isolation", () => {
 			agentDisplayName: "revived worker",
 			parentTaskPrefix: "revived-worker",
 			parentAgentId: "Main",
-			taskDepth: 1,
+			isSubagent: true,
 			expectedAgentRef: parked,
 		});
 		try {
