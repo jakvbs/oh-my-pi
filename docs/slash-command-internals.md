@@ -229,11 +229,11 @@ This is why built-ins reserve their names before file commands are considered, s
 - parses args from remaining text via `parseCommandArgs`
 - finds exact name match in loaded `fileCommands`
 - if matched, applies:
-  - positional replacement: `$1`, `$2`, ...
-  - slice replacement: `$@[start]` / `$@[start:length]` using 1-based positions
-  - aggregate replacement: `$ARGUMENTS` and `$@`
-  - template rendering via `prompt.render` with `{ args, ARGUMENTS, arguments }`
-  - inline-argument fallback append when the template did not use an inline argument placeholder
+   - positional replacement: `$1`, `$2`, ...
+   - slice replacement: `$@[start]` / `$@[start:length]` using 1-based positions
+   - aggregate replacement: `$ARGUMENTS` and `$@`
+   - template rendering via `prompt.render` with `{ args, ARGUMENTS, arguments }`
+   - inline-argument fallback append when the template did not use an inline argument placeholder
 
 ### `parseCommandArgs` caveats
 
@@ -269,9 +269,9 @@ TUI and ACP/RPC dispatch the shared built-in registry before `session.prompt(...
 
 - `prompt(...)` still runs extension/custom/file/template transforms first
 - then requires `streamingBehavior`:
-  - `"steer"` -> queue interrupt message (`agent.steer`)
-  - `"followUp"` -> queue post-turn message (`agent.followUp`)
-  - `"aside"` -> inject at the next step boundary without interrupting an in-flight tool batch (a running interruptible `wait` ends)
+   - `"steer"` -> queue interrupt message (`agent.steer`)
+   - `"followUp"` -> queue post-turn message (`agent.followUp`)
+   - `"aside"` -> inject at the next step boundary without interrupting an in-flight tool batch (a running interruptible `wait` ends)
 - if `streamingBehavior` is omitted, prompt throws an error
 
 ### Important command-specific streaming behavior
@@ -286,8 +286,8 @@ TUI and ACP/RPC dispatch the shared built-in registry before `session.prompt(...
 - Provider load failures are isolated; registry collects warnings and continues with other providers.
 - Invalid slash command items (missing name/path/content or invalid level) are dropped by capability validation.
 - Frontmatter parse failures:
-  - items explicitly marked `level: "native"` and bundled templates: fatal parse error bubbles
-  - discovered user/project commands (including the native OMP provider): warning + fallback key/value parse
+   - items explicitly marked `level: "native"` and bundled templates: fatal parse error bubbles
+   - discovered user/project commands (including the native OMP provider): warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
 ## 10) Built-in command note: `/pause`
@@ -428,13 +428,13 @@ answers or relax these branch guards.
 
 `/annotate` lets the operator attach notes to a diff or text before the agent acts. With no argument it opens a source menu.
 
-| Command | Source |
-|---|---|
+| Command                         | Source                                                          |
+| ------------------------------- | --------------------------------------------------------------- |
 | `/annotate code-review [focus]` | Local base-branch, working-copy, or commit diff, or a GitHub PR |
-| `/annotate last` | Latest non-empty assistant reply on the active branch |
-| `/annotate session` | A message or block picked in the `/copy` selector |
-| `/annotate path/to/file` | Text read from a file |
-| `/annotate "text"` | Literal text |
+| `/annotate last`                | Latest non-empty assistant reply on the active branch           |
+| `/annotate session`             | A message or block picked in the `/copy` selector               |
+| `/annotate path/to/file`        | Text read from a file                                           |
+| `/annotate "text"`              | Literal text                                                    |
 
 The whole remainder after `/annotate` is one source specification (`CustomCommand.execute` receives it verbatim as `rawArgs`):
 
@@ -444,9 +444,9 @@ The whole remainder after `/annotate` is one source specification (`CustomComman
 
 Argument completion offers the modes, a `./` file-path starter, and a quote starter. `CustomCommand.getArgumentCompletions(prefix, cwd)` receives the live session cwd, so file suggestions follow `/move` and `/wt`.
 
-**Code review.** The menu lists up to three GitHub PRs referenced in the conversation, then the local diff kinds. `/annotate code-review pr://owner/repo/N [focus]` skips the menu. The diff is resolved once in the live session cwd and frozen (`ResolvedReviewTarget`); the overlay and the reviewer prompt read the same snapshot, filtered by the same exclusion rules as `/review` (`src/extensibility/custom-commands/bundled/review/diff.ts`). The overlay offers **Continue with LLM review** (submits the `/review` prompt with the notes as operator focus) and **Paste annotations into prompt**. Both include the optional `[focus]` text. Nothing is posted to GitHub.
+**Code review.** The menu lists up to three GitHub PRs referenced in the conversation, then the local diff kinds. `/annotate code-review pr://owner/repo/N [focus]` skips the menu. The diff is resolved once in the live session cwd and frozen (`ResolvedReviewTarget`); the overlay reads that snapshot after exclusion filtering (`src/extensibility/custom-commands/bundled/review/diff.ts`). The overlay pastes the annotations, with the optional `[focus]` text, into the prompt editor; it never submits them. Nothing is posted to GitHub.
 
-Without an interactive UI, `code-review` delegates to `/review` instead of opening the annotation overlay; text-source annotation refuses to send a message.
+Without an interactive UI, both `code-review` and text-source annotation report an error and send no message.
 
 **Text sources.** Feedback is always pasted into the composer, never submitted. File and literal sources are embedded verbatim. The latest reply is referenced as "your last reply" and only the annotated lines are quoted. An older session prose message longer than 1,000 characters is condensed by one call to the current session model (its credentials, no fallback model); if that call fails or returns an unusable result, the full source is embedded with a warning.
 

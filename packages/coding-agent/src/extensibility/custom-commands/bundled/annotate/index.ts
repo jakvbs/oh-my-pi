@@ -10,11 +10,10 @@ import {
 	extractReviewPrRefFromArgs,
 	liveCommandCwd,
 	resolvePrReviewTarget,
-	ReviewCommand,
 	selectReviewChoice,
 	type ReviewPrRef,
 } from "../review";
-import { buildReviewPrompt, formatCodeReviewAnnotations } from "../review/prompt";
+import { formatCodeReviewAnnotations } from "../review/prompt";
 import {
 	getReviewTargetIssue,
 	type LocalReviewKind,
@@ -191,10 +190,8 @@ async function finishCodeReview(
 	const result = await showOverlay(ctx, target);
 	if (!result) return undefined;
 	const annotations = formatCodeReviewAnnotations(result.annotations, {
-		forReviewer: result.action === "review",
 		supplementalInstructions: focus,
 	});
-	if (result.action === "review") return buildReviewPrompt(target, annotations);
 	if (annotations) ctx.ui.pasteToEditor(annotations);
 	return undefined;
 }
@@ -207,7 +204,8 @@ export async function runCodeReviewCommand(
 	dependencies: Partial<CodeReviewDependencies> = {},
 ): Promise<string | undefined> {
 	if (!ctx.hasUI) {
-		return new ReviewCommand(api).execute(splitReviewArgs(args), ctx);
+		ctx.ui.notify("Code review annotation requires the interactive UI; no message was sent.", "error");
+		return undefined;
 	}
 	const resolved = { ...defaultCodeReviewDependencies, ...dependencies };
 	const cwd = liveCommandCwd(api, ctx);

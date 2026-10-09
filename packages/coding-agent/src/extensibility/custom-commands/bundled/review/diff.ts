@@ -235,31 +235,3 @@ export function parseReviewDiffSnapshot(rawDiff: string): ReviewDiffSnapshot {
 	}
 	return { files, excluded, totalAdded, totalRemoved };
 }
-
-export function getRecommendedReviewAgentCount(snapshot: ReviewDiffSnapshot): number {
-	const totalLines = snapshot.totalAdded + snapshot.totalRemoved;
-	const fileCount = snapshot.files.length;
-	if (totalLines < 100 || fileCount <= 2) return 1;
-	if (totalLines < 500) return Math.min(2, fileCount);
-	if (totalLines < 2000) return Math.min(4, Math.ceil(fileCount / 3));
-	if (totalLines < 5000) return Math.min(8, Math.ceil(fileCount / 2));
-	return Math.min(16, fileCount);
-}
-
-/** Returns content rows only, preserving the patch's original row ordering. */
-export function getReviewDiffPreview(rawDiff: string, maxLines: number): string {
-	const content: string[] = [];
-	for (const line of rawDiff.split("\n")) {
-		if (
-			line.startsWith("diff --git") ||
-			line.startsWith("index ") ||
-			line.startsWith("---") ||
-			line.startsWith("+++") ||
-			line.startsWith("@@")
-		)
-			continue;
-		content.push(line);
-		if (content.length >= maxLines) break;
-	}
-	return content.join("\n");
-}

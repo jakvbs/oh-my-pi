@@ -47,7 +47,7 @@ export type CodeReviewAnnotation =
 	  });
 
 export interface CodeReviewOverlayResult {
-	action: "review" | "paste";
+	action: "paste";
 	annotations: CodeReviewAnnotation[];
 }
 

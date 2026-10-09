@@ -611,7 +611,7 @@ export class HookSelectorComponent extends OverlayPanel {
 
 	/** Jump to (and, for single-select menus, immediately confirm) the option
 	 *  whose label starts with the pressed digit and a period. Numbered options
-	 *  can follow unnumbered rows, as in `/review` after a detected PR. Once
+	 *  can follow unnumbered rows, as in `/annotate code-review` after a detected PR. Once
 	 *  type-to-search is active, digits stay searchable. Checkbox menus only
 	 *  move the cursor — confirmation stays on `enter`. */
 	#handleQuickSelect(keyData: string): boolean {
