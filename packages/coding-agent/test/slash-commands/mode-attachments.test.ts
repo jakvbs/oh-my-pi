@@ -60,7 +60,6 @@ function createHarness(
 			putBlob: vi.fn(async () => ({ displayPath: "file:///replacement.png" })),
 		},
 		focusedAgentId: undefined,
-		collabGuest: undefined,
 		ui: { requestRender: vi.fn() },
 		compactionQueuedMessages: [],
 		updatePendingMessagesDisplay: vi.fn(),

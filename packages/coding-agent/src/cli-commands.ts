@@ -24,6 +24,8 @@ function loadLaunchHelp(): typeof LaunchHelp.launchHelp {
 	return module.launchHelp;
 }
 
+// Keep implementation imports behind each command's `load` boundary: this table
+// is also imported before profile bootstrap and by native-free worker entries.
 export const commands: CommandEntry[] = [
 	{
 		name: "launch",
@@ -56,13 +58,6 @@ export const commands: CommandEntry[] = [
 		name: "browser-relay",
 		load: () => import("./commands/browser-relay").then(m => m.default),
 		help: commandHelp.browserRelayHelp,
-	},
-	{
-		name: "collab",
-		// Keep implementation imports behind the command boundary: this table is
-		// also imported before profile bootstrap and by native-free worker entries.
-		load: () => import("./commands/collab").then(m => m.default),
-		help: commandHelp.collabHelp,
 	},
 	{
 		name: "commit",
@@ -139,11 +134,6 @@ export const commands: CommandEntry[] = [
 		name: "install",
 		load: () => import("./commands/install").then(m => m.default),
 		help: commandHelp.installHelp,
-	},
-	{
-		name: "join",
-		load: () => import("./commands/join").then(m => m.default),
-		help: commandHelp.joinHelp,
 	},
 	{
 		name: "login",

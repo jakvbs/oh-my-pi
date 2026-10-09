@@ -114,7 +114,6 @@ describe("AgentSession /prewalk off", () => {
 			session,
 			sessionManager,
 			settings,
-			collabGuest: false,
 			showStatus: vi.fn(),
 			editor: { setText: vi.fn() },
 			refreshSlashCommandState: vi.fn(),

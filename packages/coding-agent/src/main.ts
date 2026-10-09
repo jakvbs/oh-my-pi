@@ -215,11 +215,6 @@ async function loadSessionPicker(): Promise<SessionPicker> {
 	};
 }
 
-/** Join-only graph boundary; the full built-in slash-command registry is otherwise unnecessary at startup. */
-async function loadBuiltinSlashCommandExecutor() {
-	return (await import("./slash-commands/builtin-registry")).executeBuiltinSlashCommand;
-}
-
 /** Missing-session-directory prompt boundary; ordinary launches do not need node:readline. */
 async function loadReadlineInterface() {
 	return (await import("node:readline/promises")).createInterface;
@@ -607,7 +602,6 @@ async function runInteractiveMode(
 	subagentEventBus?: EventBus,
 	initialMessage?: string,
 	initialImages?: ImageContent[],
-	joinLink?: string,
 	startDeferredStartupWork?: () => void,
 	startupLease?: ComposerLease,
 	startupGoal?: string,
@@ -660,7 +654,6 @@ async function runInteractiveMode(
 			mode.init({
 				suppressWelcomeIntro: resuming || setupScenes.length > 0 || playStartupSplash,
 				clearInitialTerminalHistory: true,
-				autoStartCollab: joinLink === undefined,
 			}),
 		);
 		if (mode.shutdownRequested || mode.isShuttingDown) {
@@ -717,32 +710,11 @@ async function runInteractiveMode(
 			}
 		}
 
-		if (!resuming && joinLink === undefined) {
+		if (!resuming) {
 			await mode.maybeAutoCreateWorktree();
 		}
-
-		// `omp join <link>`: dispatch through the same builtin path as a typed
-		// `/join` so collab guards and error rendering stay in one place.
-		if (joinLink !== undefined) {
-			const executeBuiltinSlashCommand = await loadBuiltinSlashCommandExecutor();
-			await executeBuiltinSlashCommand(`/join ${joinLink}`, { ctx: mode });
-			// Join failure returns to the local session; success still needs the
-			// controller observing its eventual restoration without hosting replicas.
-			mode.collabController.autoStart();
-		}
-		// Keep guest mutations gated through setup dialogs and transcript replay,
-		// not just init. Only a successful outer startup opens the room for input.
-		mode.collabController.startupComplete();
 	} catch (error) {
-		// Init publishes before startup dialogs, so any later startup failure
-		// must withdraw the room before restoring the terminal.
-		try {
-			await mode.collabController.shutdown("startup failed");
-		} catch (cleanupError) {
-			logger.warn("Failed to stop collaboration after startup failure", { error: String(cleanupError) });
-		} finally {
-			mode.stop();
-		}
+		mode.stop();
 		throw error;
 	}
 
@@ -2594,7 +2566,6 @@ export async function runRootCommand(
 						subagentEventBus,
 						initialMessage,
 						initialImages,
-						parsedArgs.join,
 						startDeferredStartupWork,
 						startupLease,
 						initialArgs.goal,
