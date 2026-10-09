@@ -302,7 +302,6 @@ describe("AgentSession owner-routed async delivery", () => {
 				cwd: temp.path(),
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => null,
 				settings,
 				localProtocolOptions: {
 					getArtifactsDir: () => store.getArtifactsDir(),
@@ -355,7 +354,6 @@ describe("AgentSession owner-routed async delivery", () => {
 			cwd: temp.path(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => null,
 			getAgentId: () => "RawCaptureOwner",
 			allocateOutputArtifact: toolType => store.allocateArtifactPath(toolType),
 			asyncJobManager: manager,

@@ -25,7 +25,6 @@ function makeSession(): ToolSession {
 		hasUI: false,
 		skipPythonPreflight: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 	};
 }

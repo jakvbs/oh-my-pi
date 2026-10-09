@@ -50,7 +50,6 @@ function createSession(options: { manager?: AsyncJobManager; settings?: Record<s
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? { "async.enabled": true, "task.batch": true }),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getAgentId: () => null,
 		asyncJobManager: options.manager,
 	} as unknown as ToolSession;

@@ -166,7 +166,6 @@ describe("InternalUrlRouter write approval", () => {
 			cwd: os.tmpdir(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const tool = new WriteTool(session);

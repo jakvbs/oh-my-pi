@@ -11,7 +11,6 @@ function makeSession(settings = Settings.isolated({ "browser.enabled": true })):
 		cwd: "/tmp/test",
 		hasUI: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings,
 	};
 }

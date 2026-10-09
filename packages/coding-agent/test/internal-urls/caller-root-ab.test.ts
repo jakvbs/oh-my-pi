@@ -89,7 +89,6 @@ function makeSession(cwd: string, sessionFile: string | null = null): ToolSessio
 		cwd,
 		hasUI: false,
 		getSessionFile: () => sessionFile,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
 	};
 }

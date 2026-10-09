@@ -44,7 +44,6 @@ function createSession(
 		settings?: Record<string, unknown>;
 		agentId?: string;
 		planMode?: boolean;
-		spawns?: string;
 	} = {},
 ): ToolSession {
 	return {
@@ -52,7 +51,6 @@ function createSession(
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? {}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => options.spawns ?? "*",
 		getAgentId: () => options.agentId ?? null,
 		getPlanModeState: options.planMode ? () => ({ enabled: true }) : undefined,
 		asyncJobManager: options.manager,

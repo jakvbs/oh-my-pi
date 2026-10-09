@@ -510,7 +510,6 @@ function createTestToolSession(
 		cwd,
 		hasUI: false,
 		getSessionFile: () => sessionFile,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => sessionDir,
 		allocateOutputArtifact: async (toolType: string) => {
 			fs.mkdirSync(sessionDir, { recursive: true });

@@ -12,7 +12,6 @@ function toolSession(overrides: Partial<ToolSession> = {}): ToolSession {
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		...overrides,
 	};

@@ -110,7 +110,6 @@ describe("GrepTool internal URL resolution", () => {
 			cwd: tmpDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
 			...overrides,
 		};

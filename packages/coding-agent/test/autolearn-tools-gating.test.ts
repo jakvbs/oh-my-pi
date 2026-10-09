@@ -20,7 +20,6 @@ function makeSession(settingsOverrides: Record<string, unknown> = {}, extra: Par
 		hasUI: false,
 		skipPythonPreflight: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(settingsOverrides),
 		...extra,
 	};

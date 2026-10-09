@@ -18,7 +18,6 @@ function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): T
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: testSettings,
 		...overrides,
 	};

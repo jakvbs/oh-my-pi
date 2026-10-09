@@ -53,7 +53,6 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			cwd: tmpDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: sessionSettings,
 			...overrides,
 		};
@@ -427,7 +426,6 @@ describe("leading-colon path recovery (issue #5508)", () => {
 			hasUI: false,
 			enableLsp: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			getArtifactsDir: () => null,
 			getSessionId: () => null,
 			getPlanModeState: () => undefined,

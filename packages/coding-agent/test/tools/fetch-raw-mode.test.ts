@@ -20,7 +20,6 @@ function makeSession(testDir: string): ToolSession {
 		hasUI: false,
 		getSessionFile: () => sessionFile,
 		getArtifactsDir: () => artifactsDir,
-		getSessionSpawns: () => null,
 		allocateOutputArtifact: async toolType => {
 			const id = String(nextArtifactId++);
 			return { id, path: path.join(artifactsDir, `${id}.${toolType}.log`) };

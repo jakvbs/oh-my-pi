@@ -18,7 +18,6 @@ const session: ToolSession = {
 	cwd: root,
 	hasUI: false,
 	getSessionFile: () => null,
-	getSessionSpawns: () => "*",
 	settings: Settings.isolated({
 		"browser.enabled": true,
 		"browser.headless": true,

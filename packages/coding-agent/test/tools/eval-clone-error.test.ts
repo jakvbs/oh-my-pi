@@ -9,7 +9,6 @@ function makeSession(): ToolSession {
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 	} as unknown as ToolSession;
 }

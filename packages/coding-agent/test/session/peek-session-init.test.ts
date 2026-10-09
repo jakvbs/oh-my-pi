@@ -50,18 +50,17 @@ function assistantMessage(text: string) {
 }
 
 describe("SessionManager.peekSessionInit", () => {
-	it("returns the latest session_init contract (tools/spawns/readSummarize) and the header cwd", async () => {
+	it("returns the latest session_init contract (tools/readSummarize) and the header cwd", async () => {
 		const cwd = makeTempDir("@pi-peek-cwd-");
 		const manager = SessionManager.create(cwd, path.join(cwd, "sessions"));
 		const sessionFile = manager.getSessionFile();
 		if (!sessionFile) throw new Error("Expected a persisted session file path");
 
-		manager.appendSessionInit({ systemPrompt: ["first"], task: "t1", tools: ["read"], spawns: "" });
+		manager.appendSessionInit({ systemPrompt: ["first"], task: "t1", tools: ["read"] });
 		manager.appendSessionInit({
 			systemPrompt: ["second", "rules"],
 			task: "t2",
 			tools: ["read", "bash", "yield"],
-			spawns: "task",
 			readSummarize: false,
 			mcp: ["alpha"],
 			restrictToolNames: true,
@@ -74,7 +73,6 @@ describe("SessionManager.peekSessionInit", () => {
 		// Latest init wins — the reviver must rebuild from the most recent contract.
 		expect(peek?.init?.systemPrompt).toEqual(["second", "rules"]);
 		expect(peek?.init?.tools).toEqual(["read", "bash", "yield"]);
-		expect(peek?.init?.spawns).toBe("task");
 		expect(peek?.init?.readSummarize).toBe(false);
 		expect(peek?.init?.mcp).toEqual(["alpha"]);
 		expect(peek?.init?.restrictToolNames).toBe(true);
@@ -86,8 +84,8 @@ describe("SessionManager.peekSessionInit", () => {
 		const sessionFile = manager.getSessionFile();
 		if (!sessionFile) throw new Error("Expected a persisted session file path");
 
-		manager.appendSessionInit({ systemPrompt: ["first"], task: "task", tools: ["read"], spawns: "" });
-		manager.appendSessionInit({ systemPrompt: ["second"], task: "task", tools: ["read"], spawns: "" });
+		manager.appendSessionInit({ systemPrompt: ["first"], task: "task", tools: ["read"] });
+		manager.appendSessionInit({ systemPrompt: ["second"], task: "task", tools: ["read"] });
 		manager.appendMessage(assistantMessage("journal tail"));
 
 		const peek = await SessionManager.peekSessionInit(sessionFile, new LargeFileSessionStorage());
@@ -101,8 +99,8 @@ describe("SessionManager.peekSessionInit", () => {
 		const manager = SessionManager.create(cwd, path.join(cwd, "sessions"), storage);
 		const sessionFile = manager.getSessionFile();
 		if (!sessionFile) throw new Error("Expected a persisted session file path");
-		manager.appendSessionInit({ systemPrompt: ["first"], task: "task", tools: ["read"], spawns: "" });
-		manager.appendSessionInit({ systemPrompt: ["second"], task: "task", tools: ["read"], spawns: "" });
+		manager.appendSessionInit({ systemPrompt: ["first"], task: "task", tools: ["read"] });
+		manager.appendSessionInit({ systemPrompt: ["second"], task: "task", tools: ["read"] });
 		manager.appendMessage(assistantMessage("journal tail"));
 
 		const peek = await SessionManager.peekSessionInit(sessionFile, storage);

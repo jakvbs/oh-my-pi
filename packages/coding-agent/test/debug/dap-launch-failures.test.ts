@@ -750,7 +750,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -790,7 +789,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -830,7 +828,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -873,7 +870,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -906,7 +902,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -928,7 +923,6 @@ describe("DebugTool launch validation", () => {
 			cwd: process.cwd(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated({ "debug.enabled": true }),
 		};
 		const tool = new DebugTool(session);
@@ -952,7 +946,6 @@ describe("DebugTool launch validation", () => {
 				cwd: process.cwd(),
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => "*",
 				settings: Settings.isolated({ "debug.enabled": true }),
 			};
 			const tool = new DebugTool(session);
@@ -982,7 +975,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -1012,7 +1004,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -1042,7 +1033,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);
@@ -1068,7 +1058,6 @@ describe("DebugTool launch validation", () => {
 					cwd,
 					hasUI: false,
 					getSessionFile: () => null,
-					getSessionSpawns: () => "*",
 					settings: Settings.isolated({ "debug.enabled": true }),
 				};
 				const tool = new DebugTool(session);

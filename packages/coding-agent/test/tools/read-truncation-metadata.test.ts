@@ -48,7 +48,6 @@ describe("read truncation metadata", () => {
 			cwd: root,
 			hasUI: false,
 			getSessionFile: () => path.join(root, "session.jsonl"),
-			getSessionSpawns: () => "*",
 			getArtifactsDir,
 			localProtocolOptions: { getArtifactsDir },
 			settings: Settings.isolated({

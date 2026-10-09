@@ -23,7 +23,6 @@ function makeToolSession(...tools: AgentTool[]): ToolSession {
 		taskDepth: 0,
 		enableLsp: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getActiveModelString: () => "p/active",
 		getModelString: () => "p/fallback",
 		getArtifactsDir: () => null,

@@ -11,7 +11,6 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 - [`src/task/types.ts`](../packages/coding-agent/src/task/types.ts)
 - [`src/task/index.ts`](../packages/coding-agent/src/task/index.ts)
 - [`src/task/structured-subagent.ts`](../packages/coding-agent/src/task/structured-subagent.ts)
-- [`src/task/spawn-policy.ts`](../packages/coding-agent/src/task/spawn-policy.ts)
 - [`src/task/commands.ts`](../packages/coding-agent/src/task/commands.ts)
 - [`src/prompts/tools/task.md`](../packages/coding-agent/src/prompts/tools/task.md)
 - [`src/discovery/helpers.ts`](../packages/coding-agent/src/discovery/helpers.ts)
@@ -26,7 +25,7 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 Task agents normalize into `AgentDefinition` (`src/task/types.ts`):
 
 - required `name`, `description`, and `systemPrompt`
-- optional `tools`, `spawns`, prioritized `model` list, `thinkingLevel`, `output`, `blocking`, `autoloadSkills`, `readSummarize`, `prewalk`, `advisor`
+- optional `tools`, prioritized `model` list, `thinkingLevel`, `output`, `blocking`, `autoloadSkills`, `readSummarize`, `prewalk`, `advisor`
 - `source`: `"user" | "project"` (extension agents are tagged with their extension root's project/user level)
 - optional `filePath`
 
@@ -35,8 +34,6 @@ Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.
 - missing/non-string `name` or `description` => invalid (`null`), caller treats as parse failure
 - `main` and `sub` are reserved names (checked after trimming and lowercasing); definitions using them are invalid
 - `tools` accepts CSV or array; legacy tool aliases are normalized and `yield` is auto-added. An explicit `tools: []` therefore grants `yield`, not the default toolset.
-- `spawns` accepts `*`, CSV, or array
-- backward-compat behavior: if `spawns` missing but `tools` includes `task`, `spawns` becomes `*`
 - `output` is passed through as opaque schema data
 - `read-summarize: false` (normalized to `readSummarize`) disables structural summaries for the subagent's `read` tool — `runSubprocess` applies a `read.summarize.enabled: false` override on the child's isolated settings (`src/task/executor.ts`). When absent, the child inherits the parent's read-summary setting.
 - `model` accepts one selector, CSV, or an array. Entries are tried in order after role aliases are expanded.
@@ -161,14 +158,13 @@ Net effect: one bad custom agent file does not abort discovery of other files.
 Lookup is exact-name linear search:
 
 - `getAgent(agents, name)` => `agents.find(a => a.name === name)`
-- unrestricted sessions default an omitted `agent` field to `task`
-- a restricted parent `spawns` list defaults an omitted `agent` field to the first listed agent
+- every launch requires an explicit `agent`; missing names fail preflight with the available agents
 
 `resolveEffectiveSubagentPolicy()` is shared by task and eval-backed subagent launches. Before allocating artifacts it:
 
 1. atomically reloads the live session's persisted global, project, and explicit overlay settings while preserving runtime overrides
-2. resolves the omitted or explicit agent name from the parent spawn policy
-3. enforces depth, blocked-self-recursion, and parent spawn-policy guards
+2. trims the explicit agent name
+3. enforces the root-only spawning boundary and blocked-self-recursion guard
 4. rediscovers agents with the session's cwd and effective extension-root configuration, appends user-tagged session agents, and performs exact lookup
 5. checks `task.disabledAgents`
 6. resolves plan-mode restrictions, output schema, model policy, and isolation policy
@@ -257,23 +253,13 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 `resolveEffectiveSubagentPolicy()` checks `task.disabledAgents` after resolving the agent. A disabled name fails preflight and lists enabled alternatives when available.
 
-### Parent spawn policy
-
-The resolver checks `session.getSessionSpawns()`:
-
-- `"*"` (also `true`, `null`, or absent) => allow any; omitted `agent` defaults to `task`
-- `""` or `false` => deny all
-- CSV list => allow only listed names; omitted `agent` defaults to its first name
-
-If denied: `Cannot spawn '...'. Allowed: ...`.
-
 ### Blocked self-recursion env guard
 
 `PI_BLOCKED_AGENT` (or the internal request override) rejects an attempt to spawn the same blocked agent before discovery.
 
 ### One subagent level
 
-Only the root session (task depth 0) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. A `spawns` frontmatter field no longer grants children `task`.
+Only the root session (task depth 0) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Legacy `spawns` frontmatter and persisted metadata are ignored.
 
 For an explicit agent tool list, the legacy `exec` entry expands to `bash` plus `eval` when an eval backend is available. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
 
@@ -283,7 +269,6 @@ When parent plan mode is enabled, `resolveEffectiveSubagentPolicy()` builds an `
 
 - prepends the plan-mode subagent system prompt
 - restricts tools to `read`, `grep`, `glob`, and `web_search`, plus `ast_grep` when the agent's own tool list declares it
-- clears child spawns
 - clears `prewalk` (read-only exploration must not receive the prewalk plan/implement nudges)
 
 Plan mode also rejects eval-defined tools and per-spawn isolation, apply, and merge controls. The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.

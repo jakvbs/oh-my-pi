@@ -758,7 +758,6 @@ describe("LSP diagnostics freshness", () => {
 			cwd: tempDir.path(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated({
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": true,
@@ -813,7 +812,6 @@ describe("LSP diagnostics freshness", () => {
 			cwd: tempDir.path(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated({
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnEdit": true,

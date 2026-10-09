@@ -176,7 +176,6 @@ describe.skipIf(!SSH_OK)("ssh:// through the real read/grep/write tools (localho
 			cwd: os.tmpdir(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
 		};
 	}

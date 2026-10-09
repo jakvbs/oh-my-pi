@@ -62,7 +62,6 @@ function makeSession(getPreludes?: () => readonly EvalPreludeDefinition[]): Tool
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated({
 			"browser.enabled": true,
 			"browser.headless": true,

@@ -23,7 +23,6 @@ const taskAgent: AgentDefinition = {
 function createSession(options: {
 	manager: AsyncJobManager;
 	settings?: Record<string, unknown>;
-	spawns?: string | boolean;
 	cwd?: string;
 }): ToolSession {
 	return {
@@ -31,7 +30,6 @@ function createSession(options: {
 		hasUI: false,
 		settings: Settings.isolated({ "async.enabled": true, ...options.settings }),
 		getSessionFile: () => null,
-		getSessionSpawns: () => options.spawns ?? "*",
 		asyncJobManager: options.manager,
 	} as unknown as ToolSession;
 }
@@ -97,17 +95,16 @@ describe("task async preflight", () => {
 			expectation: 'Agent "task" is disabled',
 		},
 		{
-			name: "Disallowed",
-			params: { agent: "task", name: "Disallowed", task: "Work." },
-			spawns: "scout",
-			expectation: "Cannot spawn 'task'",
+			name: "Missing",
+			params: { name: "Missing", task: "Work." },
+			expectation: "Missing agent: specify which agent to spawn.",
 		},
 	])(
 		"returns $name policy errors before registering an async job",
-		async ({ name, params, settings, spawns, expectation }) => {
+		async ({ name, params, settings, expectation }) => {
 			mockDiscovery();
 			const jobs = manager();
-			const tool = await TaskTool.create(createSession({ manager: jobs, settings, spawns }));
+			const tool = await TaskTool.create(createSession({ manager: jobs, settings }));
 
 			const result = await tool.execute("preflight", params as TaskParams);
 

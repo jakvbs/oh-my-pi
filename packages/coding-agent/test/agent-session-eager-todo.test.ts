@@ -127,7 +127,6 @@ describe("AgentSession eager todo enforcement", () => {
 			cwd: tempDir.path(),
 			hasUI: false,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
-			getSessionSpawns: () => "*",
 			settings,
 			// Mirrors sdk.ts wiring: TodoTool commits phases during execute (#6148 removed the message_end replay).
 			setTodoPhases: phases => session?.setTodoPhases(phases),

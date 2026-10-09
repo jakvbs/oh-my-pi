@@ -11,7 +11,6 @@ function createSession(overrides: Partial<Record<string, unknown>> = {}): ToolSe
 		hasUI: false,
 		settings: Settings.isolated(overrides),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 	} as unknown as ToolSession;
 }
 

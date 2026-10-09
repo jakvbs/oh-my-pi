@@ -28,7 +28,6 @@ function createSession(cwd: string): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({
 			"images.autoResize": false,
 			"tools.approvalMode": "yolo",

@@ -51,7 +51,6 @@ function xdevSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSes
 		cwd,
 		hasUI: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({}),
 		...overrides,
 	};

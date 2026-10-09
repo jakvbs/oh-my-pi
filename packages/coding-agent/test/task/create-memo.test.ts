@@ -36,7 +36,6 @@ function createSession(cwd: string, extensions: readonly string[] = []): ToolSes
 			configuredLevel: "user",
 		}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 	} as unknown as ToolSession;
 }
 
@@ -113,7 +112,6 @@ describe("TaskTool.create discovery memo", () => {
 				configuredLevel: "user" as const,
 			}),
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 		} as unknown as ToolSession;
 
 		const before = await TaskTool.create(session);

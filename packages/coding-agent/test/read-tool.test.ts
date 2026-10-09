@@ -17,7 +17,6 @@ function createSession(cwd: string, sourcePath: string): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "images.autoResize": false }),
 		getImageAttachments: () => [{ label: "Image #1", uri: "attachment://1", image, sourcePath }],
 	};

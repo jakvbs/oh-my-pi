@@ -98,7 +98,6 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 			cwd: skills[0].baseDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const result = await new ReadTool(session).execute("read-cross-plugin-helper", { path: "skill://helper-skill" });
@@ -161,7 +160,6 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 			cwd: tempDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const result = await new ReadTool(session).execute("read-delimited-skills", {
@@ -200,7 +198,6 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 			cwd: tempDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const result = await new ReadTool(session).execute("read-skill-tail", { path: "skill://tail-skill:-4" });

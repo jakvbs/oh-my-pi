@@ -53,7 +53,6 @@ function makeToolSession(
 		cwd,
 		hasUI: false,
 		getSessionFile: () => sessionFile,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => path.join(cwd, "artifacts"),
 		allocateOutputArtifact: async toolType => ({
 			id: "history-read",

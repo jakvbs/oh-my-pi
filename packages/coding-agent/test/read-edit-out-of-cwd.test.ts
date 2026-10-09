@@ -28,7 +28,6 @@ function createSession(cwd: string): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => artifactsDir,
 		allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 		settings,

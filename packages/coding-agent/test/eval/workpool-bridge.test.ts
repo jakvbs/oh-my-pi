@@ -31,7 +31,6 @@ function makeSession(): ToolSession {
 		asyncJobManager: manager,
 		getAgentId: () => "Main",
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => null,
 	};
 }

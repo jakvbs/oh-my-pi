@@ -11,7 +11,6 @@ function session(settings: Record<string, unknown> = {}): ToolSession {
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated({ "browser.relay": false, ...settings }),
 	};
 }

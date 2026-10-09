@@ -64,7 +64,6 @@ describe("session-owned supervised services", () => {
 			hasUI: false,
 			settings,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			getAgentId: () => "Main",
 			getSessionId: () => sessionId,
 			queueLaunchCompletion: notification => {
@@ -118,7 +117,6 @@ describe("session-owned supervised services", () => {
 			hasUI: false,
 			settings: Settings.isolated(),
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			getAgentId: () => "Main",
 			getSessionId: () => sessionId,
 			registerSessionChangeCallback: callback => {
@@ -191,7 +189,6 @@ describe("session-owned supervised services", () => {
 			hasUI: false,
 			settings: Settings.isolated(),
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			getAgentId: () => "Main",
 			getSessionId: () => sessionId,
 			registerDisposeCallback: onDispose,

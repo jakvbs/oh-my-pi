@@ -34,7 +34,6 @@ describe("read :-N tail on a file edited between the count and the window read",
 			cwd: testDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const tool = new ReadTool(session);

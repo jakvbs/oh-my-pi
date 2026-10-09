@@ -29,7 +29,6 @@ function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
 		cwd: "/tmp/test",
 		hasUI: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		...overrides,
 		canPromptUser: overrides.canPromptUser ?? overrides.hasUI ?? true,

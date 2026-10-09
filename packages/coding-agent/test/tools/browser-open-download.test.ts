@@ -28,7 +28,6 @@ function createBrowserHost() {
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({
 			"browser.enabled": true,
 			"browser.headless": true,
@@ -63,7 +62,6 @@ describe("browser open during first-use Chromium download", () => {
 				cwd: process.cwd(),
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => null,
 				settings: Settings.isolated({ "async.enabled": false, "browser.cmux": false, "browser.tern": false }),
 				getEvalSessionId: () => "browser-download-regression",
 				getEvalPreludes: () => [prelude],

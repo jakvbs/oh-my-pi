@@ -20,7 +20,6 @@ function createToolSession(cwd: string, settings: Settings, overrides: Partial<T
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings,
 		...overrides,
 	};

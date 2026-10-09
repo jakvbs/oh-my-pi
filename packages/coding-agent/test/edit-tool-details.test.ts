@@ -15,7 +15,6 @@ function makeSession(cwd: string, settings: Record<string, unknown> = {}): ToolS
 		hasUI: false,
 		enableLsp: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
 		getPlanModeState: () => undefined,

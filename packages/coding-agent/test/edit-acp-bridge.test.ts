@@ -25,7 +25,6 @@ function createSession(cwd: string, options: SessionOptions = {}): ToolSession {
 		hasUI: false,
 		enableLsp: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
-		getSessionSpawns: () => "*",
 		getArtifactsDir,
 		getSessionId,
 		localProtocolOptions: { getArtifactsDir, getSessionId },

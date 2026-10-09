@@ -127,7 +127,6 @@ describe("experimental context management", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 		};
@@ -304,7 +303,6 @@ describe("experimental context management", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 		};
@@ -384,7 +382,6 @@ describe("experimental context management", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 		};
@@ -478,7 +475,6 @@ describe("experimental context management", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 		};
@@ -549,7 +545,6 @@ describe("experimental context management", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 		};

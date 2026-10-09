@@ -16,7 +16,6 @@ function sessionFor(root: string, manager?: AsyncJobManager): ToolSession {
 		cwd: root,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => path.join(root, "artifacts"),
 		getSessionId: () => "capture-regression",
 		allocateOutputArtifact: async () => ({ path: root, id: "failed" }),

@@ -248,7 +248,6 @@ it("multi-entry edit on an auto-generated file surfaces isError + error text ins
 			cwd: tempDir,
 			hasUI: false,
 			getSessionFile: () => sessionFile,
-			getSessionSpawns: () => "*",
 			getArtifactsDir: () => sessionDir,
 			allocateOutputArtifact: async (toolType: string) => {
 				fs.mkdirSync(sessionDir, { recursive: true });

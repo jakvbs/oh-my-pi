@@ -44,7 +44,6 @@ function createSession(options: { manager?: AsyncJobManager; settings?: Record<s
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? {}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		asyncJobManager: options.manager,
 	} as unknown as ToolSession;
 }
@@ -927,7 +926,6 @@ describe("task spawn routing", () => {
 			hasUI: false,
 			settings,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			asyncJobManager: manager,
 		} as unknown as ToolSession);
 
@@ -978,7 +976,6 @@ describe("task spawn routing", () => {
 			hasUI: false,
 			settings,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			asyncJobManager: manager,
 		} as unknown as ToolSession);
 

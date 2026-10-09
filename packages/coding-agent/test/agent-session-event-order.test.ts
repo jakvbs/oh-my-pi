@@ -151,7 +151,6 @@ describe("AgentSession subscriber event order", () => {
 			cwd: tempDir.path(),
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings,
 			getTodoPhases: () => session?.getTodoPhases() ?? [],
 			setTodoPhases: phases => {

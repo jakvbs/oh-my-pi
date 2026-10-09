@@ -85,7 +85,6 @@ function createTaskSession(cwd: string): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated({}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 	} as unknown as ToolSession;
 }
 

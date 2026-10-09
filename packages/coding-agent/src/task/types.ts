@@ -105,32 +105,21 @@ export type TaskSchema = typeof taskSchema;
 /** Active task tool parameter schema for the current isolation / batch flags */
 export type TaskToolSchemaInstance = DynamicTaskSchema | BaseType;
 
-const TASK_AGENT_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const taskSchemaCache = new Map<string, BaseType>();
-
-function taskAgentSchemaRule(defaultAgent: string | undefined): string {
-	const trimmed = defaultAgent?.trim() ?? "";
-	if (TASK_AGENT_NAME_PATTERN.test(trimmed)) {
-		return `string = '${trimmed}'`;
-	}
-	return "string";
-}
 
 function createTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
-	defaultAgent: string | undefined;
 	effortEnabled: boolean;
 	evalToolsEnabled: boolean;
 }): BaseType {
-	const agent = taskAgentSchemaRule(options.defaultAgent);
 	const effortField = options.effortEnabled ? { "effort?": effortRule } : {};
 	const toolsField = options.evalToolsEnabled ? { "tools?": "string[]" } : {};
 	if (options.batchEnabled) {
 		if (options.isolationEnabled) {
 			const item = type.raw({
 				"name?": "string",
-				agent,
+				agent: "string",
 				task: "string",
 				solutionSpace: "string",
 				...effortField,
@@ -148,7 +137,7 @@ function createTaskSchema(options: {
 		}
 		const item = type.raw({
 			"name?": "string",
-			agent,
+			agent: "string",
 			task: "string",
 			solutionSpace: "string",
 			...effortField,
@@ -166,7 +155,7 @@ function createTaskSchema(options: {
 	if (options.isolationEnabled) {
 		return type.raw({
 			"name?": "string",
-			agent,
+			agent: "string",
 			task: "string",
 			solutionSpace: "string",
 			...effortField,
@@ -179,7 +168,7 @@ function createTaskSchema(options: {
 	}
 	return type.raw({
 		"name?": "string",
-		agent,
+		agent: "string",
 		task: "string",
 		solutionSpace: "string",
 		...effortField,
@@ -190,33 +179,26 @@ function createTaskSchema(options: {
 	});
 }
 
-/** Build the task wire schema for the current settings and spawn policy. */
+/** Build the task wire schema for the current settings. */
 export function getTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
 	effortEnabled?: boolean;
 	/** Advertise the `tools` field for eval-defined tools (`eval.tools.enabled`, default on). */
 	evalToolsEnabled?: boolean;
-	defaultAgent?: string;
 }): TaskToolSchemaInstance {
-	const defaultAgent = options.defaultAgent;
 	const effortEnabled = options.effortEnabled ?? false;
 	const evalToolsEnabled = options.evalToolsEnabled ?? true;
-	if (defaultAgent === undefined && !effortEnabled && evalToolsEnabled) {
+	if (!effortEnabled && evalToolsEnabled) {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}
-	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}:${defaultAgent ?? ""}`;
+	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}`;
 	const cached = taskSchemaCache.get(key);
 	if (cached) return cached;
-	const schema = createTaskSchema({ ...options, effortEnabled, evalToolsEnabled, defaultAgent });
+	const schema = createTaskSchema({ ...options, effortEnabled, evalToolsEnabled });
 	taskSchemaCache.set(key, schema);
 	return schema;
-}
-
-/** Only the root session holds the `task` tool; subagents never spawn their own. */
-export function canSpawnAtDepth(taskDepth: number): boolean {
-	return taskDepth === 0;
 }
 
 /** Agent definition from discovery or an explicit session model mention. */
@@ -225,7 +207,6 @@ export interface AgentDefinition {
 	description: string;
 	systemPrompt: string;
 	tools?: string[];
-	spawns?: string[] | "*";
 	model?: string[];
 	thinkingLevel?: ConfiguredThinkingLevel;
 	output?: unknown;

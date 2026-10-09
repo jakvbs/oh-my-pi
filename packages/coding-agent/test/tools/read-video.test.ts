@@ -24,7 +24,6 @@ function makeSession(testDir: string, textOnlyModel = false): ToolSession {
 		hasUI: false,
 		getSessionFile: () => sessionFile,
 		getArtifactsDir: () => sessionFile.slice(0, -6),
-		getSessionSpawns: () => null,
 		getActiveModel: () => model,
 		settings: Settings.isolated({ "images.autoResize": false }),
 	} as unknown as ToolSession;

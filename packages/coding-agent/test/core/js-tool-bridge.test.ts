@@ -43,7 +43,6 @@ function createSession(tools: AgentTool[]): ToolSession {
 		cwd: "/tmp/test",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 		getToolByName: name => registry.get(name),
 	};

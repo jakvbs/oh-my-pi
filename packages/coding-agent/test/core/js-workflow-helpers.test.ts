@@ -22,7 +22,6 @@ function baseSession(cwd: string, sessionFile: string, extra?: Partial<ToolSessi
 		cwd,
 		hasUI: false,
 		getSessionFile: () => sessionFile,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 		...extra,
 	} as ToolSession;

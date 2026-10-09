@@ -31,7 +31,6 @@ function createSession(
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		peekQueueInvoker: options.handler ? () => options.handler : () => undefined,
 		peekPlanProposalHandler: options.proposalHandler ? () => options.proposalHandler : () => undefined,

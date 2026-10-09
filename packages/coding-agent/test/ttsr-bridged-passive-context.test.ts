@@ -66,7 +66,6 @@ async function createBridgedHarness(dir: string) {
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionId: () => manager.getSessionId(),
-		getSessionSpawns: () => "*",
 		sessionManager: manager,
 		settings,
 		getActiveModel: () => mock.model,

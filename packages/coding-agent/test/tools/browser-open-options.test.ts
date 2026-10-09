@@ -25,7 +25,6 @@ function browserHost(cwd: string = process.cwd()) {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({
 			"browser.enabled": true,
 			"browser.headless": true,

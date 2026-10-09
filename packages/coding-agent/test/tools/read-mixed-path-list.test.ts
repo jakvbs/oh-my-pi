@@ -27,7 +27,6 @@ beforeAll(async () => {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 		enableLsp: false,
 	};

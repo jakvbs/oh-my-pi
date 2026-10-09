@@ -12,7 +12,6 @@ function makeSession(settings: Settings, asyncJobManager: AsyncJobManager): Tool
 		cwd: "/tmp/eval-test",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings,
 		asyncJobManager,
 	};

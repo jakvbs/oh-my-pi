@@ -292,7 +292,6 @@ export interface ParsedAgentFields {
 	name: string;
 	description: string;
 	tools?: string[];
-	spawns?: string[] | "*";
 	model?: string[];
 	output?: unknown;
 	thinkingLevel?: ConfiguredThinkingLevel;
@@ -336,26 +335,6 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 		tools = [...tools, "yield"];
 	}
 
-	// Parse spawns field (array, "*", or CSV)
-	let spawns: string[] | "*" | undefined;
-	if (frontmatter.spawns === "*") {
-		spawns = "*";
-	} else if (typeof frontmatter.spawns === "string") {
-		const trimmed = frontmatter.spawns.trim();
-		if (trimmed === "*") {
-			spawns = "*";
-		} else {
-			spawns = parseArrayOrCSV(trimmed);
-		}
-	} else {
-		spawns = parseArrayOrCSV(frontmatter.spawns);
-	}
-
-	// Backward compat: infer spawns: "*" when tools includes "task"
-	if (spawns === undefined && tools?.includes("task")) {
-		spawns = "*";
-	}
-
 	const output = frontmatter.output !== undefined ? frontmatter.output : undefined;
 	const rawThinkingLevel =
 		typeof frontmatter.thinkingLevel === "string"
@@ -387,7 +366,6 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 		name,
 		description,
 		tools,
-		spawns,
 		model,
 		output,
 		thinkingLevel,

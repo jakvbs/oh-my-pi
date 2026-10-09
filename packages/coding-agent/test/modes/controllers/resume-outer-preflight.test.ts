@@ -35,10 +35,9 @@ async function createMode(opts: { flushFails?: boolean } = {}): Promise<{
 	const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");
 	if (!model) throw new Error("Expected claude-sonnet-4-5 to exist in registry");
 
-	const initialTools = await createTools(
-		{ cwd: tempDir.path(), hasUI: false, getSessionFile: () => null, getSessionSpawns: () => "*", settings },
-		["read"],
-	);
+	const initialTools = await createTools({ cwd: tempDir.path(), hasUI: false, getSessionFile: () => null, settings }, [
+		"read",
+	]);
 	const toolRegistry = new Map<string, Tool>(initialTools.map(tool => [tool.name, tool] as const));
 	const session = new AgentSession({
 		agent: new core.Agent({

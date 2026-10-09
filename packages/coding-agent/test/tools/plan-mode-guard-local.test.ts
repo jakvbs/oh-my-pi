@@ -26,7 +26,6 @@ function makeSession(overrides: SessionOverrides): ToolSession {
 		cwd: overrides.cwd ?? REPO_ROOT,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		getArtifactsDir: () => overrides.artifactsDir ?? null,
 		getSessionId: () => overrides.sessionId ?? null,
@@ -225,7 +224,6 @@ describe("local:// write and read agree for sessions without artifact wiring", (
 				cwd: tempDir,
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => null,
 				settings: Settings.isolated(),
 				enableLsp: false,
 			};

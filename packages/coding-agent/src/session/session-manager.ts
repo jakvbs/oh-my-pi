@@ -3453,7 +3453,6 @@ export class SessionManager {
 		outputSchema?: unknown;
 		outputSchemaMode?: StructuredSubagentSchemaMode;
 		restrictToolNames?: boolean;
-		spawns?: string;
 		readSummarize?: boolean;
 		mcp?: string[];
 		advisor?: string;
@@ -4374,7 +4373,6 @@ export interface PersistedSessionInit {
 	outputSchema?: unknown;
 	outputSchemaMode?: StructuredSubagentSchemaMode;
 	restrictToolNames?: boolean;
-	spawns?: string;
 	readSummarize?: boolean;
 	mcp?: string[];
 	advisor?: string;
@@ -4405,7 +4403,6 @@ export function extractSessionInit(entries: readonly FileEntry[]): PersistedSess
 			restrictToolNames: entry.restrictToolNames,
 			readSummarize: entry.readSummarize,
 			mcp: entry.mcp,
-			spawns: entry.spawns,
 			advisor: entry.advisor,
 			isolated: entry.isolated,
 			...(entry.compactionThreshold !== undefined ? { compactionThreshold: entry.compactionThreshold } : undefined),

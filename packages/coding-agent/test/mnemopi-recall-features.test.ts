@@ -59,7 +59,6 @@ function startSession(overrides: Record<string, unknown>): { state: MnemopiSessi
 		settings,
 		getSessionFile: () => null,
 		getSessionId: () => SESSION_ID,
-		getSessionSpawns: () => null,
 		getHindsightSessionState: () => undefined,
 		getMnemopiSessionState: () => state,
 	} as unknown as ToolSession;

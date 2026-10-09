@@ -26,7 +26,6 @@ function makeSession(): ToolSession {
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({
 			"browser.enabled": true,
 			"browser.cmux": true,

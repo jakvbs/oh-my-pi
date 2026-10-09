@@ -10,7 +10,6 @@ function makeSession(getEvalPreludes: () => EvalPreludeDefinition[]): ToolSessio
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 		getEvalPreludes,
 	};

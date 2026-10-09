@@ -67,7 +67,6 @@ function createSession(
 					};
 				}
 			: undefined,
-		getSessionSpawns: () => null,
 		settings,
 	};
 }

@@ -206,7 +206,6 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 			cwd: tempDir.path(),
 			hasUI: false,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
-			getSessionSpawns: () => "*",
 			settings,
 		};
 		const todoTool = todoEnabled ? new TodoTool(toolSession) : undefined;
