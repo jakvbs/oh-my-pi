@@ -104,9 +104,9 @@ export interface AsyncJob {
 	 */
 	ownerId?: string;
 	/**
-	 * Registry id of the subagent this job runs (task/tan/vibe jobs). Lets
+	 * Registry id of the subagent this job runs (task/tan jobs). Lets
 	 * job-view code link a job row to its AgentRegistry ref even when the job
-	 * id differs from the agent id (vibe turn jobs, tan clones).
+	 * id differs from the agent id (tan clones).
 	 */
 	agentId?: string;
 	/** The process the job runs, when it spawns one. */

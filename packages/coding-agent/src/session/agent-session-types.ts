@@ -255,8 +255,6 @@ export interface AgentSessionConfig {
 	rebindModelAfterDiscovery?: boolean;
 	/** Tool registry for LSP and settings. */
 	toolRegistry?: Map<string, AgentTool>;
-	/** Creates tools registered only while vibe mode is active. */
-	createVibeTools?: () => AgentTool[];
 	/** Names whose current registry entry is the built-in implementation. */
 	builtInToolNames?: Iterable<string>;
 	/** MCP names whose initial registry entries came from the manager snapshot. */

@@ -152,9 +152,7 @@ export type {
 export * from "./think";
 export * from "./todo";
 export * from "./tts";
-export * from "./vibe";
 export * from "./wait";
-export type { VibeToolDetails } from "@oh-my-pi/pi-tui/tools/vibe";
 export * from "./write";
 export * from "./xdev";
 export * from "./yield";

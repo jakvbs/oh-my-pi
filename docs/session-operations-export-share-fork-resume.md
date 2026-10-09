@@ -214,7 +214,7 @@ The TUI leaves a focused subagent view and clears its transcript.
 `/delete` uses the same transition with `drop: true`. It requires a session-file
 path, attempts to delete the old JSONL and artifact tree instead of retaining
 them, and still starts a new session if deletion fails. A before-switch hook can
-cancel either operation. Both are rejected while vibe mode is active.
+cancel either operation.
 
 ## Fresh
 
@@ -284,7 +284,6 @@ Interactive `/fork` creates a new session from the current one and switches the 
 ### Preconditions and immediate guards
 
 - If agent is streaming, `/fork` is rejected with warning.
-- Forking is rejected while vibe mode is active.
 - UI status/loading indicators are cleared before operation.
 
 ### Session-level flow
@@ -320,7 +319,6 @@ Interactive `/fork` creates a new session from the current one and switches the 
 
 `AgentSession.fork(entryId)` forks from a transcript point instead of the whole session. The RPC `fork` command calls it when `entryId` is given and plain `fork()` otherwise.
 
-- Like the whole-session fork, it is rejected while vibe mode is active.
 - `entryId` must be a `message` entry (user, assistant, or any other message role); anything else throws `Invalid entry ID for forking`.
 - It throws `SessionBusyError` while `AgentSession.isBusyForSnapshot` is true (a response is streaming, or user bash/eval, compaction, handoff, or retry work is running). The check runs before `session_before_branch`, again after it, and once more after pending bash output and session writes flush. That last check comes before anything of the old session is discarded (pending next-turn messages, async jobs, the auto-learn capture), so a refused fork leaves the session as it was. A prompt admitted during the remaining drain awaits is dropped by the prompt-generation bump at the cut, as for `branch()`. `/btw` branches use the same predicate.
 - When `entryId` sits inside an assistant tool-call batch (the assistant message, or a tool result answering it), the cut extends through the batch's recorded tool results, following the tree from `entryId` and stepping over lone non-message entries between results. A fork therefore never ends on tool calls whose results exist in the source session; calls that never got a result stay as they are.

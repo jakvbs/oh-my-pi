@@ -121,7 +121,7 @@ describe("wait structured output rendering", () => {
 	});
 
 	test("advertises the disambiguated agentId, not the collision-suffixed job id", async () => {
-		// A task job can reuse a vibe turn's job id, forcing the manager to
+		// A task job can reuse another job's id, forcing the manager to
 		// suffix `jobId` (e.g. `Foo` -> `Foo-2`) while the task's artifacts
 		// are still written under its own agent id.
 		const manager = new AsyncJobManager({ onJobComplete: () => {} });

@@ -9,7 +9,6 @@ import { EPHEMERAL_MODEL_CHANGE_ROLE } from "../session/session-entries";
 import { visitEntriesFromFileStream } from "../session/session-loader";
 import { loadBundledAgents } from "../task/agents";
 import { isReadOnlyAgent } from "../task/read-only-policy";
-import { persistedVibeChildIds } from "../vibe/lifecycle";
 import {
 	type AgentHistorySummary,
 	type AgentMetricsSummary,
@@ -386,23 +385,6 @@ async function readPersistedAgentMetadata(
 	};
 }
 
-async function readPersistedVibeChildIds(sessionFile: string, shouldContinue: () => boolean): Promise<Set<string>> {
-	const ids = new Set<string>();
-	try {
-		await visitEntriesFromFileStream(
-			sessionFile,
-			entry => {
-				for (const id of persistedVibeChildIds([entry])) ids.add(id);
-			},
-			{ shouldContinue },
-		);
-		return ids;
-	} catch (error) {
-		if (isFilesystemError(error)) throw error;
-		return new Set();
-	}
-}
-
 /**
  * Upper bound on remembered roster latches. Once the bound is reached, only
  * settled entries are forgotten (oldest first), so an in-flight scan is never
@@ -633,15 +615,12 @@ export async function registerPersistedSubagents(
 	const shouldContinue = options.shouldContinue ?? (() => true);
 	const hydrateHistory = options.hydrateHistory ?? true;
 	if (!shouldContinue()) return;
-	const vibeOwnedIds = await readPersistedVibeChildIds(sessionFile, shouldContinue);
-	if (!shouldContinue()) return;
 	const root = sessionFile.slice(0, -6);
 	const transcripts: PersistedTranscript[] = [];
 	await registerPersistedSubagentsFromDir(
 		registry,
 		root,
 		undefined,
-		vibeOwnedIds,
 		transcripts,
 		shouldContinue,
 		sessionFile,
@@ -667,7 +646,6 @@ async function registerPersistedSubagentsFromDir(
 	registry: AgentRegistry,
 	dir: string,
 	parentId: string | undefined,
-	vibeOwnedIds: ReadonlySet<string>,
 	transcripts: PersistedTranscript[],
 	shouldContinue: () => boolean,
 	rootSessionFile: string,
@@ -750,7 +728,6 @@ async function registerPersistedSubagentsFromDir(
 		}
 		const id = entry.name.slice(0, -6);
 		const existing = registry.get(id);
-		if (vibeOwnedIds.has(id) && existing?.sessionFile !== sessionFile) continue;
 		let tombstoned = false;
 		try {
 			await fs.promises.access(getAgentTombstonePath(sessionFile));
@@ -827,7 +804,6 @@ async function registerPersistedSubagentsFromDir(
 				registry,
 				path.join(dir, id),
 				id,
-				vibeOwnedIds,
 				transcripts,
 				shouldContinue,
 				rootSessionFile,

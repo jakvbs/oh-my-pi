@@ -471,8 +471,8 @@ describe("AgentSession owner-routed async delivery", () => {
 
 	it("advertises the agent:// URL using the task's agent id, not a disambiguated job id", () => {
 		// Regression: AsyncJobManager suffixes a requested job id when it
-		// collides with another live job (e.g. a task id reusing a vibe turn's
-		// job id), but the task's artifacts are still written under its own
+		// collides with another live job (e.g. a task id reusing another
+		// job's id), but the task's artifacts are still written under its own
 		// unsuffixed agent id. Advertising the suffixed job id points at a
 		// handle with no backing `<id>.md`/`.json` on disk (PR #10625 review).
 		const job: AsyncJob = {

@@ -545,7 +545,7 @@ export interface ExecutorOptions {
 	/**
 	 * Exact-name `task.agentServiceTierOverrides` entry that task/eval dispatch
 	 * resolved for this agent, applied after model resolution. Spawns that keep
-	 * `tier.subagent` (Vibe workers) omit it.
+	 * `tier.subagent` omit it.
 	 */
 	serviceTierOverride?: ServiceTierInheritSettingValue;
 	/** Exact-name `task.agentCompactionThresholdOverrides` pair selected by dispatch. */

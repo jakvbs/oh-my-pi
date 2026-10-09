@@ -519,7 +519,7 @@ For the numeric sampling settings, a negative value (normally `-1`) means "use t
 | `tier.anthropic`    | enum   | `none`    | `none`, `priority`. `priority` realizes fast mode on supported direct Claude models (ignored on Bedrock/Vertex and via OpenRouter).                                                                                                                                            |
 | `tier.google`       | enum   | `none`    | `none`, `flex`, `priority`. Gemini API sends it in the body; Vertex sends `priority` via header (`flex` is a no-op on Vertex).                                                                                                                                                 |
 | `tier.subagent`     | enum   | `inherit` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Applied to the spawned model's family; `inherit` tracks the main agent.                                                                                                                                     |
-| `task.agentServiceTierOverrides` | record | `{}` | Sparse exact-name overrides for agents spawned by task/eval dispatch (Vibe workers keep `tier.subagent`). Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. An entry overrides `tier.subagent`; concrete values apply only when supported by the resolved model's provider family. A non-mapping value fails settings load. |
+| `task.agentServiceTierOverrides` | record | `{}` | Sparse exact-name overrides for agents spawned by task/eval dispatch. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. An entry overrides `tier.subagent`; concrete values apply only when supported by the resolved model's provider family. A non-mapping value fails settings load. |
 | `tier.advisor`      | enum   | `none`    | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Applied to the advisor model's family.                                                                                                                                                                      |
 | `personality`       | enum   | `default` | `default`, `friendly`, `pragmatic`, `none`. A user-level `<agent dir>/PERSONALITY.md` replaces the selected preset's text; `none` still omits the block. See [system-prompt-customization](./system-prompt-customization.md).                                                  |
 
@@ -822,7 +822,7 @@ task:
 - Keys are exact, case-sensitive agent names (`scout` does not match `Scout`).
 - A number is a fixed token trigger (positive integer); a `"N%"` string is a percentage of the context window, `0 < N ≤ 100`. An entry replaces both `compaction.thresholdTokens` and `compaction.thresholdPercent` for that agent.
 - `null` clears an entry set by a lower-priority settings layer. Any other value fails settings load.
-- Agents without an entry — including agents spawned by an overridden agent — use the main session's `compaction.*` thresholds. The main session and Vibe workers are unaffected.
+- Agents without an entry — including agents spawned by an overridden agent — use the main session's `compaction.*` thresholds. The main session is unaffected.
 - The resolved trigger is stored with the subagent session and reused when it is revived.
 
 ### Appearance and terminal

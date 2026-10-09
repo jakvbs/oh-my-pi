@@ -7,7 +7,7 @@
  * turn. The turn-start `plan-mode-active.md` block orders the model to keep
  * planning until it writes a plan, so a mid-turn user exit appeared to do nothing
  * — the agent kept acting in plan mode until it produced a plan. Exit must now
- * abort the streaming turn (mirroring `#exitVibeMode`).
+ * abort the streaming turn.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Agent, type StreamFn } from "@oh-my-pi/pi-agent-core";
