@@ -245,7 +245,6 @@ Run `omp <command> --help` for each command's own flags and examples.
 | `auth-gateway` | Run an auth-gateway: an HTTP forward proxy backed by the configured broker (`serve`), or JSON lines on stdin/stdout for a parent process with your own credentials (`stdio`). | [auth broker / gateway](./auth-broker-gateway.md) |
 | `bench` | Benchmark models: TTFT/prefill vs decode throughput with p50/p95 across chat, prefill, generation, and prompt-cache workloads, rendered in a live dashboard (`--prefill-bytes` sizes the synthetic prefill input). `--detailed` runs single-user, `--par`-way parallel (aggregate tok/s and scaling), and prefill phases per model. | |
 | `browser-relay` | Run the local CDP relay used by Eval's browser API to drive your own Chrome tabs. | [computer use](./computer-use.md) |
-| `collab` | List active local Collab hosts without exposing URLs; `collab link <instanceId\|pid>` retrieves a control link (`--view` for view-only). | [collab](./collab.md) |
 | `clip` | Upload a `/record` recording to live.omp.sh as a public clip and print its URL. | |
 | `commit` | Generate a commit message and update changelogs. | |
 | `completions` | Print a shell completion script (bash, zsh, or fish). | |
@@ -261,7 +260,6 @@ Run `omp <command> --help` for each command's own flags and examples.
 | `if-bench` | Benchmark instruction following and working memory: one cached thread of glyph array actions with a cat-sound directive that moves through the prompt. | |
 | `images`, `img` | Inspect, diagnose, probe, and purge image publication backends. | |
 | `install` | Install or link an extension package (alias of `plugin install` / `plugin link`). | [extensions](./extensions.md) |
-| `join` | Join a shared collab session (same as `/join`). | [collab](./collab.md) |
 | `login` | Log in to a model provider from the terminal (counterpart of `/login`). | |
 | `models` | List, search, and refresh available models. | [models](./models.md) |
 | `plugin`, `plugins` | Manage plugins (install, uninstall, list, etc.). | [extensions](./extensions.md), [marketplace](./marketplace.md) |

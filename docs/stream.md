@@ -2,8 +2,6 @@
 
 `omp stream` broadcasts your omp sessions to `live.omp.sh/<username>` — a Twitch-style page with the live terminal and a chat column. Viewers see exactly what your terminal shows (minus secrets); they cannot type into the session.
 
-Stream is independent from [Collab](collab.md). Collab replicates the session itself (entries, events, prompts) to guests who can drive the agent; Stream sends only rendered screen rows, one way, to an audience.
-
 ## Quick start
 
 Streaming needs a stencil.so account. Sign in once from any omp session with `/login` → **Stencil (invite only)**; the credential is stored with your other logins and refreshed automatically. For scripts and local development, `STENCIL_API_KEY=<token>` overrides the stored credential; `STENCIL_AUTH_URL` re-bases the sign-in (`auth.stencil.so`) and `STENCIL_BASE_URL` the Stencil API (`api.stencil.so`) at a local server.

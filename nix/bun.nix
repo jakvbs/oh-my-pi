@@ -1119,10 +1119,6 @@
     url = "https://registry.npmjs.org/colorette/-/colorette-2.0.20.tgz";
     hash = "sha512-IfEDxwoWIjkeXL1eXcDiow4UbKjhLdq6/EuSVR9GMN7KVH3r9gQ83e73hsz1Nd1T3ijd5xv1wcWRYO+D6kCI2w==";
   };
-  "commander@15.0.0" = fetchurl {
-    url = "https://registry.npmjs.org/commander/-/commander-15.0.0.tgz";
-    hash = "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg==";
-  };
   "content-type@3.1.1" = fetchurl {
     url = "https://registry.npmjs.org/content-type/-/content-type-3.1.1.tgz";
     hash = "sha512-GW4qUsfFo59d0HbUibDlWv5wPz+vAAcaTWbKIuKCf0JkC7wWkSyf8f13IpXn5JkeMlB2P8iTSSIjwXljorg2vA==";
@@ -1302,10 +1298,6 @@
   "jsonstream-next@3.0.0" = fetchurl {
     url = "https://registry.npmjs.org/jsonstream-next/-/jsonstream-next-3.0.0.tgz";
     hash = "sha512-aAi6oPhdt7BKyQn1SrIIGZBt0ukKuOUE1qV6kJ3GgioSOYzsRc8z9Hfr1BVmacA/jLe9nARfmgMGgn68BqIAgg==";
-  };
-  "katex@0.18.7" = fetchurl {
-    url = "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz";
-    hash = "sha512-h+UCwkZ+4Jz8WQ7MLGfj7UVFrRCizGb912fwF4luGdYsC5paYG1vx+jy+KRcC/XkpjGva/P7nAWuxNnPzRvzHw==";
   };
   "kitty-vt-wasm@0.2.0" = fetchurl {
     url = "https://registry.npmjs.org/kitty-vt-wasm/-/kitty-vt-wasm-0.2.0.tgz";

@@ -9,7 +9,7 @@ import { QueuedMessagesBand } from "@oh-my-pi/pi-tui/prompt/queued-messages";
 import { logger } from "@oh-my-pi/pi-utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { InternalUrlRouter } from "../../internal-urls";
-import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
+import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "@oh-my-pi/pi-wire";
 import { settings } from "../../config/settings";
 import { createAdvisorMessageCard } from "@oh-my-pi/pi-tui/chat/advisor-message";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";

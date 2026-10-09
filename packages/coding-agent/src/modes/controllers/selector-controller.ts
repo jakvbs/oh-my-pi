@@ -1706,7 +1706,7 @@ export class SelectorController {
 			if (error instanceof ToolAbortError) return undefined;
 			throw error;
 		}
-		// The rich ask dialog can race a collab guest choosing "Chat about this"
+		// The rich ask dialog can return "Chat about this"
 		// (`AskTool`'s `chatRedirect` result); that's meaningful inside a live
 		// agent turn, where the model sees the redirect and starts a
 		// conversation, but this standalone re-answer has no turn to hand it
@@ -2442,8 +2442,6 @@ export class SelectorController {
 		const hub = new AgentHubOverlayComponent({
 			...createAgentHubRuntime({
 				settings: this.ctx.settings,
-				registry: this.ctx.collabGuest?.agentRegistry,
-				remote: this.ctx.collabGuest?.hubRemote,
 				sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
 			}),
 			observers,
@@ -2452,7 +2450,6 @@ export class SelectorController {
 			initialSection: options?.initialSection,
 			onDone: done,
 			requestRender: () => this.ctx.ui.requestRender(),
-			remote: this.ctx.collabGuest?.hubRemote,
 			ui: this.ctx.ui,
 			getTool: name => this.ctx.session.getToolByName(name),
 			isBuiltInTool: name => this.ctx.session.hasBuiltInTool(name),
