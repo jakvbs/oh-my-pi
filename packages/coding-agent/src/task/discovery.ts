@@ -62,7 +62,7 @@ async function loadAgentsFromDir({ dir, source, ignoreModel }: AgentDirectory): 
 			const filePath = path.join(dir, file.name);
 			try {
 				const agent = filePath.endsWith(".ts")
-					? parseAgentModule(filePath, (await import(filePath)).default, source)
+					? parseAgentModule(filePath, await importAgentModule(filePath), source)
 					: parseAgent(filePath, await fs.readFile(filePath, "utf-8"), source, "warn");
 				if (ignoreModel) agent.model = undefined;
 				return agent;
@@ -73,6 +73,16 @@ async function loadAgentsFromDir({ dir, source, ignoreModel }: AgentDirectory): 
 		});
 
 	return (await Promise.all(files)).filter((agent): agent is AgentDefinition => agent !== null);
+}
+
+/**
+ * Bun caches `import()` per specifier for the process lifetime, while discovery
+ * reruns at every spawn so edited agents apply without a restart. The mtime
+ * query rekeys the entry module; modules it imports stay cached.
+ */
+async function importAgentModule(filePath: string): Promise<unknown> {
+	const { mtimeMs } = await fs.stat(filePath);
+	return (await import(`${filePath}?mtime=${mtimeMs}`)).default;
 }
 
 /**

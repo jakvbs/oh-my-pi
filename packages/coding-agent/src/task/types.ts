@@ -243,7 +243,7 @@ export interface AgentDefinition {
 	cwd?: string;
 	/** Skill names the subagent sees; absent = every skill of the spawning session. */
 	skills?: string[];
-	/** MCP server names whose tools the subagent gets; absent = every connected server, `[]` = none. */
+	/** MCP server names whose tools the subagent gets; absent or `[]` = no MCP at all. */
 	mcp?: string[];
 }
 

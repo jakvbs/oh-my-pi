@@ -163,7 +163,7 @@ Artifacts and side channels:
 - Missing-`yield` reminder retries: `MAX_YIELD_RETRIES = 3` in `packages/coding-agent/src/task/executor.ts`.
 - Soft request budget: `task.softRequestBudget` defaults to 200 requests (`0` disables). Crossing it injects a wrap-up notice when `task.softRequestBudgetNotice` is enabled; at 1.5× the budget the run is force-stopped to yield partial findings. Bundled scout/sonic agents may impose a lower built-in cap.
 - Hard wall clock: `task.maxRuntimeMs` applies to every spawn; default `0` disables it.
-- Recursion depth: `task.maxRecursionDepth` defaults to `2`; negative values disable the cap. The tool registry and shared preflight enforce it, and `runSubprocess(...)` strips child `task` access at max depth.
+- Subagent depth: only the root session holds `task`; shared preflight rejects spawns from subagents, and `runSubprocess(...)` strips `task` from every child.
 - Inline summaries use `FULL_OUTPUT_THRESHOLD = 5000` characters in `packages/coding-agent/src/task/result-summary.ts`; truncation requires a full output artifact. `agent://<id>` points to that artifact.
 
 ## Errors
@@ -184,10 +184,10 @@ Artifacts and side channels:
 - Parallelism is parallel `task` calls in one assistant message — or, with `task.batch`, a `tasks[]` batch in one call; either way the session-scoped semaphore bounds the fan-out. With `async.enabled=true`, each spawn is an independent background job.
 - Shared background convention without batch mode: write it once to a `local://` file and reference that path in each spawn's `task` — subagents share the parent's `local://` root. With `task.batch`, the required `context` parameter carries the shared background directly into each spawn's system prompt.
 - Prefer messaging an existing agent via `write agent://<id>` over a fresh spawn for follow-up work: it already holds the relevant context. Bare `history://` discovers registered transcripts; messaging a parked agent revives it. `history://<id>` shows what an agent has done.
-- Peer-messaging availability is derived, not configured (`isIrcEnabled` in the messaging helper): it requires a caller with `write` and someone to message — the session can spawn subagents, or it is a subagent itself. Without peer messaging, the follow-up hint does not suggest it.
+- Peer-messaging availability is derived, not configured (`isIrcEnabled` in the messaging helper): with one subagent level every session is the spawning root or a subagent, so it requires only a caller with `write`. Without peer messaging, the follow-up hint does not suggest it.
 - Agent discovery precedence is first-wins by exact name: project `.omp` agents before user `.omp`, then OMP extension-package roots, Claude marketplace plugin agents (project before user), and bundled agents. Direct `.claude/agents`, `.codex/agents`, and `.gemini/agents` roots are skipped. Create-time discovery is memoized per cwd/effective extension roots; execution-time discovery stays fresh.
 - Child sessions do not inherit conversation history. Built-in carry-over is the workspace tree/skills/context files, the shared `local://` root, and the approved-plan reference when one exists.
-- When the parent passes `mcpManager`, child sessions disable standalone MCP discovery and get proxy tools that reuse parent connections.
+- Subagents get no MCP by default: no manager, server instructions, `mcp://` resources or discovery. An agent whose `AgentSpec.mcp` names servers gets only proxy tools for those servers, reusing parent connections and following parent reloads.
 - Branch-mode merge temporarily stashes the parent repo before cherry-picking; a stash-pop conflict leaves the landed commits on HEAD and preserves the stash, reported as `stashConflict`. Patch mode uses `repo.canApplyPatch(...)` before applying the root patch; reverse-only applicability is treated as already applied, while failed forward checks retain the artifact for recovery.
 - Nested git repos are diffed independently inside isolated workspaces and merged separately with `applyNestedPatches(...)`.
 - `agent://` ids are name-based (`Task` first, `Task-2`/`Task-3` only when the name repeats, nested like `Parent.Child`) by `AgentOutputManager`; this is what prevents artifact collisions across repeated or nested invocations.

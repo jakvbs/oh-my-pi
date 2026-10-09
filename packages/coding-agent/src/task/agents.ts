@@ -123,7 +123,9 @@ export function parseAgent(
 	};
 }
 
+// Undeclared keys fail: a misspelled `mcp`/`skills` would otherwise widen the agent to every server/skill.
 const agentModuleSchema = type({
+	"+": "reject",
 	name: "string",
 	description: "string",
 	systemPrompt: "string",

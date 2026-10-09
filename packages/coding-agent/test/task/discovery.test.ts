@@ -185,14 +185,33 @@ describe("discoverAgents", () => {
 		});
 	});
 
-	test("skips a TypeScript agent module whose default export is not an AgentSpec", async () => {
+	test("skips a TypeScript agent module with a misspelled AgentSpec key", async () => {
 		const agentsDir = path.join(projectDir, ".omp", "agents");
 		await fs.mkdir(agentsDir, { recursive: true });
-		await fs.writeFile(path.join(agentsDir, "broken.ts"), `export default { name: "broken" };`);
+		await fs.writeFile(
+			path.join(agentsDir, "broken.ts"),
+			`export default { name: "broken", description: "d", systemPrompt: "s", mcps: [] };`,
+		);
 
 		const { agents } = await discoverAgents(projectDir, tempHome);
 
 		expect(agents.map(agent => agent.name)).not.toContain("broken");
+	});
+
+	test("rediscovers an edited TypeScript agent module", async () => {
+		const agentsDir = path.join(projectDir, ".omp", "agents");
+		await fs.mkdir(agentsDir, { recursive: true });
+		const file = path.join(agentsDir, "edited.ts");
+		const write = (description: string) =>
+			fs.writeFile(file, `export default { name: "edited", description: "${description}", systemPrompt: "s" };`);
+		await write("before");
+		await discoverAgents(projectDir, tempHome);
+		await write("after");
+		await fs.utimes(file, new Date(), new Date(Date.now() + 1000));
+
+		const { agents } = await discoverAgents(projectDir, tempHome);
+
+		expect(agents.find(agent => agent.name === "edited")?.description).toBe("after");
 	});
 
 	test("loads agents from OMP npm plugins under <home>/.omp/plugins/node_modules", async () => {

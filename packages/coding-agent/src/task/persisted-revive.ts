@@ -174,10 +174,11 @@ export function createPersistedSubagentReviverFactory(
 			// A restricted persisted contract must not consult process-global MCP
 			// state: same-name MCP tools are untrusted capability sources.
 			const restrictToolNames = init.restrictToolNames === true;
-			const mcpManager = restrictToolNames ? undefined : MCPManager.instance();
+			// Only an agent that named MCP servers gets their proxies; files without `mcp` revive with none.
+			const mcpManager = restrictToolNames || !init.mcp?.length ? undefined : MCPManager.instance();
 			// Subscribe before minting proxies so a manager change during startup is replayed on bind.
-			const mcpFollower = mcpManager ? followMCPTools(mcpManager) : undefined;
-			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
+			const mcpFollower = mcpManager && init.mcp ? followMCPTools(mcpManager, undefined, init.mcp) : undefined;
+			const mcpProxyTools = mcpManager && init.mcp ? createMCPProxyTools(mcpManager, init.mcp) : [];
 			let session: AgentSession;
 			try {
 				({ session } = await createAgentSession({
@@ -238,8 +239,7 @@ export function createPersistedSubagentReviverFactory(
 								preloadedCustomToolPaths: [],
 							}
 						: {
-								enableMCP: !mcpManager,
-								mcpManager,
+								enableMCP: false,
 								mcpTools: mcpProxyTools.length > 0 ? mcpProxyTools : undefined,
 							}),
 				}));
