@@ -279,7 +279,6 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 
 - `lsp` — diagnostics, navigation, symbols, renames, code actions, raw requests.
 - `debug` — drive a DAP session — breakpoints, stepping, threads, stack, variables.
-- `security_scan` — plan and run native security reviews; drives Codex Security cloud scans.
 
 **Coordination**
 
@@ -308,7 +307,7 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 - `learn` — capture a reusable lesson; optionally promote it into a managed skill.
 - `manage_skill` — create, update, or delete an isolated managed skill.
 
-Setting-gated, off by default: `github`, `security_scan`, `generate_image`, `tts`, `checkpoint`, `rewind`, and the memory tools (`retain`/`recall`/`reflect`/`memory_edit`, per `memory.backend`).
+Setting-gated, off by default: `github`, `generate_image`, `tts`, `checkpoint`, `rewind`, and the memory tools (`retain`/`recall`/`reflect`/`memory_edit`, per `memory.backend`).
 
 [Full reference →](https://omp.sh/docs/tools)
 

@@ -153,7 +153,6 @@ export interface SchemeHost {
 	ruleCount: number;
 	/** Active `memory.backend` id; undefined when memory is off. */
 	memoryBackend?: string;
-	securityEnabled: boolean;
 	/** The user approves `cfg://` writes for this session (top-level TUI session). */
 	settingsApproval: boolean;
 }
