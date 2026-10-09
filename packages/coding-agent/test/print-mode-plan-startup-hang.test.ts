@@ -49,7 +49,6 @@ describe("print mode + plan.defaultOnStartup (#8272)", () => {
 			cwd: tempDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(settingsOverrides),
 		};
 		const tools = await createTools(toolSession);

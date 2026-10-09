@@ -11,7 +11,6 @@ function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = 
 		cwd,
 		hasUI: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "astGrep.enabled": true, "tools.xdev": false }),
 		...overrides,
 	};

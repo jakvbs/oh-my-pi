@@ -43,7 +43,6 @@ function toolSession(
 		settings,
 		getSessionFile: () => sessionManager.getSessionFile() ?? null,
 		getSessionId: () => ownerId,
-		getSessionSpawns: () => null,
 		sessionManager,
 	};
 }

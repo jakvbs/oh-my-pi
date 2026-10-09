@@ -11,7 +11,6 @@ import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
 import { cfgEvalPy } from "@oh-my-pi/pi-coding-agent/eval/settings";
 
 function makeSession(opts: {
-	spawns?: string | null;
 	backends?: Record<string, boolean>;
 	preludes?: () => readonly EvalPreludeDefinition[];
 	taskDepth?: number;
@@ -22,7 +21,6 @@ function makeSession(opts: {
 		cwd: "/tmp/eval-test",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => opts.spawns ?? "*",
 		taskDepth: opts.taskDepth,
 		isToolActive: (name: string) => name !== "read" || opts.readActive !== false,
 		...(opts.preludes ? { getEvalPreludes: opts.preludes } : {}),
@@ -58,7 +56,6 @@ function wireCellFields(tool: EvalTool): {
 
 describe("eval tool description", () => {
 	it("drops the agents topic but keeps wait() when the session forbids spawning", () => {
-		// Subagents with spawns: undefined (resolved to "") cannot launch tasks.
 		// wait() remains usable with completion() handles.
 		const options = { py: true, js: true, spawns: false };
 		const text = getEvalToolDescription(options);
@@ -66,11 +63,6 @@ describe("eval tool description", () => {
 		expect(text).not.toContain("workpool(");
 		expect(text).toContain("wait(handles");
 		expect(getEvalDocTopics(options).agents).toBeUndefined();
-	});
-
-	it("EvalTool topics reflect spawn policy from the session", () => {
-		expect(new EvalTool(makeSession({ spawns: "*" })).docTopics().agents).toContain("agent(prompt");
-		expect(new EvalTool(makeSession({ spawns: "" })).docTopics().agents).toBeUndefined();
 	});
 
 	it("drops the agents topic but keeps wait() inside a subagent", () => {

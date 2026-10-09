@@ -36,7 +36,6 @@ describe("grep file pagination", () => {
 			cwd,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const tool = new GrepTool(session);

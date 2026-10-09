@@ -61,7 +61,6 @@ function makeToolSession(bridge: ClientBridge): ToolSession {
 		cwd: tempDir.path(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		enableLsp: false,
 		settings: Settings.isolated({ "edit.mode": "apply_patch" }),
 		getArtifactsDir: () => null,

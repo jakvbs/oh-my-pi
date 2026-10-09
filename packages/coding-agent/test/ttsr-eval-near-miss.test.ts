@@ -76,7 +76,6 @@ describe("TTSR eval near-miss controls", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 			getActiveModel: () => mock.model,

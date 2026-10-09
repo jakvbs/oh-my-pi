@@ -28,7 +28,6 @@ function createSession(initialPhases: TodoPhase[] = []): ToolSession {
 		cwd: "/tmp/test",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		getTodoPhases: () => phases,
 		setTodoPhases: next => {

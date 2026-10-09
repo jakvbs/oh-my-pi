@@ -30,7 +30,6 @@ const taskAgent = {
 	description: "Task agent",
 	systemPrompt: "Run the task.",
 	source: "bundled",
-	spawns: "*",
 	model: ["@task"],
 } satisfies AgentDefinition;
 
@@ -62,12 +61,8 @@ function withTaskAgent(args: unknown): unknown {
 	return { agent: "task", ...args };
 }
 
-async function runEvalAgentAndWait(
-	args: unknown,
-	options: EvalAgentBridgeOptions,
-	{ defaultAgent = true }: { defaultAgent?: boolean } = {},
-): Promise<EvalAgentResult> {
-	const handle = await runEvalAgent(defaultAgent ? withTaskAgent(args) : args, options);
+async function runEvalAgentAndWait(args: unknown, options: EvalAgentBridgeOptions): Promise<EvalAgentResult> {
+	const handle = await runEvalAgent(withTaskAgent(args), options);
 	const waited = await runEvalWait({ items: [{ kind: "agent", id: handle.id }] }, options);
 	const snapshot = waited.items[0];
 	if (!snapshot || snapshot.status === "running") throw new Error(`Agent handle ${handle.id} did not settle`);
@@ -83,7 +78,6 @@ interface SessionOptions {
 	cwd?: string;
 	sessionFile?: string | null;
 	artifactsDir?: string | null;
-	spawns?: string | null;
 	depth?: number;
 	activeModel?: string;
 	modelString?: string;
@@ -114,7 +108,6 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 		enableLsp: options.enableLsp ?? true,
 		agentOutputManager: options.outputManager,
 		getSessionFile: () => options.sessionFile ?? null,
-		getSessionSpawns: () => options.spawns ?? "*",
 		getActiveModelString: () => options.activeModel ?? "p/active",
 		getModelString: () => options.modelString ?? "p/fallback",
 		getArtifactsDir: () => artifactsDir,
@@ -227,37 +220,6 @@ describe("runEvalAgent", () => {
 		).rejects.toThrow('Unknown agent "missing"');
 	});
 
-	it("enforces shared spawn restrictions", async () => {
-		mockAgents();
-		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
-
-		await expect(runEvalAgentAndWait({ prompt: "hello" }, { session: makeSession({ spawns: "" }) })).rejects.toThrow(
-			"spawns disabled",
-		);
-		await expect(
-			runEvalAgentAndWait({ prompt: "hello", agent: "task" }, { session: makeSession({ spawns: "reviewer" }) }),
-		).rejects.toThrow("Allowed: reviewer");
-		expect(runSpy).not.toHaveBeenCalled();
-	});
-
-	it("defaults to the first allowed spawn under restricted eval policies", async () => {
-		mockAgents();
-		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options =>
-			singleResult(options, {
-				output: options.agent.name,
-			}),
-		);
-
-		const result = await runEvalAgentAndWait(
-			{ prompt: "hello" },
-			{ session: makeSession({ spawns: "reviewer,task" }) },
-			{ defaultAgent: false },
-		);
-
-		expect(result.text).toBe("reviewer");
-		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("reviewer");
-	});
-
 	it("rejects spawning from inside a subagent", async () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
@@ -279,7 +241,6 @@ describe("runEvalAgent", () => {
 		});
 		expect(runSpy).toHaveBeenCalledTimes(1);
 		expect(runSpy.mock.calls[0]?.[0].agent.tools).toEqual(["read", "grep", "glob", "web_search", "ast_grep"]);
-		expect(runSpy.mock.calls[0]?.[0].agent.spawns).toBeUndefined();
 		await expect(
 			runEvalAgentAndWait({ prompt: "unsafe", isolated: true }, { session: makeSession({ planMode: true }) }),
 		).rejects.toThrow("isolation, apply, and merge controls are unavailable in plan mode");

@@ -335,7 +335,6 @@ function toolSession(): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated({ "computer.enabled": true }),
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 	};
 }
 

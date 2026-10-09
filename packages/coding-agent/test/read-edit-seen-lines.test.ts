@@ -34,7 +34,6 @@ function createSession(cwd: string): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => path.join(cwd, "artifacts"),
 		settings: Settings.isolated(),
 	} as unknown as ToolSession;

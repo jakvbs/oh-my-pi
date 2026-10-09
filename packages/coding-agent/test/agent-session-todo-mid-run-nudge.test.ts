@@ -148,7 +148,6 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 			cwd: tempDir.path(),
 			hasUI: false,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
-			getSessionSpawns: () => "*",
 			settings,
 		};
 		const todoTool = new TodoTool(toolSession);

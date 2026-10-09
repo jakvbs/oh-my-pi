@@ -13,7 +13,6 @@ function makeSession(cwd: string): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		enableLsp: false,
 		settings: Settings.isolated({ "edit.mode": "patch" }),
 		getArtifactsDir: () => null,

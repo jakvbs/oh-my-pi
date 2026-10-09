@@ -114,7 +114,6 @@ function createSession(
 			...(options.taskEnableLsp !== undefined ? { "task.enableLsp": options.taskEnableLsp } : {}),
 		}),
 		getSessionFile: () => options.sessionFile ?? null,
-		getSessionSpawns: () => "*",
 		modelRegistry,
 		getPlanModeState: () => options.planMode,
 	} as unknown as ToolSession;

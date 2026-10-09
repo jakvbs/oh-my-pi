@@ -45,7 +45,6 @@ describe("read tool URL handling", () => {
 			hasUI: false,
 			getSessionFile: () => sessionFile,
 			getArtifactsDir: () => artifactsDir,
-			getSessionSpawns: () => null,
 			allocateOutputArtifact: async toolType => {
 				const id = String(nextArtifactId++);
 				return {

@@ -41,7 +41,6 @@ function createSession(cwd: string, overrides: Record<string, unknown> = {}): To
 		cwd,
 		hasUI: false,
 		getSessionFile: () => sessionFile,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => sessionDir,
 		allocateOutputArtifact: async (toolType: string) => {
 			await fs.mkdir(sessionDir, { recursive: true });

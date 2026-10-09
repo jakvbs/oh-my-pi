@@ -7,9 +7,7 @@ import { getTaskSchema } from "@oh-my-pi/pi-coding-agent/task/types";
 import { oneLineLabel } from "@oh-my-pi/pi-tui/tools/task";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 
-// Contract: the task tool's wire shape is flat `{ name?, agent, task, isolated? }`
-// (batch: `{ context, tasks[] }` of the same items). Only an explicit spawn-policy
-// default makes `agent` optional. Unknown stale keys are stripped, not rejected.
+// Unknown stale keys are stripped rather than rejecting otherwise valid calls.
 
 describe("oneLineLabel", () => {
 	it("returns short text unchanged", () => {
@@ -58,7 +56,7 @@ describe("task wire schema", () => {
 		}
 	});
 
-	it("rejects a missing agent without a spawn-policy default", () => {
+	it("rejects a missing agent", () => {
 		const parsed = taskSchema({ task: "x", solutionSpace: "c" });
 		expect(parsed instanceof type.errors).toBe(true);
 	});
@@ -90,19 +88,14 @@ describe("task wire schema", () => {
 		expect(items[0]?.name).toBe("DbMigrator");
 	});
 
-	it("defaults batch item agents to the schema's defaultAgent", () => {
-		const batch = getTaskSchema({ isolationEnabled: false, batchEnabled: true, defaultAgent: "scout" });
+	it("requires an agent on every batch item with dynamic schema fields", () => {
+		const batch = getTaskSchema({ isolationEnabled: false, batchEnabled: true, effortEnabled: true });
+		const parsed = batch({ context: "ctx", tasks: [{ task: "x", solutionSpace: "c", effort: "lo" }] });
+		expect(parsed instanceof type.errors).toBe(true);
 		const items = parsedItems(
-			batch({
-				context: "ctx",
-				tasks: [
-					{ task: "x", solutionSpace: "c" },
-					{ agent: "reviewer", task: "y", solutionSpace: "c" },
-				],
-			}),
+			batch({ context: "ctx", tasks: [{ agent: "reviewer", task: "x", solutionSpace: "c", effort: "lo" }] }),
 		);
-		expect(items[0]?.agent).toBe("scout");
-		expect(items[1]?.agent).toBe("reviewer");
+		expect(items[0]?.agent).toBe("reviewer");
 	});
 
 	it("deletes stale keys from batch items", () => {
@@ -127,14 +120,13 @@ describe("task approval details surface the dispatch", () => {
 		vi.restoreAllMocks();
 	});
 
-	async function makeTool(spawns = "*"): Promise<TaskTool> {
+	async function makeTool(): Promise<TaskTool> {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [], projectAgentsDir: null });
 		return TaskTool.create({
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({ "task.isolation.enabled": false, "task.batch": true }),
 			getSessionFile: () => null,
-			getSessionSpawns: () => spawns,
 		} as unknown as ToolSession);
 	}
 
@@ -150,16 +142,17 @@ describe("task approval details surface the dispatch", () => {
 		expect(lines).toContain("Task:\naudit the auth module");
 	});
 
-	it("summarizes a homogeneous batch whose agents use the session default", async () => {
-		const tool = await makeTool("scout,reviewer");
+	it("summarizes a homogeneous batch with explicit agents", async () => {
+		const tool = await makeTool();
 		const lines = tool.formatApprovalDetails({
 			context: "shared background",
 			tasks: [
 				{
 					name: "DbMigrator",
+					agent: "scout",
 					task: "migrate the schema",
 				},
-				{ task: "second item" },
+				{ agent: "scout", task: "second item" },
 			],
 		});
 		expect(lines).toContain("Context:\nshared background");
@@ -171,16 +164,16 @@ describe("task approval details surface the dispatch", () => {
 	});
 
 	it("summarizes mixed effective agents and safely renders partial batch items", async () => {
-		const tool = await makeTool("scout,reviewer");
+		const tool = await makeTool();
 		const lines = tool.formatApprovalDetails({
 			tasks: [
-				{ name: "DefaultScout", task: "map the flow" },
+				{ name: "UnspecifiedAgent", task: "map the flow" },
 				{ agent: " reviewer ", task: "review it" },
 			],
 		});
-		expect(lines).toContain("Batch agents: scout ×1, reviewer ×1");
-		expect(lines).toContain("Name: DefaultScout");
-		expect(lines).toContain("Agent: scout");
+		expect(lines).toContain("Batch agents: unspecified ×1, reviewer ×1");
+		expect(lines).toContain("Name: UnspecifiedAgent");
+		expect(lines).toContain("Agent: unspecified");
 		expect(lines.join("\n")).not.toContain("undefined");
 
 		expect(() => tool.formatApprovalDetails({ tasks: [undefined, { agent: "reviewer" }] })).not.toThrow();

@@ -251,7 +251,6 @@ describe("runSubprocess yield reminders", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 			getLastAssistantText: () => undefined,
 		});

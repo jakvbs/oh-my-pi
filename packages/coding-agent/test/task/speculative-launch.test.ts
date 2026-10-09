@@ -45,7 +45,6 @@ function createSession(manager: AsyncJobManager): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated({ "async.enabled": true, "task.batch": true }),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getAgentId: () => null,
 		asyncJobManager: manager,
 	} as unknown as ToolSession;
@@ -239,7 +238,6 @@ describe("speculative launch authorization", () => {
 				cwd: "/tmp",
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => "*",
 				settings,
 			};
 			return createSpeculativeToolExecutionConfig(settings, session, {

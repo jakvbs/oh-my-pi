@@ -30,7 +30,6 @@ describe("local:// URL with the working directory prefixed", () => {
 				cwd,
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => null,
 				settings: Settings.isolated(),
 				enableLsp: false,
 			};

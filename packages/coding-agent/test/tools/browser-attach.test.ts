@@ -46,7 +46,6 @@ function makeSession(): ToolSession {
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({
 			"browser.enabled": true,
 			"browser.headless": true,

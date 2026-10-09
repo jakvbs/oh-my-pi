@@ -47,7 +47,6 @@ async function setup(options: { hold?: string[]; models?: unknown[] } = {}): Pro
 		cwd: root,
 		hasUI: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 		modelRegistry: { getAll: () => options.models ?? [] },
 	} as unknown as ToolSession;

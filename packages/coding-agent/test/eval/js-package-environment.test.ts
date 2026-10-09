@@ -23,7 +23,6 @@ function makeSession(cwd: string, evalSessionId: string, options?: { autoProvisi
 		taskDepth: 0,
 		enableLsp: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getActiveModelString: () => "p/active",
 		getModelString: () => "p/fallback",
 		getArtifactsDir: () => null,

@@ -278,7 +278,6 @@ try {
 			cwd: dir,
 			hasUI: false,
 			getSessionFile: () => path.join(dir, "s.jsonl"),
-			getSessionSpawns: () => "*",
 			getArtifactsDir: () => path.join(dir, "sess"),
 			allocateOutputArtifact: async (t: string) => ({ id: "a", path: path.join(dir, `a.${t}.log`) }),
 			settings: Settings.isolated(),

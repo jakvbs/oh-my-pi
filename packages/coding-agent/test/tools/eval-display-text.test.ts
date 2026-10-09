@@ -12,7 +12,6 @@ function makeSession(): ToolSession {
 		cwd: "/tmp/eval-test",
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 	};
 }

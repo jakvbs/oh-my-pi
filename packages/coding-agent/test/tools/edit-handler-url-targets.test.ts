@@ -22,7 +22,6 @@ function createSession(): ToolSession {
 		hasUI: false,
 		enableLsp: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => artifactsDir,
 		settings: Settings.isolated({ "edit.enforceSeenLines": false }),
 	};

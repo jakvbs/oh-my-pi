@@ -34,7 +34,6 @@ function createSession(cwd: string, overrides: Partial<SessionLike> = {}): Sessi
 		hasUI: false,
 		enableLsp: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		...overrides,
 	} as SessionLike;

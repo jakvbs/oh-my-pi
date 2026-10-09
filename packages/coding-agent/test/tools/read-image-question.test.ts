@@ -72,7 +72,6 @@ function createSession(
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getModelString: () => `${activeModel.provider}/${activeModel.id}`,
 		getActiveModelString: () => `${activeModel.provider}/${activeModel.id}`,
 		getActiveModel: () => activeModel,

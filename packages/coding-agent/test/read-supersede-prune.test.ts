@@ -41,7 +41,6 @@ beforeAll(async () => {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({
 			"lsp.enabled": false,
 			"read.summarize.enabled": true,

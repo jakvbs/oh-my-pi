@@ -3974,7 +3974,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 
 	const modelPatterns = normalizeModelPatterns(modelOverride ?? agent.model);
 	const sessionFile = subtaskSessionFile ?? null;
-	const spawnsEnv = "";
 
 	const lspEnabled = enableLsp ?? true;
 	const skipPythonPreflight = Array.isArray(toolNames) && !toolNames.includes("eval");
@@ -4313,7 +4312,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					preloadedCustomToolPaths: restrictToolNames ? [] : options.preloadedCustomToolPaths,
 					hasUI: false,
 					prewalk,
-					spawns: spawnsEnv,
 					taskDepth: childDepth,
 					// The whole spawn tree shares the root session's observability bus,
 					// so nested lifecycle/progress/event frames reach its surfaces
@@ -4484,7 +4482,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				// so read it back from the settings both install paths write.
 				retryFallback: getRetryFallbackRole(subagentSettings, subagentRetryFallbackRole(id)),
 				readOnly: isReadOnlyAgent(agent),
-				spawns: spawnsEnv,
 				readSummarize: agent.readSummarize,
 				mcp: agent.mcp,
 				advisor: advisorSelection ? (advisorRolePattern ?? "on") : undefined,

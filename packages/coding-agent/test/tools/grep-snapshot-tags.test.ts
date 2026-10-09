@@ -31,7 +31,6 @@ describe("grep hashline snapshot tags", () => {
 			cwd,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const filePath = path.join(cwd, "a.txt");
@@ -56,7 +55,6 @@ describe("grep hashline snapshot tags", () => {
 			cwd,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		const filePath = path.join(cwd, "a.txt");

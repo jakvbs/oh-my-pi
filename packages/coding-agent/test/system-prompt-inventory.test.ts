@@ -168,7 +168,6 @@ describe("system prompt tool inventory", () => {
 			cwd: tempDir,
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings,
 		} as ToolSession;
 	}

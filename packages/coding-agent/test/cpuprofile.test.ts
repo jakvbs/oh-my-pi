@@ -120,7 +120,6 @@ describe("read tool .cpuprofile dispatch", () => {
 			cwd,
 			hasUI: false,
 			getSessionFile: () => path.join(cwd, "session.jsonl"),
-			getSessionSpawns: () => "*",
 			getArtifactsDir: () => path.join(cwd, "artifacts"),
 			allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 			settings: Settings.isolated(),

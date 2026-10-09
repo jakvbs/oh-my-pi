@@ -17,7 +17,6 @@ function createSession(cwd = process.cwd()): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated({}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 	};
 }
 

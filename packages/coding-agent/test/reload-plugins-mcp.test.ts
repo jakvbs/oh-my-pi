@@ -35,7 +35,6 @@ function createTaskSession(cwd: string): ToolSession {
 		settings: Settings.isolated({}),
 		effectiveExtensionRoots: () => TEST_EXTENSION_ROOTS,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 	} as unknown as ToolSession;
 }
 

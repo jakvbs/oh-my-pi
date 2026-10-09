@@ -36,7 +36,6 @@ function makeSession(options: { senderId?: string; deviceOnlyWrite?: boolean; pl
 		hasUI: false,
 		settings: Settings.isolated(),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getAgentId: () => options.senderId ?? "Main",
 		agentRegistry: registry,
 		deviceOnlyWrite: options.deviceOnlyWrite,

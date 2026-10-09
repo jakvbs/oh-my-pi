@@ -19,7 +19,6 @@ function session(cwd: string): ToolSession {
 		hasUI: false,
 		enableLsp: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({}),
 	} as ToolSession;
 }

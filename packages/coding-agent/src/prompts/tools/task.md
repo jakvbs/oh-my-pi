@@ -6,7 +6,7 @@
 {{/if}}
 
 # Delegation
-Use most specific agent. Prefer one agent to investigate + edit.{{#if defaultAgent}} Omit `agent` only for default (`{{defaultAgent}}`); NEVER specify it.{{else}} `agent` is required.{{/if}}
+Use most specific agent. Prefer one agent to investigate + edit. `agent` is required.
 Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate via `write agent://<id>`{{/if}}. Set interfaces in {{#if batchEnabled}}`context`{{else}}the task{{/if}}. Every task MUST skip build/lint/tests/formatters mid-flight; run once afterward.
 
 # Inputs
@@ -24,7 +24,6 @@ Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate v
 {{/if}}`task`: self-contained (`# Target` files/non-goals, `# Change` steps/APIs, `# Acceptance` observable result).
 
 # Available Agents
-{{#if spawningDisabled}}Agent spawning is currently disabled.
-{{else}}{{#if hasModelMentions}}`m<N>` = user-tagged model (`<model agent="m<N>" name="…"/>`), not specialist; spawn only when user names it.
+{{#if hasModelMentions}}`m<N>` = user-tagged model (`<model agent="m<N>" name="…"/>`), not specialist; spawn only when user names it.
 {{/if}}{{#list agents join=""}}- `{{name}}`{{#if readOnly}} (READ-ONLY; investigation only, no edits){{/if}}{{#if blocking}} (BLOCKING; inline result){{/if}}: {{description}}
-{{/list}}{{/if}}
+{{/list}}

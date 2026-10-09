@@ -62,7 +62,6 @@ function makeSession(
 		asyncJobManager: manager,
 		getAgentId: () => "Main",
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => null,
 	} satisfies ToolSession;
 	AgentRegistry.global().register({

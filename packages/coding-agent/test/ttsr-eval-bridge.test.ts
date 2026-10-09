@@ -95,7 +95,6 @@ describe("TTSR eval bridge enforcement", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionId: () => manager.getSessionId(),
-			getSessionSpawns: () => "*",
 			sessionManager: manager,
 			settings,
 			getActiveModel: () => mock.model,

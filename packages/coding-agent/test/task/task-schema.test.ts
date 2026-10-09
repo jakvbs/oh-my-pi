@@ -72,7 +72,6 @@ describe("task spawn validation", () => {
 			hasUI: false,
 			settings: Settings.isolated({ "task.isolation.enabled": false, "task.batch": false }),
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 		} as unknown as ToolSession;
 	}
 

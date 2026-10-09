@@ -88,7 +88,6 @@ describe.each([false, true])("AgentSession compaction cancellation source (exper
 			sessionManager,
 			getSessionId: () => sessionManager.getSessionId(),
 			getSessionFile: () => null,
-			getSessionSpawns: () => null,
 		};
 		const tools: Tool[] = experimental
 			? [

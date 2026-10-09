@@ -4,7 +4,8 @@
 
 ### Breaking Changes
 
-- Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; unrestricted task and eval spawns now require an explicit agent name.
+- Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; task and eval spawns require an explicit agent name.
+- Removed `spawns` allowlists from agent definitions, SDK session options, and persisted session initialization. Only root sessions can spawn agents; legacy `spawns` metadata no longer controls delegation or selects a default agent.
 
 ### Added
 

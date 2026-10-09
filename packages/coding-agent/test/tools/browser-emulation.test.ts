@@ -12,7 +12,6 @@ const session: ToolSession = {
 	cwd: process.cwd(),
 	hasUI: false,
 	getSessionFile: () => null,
-	getSessionSpawns: () => "*",
 	getSessionId: () => OWNER_ID,
 	settings: Settings.isolated({
 		"browser.enabled": true,

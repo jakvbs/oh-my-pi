@@ -84,7 +84,6 @@ function createBudgetSession(sessionManager: SessionManager): ToolSession {
 	return {
 		cwd: "/tmp",
 		settings: Settings.isolated(),
-		getSessionSpawns: () => "*",
 		getSessionFile: () => null,
 		getTurnBudget: () => sessionManager.getTurnBudget(),
 		recordEvalSubagentUsage: (output: number) => sessionManager.recordEvalSubagentOutput(output),
@@ -181,7 +180,6 @@ describe("runEvalAgent", () => {
 		const session = {
 			cwd: "/tmp",
 			settings: Settings.isolated(),
-			getSessionSpawns: () => "*",
 			getSessionFile: () => null,
 			recordEvalSubagentUsage,
 		} as unknown as ToolSession;

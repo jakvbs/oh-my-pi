@@ -86,7 +86,6 @@ function makeSession(settings: Settings, sessionId: string | null = TEST_SESSION
 		settings,
 		getSessionFile: () => null,
 		getSessionId: () => sessionId,
-		getSessionSpawns: () => null,
 		getHindsightSessionState: () => (sessionId === TEST_SESSION_ID ? registeredState : undefined),
 		getMnemopiSessionState: () => (sessionId === TEST_SESSION_ID ? registeredMnemopiState : undefined),
 	} as unknown as ToolSession;

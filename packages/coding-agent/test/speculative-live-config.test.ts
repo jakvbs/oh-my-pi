@@ -25,7 +25,6 @@ function createSession(cwd: string, settings: Settings): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings,
 	};
 }

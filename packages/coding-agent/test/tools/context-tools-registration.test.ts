@@ -24,7 +24,6 @@ function createSession(enabled: boolean, restricted = false): ToolSession {
 		sessionManager,
 		getSessionId: () => sessionManager.getSessionId(),
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		skipPythonPreflight: true,
 		restrictToolNames: restricted,
 	};

@@ -39,8 +39,7 @@ import { truncateForPrompt } from "../tools/approval";
 import { hasWaitTool } from "../tools/wait";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
-import { resolveSpawnPolicy } from "./spawn-policy";
-import { type AgentDefinition, canSpawnAtDepth, getTaskSchema, type TaskToolSchemaInstance } from "./types";
+import { type AgentDefinition, getTaskSchema, type TaskToolSchemaInstance } from "./types";
 import {
 	type AgentProgress,
 	type SingleResult,
@@ -146,22 +145,13 @@ interface TaskDescriptionOptions {
 	evalToolsEnabled: boolean;
 	asyncEnabled: boolean;
 	ircEnabled: boolean;
-	parentSpawns: string;
 }
 
 /** Render the tool description from a cached agent list and current settings. */
 function renderDescription(options: TaskDescriptionOptions): string {
-	const spawnPolicy = resolveSpawnPolicy(options.parentSpawns);
-	const spawningDisabled = !spawnPolicy.enabled;
 	const agents = [...options.agents, ...options.sessionAgents];
-	let filteredAgents =
+	const filteredAgents =
 		options.disabledAgents.length > 0 ? agents.filter(agent => !options.disabledAgents.includes(agent.name)) : agents;
-	if (spawningDisabled) {
-		filteredAgents = [];
-	} else if (spawnPolicy.allowedAgents !== null) {
-		const allowed = new Set(spawnPolicy.allowedAgents);
-		filteredAgents = filteredAgents.filter(agent => allowed.has(agent.name));
-	}
 	const renderedAgents = filteredAgents.map(agent => ({
 		name: agent.name,
 		description: agent.description,
@@ -170,8 +160,6 @@ function renderDescription(options: TaskDescriptionOptions): string {
 	}));
 	return prompt.render(taskDescriptionTemplate, {
 		agents: renderedAgents,
-		spawningDisabled,
-		defaultAgent: spawnPolicy.defaultAgent,
 		isolationEnabled: options.isolationEnabled,
 		applyIsolatedChanges: options.applyIsolatedChanges,
 		batchEnabled: options.batchEnabled,
@@ -213,11 +201,10 @@ function validateShapeParams(batchEnabled: boolean, params: TaskParams): string 
  * Validate the spawn parameter contract against the wire shapes. With
  * `task.batch` the model-facing shape is `{ context, tasks[] }` — `tasks`
  * non-empty with per-item `task` instructions and unique names, `context`
- * non-empty, no top-level `task` alongside. The flat `{ agent?, ...item }`
+ * non-empty, no top-level `task` alongside. The flat `{ agent, ...item }`
  * form stays accepted at runtime under either setting (internal callers, stale
- * transcripts). Missing `agent` values resolve against the session spawn
- * policy later, in `spawnParamsFor`. Returns a problem description, or
- * undefined when valid.
+ * transcripts). Missing `agent` values are rejected by policy preflight.
+ * Returns a problem description, or undefined when valid.
  */
 
 /** Reject an out-of-range `effort` selector on internal/stale-transcript calls that bypass the wire schema. */
@@ -290,15 +277,14 @@ function resolveSpawnItems(params: TaskParams): TaskItem[] {
 
 /**
  * Per-spawn params handed to the executor path: top-level call fields with the
- * item's identity substituted in. Each spawn's `agent` resolves here —
- * the item's own value, else `defaultAgent` from the session spawn policy.
+ * item's identity substituted in.
  * `tasks` never leaks into a spawn; the shared `context` rides along
  * unchanged. Keys are only materialized when present — `#runSpawn`
  * distinguishes an absent `isolated` from an explicit one. The item's
  * `isolated` (batch form) wins over the top-level flag (flat form).
  */
-function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string | undefined): TaskParams {
-	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
+function spawnParamsFor(params: TaskParams, item: TaskItem): TaskParams {
+	const spawn: TaskParams = { agent: item.agent?.trim() };
 	if (item.name !== undefined) spawn.name = item.name;
 	if (item.task !== undefined) spawn.task = item.task;
 	if (item.solutionSpace !== undefined) spawn.solutionSpace = item.solutionSpace;
@@ -327,12 +313,12 @@ interface SpawnPlan {
  * validation error the call reports instead when the shape is rejected. Shared
  * by dispatch and the speculative launcher so both derive identical spawns.
  */
-function planSpawns(rawParams: unknown, batchEnabled: boolean, defaultAgent: string | undefined): SpawnPlan | string {
+function planSpawns(rawParams: unknown, batchEnabled: boolean): SpawnPlan | string {
 	const params = repairTaskParams(rawParams as TaskParams);
 	const error = validateShapeParams(batchEnabled, params) ?? validateSpawnParams(params, batchEnabled);
 	if (error) return error;
 	const items = resolveSpawnItems(params);
-	return { params, items, spawns: items.map(item => spawnParamsFor(params, item, defaultAgent)) };
+	return { params, items, spawns: items.map(item => spawnParamsFor(params, item)) };
 }
 
 /**
@@ -505,13 +491,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 		const tasks: unknown[] = Array.isArray(params.tasks) ? params.tasks : [];
 		if (tasks.length > 0) {
-			const defaultAgent = this.#defaultAgent();
 			const effectiveAgent = (item: unknown): string => {
 				if (item && typeof item === "object" && "agent" in item) {
 					const agent = item.agent;
 					if (typeof agent === "string" && agent.trim()) return agent.trim();
 				}
-				return defaultAgent ?? "unspecified";
+				return "unspecified";
 			};
 			const agentCounts = new Map<string, number>();
 			for (const item of tasks) {
@@ -575,7 +560,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly #launchSessions = new Map<string, TaskLaunchSession>();
 	readonly #launcher: TaskLauncher = {
 		spawns: args => {
-			const plan = planSpawns(args, this.#isBatchEnabled(), this.#defaultAgent());
+			const plan = planSpawns(args, this.#isBatchEnabled());
 			return typeof plan === "string" ? undefined : plan.spawns;
 		},
 		start: (toolCallId, spawn, index, signal) => this.#startSpeculative(toolCallId, spawn, index, signal),
@@ -613,7 +598,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
 			evalToolsEnabled: evalToolsEnabled(this.session),
-			defaultAgent: this.#defaultAgent(),
 		});
 	}
 
@@ -639,7 +623,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			evalToolsEnabled: evalToolsEnabled(this.session),
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			ircEnabled: true,
-			parentSpawns: this.session.getSessionSpawns() ?? "*",
 		});
 	}
 	private constructor(
@@ -652,10 +635,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	#isBatchEnabled(): boolean {
 		return cfgTaskBatch.get(this.session.settings);
-	}
-
-	#defaultAgent(): string | undefined {
-		return resolveSpawnPolicy(this.session.getSessionSpawns()).defaultAgent;
 	}
 
 	/** Session-retained id allocator; async ids are claimed before job registration. */
@@ -788,12 +767,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 	): Promise<AgentToolResult<TaskToolDetails>> {
-		// Schema defaults fill `agent` for model calls, but internal callers
-		// and stale transcripts can bypass arktype. `spawnParamsFor` resolves each
-		// item's agent type against the session's actual default agent.
-		const defaultAgent = this.#defaultAgent();
 		const batchEnabled = this.#isBatchEnabled();
-		const plan = planSpawns(rawParams, batchEnabled, defaultAgent);
+		const plan = planSpawns(rawParams, batchEnabled);
 		if (typeof plan === "string") {
 			return createTaskModeError(plan);
 		}
@@ -857,7 +832,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			run.discard("task execution mode changed after speculative launch");
 			adopted.delete(index);
 		}
-		const depthCapacity = canSpawnAtDepth(this.session.taskDepth ?? 0);
+		const depthCapacity = (this.session.taskDepth ?? 0) === 0;
 		const ircEnabled = true;
 
 		if (!manager || asyncItems.length === 0) {
@@ -871,7 +846,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				toolCallId,
 				params,
 				spawnItems.map((item, index) => ({ item, index, run: adopted.get(index) })),
-				defaultAgent,
 				signal,
 				onUpdate,
 			);
@@ -981,7 +955,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const jobId = this.#registerSpawnJob({
 					manager,
 					toolCallId,
-					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent),
+					spawnParams: spawnParamsFor(params, spawn.item),
 					agentId: spawn.agentId,
 					run: spawn.run,
 					progress: spawn.progress,
@@ -1090,7 +1064,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const payloads = await this.#runSyncSpawns({
 			toolCallId,
 			params,
-			defaultAgent,
 			signal,
 			spawns: syncSpawns.map(spawn => ({
 				item: spawn.item,
@@ -1364,7 +1337,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		toolCallId: string,
 		params: TaskParams,
 		spawns: SyncSpawnRef[],
-		defaultAgent: string | undefined,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 	): Promise<AgentToolResult<TaskToolDetails>> {
@@ -1374,7 +1346,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				spawn.run ??
 				this.#launch({
 					toolCallId,
-					params: spawnParamsFor(params, spawn.item, defaultAgent),
+					params: spawnParamsFor(params, spawn.item),
 					index: spawn.index,
 					agentId: spawn.preAllocatedId,
 					detached: false,
@@ -1402,7 +1374,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const payloads = await this.#runSyncSpawns({
 			toolCallId,
 			params,
-			defaultAgent,
 			signal,
 			spawns,
 			onItemProgress: onUpdate
@@ -1438,12 +1409,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	async #runSyncSpawns(args: {
 		toolCallId: string;
 		params: TaskParams;
-		defaultAgent: string | undefined;
 		spawns: SyncSpawnRef[];
 		signal?: AbortSignal;
 		onItemProgress?: (index: number, progress: AgentProgress) => void;
 	}): Promise<(AgentToolResult<TaskToolDetails> | undefined)[]> {
-		const { toolCallId, params, defaultAgent, spawns, signal, onItemProgress } = args;
+		const { toolCallId, params, spawns, signal, onItemProgress } = args;
 		const { results } = await mapWithConcurrencyLimitAllSettled(
 			spawns,
 			spawns.length,
@@ -1452,7 +1422,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					spawn.run ??
 					this.#launch({
 						toolCallId,
-						params: spawnParamsFor(params, spawn.item, defaultAgent),
+						params: spawnParamsFor(params, spawn.item),
 						index: spawn.index,
 						agentId: spawn.preAllocatedId,
 						detached: false,

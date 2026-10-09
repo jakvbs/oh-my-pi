@@ -252,7 +252,6 @@ describe("MCP fallback and prompt formatting", () => {
 			cwd: ".",
 			hasUI: false,
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			settings: Settings.isolated(),
 		};
 		return new EditTool(session, "sloppy");

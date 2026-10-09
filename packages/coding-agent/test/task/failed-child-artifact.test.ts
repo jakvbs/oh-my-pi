@@ -62,7 +62,6 @@ function createSession(
 			...settings,
 		}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		asyncJobManager,
 	} as unknown as ToolSession;
 }

@@ -68,7 +68,6 @@ function createGlobTool(cwd: string): GlobTool {
 		hasUI: false,
 		settings: Settings.isolated({ "memory.backend": "local" }),
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 	};
 	return new GlobTool(session);
 }
@@ -114,7 +113,6 @@ describe("MemoryProtocolHandler", () => {
 				agentRegistry,
 				getSessionId: () => "custom-session",
 				getSessionFile: () => null,
-				getSessionSpawns: () => null,
 			});
 
 			const result = await tool.execute("custom-memory", { path: "memory://root" });
@@ -158,7 +156,6 @@ describe("MemoryProtocolHandler", () => {
 				sessionManager: journal,
 				getSessionId: () => manager.getSessionId(),
 				getSessionFile: () => null,
-				getSessionSpawns: () => null,
 			});
 			const result = await tool.execute("journal-memory", { path: "memory://root" });
 			expect(

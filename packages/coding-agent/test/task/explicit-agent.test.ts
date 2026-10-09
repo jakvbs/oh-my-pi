@@ -3,7 +3,6 @@ import { Settings } from "../../src/config/settings";
 import * as taskDiscovery from "../../src/task/discovery";
 import { TaskTool } from "../../src/task/index";
 import type { AgentDefinition } from "../../src/task/types";
-import { getTaskSchema } from "../../src/task/types";
 import type { ToolSession } from "../../src/tools";
 
 const factFinderAgent = {
@@ -20,7 +19,7 @@ const oracleAgent = {
 	source: "user",
 } satisfies AgentDefinition;
 
-function makeSession(spawns: string): ToolSession {
+function makeSession(): ToolSession {
 	const settings = Settings.isolated({
 		"async.enabled": false,
 		"task.batch": true,
@@ -31,48 +30,34 @@ function makeSession(spawns: string): ToolSession {
 		hasUI: false,
 		settings,
 		getSessionFile: () => null,
-		getSessionSpawns: () => spawns,
 	};
 }
 
-describe("task spawn policy surfaces", () => {
+describe("task explicit agent selection", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("uses the first allowed spawn as the schema default", () => {
-		const schema = getTaskSchema({ isolationEnabled: false, batchEnabled: false, defaultAgent: "fact-finder" });
-		const parsed = schema({ task: "check", solutionSpace: "c" });
-
-		expect(parsed).toEqual({ agent: "fact-finder", task: "check", solutionSpace: "c" });
-	});
-
-	it("filters the agent list to the restricted spawn policy in the description", async () => {
+	it("advertises every discovered agent without a spawn allowlist", async () => {
 		vi.spyOn(taskDiscovery, "discoverAgents").mockResolvedValue({
 			agents: [factFinderAgent, oracleAgent],
 			projectAgentsDir: null,
 		});
 
-		const tool = await TaskTool.create(makeSession("fact-finder"));
+		const tool = await TaskTool.create(makeSession());
 		const description = tool.description;
 
 		expect(description).toContain("- `fact-finder`: Find facts.");
-		expect(description).not.toContain("- `oracle`:");
-	});
-});
-
-describe("task tool without a default agent", () => {
-	afterEach(() => {
-		vi.restoreAllMocks();
+		expect(description).toContain("- `oracle`: Answer hard questions.");
 	});
 
-	it("requires an explicit agent in the unrestricted description", async () => {
+	it("requires an explicit agent in the description", async () => {
 		vi.spyOn(taskDiscovery, "discoverAgents").mockResolvedValue({
 			agents: [factFinderAgent],
 			projectAgentsDir: null,
 		});
 
-		const tool = await TaskTool.create(makeSession("*"));
+		const tool = await TaskTool.create(makeSession());
 
 		expect(tool.description).toContain("`agent` is required.");
 		expect(tool.description).not.toContain("Omit `agent` only for default");
@@ -84,7 +69,7 @@ describe("task tool without a default agent", () => {
 			projectAgentsDir: null,
 		});
 
-		const tool = await TaskTool.create(makeSession("*"));
+		const tool = await TaskTool.create(makeSession());
 		const result = await tool.execute("tc", {
 			context: "shared",
 			tasks: [{ name: "First", task: "check", solutionSpace: "c" }],

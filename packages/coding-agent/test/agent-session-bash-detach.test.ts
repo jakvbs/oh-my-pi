@@ -162,7 +162,6 @@ describe("BashTool through AgentSession runs children in their own session (e2e)
 			settings,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
-			getSessionSpawns: () => "*",
 		};
 		const bashTool = new BashTool(toolSession);
 

@@ -57,7 +57,6 @@ async function readText(url: string): Promise<string> {
 		cwd: tempDir.path(),
 		hasUI: false,
 		getSessionFile: () => rootSessionFile,
-		getSessionSpawns: () => "*",
 		getArtifactsDir: () => artifactsDir,
 		allocateOutputArtifact: async toolType => ({
 			id: "agent-read",

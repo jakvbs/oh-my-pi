@@ -235,7 +235,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		const spawningResult = await runSubprocess({
 			...baseOptions,
 			id: "spawning-child",
-			agent: { ...baseAgent, tools: ["read"], spawns: ["scout"] },
+			agent: { ...baseAgent, tools: ["read"] },
 		});
 		const restrictedResult = await runSubprocess({
 			...baseOptions,

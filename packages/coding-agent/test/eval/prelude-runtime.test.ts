@@ -51,7 +51,6 @@ function session(getPreludes: () => readonly EvalPreludeDefinition[]): ToolSessi
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
 		getEvalPreludes: getPreludes,
 	};

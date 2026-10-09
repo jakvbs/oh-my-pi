@@ -17,7 +17,6 @@ function session(cwd: string): ToolSession {
 		settings: Settings.isolated(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 	};
 }
 

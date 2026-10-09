@@ -110,7 +110,6 @@ function createTestSession(): ToolSession {
 		cwd: "/tmp/test",
 		hasUI: true,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 	};
 }

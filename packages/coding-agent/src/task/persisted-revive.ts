@@ -226,9 +226,6 @@ export function createPersistedSubagentReviverFactory(
 					// Inherit current owner policy, never extension authority from a transcript.
 					extensionRoots: () => ctx.session.effectiveExtensionRoots,
 					preloadedPreparedExtensions: ctx.session.preparedExtensions,
-					// Old files predate persisted spawns: deny re-spawning rather than let
-					// createAgentSession default to wildcard ("*").
-					spawns: init.spawns ?? "",
 					hasUI: false,
 					enableLsp: restrictToolNames ? false : ctx.enableLsp,
 					...(restrictToolNames

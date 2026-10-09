@@ -10,7 +10,6 @@ function createSession(): ToolSession {
 		cwd: os.tmpdir(),
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 	};
 }

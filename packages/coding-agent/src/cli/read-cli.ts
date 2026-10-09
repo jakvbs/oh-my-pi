@@ -62,7 +62,6 @@ export async function runReadCommand(cmd: ReadCommandArgs): Promise<void> {
 		hasUI: false,
 		settings,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 	};
 
 	let authStorage: AuthStorage | undefined;

@@ -402,7 +402,6 @@ Records the provider and a pseudonymous SHA-256 account/scope hash used to re-pi
   "outputSchema": { "type": "object" },
   "outputSchemaMode": "strict",
   "restrictToolNames": true,
-  "spawns": "*",
   "readSummarize": false
 }
 ```

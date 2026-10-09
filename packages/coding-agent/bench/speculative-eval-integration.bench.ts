@@ -50,7 +50,6 @@ async function episode(directory: string, speculative: boolean, index: number): 
 		cwd: directory,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getEvalSessionId: () => `speculative-eval-bench-${speculative}-${index}`,
 		getToolForEvalBridge: name => (name === "read" ? (read as AgentTool) : undefined),
 		getEvalBridgeToolNames: () => ["read"],

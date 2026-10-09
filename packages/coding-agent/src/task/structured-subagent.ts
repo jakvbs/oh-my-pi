@@ -46,8 +46,7 @@ import {
 } from "./isolation-runner";
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
-import { resolveSpawnPolicy } from "./spawn-policy";
-import { type AgentDefinition, canSpawnAtDepth } from "./types";
+import type { AgentDefinition } from "./types";
 import type {
 	AgentProgress,
 	SingleResult,
@@ -242,7 +241,6 @@ function createPlanModeAgent(agent: AgentDefinition): AgentDefinition {
 		...agent,
 		systemPrompt: `${planModeSubagentPrompt}\n\n${agent.systemPrompt}`,
 		tools,
-		spawns: undefined,
 		prewalk: undefined,
 	};
 }
@@ -266,7 +264,7 @@ function assertPlanControlsAllowed(request: StructuredSubagentRequest, planMode:
 
 function assertDepthAndSpawnAllowed(request: StructuredSubagentRequest, agentName: string): void {
 	const taskDepth = request.session.taskDepth ?? 0;
-	if (!canSpawnAtDepth(taskDepth)) {
+	if (taskDepth !== 0) {
 		throw new StructuredSubagentError("preflight", "Subagents cannot spawn agents; only the root session can.");
 	}
 	const blockedAgent = request.blockedAgent ?? $env.PI_BLOCKED_AGENT;
@@ -274,13 +272,6 @@ function assertDepthAndSpawnAllowed(request: StructuredSubagentRequest, agentNam
 		throw new StructuredSubagentError(
 			"preflight",
 			`Cannot spawn ${blockedAgent} agent from within itself (recursion prevention). Use a different agent type.`,
-		);
-	}
-	const spawnPolicy = resolveSpawnPolicy(request.session.getSessionSpawns());
-	if (!spawnPolicy.enabled || (spawnPolicy.allowedAgents !== null && !spawnPolicy.allowedAgents.includes(agentName))) {
-		throw new StructuredSubagentError(
-			"preflight",
-			`Cannot spawn '${agentName}'. Allowed: ${spawnPolicy.allowedErrorText}`,
 		);
 	}
 }
@@ -327,8 +318,7 @@ export async function resolveEffectiveSubagentPolicy(
 	request: StructuredSubagentRequest,
 ): Promise<EffectiveSubagentPolicy> {
 	await request.session.settings.reloadFromDisk();
-	const spawnPolicy = resolveSpawnPolicy(request.session.getSessionSpawns());
-	const agentName = request.agent?.trim() || spawnPolicy.defaultAgent || "";
+	const agentName = request.agent?.trim() || "";
 	const planMode = request.session.getPlanModeState?.()?.enabled === true;
 	assertPlanControlsAllowed(request, planMode);
 	assertDepthAndSpawnAllowed(request, agentName);

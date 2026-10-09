@@ -17,7 +17,6 @@ function makeSession(cwd: string, settings: Settings): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getActiveModelString: () => MODEL,
 		enableLsp: false,
 		settings,

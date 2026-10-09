@@ -13,7 +13,6 @@ function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): T
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "astGrep.enabled": true, "astEdit.enabled": true, "tools.xdev": false }),
 		...overrides,
 	};

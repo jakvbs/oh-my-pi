@@ -35,8 +35,6 @@ import {
 	truncateHeadBytes,
 } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { sessionDelegationBias } from "../task/prompt-policy";
-import { resolveSpawnPolicy } from "../task/spawn-policy";
-import { canSpawnAtDepth } from "../task/types";
 import { webpExclusionForModel } from "@oh-my-pi/pi-tui/chat/image-loading";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";
 import type { ToolSession } from ".";
@@ -199,11 +197,8 @@ function formatDisplayJson(value: unknown, canSpill: boolean): FormattedDisplayJ
 export interface EvalToolDescriptionOptions {
 	py?: boolean;
 	js?: boolean;
-	/**
-	 * Parent spawn policy (`getSessionSpawns`). `true`/omitted means unrestricted,
-	 * `false`/`""` hides `agent()`, and a comma list drives the advertised default.
-	 */
-	spawns?: boolean | string | null;
+	/** Advertise `agent()` and `workpool()` for root sessions only. */
+	spawns?: boolean;
 	/** Advertise auto-backgrounding of long-running cells in the tool prompt. */
 	autoBackgroundEnabled?: boolean;
 	/** Advertise `@tool` / `tool(fn)` and the `tools` spawn option (`eval.tools.enabled`). */
@@ -224,7 +219,6 @@ export interface EvalToolDescriptionOptions {
 }
 
 function evalTemplateContext(options: EvalToolDescriptionOptions) {
-	const spawnPolicy = resolveSpawnPolicy(options.spawns ?? true);
 	return {
 		py: options.py ?? true,
 		js: options.js ?? true,
@@ -232,9 +226,7 @@ function evalTemplateContext(options: EvalToolDescriptionOptions) {
 		eagerDelegation: options.eagerDelegation ?? true,
 		waitTool: options.waitTool ?? true,
 		autoBackgroundEnabled: options.autoBackgroundEnabled ?? false,
-		spawns: spawnPolicy.enabled,
-		spawnDefaultAgent: spawnPolicy.defaultAgent,
-		spawnAllowedAgentsText: spawnPolicy.allowedPromptText,
+		spawns: options.spawns ?? true,
 		autoProvision: options.autoProvision ?? true,
 	};
 }
@@ -386,11 +378,10 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 		const session = this.session;
 		if (!session) return {};
 		const backends = resolveEvalBackends(session);
-		const depthAllowsSpawning = canSpawnAtDepth(session.taskDepth ?? 0);
 		return {
 			py: backends.python,
 			js: backends.js,
-			spawns: depthAllowsSpawning ? (session.getSessionSpawns?.() ?? "*") : false,
+			spawns: (session.taskDepth ?? 0) === 0,
 			autoBackgroundEnabled: cfgEvalAutoBackgroundEnabled.get(session.settings),
 			evalTools: cfgEvalToolsEnabled.get(session.settings),
 			eagerDelegation: sessionDelegationBias(session) === "eager",

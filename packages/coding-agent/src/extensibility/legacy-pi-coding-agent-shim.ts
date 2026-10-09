@@ -231,7 +231,6 @@ function legacyToolSession(cwd: string, settingOverrides?: LegacySettingOverride
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => null,
 		settings: Settings.isolated(settingOverrides),
 	};
 }

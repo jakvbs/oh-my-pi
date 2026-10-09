@@ -20,7 +20,6 @@ function makeSession(cwd: string): ToolSession {
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "images.autoResize": false }),
 	} as ToolSession;
 }

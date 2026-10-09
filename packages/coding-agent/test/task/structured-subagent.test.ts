@@ -79,7 +79,6 @@ function session(
 					: {}),
 			}),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 		getSessionAgents: () => options.sessionAgents ?? [],
 		getPlanModeState: () => (options.planMode ? { enabled: true } : undefined),
 	} as unknown as ToolSession;
@@ -235,7 +234,6 @@ describe("structured subagent primitive", () => {
 			request({ session: session({ planMode: true }), enableLsp: true, enableIrc: true }),
 		);
 		expect(policy.effectiveAgent.tools).toEqual(["read", "grep", "glob", "web_search", "ast_grep"]);
-		expect(policy.effectiveAgent.spawns).toBeUndefined();
 		expect(policy.enableLsp).toBe(false);
 		expect(policy.enableIrc).toBe(false);
 

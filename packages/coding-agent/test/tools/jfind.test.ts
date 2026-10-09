@@ -363,7 +363,6 @@ describe("jfind cascade", () => {
 				cwd: dir,
 				hasUI: false,
 				getSessionFile: () => null,
-				getSessionSpawns: () => "*",
 				settings: Settings.isolated({ "find.enabled": "on" }),
 			});
 			await expect(tool.execute("x", { query: "anything", grep_keywords: [], path: "nope" })).rejects.toThrow(

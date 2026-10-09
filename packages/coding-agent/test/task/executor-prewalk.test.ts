@@ -339,7 +339,6 @@ describe("task tool plan-mode prewalk guard", () => {
 			hasUI: false,
 			settings: Settings.isolated({ "task.isolation.enabled": false }),
 			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
 			getPlanModeState: () => (planMode ? { enabled: true, planFilePath: "local://PLAN.md" } : undefined),
 		} as unknown as ToolSession;
 	}

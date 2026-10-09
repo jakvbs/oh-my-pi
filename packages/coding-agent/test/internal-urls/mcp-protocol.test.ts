@@ -32,7 +32,6 @@ function createToolSession(): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated(),
 		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
 	};
 }
 
