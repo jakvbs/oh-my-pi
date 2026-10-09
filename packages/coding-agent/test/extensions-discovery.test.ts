@@ -79,6 +79,18 @@ describe("extensions discovery", () => {
 		expect(path.basename(result.extensions[0].path)).toBe("foo.js");
 	});
 
+	it("skips co-located test and spec files in extensions/", async () => {
+		fs.writeFileSync(path.join(extensionsDir, "notify.ts"), extensionCode);
+		fs.writeFileSync(path.join(extensionsDir, "notify.test.ts"), 'import "./missing-module.ts";');
+		fs.writeFileSync(path.join(extensionsDir, "notify.spec.js"), 'import "./missing-module.ts";');
+
+		for (const ambient of [false, true]) {
+			const result = await discoverForTest([], ambient);
+			expect(result.errors).toHaveLength(0);
+			expect(result.extensions.map(e => path.basename(e.path))).toEqual(["notify.ts"]);
+		}
+	});
+
 	it("discovers subdirectory with index.js", async () => {
 		const subdir = path.join(extensionsDir, "my-extension");
 		fs.mkdirSync(subdir);
