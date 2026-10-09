@@ -617,8 +617,6 @@ export class SelectorController {
 				mcpManager: this.ctx.mcpManager,
 				eventBus: this.ctx.eventBus,
 				onMcpToolsChanged: tools => this.ctx.session.refreshMCPTools(tools),
-				browserMcpFilterEnabled: () =>
-					this.ctx.session.getEvalPreludes().some(definition => definition.name === "browser"),
 			}),
 			terminalHeight: this.ctx.ui.terminal.rows,
 			toolSource: {

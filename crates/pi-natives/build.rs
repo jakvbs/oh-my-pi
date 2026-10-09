@@ -10,13 +10,6 @@ fn main() {
 	build_syntax_set();
 	build_oauth_callback_helper();
 	if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-		build_darwin_native_helper(
-			"src/desktop/macos/capture/helper.m",
-			"omp-capture-helper",
-			"OMP_CAPTURE_DARWIN_HELPER",
-			&["AppKit", "ScreenCaptureKit", "CoreGraphics"],
-			"14.0",
-		);
 		build_applefm_bridge();
 	}
 }

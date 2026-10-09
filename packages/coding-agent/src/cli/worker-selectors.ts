@@ -7,8 +7,6 @@
  */
 /** Blob-broker selector shared by the CLI dispatcher and worker launcher. */
 export const BLOB_BROKER_WORKER_ARG = "__omp_worker_blob_broker";
-/** Computer-worker selector shared by the CLI dispatcher and worker launcher. */
-export const COMPUTER_WORKER_ARG = "__omp_worker_computer";
 /** Daemon-broker selector shared by the CLI dispatcher and worker launcher. */
 export const DAEMON_BROKER_WORKER_ARG = "__omp_worker_daemon_broker";
 /** IDA-host selector shared by the CLI dispatcher and the broker daemon spec. */

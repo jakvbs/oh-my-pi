@@ -561,7 +561,6 @@
     url = "https://registry.npmjs.org/@octokit/types/-/types-18.0.0.tgz";
     hash = "sha512-l6bAF43PNxkJp6g+W4PjoUSSkxHomXw2nOum5CTftJz1NlV3vu93NImgOYtLf6CbBUb5j+fiuzW0PPQ5JTSvZA==";
   };
-  "@oh-my-pi/browser-relay" = copyPathToStore ../packages/browser-relay;
   "@oh-my-pi/collab-web" = copyPathToStore ../packages/collab-web;
   "@oh-my-pi/omp-stats" = copyPathToStore ../packages/stats;
   "@oh-my-pi/omptype" = copyPathToStore ../packages/omptype;
@@ -1038,10 +1037,6 @@
   "arktype@2.2.3" = fetchurl {
     url = "https://registry.npmjs.org/arktype/-/arktype-2.2.3.tgz";
     hash = "sha512-7W+0RLTUNJiBFIIZXwOQxSR8Z273IAd6IvqBeG9+gHnQKFsIx2C0iOtGTmMrPnlX4qLXyc5+ll7A0BIj9WrbTg==";
-  };
-  "axe-core@4.13.0" = fetchurl {
-    url = "https://registry.npmjs.org/axe-core/-/axe-core-4.13.0.tgz";
-    hash = "sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==";
   };
   "balanced-match@4.0.4" = fetchurl {
     url = "https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz";

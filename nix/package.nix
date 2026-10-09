@@ -12,7 +12,6 @@
   libpulseaudio,
   makeBinaryWrapper,
   ninja,
-  pipewire,
   pkg-config,
   removeReferencesTo,
   rustPlatform,
@@ -29,10 +28,6 @@
   # btop). Note the closure cost — libcublas ~745 MB, libcurand ~136 MB,
   # cuda_cudart ~74 MB — so this stays opt-in and off by default.
   cudaSupport ? config.cudaSupport,
-  # Wayland screencast support links libpipewire, whose runtime closure adds
-  # ~750 MB (gstreamer, ffmpeg, systemd, ...). Official npm/Bazel addons ship
-  # without it, so default to the lean build; opt in via `.override`.
-  withWaylandScreencast ? false,
 }:
 let
   packageJson = lib.importJSON ../packages/coding-agent/package.json;
@@ -141,8 +136,7 @@ stdenv.mkDerivation {
 
   # libgcc_s is resolved from the compiler's lib output during autoPatchelf.
   buildInputs =
-    lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc.cc.lib ]
-    ++ lib.optionals withWaylandScreencast [ pipewire ];
+    lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc.cc.lib ];
 
   strictDeps = true;
   # Nix builders cannot reliably hardlink cache files into node_modules
@@ -170,7 +164,7 @@ stdenv.mkDerivation {
     runHook preBuild
 
     echo "Building pi-natives"
-    cargo build --release -p pi-natives ${lib.optionalString withWaylandScreencast "--features wayland-pipewire"}
+    cargo build --release -p pi-natives
     install -Dm755 "target/release/${platform.nativeLibrary}" \
       "packages/natives/native/${platform.addon}"
     # The loader and embed-native.ts require the release version, which is

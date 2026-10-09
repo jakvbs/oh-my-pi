@@ -328,7 +328,7 @@ export const cfgToolsApprovalMode = register({
 				value: "write",
 				label: "Write",
 				description:
-					"Auto-approve read-only and write tools; require confirmation for exec tools such as bash, eval, browser, and task.",
+					"Auto-approve read-only and write tools; require confirmation for exec tools such as bash, eval, and task.",
 			},
 			{
 				value: "yolo",
@@ -459,7 +459,7 @@ export const cfgGrepContextBefore = register({
 	default: 1,
 	ui: {
 		tab: "tools",
-		group: "Grep & Browser",
+		group: "Grep",
 		label: "Grep Context Before",
 		description: "Lines of context before each grep match",
 		options: [
@@ -478,7 +478,7 @@ export const cfgGrepContextAfter = register({
 	default: 3,
 	ui: {
 		tab: "tools",
-		group: "Grep & Browser",
+		group: "Grep",
 		label: "Grep Context After",
 		description: "Lines of context after each grep match",
 		options: [
@@ -590,18 +590,6 @@ export const cfgGenerateImageEnabled = register({
 	},
 });
 
-export const cfgComputerEnabled = register({
-	id: "computer.enabled",
-	type: "boolean",
-	default: false,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "Computer",
-		description: "Enable the scriptable host-desktop eval prelude (screenshots, input, accessibility)",
-	},
-});
-
 export const cfgRatchetEnabled = register({
 	id: "ratchet.enabled",
 	type: "boolean",
@@ -624,42 +612,6 @@ export const cfgArchiveEnabled = register({
 		label: "Archive",
 		description:
 			"Enable the read-only archive eval prelude: prompt history, recent projects, past sessions and recaps",
-	},
-});
-
-export const cfgComputerDisplay = register({
-	id: "computer.display",
-	type: "string",
-	default: "active",
-	ui: {
-		tab: "tools",
-		group: "Computer",
-		label: "Computer Display",
-		description: "Active window's display (active), all displays (all), or a native display id",
-	},
-});
-
-export const cfgComputerMaxWidth = register({
-	id: "computer.maxWidth",
-	type: "number",
-	default: 3840,
-	ui: {
-		tab: "tools",
-		group: "Computer",
-		label: "Computer Screenshot Width",
-		description: "Maximum screenshot width in pixels",
-	},
-});
-
-export const cfgComputerMaxHeight = register({
-	id: "computer.maxHeight",
-	type: "number",
-	default: 2400,
-	ui: {
-		tab: "tools",
-		group: "Computer",
-		label: "Computer Screenshot Height",
-		description: "Maximum screenshot height in pixels",
 	},
 });
 
@@ -695,7 +647,7 @@ export const cfgCheckpointEnabled = register({
 	},
 });
 
-// Fetching and browser
+// Fetching
 export const cfgFetchEnabled = register({
 	id: "fetch.enabled",
 	type: "boolean",

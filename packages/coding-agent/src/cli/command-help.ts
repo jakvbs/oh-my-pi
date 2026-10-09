@@ -23,10 +23,6 @@ export const benchHelp = {
 		"Benchmark models: TTFT/prefill vs decode throughput with p50/p95, across chat, prefill, generation, and prompt-cache workloads, or single-user vs parallel load (--detailed)",
 } satisfies CommandMetadata;
 
-export const browserRelayHelp = {
-	description: "Run the local CDP relay that lets the browser prelude drive your own Chrome tabs",
-} satisfies CommandMetadata;
-
 export const clipHelp = {
 	description: "Upload a /record recording to live.omp.sh as a public clip and print its URL",
 } satisfies CommandMetadata;

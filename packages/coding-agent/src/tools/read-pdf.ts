@@ -1,56 +1,18 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { untilAborted } from "@oh-my-pi/pi-utils";
+import type { Frame, Page } from "puppeteer-core";
+import type { BrowserHandle } from "../chromium/registry";
 import type { ToolSession } from "../sdk";
-import type { BrowserHandle } from "./browser/registry";
-import type { ScreenshotResult } from "./browser/tab-protocol";
 import { ToolAbortError } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 
 const PDF_IMAGE_MEMBER_RE = /^(.*\.pdf):(.*)$/i;
 const PDF_PAGE_MEMBER_RE = /^(?:p|page[-_]?)(\d+)(?:[-_].*)?\.png$/i;
 const PDF_RENDER_TIMEOUT_MS = 30_000;
-
-// Chromium's PDF plugin paints in an out-of-process frame after navigation has
-// completed. Wait for document dimensions, then cross compositor boundaries
-// before capturing; otherwise the screenshot can contain only the viewer shell.
-const PDF_SCREENSHOT_CODE = `
-let viewerFrame;
-await wait(async () => {
-	for (const frame of page.frames()) {
-		try {
-			const loaded = await frame.evaluate(() => {
-				const viewer = document.querySelector("pdf-viewer");
-				const toolbar = viewer?.shadowRoot?.querySelector("viewer-toolbar");
-				const pageLength = toolbar
-					?.shadowRoot?.querySelector("viewer-page-selector")
-					?.shadowRoot?.querySelector("#pagelength")
-					?.textContent;
-				if (Number(pageLength) > 0 && !toolbar?.hasAttribute("loading_")) return true;
-
-				const plugin = document.querySelector('embed[type="application/x-google-chrome-pdf"]');
-				const sizer = document.querySelector("#sizer");
-				return plugin !== null && sizer !== null && sizer.clientWidth > 0 && sizer.clientHeight > 0;
-			});
-			if (loaded) {
-				viewerFrame = frame;
-				return true;
-			}
-		} catch {}
-	}
-	return false;
-});
-await page.screenshot({ type: "png" });
-await viewerFrame.evaluate(() => {
-	const { promise, resolve } = Promise.withResolvers();
-	requestAnimationFrame(() =>
-		requestAnimationFrame(() =>
-			requestAnimationFrame(() => requestAnimationFrame(resolve)),
-		),
-	);
-	return promise;
-});
-return await tab.screenshot({ fullPage: true, silent: true });
-`;
+/** Bounds `page.close()`; a dead CDP session otherwise leaves it pending forever. */
+const PAGE_CLOSE_TIMEOUT_MS = 5_000;
 
 /** A legacy PDF image-member path interpreted as a page screenshot request. */
 export interface PdfImageReadTarget {
@@ -74,58 +36,77 @@ export function splitPdfImageReadPath(readPath: string): PdfImageReadTarget | nu
 	return { pdfPath, member, page };
 }
 
-/** Render one PDF page through the browser capability's shared headless Chromium. */
+/** A rendered PDF page saved as a PNG file. */
+export interface PdfPageScreenshot {
+	dest: string;
+	mimeType: "image/png";
+}
+
+/**
+ * Chromium's PDF plugin paints in an out-of-process frame after navigation has
+ * completed. Wait for document dimensions, then cross compositor boundaries
+ * before capturing; otherwise the screenshot can contain only the viewer shell.
+ */
+const PDF_VIEWER_READY_EXPRESSION = `(() => {
+	const viewer = document.querySelector("pdf-viewer");
+	const toolbar = viewer?.shadowRoot?.querySelector("viewer-toolbar");
+	const pageLength = toolbar?.shadowRoot
+		?.querySelector("viewer-page-selector")
+		?.shadowRoot?.querySelector("#pagelength")?.textContent;
+	if (Number(pageLength) > 0 && !toolbar?.hasAttribute("loading_")) return true;
+	const plugin = document.querySelector('embed[type="application/x-google-chrome-pdf"]');
+	const sizer = document.querySelector("#sizer");
+	return plugin !== null && sizer !== null && sizer.clientWidth > 0 && sizer.clientHeight > 0;
+})()`;
+
+const FOUR_ANIMATION_FRAMES_EXPRESSION = `new Promise(resolve =>
+	requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))),
+)`;
+
+async function waitForPdfViewer(page: Page, signal: AbortSignal): Promise<Frame> {
+	for (;;) {
+		signal.throwIfAborted();
+		for (const frame of page.frames()) {
+			const loaded = await frame.evaluate(PDF_VIEWER_READY_EXPRESSION).catch(() => false);
+			if (loaded) return frame;
+		}
+		await Bun.sleep(100);
+	}
+}
+
+/** Render one PDF page through the shared headless Chromium. */
 export async function renderPdfPageScreenshot(
 	session: ToolSession,
 	absolutePdfPath: string,
 	page: number,
 	signal?: AbortSignal,
-): Promise<ScreenshotResult> {
-	const [{ acquireBrowser, holdBrowser, releaseBrowser }, { acquireTab, releaseTab, runInTab }] = await Promise.all([
-		import("./browser/registry"),
-		import("./browser/tab-supervisor"),
-	]);
-	// Capture the render deadline start so `acquireTab` counts its
-	// worker-init time against this same budget (browser acquisition above
-	// already consumed part of it) instead of restarting the clock.
-	const deadlineStart = performance.now();
+): Promise<PdfPageScreenshot> {
+	const { acquireBrowser, holdBrowser, releaseBrowser } = await import("../chromium/registry");
 	const timeoutSignal = AbortSignal.timeout(PDF_RENDER_TIMEOUT_MS);
 	const renderSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-	const tabName = `read-pdf-${Bun.randomUUIDv7()}`;
 	const url = pathToFileURL(absolutePdfPath);
 	url.hash = `page=${page}&toolbar=0&navpanes=0&view=Fit`;
 
-	let browserLease = false;
 	let browser: BrowserHandle | undefined;
+	let tab: Page | undefined;
 	try {
-		const acquiredBrowser = await untilAborted(renderSignal, () =>
+		const acquired = await untilAborted(renderSignal, () =>
 			acquireBrowser({ kind: "headless", headless: true }, { cwd: session.cwd, signal: renderSignal }),
 		);
-		browser = acquiredBrowser;
-		holdBrowser(acquiredBrowser);
-		browserLease = true;
+		browser = acquired;
+		holdBrowser(acquired);
+		const activeTab = await untilAborted(renderSignal, () => acquired.browser.newPage());
+		tab = activeTab;
 		await untilAborted(renderSignal, () =>
-			acquireTab(tabName, acquiredBrowser, {
-				url: url.href,
-				waitUntil: "load",
-				timeoutMs: PDF_RENDER_TIMEOUT_MS,
-				deadlineStartMs: deadlineStart,
-				signal: renderSignal,
-				ownerSessionId: session.getSessionId?.() ?? undefined,
-			}),
+			activeTab.goto(url.href, { waitUntil: "load", timeout: PDF_RENDER_TIMEOUT_MS }),
 		);
-		await releaseBrowser(acquiredBrowser, { kill: false });
-		browserLease = false;
-
-		const result = await runInTab(tabName, {
-			code: PDF_SCREENSHOT_CODE,
-			timeoutMs: PDF_RENDER_TIMEOUT_MS,
-			signal: renderSignal,
-			session,
-		});
-		const screenshot = result.screenshots.at(-1);
-		if (!screenshot) throw new ToolError(`Chromium did not capture PDF page ${page}.`);
-		return screenshot;
+		const viewerFrame = await waitForPdfViewer(activeTab, renderSignal);
+		await untilAborted(renderSignal, () => activeTab.screenshot({ type: "png" }));
+		await untilAborted(renderSignal, () => viewerFrame.evaluate(FOUR_ANIMATION_FRAMES_EXPRESSION));
+		const png = await untilAborted(renderSignal, () => activeTab.screenshot({ type: "png", fullPage: true }));
+		const dest = path.join(os.tmpdir(), `omp-pdf-page-${Bun.randomUUIDv7()}.png`);
+		await Bun.write(dest, png);
+		return { dest, mimeType: "image/png" };
 	} catch (error) {
 		if (signal?.aborted) throw new ToolAbortError();
 		if (timeoutSignal.aborted) {
@@ -133,11 +114,9 @@ export async function renderPdfPageScreenshot(
 		}
 		throw error;
 	} finally {
-		try {
-			// A timed-out navigation keeps the published tab, so release it by name.
-			await releaseTab(tabName, { kill: false });
-		} finally {
-			if (browserLease && browser) await releaseBrowser(browser, { kill: false });
+		if (tab) {
+			await untilAborted(AbortSignal.timeout(PAGE_CLOSE_TIMEOUT_MS), () => tab!.close()).catch(() => undefined);
 		}
+		if (browser) await releaseBrowser(browser);
 	}
 }

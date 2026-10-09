@@ -248,21 +248,20 @@ describe("system prompt Handlebars templates", () => {
 			toolNames: ["read"],
 			xdevTools: [{ name: "fetch", summary: "fetches the first source" }],
 			xdevDocs: "device docs v1",
-			evalPreludes: [{ name: "computer", guidance: "COMPUTER-GUIDANCE" }],
+			evalPreludes: [{ name: "archive", guidance: "PRELUDE-GUIDANCE" }],
 		});
 		const second = await render(cwd, liveDataTemplate, {
 			toolNames: ["edit"],
 			xdevTools: [{ name: "search", summary: "searches the second source" }],
 			xdevDocs: "device docs v2",
-			evalPreludes: [{ name: "computer", guidance: "COMPUTER-GUIDANCE" }],
+			evalPreludes: [{ name: "archive", guidance: "PRELUDE-GUIDANCE" }],
 		});
 
 		expect(first.text).toContain("TOOLS=read,fetch");
 		expect(first.text).toContain("DEVICES=fetch=fetches the first source");
 		expect(first.text).toContain("DOCS=device docs v1");
-		expect(first.text).toContain("COMPUTER=enabled");
 		expect(first.text).toContain("<workstation>");
-		expect(first.text).toContain("COMPUTER-GUIDANCE");
+		expect(first.text).toContain("PRELUDE-GUIDANCE");
 		expect(first.xdevCatalogNames).toBeUndefined();
 
 		expect(second.text).toContain("TOOLS=edit,search");
@@ -270,7 +269,7 @@ describe("system prompt Handlebars templates", () => {
 		expect(second.text).toContain("DOCS=device docs v2");
 		expect(second.text).not.toContain("device docs v1");
 		expect(second.text).toContain("<workstation>");
-		expect(second.text).toContain("COMPUTER-GUIDANCE");
+		expect(second.text).toContain("PRELUDE-GUIDANCE");
 		expect(second.xdevCatalogNames).toBeUndefined();
 	});
 

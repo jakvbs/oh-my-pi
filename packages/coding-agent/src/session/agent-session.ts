@@ -221,15 +221,7 @@ import type { ImageAttachmentEntry, ToolSession } from "../tools";
 import { resolveApproval } from "../tools/approval";
 import { type AskToolDetails } from "@oh-my-pi/pi-tui/tools/ask";
 import { type AskToolInput, recoverAskQuestions } from "../tools/ask";
-import {
-	armIdleCloseForOwner,
-	cancelIdleCloseForOwner,
-	freezeTabsForOwner,
-	releaseIdleTabsForOwner,
-	releaseTabsForOwner,
-} from "../tools/browser/tab-supervisor";
 import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint";
-import { releaseComputerSessionsForOwner, revokeComputerControlForOwner } from "../tools/computer/supervisor";
 import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import {
 	buildResolveReminderMessage,
@@ -454,7 +446,6 @@ import { TodoTracker, type TodoTrackerHost } from "./todo-tracker";
 import { TtsrCoordinator, type TtsrCoordinatorHost } from "./ttsr-coordinator";
 
 import { cfgAdvisorEnabled, cfgAdvisorMaxNotesPerUpdate } from "../advisor/settings";
-import { cfgBrowserEnabled, cfgBrowserFreezeOnTurnEnd, cfgBrowserIdleCloseSec } from "../tools/browser/settings";
 import {
 	cfgClaudeResets,
 	cfgClaudeResetsAutoRedeem,
@@ -505,7 +496,6 @@ import {
 import { cfgTitleGenerator, cfgTitleIcons, cfgTitleRefreshOnReplan, type TitleIcons } from "../utils/title-settings";
 import {
 	cfgArchiveEnabled,
-	cfgComputerEnabled,
 	cfgRatchetEnabled,
 	cfgDevAutoqa,
 	cfgDevAutoqaConsent,
@@ -960,7 +950,6 @@ export class AgentSession implements SettingsScope {
 	// Extension system
 	#extensionRunner: ExtensionRunner | undefined = undefined;
 	#getEvalPreludes: (() => readonly EvalPreludeDefinition[]) | undefined;
-	#reconcileBrowserMcpFilter: AgentSessionConfig["reconcileBrowserMcpFilter"];
 	#skillDescriptions: SkillDescriptionCatalog;
 	#promptSkillsSource: readonly Skill[] | undefined;
 	#promptSkills: readonly Skill[] = [];
@@ -1765,7 +1754,6 @@ export class AgentSession implements SettingsScope {
 			cfgProvidersCacheWarming.listen(this, () => warmer.onModeChanged());
 		}
 		this.#getEvalPreludes = config.getEvalPreludes;
-		this.#reconcileBrowserMcpFilter = config.reconcileBrowserMcpFilter;
 		this.#customCommands = config.customCommands ?? [];
 		const recoveryHost: TurnRecoveryHost = {
 			agent: this.agent,
@@ -2417,21 +2405,8 @@ export class AgentSession implements SettingsScope {
 		cfgExtendedContext.listen(this, () => this.#reapplyContextWindowPolicy());
 		cfgCompactionModelThresholds.listen(this, () => this.#reapplyContextWindowPolicy());
 		cfgCompactionModelThresholdsEnabled.listen(this, () => this.#reapplyContextWindowPolicy());
-		cfgBrowserEnabled.listen(this, enabled => this.#reconcileEvalPreludeSetting("browser.enabled", enabled));
-		cfgComputerEnabled.listen(this, enabled => this.#reconcileEvalPreludeSetting("computer.enabled", enabled));
 		cfgRatchetEnabled.listen(this, enabled => this.#reconcileEvalPreludeSetting("ratchet.enabled", enabled));
 		cfgArchiveEnabled.listen(this, enabled => this.#reconcileEvalPreludeSetting("archive.enabled", enabled));
-		cfgBrowserIdleCloseSec.listen(this, seconds => {
-			const ownerId = this.sessionManager.getSessionId() ?? "";
-			// Any change invalidates the armed deadline: cancel first (its
-			// sequence bump stops an in-flight sweep re-arming the old
-			// value), then re-arm under the new one. A non-positive value
-			// arms nothing, which is the disable path.
-			cancelIdleCloseForOwner(ownerId);
-			if (seconds > 0) {
-				armIdleCloseForOwner(ownerId, seconds * 1000);
-			}
-		});
 		cfgCodeModeInputs.listen(this, () =>
 			this.#tools.reconcileCodeMode().catch(error => {
 				logger.warn("Code Mode reconcile after setting change failed", { error: String(error) });
@@ -2460,26 +2435,15 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/**
-	 * `browser.enabled` / `computer.enabled` / `ratchet.enabled` / `archive.enabled` change the live eval preludes; the browser toggle also
-	 * re-filters its MCP tools first. An empty transcript rebuilds the system prompt to advertise
-	 * them; mid-session the cached prompt stays byte-stable and the next user prompt carries a
-	 * hidden prelude notice instead (see {@link SessionTools.takeEvalPreludeNotice}).
-	 * A failed browser switch-on reverts to off.
+	 * `ratchet.enabled` / `archive.enabled` change the live eval preludes. An empty transcript
+	 * rebuilds the system prompt to advertise them; mid-session the cached prompt stays byte-stable
+	 * and the next user prompt carries a hidden prelude notice instead (see
+	 * {@link SessionTools.takeEvalPreludeNotice}).
 	 */
-	async #reconcileEvalPreludeSetting(
-		path: "browser.enabled" | "computer.enabled" | "ratchet.enabled" | "archive.enabled",
-		enabled: boolean,
-	): Promise<void> {
+	async #reconcileEvalPreludeSetting(path: "ratchet.enabled" | "archive.enabled"): Promise<void> {
 		try {
-			if (path === "browser.enabled" && this.#reconcileBrowserMcpFilter) {
-				const tools = await this.#reconcileBrowserMcpFilter(enabled);
-				await this.refreshMCPTools(tools);
-			}
 			if (this.agent.state.messages.length === 0) await this.refreshBaseSystemPrompt();
 		} catch (error) {
-			if (path === "browser.enabled" && enabled && cfgBrowserEnabled.get(this.settings)) {
-				cfgBrowserEnabled.override(this.settings, false);
-			}
 			logger.warn("Failed to reconcile eval prelude setting change", { path, error: String(error) });
 		}
 	}
@@ -3380,10 +3344,6 @@ export class AgentSession implements SettingsScope {
 	 * the recovery wait always sees the in-flight handler and blocks until it — and
 	 * everything it schedules — settles. */
 	#dispatchAgentEvent = async (event: AgentEvent): Promise<void> => {
-		// Revoke before the first await: delayed end-of-turn maintenance must
-		// never revoke a foreground-control grant acquired by a later prompt.
-		const computerControlRevocation =
-			event.type === "agent_end" ? revokeComputerControlForOwner(this.#eval.getKernelOwnerId()) : undefined;
 		if (event.type === "tool_execution_end" && this.#isTerminalYieldToolResult(event)) {
 			const alreadyTerminated = this.#synchronouslyTerminatedYieldToolCallIds.delete(event.toolCallId);
 			if (!alreadyTerminated) {
@@ -3403,10 +3363,7 @@ export class AgentSession implements SettingsScope {
 		this.#trackPostPromptTask(promise);
 		this.#inFlightAgentEndMaintenance.add(promise);
 		try {
-			// Maintenance starts now, not behind the revocation ack: it classifies this run's end
-			// against live abort state, and a deferred start lets `abort()` settle first, so a
-			// deliberate empty abort reads as a reasonless one and is auto-retried.
-			await Promise.all([this.#processAgentEvent(event), computerControlRevocation]);
+			await this.#processAgentEvent(event);
 		} catch (error) {
 			// Post-turn maintenance (compaction, pruning rewrites, hooks) threw before
 			// publishing the settle. Without it the run never reports idle and every
@@ -3972,14 +3929,6 @@ export class AgentSession implements SettingsScope {
 			} else {
 				this.#toolChoiceQueue.resolve();
 			}
-		}
-		// Settle owned headless browser tabs: close tabs idle past the
-		// timeout, then freeze the survivors so animated content stops
-		// burning CPU/GPU while idle (issue #8246). Detached — tool results
-		// for this turn are already paired, and teardown must never block
-		// the event flow.
-		if (event.type === "turn_end") {
-			void this.#settleOwnedBrowserTabs();
 		}
 		if (event.type === "tool_execution_end") {
 			if (event.toolName === "goal") {
@@ -5508,78 +5457,6 @@ export class AgentSession implements SettingsScope {
 		}
 	}
 
-	async #releaseOwnedBrowserTabs(ownerId: string | undefined): Promise<void> {
-		if (!ownerId) return;
-		try {
-			const released = await withTimeout(
-				releaseTabsForOwner(ownerId, { kill: true }),
-				3_000,
-				"Timed out releasing owned browser tabs during dispose",
-			);
-			if (released > 0) {
-				logger.debug("Released owned browser tabs during dispose", { ownerId, released });
-			}
-		} catch (error) {
-			logger.warn("Failed to release owned browser tabs during dispose", { error: String(error) });
-		}
-	}
-
-	/**
-	 * Turn-settle checkpoint for owned headless browser tabs (issue #8246).
-	 * Close tabs idle past `browser.idleCloseSec` as the memory backstop,
-	 * then freeze the survivors so idle animated pages stop burning CPU/GPU
-	 * while keeping their state for millisecond resume. Scoped to OMP-owned
-	 * headless tabs of this session only — relay/CDP/spawned tabs, other
-	 * sessions' tabs, and `persist` tabs are never touched. Best-effort:
-	 * never throws, so teardown cannot break the event flow.
-	 */
-	async #settleOwnedBrowserTabs(): Promise<void> {
-		const ownerId = this.sessionManager.getSessionId();
-		if (!ownerId) return;
-		try {
-			const idleSec = cfgBrowserIdleCloseSec.get(this.settings);
-			if (idleSec > 0) {
-				const closed = await withTimeout(
-					releaseIdleTabsForOwner(ownerId, { idleMs: idleSec * 1000 }),
-					3_000,
-					"Timed out closing idle browser tabs at turn settle",
-				);
-				if (closed > 0) {
-					logger.debug("Closed idle owned browser tabs at turn settle", { ownerId, closed });
-				}
-			} else {
-				// Idle close disabled at runtime: drop any deadline armed
-				// under a previous positive value so it cannot fire stale.
-				cancelIdleCloseForOwner(ownerId);
-			}
-			if (cfgBrowserFreezeOnTurnEnd.get(this.settings)) {
-				const frozen = await withTimeout(
-					freezeTabsForOwner(ownerId),
-					3_000,
-					"Timed out freezing owned browser tabs at turn settle",
-				);
-				if (frozen > 0) {
-					logger.debug("Froze owned browser tabs at turn settle", { ownerId, frozen });
-				}
-			}
-		} catch (error) {
-			logger.warn("Failed to settle owned browser tabs at turn end", { error: String(error) });
-		}
-	}
-
-	async #releaseOwnedComputerSessions(ownerId: string | undefined): Promise<void> {
-		if (!ownerId) return;
-		try {
-			await withTimeout(
-				releaseComputerSessionsForOwner(ownerId),
-				3_000,
-				"Timed out releasing native computer session during dispose",
-			);
-		} catch (error) {
-			logger.warn("Failed to release native computer session during dispose", { error: String(error) });
-		}
-	}
-
 	async #disconnectOwnedMcp(): Promise<void> {
 		if (!this.#disconnectOwnedMcpManager) return;
 		try {
@@ -5660,8 +5537,6 @@ export class AgentSession implements SettingsScope {
 		const results = await Promise.allSettled([
 			this.#disposeOwnedAsyncJobs(),
 			this.#eval.disposeKernels(),
-			this.#releaseOwnedBrowserTabs(this.sessionManager.getSessionId()),
-			this.#releaseOwnedComputerSessions(this.#eval.getKernelOwnerId()),
 			this.#disconnectOwnedMcp(),
 			advisorRecorderClosed,
 			hindsightState?.flushRetainQueue() ?? Promise.resolve(),
@@ -9571,10 +9446,9 @@ export class AgentSession implements SettingsScope {
 			}
 			this.abortBash();
 			this.abortEval();
-			const computerControlRevocation = revokeComputerControlForOwner(this.#eval.getKernelOwnerId());
 			const postPromptDrain = this.#cancelPostPromptTasks();
 			this.agent.abort(options?.reason);
-			await Promise.all([postPromptDrain, computerControlRevocation]);
+			await postPromptDrain;
 			await this.agent.waitForIdle();
 			// agent_end maintenance can enqueue a retry after the first cancellation.
 			// Keep the abort barrier up until those handlers settle, then cancel

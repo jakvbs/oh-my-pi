@@ -1,10 +1,8 @@
 import { clearSubmittedText } from "./helpers/draft";
 import { formatKeyHint } from "@oh-my-pi/pi-tui/app-keybindings";
-import { settings } from "../config/settings";
 import { parseExportArgs } from "../export/html/args";
 import { shareSession } from "../export/share";
 import { extractLastCodeBlock, extractLastCommand, extractLastLink } from "@oh-my-pi/pi-tui/overlays/copy-targets";
-import { restartBrowserForModeChange } from "../tools/browser";
 import { openPath } from "../utils/open";
 import { copyToClipboard } from "../utils/clipboard";
 import { refreshStatusLine } from "./builtin-modes";
@@ -12,7 +10,6 @@ import { commandConsumed, errorMessage, parseSubcommand, usage } from "./helpers
 import { formatDumpArchiveReport } from "../session/session-dump-format";
 import type { SlashCommandSpec } from "./types";
 
-import { cfgBrowserEnabled, cfgBrowserHeadless } from "../tools/browser/settings";
 import { cfgShareRedactSecrets, cfgShareServerUrl, cfgShareStore } from "../commands/settings";
 
 export const BUILTIN_COLLABORATION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
@@ -269,76 +266,6 @@ export const BUILTIN_COLLABORATION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpe
 		},
 		handleTui: async (_command, runtime) => {
 			await runtime.ctx.handleShareCommand();
-			clearSubmittedText(runtime);
-		},
-	},
-	{
-		name: "browser",
-		icon: "globe",
-		description: "Toggle browser eval-prelude headless vs visible mode",
-		acpInputHint: "[headless|visible]",
-		subcommands: [
-			{ name: "headless", description: "Switch to headless mode" },
-			{ name: "visible", description: "Switch to visible mode" },
-		],
-		allowArgs: true,
-		getTuiAutocompleteDescription: runtime => {
-			if (!cfgBrowserEnabled.get(runtime.ctx.settings)) return "Browser: disabled";
-			return cfgBrowserHeadless.get(runtime.ctx.settings) ? "Browser: headless" : "Browser: visible";
-		},
-		handle: async (command, runtime) => {
-			const arg = command.args.toLowerCase();
-			const enabled = cfgBrowserEnabled.get(runtime.settings);
-			if (!enabled) return usage("Browser capability is disabled (enable in settings).", runtime);
-			const current = cfgBrowserHeadless.get(runtime.settings);
-			let next = current;
-			if (!arg) next = !current;
-			else if (arg === "headless" || arg === "hidden") next = true;
-			else if (arg === "visible" || arg === "show" || arg === "headful") next = false;
-			else return usage("Usage: /browser [headless|visible]", runtime);
-			cfgBrowserHeadless.set(runtime.settings, next);
-			try {
-				await restartBrowserForModeChange();
-			} catch (err) {
-				// Setting was already mutated; surface the restart failure so the
-				// user knows the browser is in an inconsistent state.
-				await runtime.output(
-					`Browser mode set to ${next ? "headless" : "visible"}, but restart failed: ${errorMessage(err)}`,
-				);
-				return commandConsumed();
-			}
-			await runtime.output(`Browser mode: ${next ? "headless" : "visible"}`);
-			return commandConsumed();
-		},
-		handleTui: async (command, runtime) => {
-			const arg = command.args.toLowerCase();
-			const current = cfgBrowserHeadless.get(settings);
-			let next = current;
-			if (!cfgBrowserEnabled.get(settings)) {
-				runtime.ctx.showWarning("Browser capability is disabled (enable in settings)");
-				clearSubmittedText(runtime);
-				return;
-			}
-			if (!arg) {
-				next = !current;
-			} else if (arg === "headless" || arg === "hidden") {
-				next = true;
-			} else if (arg === "visible" || arg === "show" || arg === "headful") {
-				next = false;
-			} else {
-				runtime.ctx.showStatus("Usage: /browser [headless|visible]");
-				clearSubmittedText(runtime);
-				return;
-			}
-			cfgBrowserHeadless.set(settings, next);
-			try {
-				await restartBrowserForModeChange();
-			} catch (error) {
-				runtime.ctx.showWarning(`Failed to restart browser: ${errorMessage(error)}`);
-				clearSubmittedText(runtime);
-				return;
-			}
-			runtime.ctx.showStatus(`Browser mode: ${next ? "headless" : "visible"}`);
 			clearSubmittedText(runtime);
 		},
 	},
