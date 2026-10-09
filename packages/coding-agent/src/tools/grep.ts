@@ -43,6 +43,7 @@ import {
 	relativeSearchResultPath,
 	resolveReadPath,
 	resolveSearchResultPath,
+	resolveToCwd,
 	resolveToolSearchScope,
 	splitPathAndSelPreferringLiteral,
 } from "./path-utils";
@@ -62,6 +63,9 @@ const searchSchema = type({
 	"case?": "boolean",
 	"gitignore?": "boolean",
 	"skip?": type("number").or("null"),
+	"cwd?": type("string").describe(
+		"Base directory for relative paths and result paths, e.g. a worktree outside the session cwd; default: session cwd",
+	),
 });
 
 export type GrepToolInput = typeof searchSchema.infer;
@@ -465,6 +469,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 		_toolContext?: AgentToolContext,
 	): Promise<AgentToolResult<GrepToolDetails>> {
 		const { pattern, path: rawPath, case: caseSensitive, gitignore, skip } = params;
+		const cwd = params.cwd === undefined ? this.session.cwd : resolveToCwd(params.cwd, this.session.cwd);
 
 		return untilAborted(signal, async () => {
 			// Preserve the pattern verbatim — leading/trailing whitespace is
@@ -481,8 +486,8 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 			}
 			const scopedPaths = toPathList(rawPath);
 			const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
-			const rawEntries = await expandDelimitedPathEntries(effectivePaths, this.session.cwd);
-			const pathSpecs = await parsePathSpecs(rawEntries, this.session.cwd);
+			const rawEntries = await expandDelimitedPathEntries(effectivePaths, cwd);
+			const pathSpecs = await parsePathSpecs(rawEntries, cwd);
 			const resolveContext = sessionResolveContext(this.session, { signal });
 			// Internal URLs resolve inside the native search, bounded by the tier this call was approved at.
 			const urlFilesystem = new InternalUrlFilesystem({
@@ -508,7 +513,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				displaySet: archiveDisplaySet,
 				unreadable: archiveUnreadable,
 				cleanup: cleanupArchiveScratch,
-			} = await resolveArchiveSearchPaths(pathSpecs, this.session.cwd);
+			} = await resolveArchiveSearchPaths(pathSpecs, cwd);
 			try {
 				const rangesByAbsPath = new Map<string, LineRange[]>();
 
@@ -531,7 +536,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 
 				const scope = await resolveToolSearchScope({
 					rawPaths: resolvedPaths,
-					cwd: this.session.cwd,
+					cwd,
 					internalUrlAction: "search",
 					filesystem: urlFilesystem,
 					resolveExternalUrl: materializeExternalUrlForSearch,
@@ -558,9 +563,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					}
 					if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
 						// Non-archive entry; ensure the cleaned path resolves to a regular file.
-						const absKey = router.canHandle(resolved)
-							? resolved
-							: path.resolve(resolveReadPath(resolved, this.session.cwd));
+						const absKey = router.canHandle(resolved) ? resolved : path.resolve(resolveReadPath(resolved, cwd));
 						const stats = await urlFilesystem.stat(absKey).catch(() => null);
 						if (!stats) {
 							throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
@@ -753,9 +756,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				}
 
 				const formatPath = (filePath: string): string =>
-					archiveDisplaySet.has(filePath)
-						? filePath
-						: formatResultPath(filePath, isDirectory, searchPath, this.session.cwd);
+					archiveDisplaySet.has(filePath) ? filePath : formatResultPath(filePath, isDirectory, searchPath, cwd);
 
 				// Single-file scopes can't paginate — there is one file by definition.
 				const canPaginate = isMultiScope;
@@ -848,7 +849,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 							try {
 								const st = await urlFilesystem.stat(target);
 								if (st.type === "file" && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
-									oversized.push(formatPathRelativeToCwd(target, this.session.cwd));
+									oversized.push(formatPathRelativeToCwd(target, cwd));
 								}
 							} catch {
 								// Stat failures here are surfaced by other code paths.
@@ -883,7 +884,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					const details: GrepToolDetails = {
 						scopePath,
 						searchPath,
-						cwd: this.session.cwd,
+						cwd,
 						matchCount: 0,
 						fileCount: 0,
 						files: [],
@@ -916,7 +917,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					const candidates = fileList.filter(relativePath => !archiveDisplaySet.has(relativePath));
 					// Immutable schemes get no host file; mutable URLs (`local://`) bind to their backing file.
 					const snapshotPaths = await Promise.all(
-						candidates.map(relativePath => resultSnapshotPath(relativePath, this.session.cwd, resolveContext)),
+						candidates.map(relativePath => resultSnapshotPath(relativePath, cwd, resolveContext)),
 					);
 					const editable: Array<{ relativePath: string; snapshotPath: string }> = [];
 					for (let index = 0; index < candidates.length; index++) {
@@ -1021,7 +1022,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				const details: GrepToolDetails = {
 					scopePath,
 					searchPath,
-					cwd: this.session.cwd,
+					cwd,
 					matchCount: selectedMatches.length,
 					fileCount: fileList.length,
 					files: fileList,

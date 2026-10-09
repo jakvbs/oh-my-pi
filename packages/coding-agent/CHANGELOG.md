@@ -10,6 +10,7 @@
 
 ### Added
 
+- Added an optional `cwd` to `grep` and to `edit` in the `replace` and `patch` modes: relative paths (and patch renames) resolve against it, so a session can edit another worktree without falling back to shell edits. It only rebases relative paths; approvals and the plan-mode sandbox judge the resolved target. The `hashline`, `apply_patch` and `sloppy` payloads carry paths inside their text and are unchanged.
 - Added OSC 7501 program status reporting: terminals and agent inboxes that support it now show whether omp is working, waiting on your answer or approval (with the question), done, or failed (with the error), without parsing the window title. Turn it off with `terminal.programStatus`.
 - Added title cards (icon and short code) to `/rename`: the title model picks one for a title you type, or for a generated title when the session has no card yet; `title.icons: boring` keeps renamed titles plain.
 - Grammars for less common languages (Kotlin, Swift, Ruby, PHP, Haskell, Verilog, and others) are now downloaded on first use for code summaries, block context, `ast_grep`, `ast_edit`, and TTSR rules; offline, files in those languages are skipped with a note instead of failing. `PI_GRAMMARS_URL` overrides the download location.
