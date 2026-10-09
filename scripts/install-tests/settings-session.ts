@@ -51,8 +51,8 @@ try {
 	for (const name of ["a", "b"]) {
 		const agents = path.join(work, `extension-${name}`, "agents");
 		await Bun.write(
-			path.join(agents, `only-${name}.md`),
-			`---\nname: only-${name}\ndescription: Installed session fixture ${name}.\nmodel: fixture/fallback\nblocking: true\ntools: []\n---\nReturn the fixture result.\n`,
+			path.join(agents, `only-${name}.ts`),
+			`export default { name: "only-${name}", description: "Installed session fixture ${name}.", model: "fixture/fallback", tools: [], systemPrompt: "Return the fixture result." };\n`,
 		);
 	}
 	await Bun.write(
@@ -130,7 +130,7 @@ export default function (api) {
 									const rejected = await task.execute("reject-" + name, { agent: sibling, task: "Fixture check" });
 									const errorText = rejected.content.filter(part => part.type === "text").map(part => part.text).join("\n");
 									assert(errorText.includes('Unknown agent "' + sibling + '"'), errorText);
-									const available = errorText.split("Available: ")[1]?.split(", ") ?? [];
+									const available = errorText.split("Available: ")[1]?.split(". Searched: ")[0]?.split(", ") ?? [];
 									assert(available.includes("only-" + name), errorText);
 									assert(!available.includes(sibling), errorText);
 									const result = await task.execute("own-" + name, { agent: "only-" + name, task: "Fixture check" });
