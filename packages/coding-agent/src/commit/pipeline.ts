@@ -4,7 +4,6 @@ import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
 import { cfgCommitChangelogMaxDiffChars } from "./settings";
 import { discoverAuthStorage, loadCliExtensionProviders } from "../sdk";
-import { runAgenticCommit } from "./agentic";
 import { runChangelogFlow } from "./changelog";
 import { formatConventionalCommit } from "./conventional/normalization";
 import { type GeneratedGitCommit, generateGitCommit } from "./conventional/service";
@@ -12,14 +11,8 @@ import { abortOnGitFailure, pushOrAbort } from "./execute";
 import { resolvePrimaryModel } from "./model-selection";
 import type { CommitCommandArgs } from "./types";
 
-/** Execute the agentic commit flow or the exact deterministic legacy flow. */
-export async function runCommitCommand(args: CommitCommandArgs): Promise<{ usedFallback: boolean }> {
-	if (!args.legacy) return runAgenticCommit(args);
-	await runLegacyCommitCommand(args);
-	return { usedFallback: false };
-}
-
-async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
+/** Generate one conventional commit from the staged (or, when empty, all) changes. */
+export async function runCommitCommand(args: CommitCommandArgs): Promise<void> {
 	const cwd = getProjectDir();
 	let generated: GeneratedGitCommit;
 	try {
