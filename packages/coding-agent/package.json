@@ -103,22 +103,6 @@
 			"types": "./src/commit/*.ts",
 			"import": "./src/commit/*.ts"
 		},
-		"./commit/agentic": {
-			"types": "./src/commit/agentic/index.ts",
-			"import": "./src/commit/agentic/index.ts"
-		},
-		"./commit/agentic/*": {
-			"types": "./src/commit/agentic/*.ts",
-			"import": "./src/commit/agentic/*.ts"
-		},
-		"./commit/agentic/tools": {
-			"types": "./src/commit/agentic/tools/index.ts",
-			"import": "./src/commit/agentic/tools/index.ts"
-		},
-		"./commit/agentic/tools/*": {
-			"types": "./src/commit/agentic/tools/*.ts",
-			"import": "./src/commit/agentic/tools/*.ts"
-		},
 		"./commit/analysis": {
 			"types": "./src/commit/analysis/index.ts",
 			"import": "./src/commit/analysis/index.ts"
