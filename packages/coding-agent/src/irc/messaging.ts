@@ -1,17 +1,11 @@
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { IrcMessage } from "@oh-my-pi/pi-tui/tools/irc";
 import type { CoordinationDetails } from "@oh-my-pi/pi-tui/tools/wait";
-import type { Settings } from "../config/settings";
 import { IrcBus } from "./bus";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { ensurePersistedRoster } from "../registry/persisted-agents";
 function coordinationErrorResult(text: string, details: CoordinationDetails): AgentToolResult<CoordinationDetails> {
 	return { content: [{ type: "text", text }], details, isError: true };
-}
-
-/** With one subagent level every session is either the spawning root or a subagent, so messaging is always on. */
-export function isIrcEnabled(_settings: Settings, _taskDepth: number): boolean {
-	return true;
 }
 
 export function formatIncoming(msg: IrcMessage): string {

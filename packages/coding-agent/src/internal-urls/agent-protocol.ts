@@ -25,7 +25,7 @@ import { fuzzyFilter } from "@oh-my-pi/pi-tui/fuzzy";
 import { formatDuration, isEnoent, prompt } from "@oh-my-pi/pi-utils";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import { ensurePersistedRoster } from "../registry/persisted-agents";
-import { executeSend, isIrcEnabled } from "../irc/messaging";
+import { executeSend } from "../irc/messaging";
 import agentPromptDoc from "../prompts/internal-urls/agent.md" with { type: "text" };
 import agentProgressTemplate from "../prompts/tools/agent-url-progress.md" with { type: "text" };
 import agentSupersededTemplate from "../prompts/tools/agent-url-superseded.md" with { type: "text" };
@@ -174,12 +174,7 @@ export class AgentProtocolHandler implements ProtocolHandler {
 		if (!session) throw new Error("agent:// messaging requires a tool session");
 		const registry = session.agentRegistry;
 		const senderId = session.getAgentId?.();
-		if (
-			!registry ||
-			!senderId ||
-			session.enableIrc === false ||
-			!isIrcEnabled(session.settings, session.taskDepth ?? 0)
-		) {
+		if (!registry || !senderId || session.enableIrc === false) {
 			throw new Error("Peer messaging is unavailable in this session.");
 		}
 		const to = url.rawHost || url.hostname;
