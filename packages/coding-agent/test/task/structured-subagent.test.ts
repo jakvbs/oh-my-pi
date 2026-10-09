@@ -42,8 +42,9 @@ const AGENT: AgentDefinition = {
 	systemPrompt: "Do the assigned work.",
 	source: "bundled",
 	tools: ["read", "write", "ast_grep"],
-	output: { type: "object", properties: { agent: { type: "boolean" } } },
 };
+
+const OUTPUT_SCHEMA = { type: "object", properties: { agent: { type: "boolean" } } };
 
 function session(
 	options: {
@@ -174,7 +175,7 @@ describe("structured subagent primitive", () => {
 		}
 	});
 
-	it("uses caller, agent, then session schemas in precedence order", async () => {
+	it("uses caller, then session schemas in precedence order", async () => {
 		mockDiscovery();
 		const callerSchema = { type: "object", properties: { caller: { type: "string" } } };
 		const caller = await resolveEffectiveSubagentPolicy(
@@ -187,14 +188,6 @@ describe("structured subagent primitive", () => {
 			outputSchemaOverridesAgent: true,
 		});
 
-		const agent = await resolveEffectiveSubagentPolicy(
-			request({ session: session({ outputSchema: { session: true } }) }),
-		);
-		expect(agent.schema.source).toBe("agent");
-		expect(agent.schema.schema).toBe(AGENT.output);
-
-		const noAgentOutput = { ...AGENT, output: undefined };
-		mockDiscovery(noAgentOutput);
 		const inheritedSession = session({ outputSchema: { session: true } });
 		inheritedSession.outputSchemaMode = "strict";
 		const inherited = await resolveEffectiveSubagentPolicy(request({ session: inheritedSession }));
@@ -559,12 +552,12 @@ describe("structured subagent primitive", () => {
 			return result();
 		});
 
-		const settled = await runStructuredSubagent(request({ retainArtifacts: true }));
+		const settled = await runStructuredSubagent(request({ retainArtifacts: true, outputSchema: OUTPUT_SCHEMA }));
 		expect(settled.temporaryArtifacts).toBe(true);
 		expect(artifactsDir).toBe(settled.artifactsDir);
 		expect(artifactsDirsFromRegistry()).toContain(settled.artifactsDir);
 		expect(settled.result.structuredOutput).toMatchObject({
-			source: "agent",
+			source: "caller",
 			mode: "permissive",
 			data: { ok: true },
 		});
@@ -585,11 +578,11 @@ describe("structured subagent primitive", () => {
 				...result(),
 				exitCode: 1,
 				error: "runtime limit exceeded",
-				structuredOutput: { source: "agent", mode: "permissive", status: "valid", data: { ok: true } },
+				structuredOutput: { source: "caller", mode: "permissive", status: "valid", data: { ok: true } },
 			};
 		});
 
-		const settled = await runStructuredSubagent(request({ retainArtifacts: true }));
+		const settled = await runStructuredSubagent(request({ retainArtifacts: true, outputSchema: OUTPUT_SCHEMA }));
 		expect(settled.result.exitCode).toBe(1);
 		expect(settled.result.structuredOutput?.status).toBe("valid");
 		await expect(fs.stat(settled.artifactsDir)).resolves.toBeDefined();
@@ -619,8 +612,7 @@ describe("structured subagent primitive", () => {
 	});
 
 	it("does not return unavailable structured metadata without an effective schema", async () => {
-		const unstructuredAgent = { ...AGENT, output: undefined };
-		mockDiscovery(unstructuredAgent);
+		mockDiscovery();
 		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async () => {
 			const completed = result();
 			completed.structuredOutput = { source: "none", mode: "permissive", status: "unavailable" };
@@ -633,16 +625,8 @@ describe("structured subagent primitive", () => {
 		await fs.rm(settled.artifactsDir, { recursive: true, force: true });
 	});
 
-	it("keeps invalid inherited schemas permissive but rejects them when session strict mode is inherited", async () => {
-		const invalidAgent = { ...AGENT, output: false };
-		mockDiscovery(invalidAgent);
-		expect((await resolveEffectiveSubagentPolicy(request())).schema).toMatchObject({
-			source: "agent",
-			mode: "permissive",
-		});
-
-		const noAgentOutput = { ...AGENT, output: undefined };
-		mockDiscovery(noAgentOutput);
+	it("rejects an invalid inherited schema when session strict mode is inherited", async () => {
+		mockDiscovery();
 		const strictSession = session({ outputSchema: false });
 		strictSession.outputSchemaMode = "strict";
 		await expect(resolveEffectiveSubagentPolicy(request({ session: strictSession }))).rejects.toThrow(
@@ -872,10 +856,10 @@ describe("structured subagent primitive", () => {
 			error,
 		});
 
-		const settled = await runStructuredSubagent(request());
+		const settled = await runStructuredSubagent(request({ outputSchema: OUTPUT_SCHEMA }));
 
 		expect(settled.result.structuredOutput).toEqual({
-			source: "agent",
+			source: "caller",
 			mode: "permissive",
 			status: "unavailable",
 			error,
@@ -896,7 +880,9 @@ describe("structured subagent primitive", () => {
 			return { ...result(), exitCode: 1, error: "agent failed" };
 		});
 
-		const settled = await runStructuredSubagent(request({ retainArtifacts: true, detached: true }));
+		const settled = await runStructuredSubagent(
+			request({ retainArtifacts: true, detached: true, outputSchema: OUTPUT_SCHEMA }),
+		);
 
 		expect(settled.result.exitCode).toBe(1);
 		expect(settled.result.structuredOutput?.status).toBe("unavailable");

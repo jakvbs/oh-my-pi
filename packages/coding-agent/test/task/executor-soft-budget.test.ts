@@ -341,7 +341,7 @@ describe("runSubprocess soft request budget", () => {
 
 		const result = await runSubprocess({
 			...baseOptions(id, eventBus),
-			agent: { ...baseAgent, advisor: true },
+			settings: Settings.isolated({ "task.softRequestBudget": 2, "task.agentAdvisor": { scout: "on" } }),
 		});
 
 		expect(result.aborted).toBe(true);

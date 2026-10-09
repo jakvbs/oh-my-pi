@@ -1097,59 +1097,21 @@ describe("resolveModelRoleValue", () => {
 	});
 });
 describe("resolveAgentPrewalkPattern", () => {
-	test("agent definition alone decides: true → default target, pattern → custom, false/absent → off", () => {
-		expect(resolveAgentPrewalkPattern({ agentPrewalk: true })).toBe("@smol");
-		expect(resolveAgentPrewalkPattern({ agentPrewalk: "@very-smol" })).toBe("@very-smol");
-		expect(resolveAgentPrewalkPattern({ agentPrewalk: false })).toBeUndefined();
-		expect(resolveAgentPrewalkPattern({})).toBeUndefined();
-	});
-
-	test("settings override wins over the agent definition", () => {
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "off", agentPrewalk: true })).toBeUndefined();
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "off", agentPrewalk: "@very-smol" })).toBeUndefined();
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "on", agentPrewalk: false })).toBe("@smol");
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "openai/gpt-4o", agentPrewalk: false })).toBe(
-			"openai/gpt-4o",
-		);
-	});
-
-	test("override 'on' keeps the agent's custom target when one is defined", () => {
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "on", agentPrewalk: "@very-smol" })).toBe("@very-smol");
+	test("settings override decides: on → default target, pattern → custom, off/blank/absent → off", () => {
 		expect(resolveAgentPrewalkPattern({ settingsOverride: "on" })).toBe("@smol");
-	});
-
-	test("blank override falls through to the agent definition", () => {
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "  ", agentPrewalk: true })).toBe("@smol");
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "", agentPrewalk: false })).toBeUndefined();
+		expect(resolveAgentPrewalkPattern({ settingsOverride: "openai/gpt-4o" })).toBe("openai/gpt-4o");
+		expect(resolveAgentPrewalkPattern({ settingsOverride: "off" })).toBeUndefined();
+		expect(resolveAgentPrewalkPattern({ settingsOverride: "  " })).toBeUndefined();
+		expect(resolveAgentPrewalkPattern({})).toBeUndefined();
 	});
 });
 describe("resolveAgentAdvisorSelection", () => {
-	test("agent definition alone decides: true → advisor role, pattern → custom model, false/absent → off", () => {
-		expect(resolveAgentAdvisorSelection({ agentAdvisor: true })).toEqual({});
-		expect(resolveAgentAdvisorSelection({ agentAdvisor: "moonshot/k3" })).toEqual({ model: "moonshot/k3" });
-		expect(resolveAgentAdvisorSelection({ agentAdvisor: false })).toBeUndefined();
-		expect(resolveAgentAdvisorSelection({})).toBeUndefined();
-	});
-
-	test("settings override wins over the agent definition", () => {
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "off", agentAdvisor: true })).toBeUndefined();
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "off", agentAdvisor: "moonshot/k3" })).toBeUndefined();
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "on", agentAdvisor: false })).toEqual({});
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "openai/gpt-4o", agentAdvisor: false })).toEqual({
-			model: "openai/gpt-4o",
-		});
-	});
-
-	test("override 'on' keeps the agent's custom advisor model when one is defined", () => {
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "on", agentAdvisor: "moonshot/k3" })).toEqual({
-			model: "moonshot/k3",
-		});
+	test("settings override decides: on → advisor role, pattern → custom model, off/blank/absent → off", () => {
 		expect(resolveAgentAdvisorSelection({ settingsOverride: "on" })).toEqual({});
-	});
-
-	test("blank override falls through to the agent definition", () => {
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "  ", agentAdvisor: true })).toEqual({});
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "", agentAdvisor: false })).toBeUndefined();
+		expect(resolveAgentAdvisorSelection({ settingsOverride: "moonshot/k3" })).toEqual({ model: "moonshot/k3" });
+		expect(resolveAgentAdvisorSelection({ settingsOverride: "off" })).toBeUndefined();
+		expect(resolveAgentAdvisorSelection({ settingsOverride: "  " })).toBeUndefined();
+		expect(resolveAgentAdvisorSelection({})).toBeUndefined();
 	});
 });
 describe("resolveAgentAdvisorRolePattern", () => {

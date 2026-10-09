@@ -17,7 +17,6 @@ import {
 } from "../discovery";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { allowsSkillTokens, SKILL_TOKEN_RE } from "@oh-my-pi/pi-tui/prompt/skill-tokens";
-import autoloadTemplate from "../prompts/skills/autoload.md" with { type: "text" };
 import userInvocationTemplate from "../prompts/skills/user-invocation.md" with { type: "text" };
 import { SKILLSHARE_PROVIDER_ID } from "../discovery/skillshare";
 import type { SkillPromptDetails } from "../session/messages";
@@ -663,44 +662,28 @@ export function parseSkillInvocation(text: string): ParsedSkillInvocation | unde
 	return { name, args, prompt };
 }
 
-export type SkillInvocationKind = "user" | "autoload";
-
 /** What the user typed around a skill token: `args` feed the template, `prompt` only the transcript. */
 export type SkillPromptInput = Pick<ParsedSkillInvocation, "args"> & Partial<Pick<ParsedSkillInvocation, "prompt">>;
 
 export async function buildSkillPromptMessage(
 	skill: Pick<Skill, "name" | "filePath" | "baseDir">,
 	input: SkillPromptInput,
-	invocation: SkillInvocationKind = "user",
 ): Promise<BuiltSkillPromptMessage> {
 	const content = await Bun.file(skill.filePath).text();
 	// Only the body is used: keep HTML comments (`repair: false`) and leave YAML
 	// diagnostics to the loader, which already parsed this frontmatter.
 	const body = parseFrontmatter(content, { source: skill.filePath, repair: false, level: "off" }).body.trim();
 	const trimmedArgs = input.args.trim();
-	let message: string;
-	if (invocation === "user") {
-		// User-invoked skills announce themselves and expose their skill directory
-		// so the model resolves the skill's own relative paths (scripts/, templates/).
-		message = prompt
-			.render(userInvocationTemplate, {
-				name: skill.name,
-				body,
-				baseDir: skill.baseDir,
-				userArgs: trimmedArgs || undefined,
-			})
-			.trim();
-	} else {
-		// Autoload skills are hidden, non-user context — they MUST NOT claim the
-		// user invoked them; this keeps the minimal provenance-only format.
-		message = prompt
-			.render(autoloadTemplate, {
-				body,
-				filePath: skill.filePath,
-				userArgs: trimmedArgs || undefined,
-			})
-			.trim();
-	}
+	// User-invoked skills announce themselves and expose their skill directory
+	// so the model resolves the skill's own relative paths (scripts/, templates/).
+	const message = prompt
+		.render(userInvocationTemplate, {
+			name: skill.name,
+			body,
+			baseDir: skill.baseDir,
+			userArgs: trimmedArgs || undefined,
+		})
+		.trim();
 	return {
 		message,
 		details: {

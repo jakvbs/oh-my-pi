@@ -349,10 +349,7 @@ describe("task.batch spawning", () => {
 	});
 
 	it("spawns one background job per task item and forwards independent models and schemas with shared context", async () => {
-		mockDiscovery({
-			...taskAgent,
-			output: { type: "object", properties: { staleAgentOutput: { type: "boolean" } } },
-		});
+		mockDiscovery();
 		const seen: Array<{
 			id?: string;
 			context?: string;
@@ -435,8 +432,6 @@ describe("task.batch spawning", () => {
 	});
 
 	it("routes each mixed-agent item through its selected definition while preserving caller overrides", async () => {
-		const scoutSchema = { type: "object", properties: { findings: { type: "array" } } };
-		const reviewerSchema = { type: "object", properties: { verdict: { type: "string" } } };
 		const callerSchema = { type: "object", properties: { approved: { type: "boolean" } } };
 		const scoutAgent: AgentDefinition = {
 			...taskAgent,
@@ -445,7 +440,6 @@ describe("task.batch spawning", () => {
 			systemPrompt: "Investigate the assigned target.",
 			tools: ["read"],
 			model: ["anthropic/claude-haiku-4-5:low"],
-			output: scoutSchema,
 		};
 		const reviewerAgent: AgentDefinition = {
 			...taskAgent,
@@ -454,7 +448,6 @@ describe("task.batch spawning", () => {
 			systemPrompt: "Review the assigned target.",
 			tools: ["read", "bash"],
 			model: ["anthropic/claude-sonnet-4-6:medium"],
-			output: reviewerSchema,
 		};
 		mockDiscovery([scoutAgent, reviewerAgent]);
 
@@ -504,9 +497,7 @@ describe("task.batch spawning", () => {
 		expect(scoutSpawn?.agent).toBe(scoutAgent);
 		expect(scoutSpawn?.agent.tools).toEqual(["read"]);
 		expect(scoutSpawn?.modelOverride).toEqual(["anthropic/claude-haiku-4-5:low"]);
-		expect(scoutSpawn?.outputSchema).toBe(scoutSchema);
-		expect(scoutSpawn?.outputSchemaSource).toBe("agent");
-		expect(scoutSpawn?.outputSchemaOverridesAgent).toBe(false);
+		expect(scoutSpawn?.outputSchema).toBeUndefined();
 		expect(reviewerSpawn?.agent).toBe(reviewerAgent);
 		expect(reviewerSpawn?.agent.tools).toEqual(["read", "bash"]);
 		expect(reviewerSpawn?.modelOverride).toEqual(["anthropic/claude-sonnet-4-6:medium"]);
@@ -546,7 +537,6 @@ describe("task.batch spawning", () => {
 		mockDiscovery({
 			...taskAgent,
 			model: ["anthropic/claude-sonnet-4"],
-			output: { type: "object", properties: { agent: { type: "string" } } },
 		});
 		let captured:
 			| {

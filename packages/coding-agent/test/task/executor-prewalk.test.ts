@@ -1,28 +1,20 @@
 /**
- * Per-agent prewalk resolution in `runSubprocess`: the agent definition's
- * `prewalk` frontmatter and the `task.agentPrewalk` settings override decide
- * whether the spawned session gets a `prewalk` hand-off config, which target
- * model it resolves to, and when the hand-off is skipped (override off,
- * target identical to the starting model).
+ * Per-agent prewalk resolution in `runSubprocess`: the `task.agentPrewalk`
+ * setting decides whether the spawned session gets a `prewalk` hand-off config,
+ * which target model it resolves to, and when the hand-off is skipped (target
+ * identical to the starting model).
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { LoadExtensionsResult } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
-import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import type { CreateAgentSessionResult } from "@oh-my-pi/pi-coding-agent/sdk";
 import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession, AgentSessionEvent, PromptOptions } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { TaskTool } from "@oh-my-pi/pi-coding-agent/task";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
 import { runSubprocess } from "@oh-my-pi/pi-coding-agent/task/executor";
 import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
-import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import { createSessionDefaults } from "../helpers/session-defaults";
 
@@ -138,17 +130,19 @@ describe("runSubprocess per-agent prewalk", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("resolves a frontmatter prewalk pattern to a target for the spawned session", async () => {
+	it("resolves a configured prewalk pattern to a target for the spawned session", async () => {
 		const spy = vi
 			.spyOn(sdkModule, "createAgentSession")
 			.mockResolvedValue(createSessionResult(yieldEmittingSession()));
 
 		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-frontmatter", Settings.isolated()),
+			...baseOptions(
+				"subagent-prewalk-frontmatter",
+				Settings.isolated({ "task.agentPrewalk": { task: `${target.provider}/${target.id}` } }),
+			),
 			agent: {
 				...baseAgent,
 				model: [`${primary.provider}/${primary.id}`],
-				prewalk: `${target.provider}/${target.id}`,
 			},
 		});
 
@@ -171,12 +165,14 @@ describe("runSubprocess per-agent prewalk", () => {
 			.mockResolvedValue(createSessionResult(yieldEmittingSession()));
 
 		const run = runSubprocess({
-			...baseOptions("subagent-prewalk-discovery", Settings.isolated()),
+			...baseOptions(
+				"subagent-prewalk-discovery",
+				Settings.isolated({ "task.agentPrewalk": { task: `${target.provider}/${target.id}` } }),
+			),
 			modelRegistry: registry,
 			agent: {
 				...baseAgent,
 				model: [`${primary.provider}/${primary.id}`],
-				prewalk: `${target.provider}/${target.id}`,
 			},
 		});
 		expect(spy).not.toHaveBeenCalled();
@@ -193,11 +189,13 @@ describe("runSubprocess per-agent prewalk", () => {
 		);
 
 		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-progress-model", Settings.isolated()),
+			...baseOptions(
+				"subagent-prewalk-progress-model",
+				Settings.isolated({ "task.agentPrewalk": { task: `${target.provider}/${target.id}` } }),
+			),
 			agent: {
 				...baseAgent,
 				model: [`${primary.provider}/${primary.id}`],
-				prewalk: `${target.provider}/${target.id}`,
 			},
 			onProgress: progress => {
 				if (progress.resolvedModel) progressModels.push(progress.resolvedModel);
@@ -208,44 +206,7 @@ describe("runSubprocess per-agent prewalk", () => {
 		expect(progressModels.at(-1)).toBe(`${target.provider}/${target.id}`);
 	});
 
-	it("resolves prewalk: true through the smol role default target", async () => {
-		const settings = Settings.isolated();
-		settings.setModelRole("smol", `${target.provider}/${target.id}`);
-		const spy = vi
-			.spyOn(sdkModule, "createAgentSession")
-			.mockResolvedValue(createSessionResult(yieldEmittingSession()));
-
-		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-default-target", settings),
-			agent: { ...baseAgent, model: [`${primary.provider}/${primary.id}`], prewalk: true },
-		});
-
-		expect(result.exitCode).toBe(0);
-		const forwarded = spy.mock.calls[0]?.[0];
-		expect(forwarded?.prewalk?.target.id).toBe(target.id);
-	});
-
-	it("task.agentPrewalk 'off' disables a frontmatter-enabled prewalk", async () => {
-		const settings = Settings.isolated();
-		cfgTaskAgentPrewalk.set(settings, { task: "off" });
-		const spy = vi
-			.spyOn(sdkModule, "createAgentSession")
-			.mockResolvedValue(createSessionResult(yieldEmittingSession()));
-
-		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-off", settings),
-			agent: {
-				...baseAgent,
-				model: [`${primary.provider}/${primary.id}`],
-				prewalk: `${target.provider}/${target.id}`,
-			},
-		});
-
-		expect(result.exitCode).toBe(0);
-		expect(spy.mock.calls[0]?.[0]?.prewalk).toBeUndefined();
-	});
-
-	it("task.agentPrewalk 'on' enables prewalk for an agent without frontmatter", async () => {
+	it("resolves prewalk 'on' through the smol role default target", async () => {
 		const settings = Settings.isolated();
 		settings.setModelRole("smol", `${target.provider}/${target.id}`);
 		cfgTaskAgentPrewalk.set(settings, { task: "on" });
@@ -254,12 +215,13 @@ describe("runSubprocess per-agent prewalk", () => {
 			.mockResolvedValue(createSessionResult(yieldEmittingSession()));
 
 		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-on", settings),
+			...baseOptions("subagent-prewalk-default-target", settings),
 			agent: { ...baseAgent, model: [`${primary.provider}/${primary.id}`] },
 		});
 
 		expect(result.exitCode).toBe(0);
-		expect(spy.mock.calls[0]?.[0]?.prewalk?.target.id).toBe(target.id);
+		const forwarded = spy.mock.calls[0]?.[0];
+		expect(forwarded?.prewalk?.target.id).toBe(target.id);
 	});
 
 	it("skips prewalk when the target resolves to the starting model", async () => {
@@ -268,11 +230,13 @@ describe("runSubprocess per-agent prewalk", () => {
 			.mockResolvedValue(createSessionResult(yieldEmittingSession()));
 
 		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-same-model", Settings.isolated()),
+			...baseOptions(
+				"subagent-prewalk-same-model",
+				Settings.isolated({ "task.agentPrewalk": { task: `${primary.provider}/${primary.id}` } }),
+			),
 			agent: {
 				...baseAgent,
 				model: [`${primary.provider}/${primary.id}`],
-				prewalk: `${primary.provider}/${primary.id}`,
 			},
 		});
 
@@ -284,11 +248,13 @@ describe("runSubprocess per-agent prewalk", () => {
 		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		const result = await runSubprocess({
-			...baseOptions("subagent-prewalk-todo-kept", Settings.isolated()),
+			...baseOptions(
+				"subagent-prewalk-todo-kept",
+				Settings.isolated({ "task.agentPrewalk": { task: `${target.provider}/${target.id}` } }),
+			),
 			agent: {
 				...baseAgent,
 				model: [`${primary.provider}/${primary.id}`],
-				prewalk: `${target.provider}/${target.id}`,
 			},
 		});
 
@@ -308,76 +274,5 @@ describe("runSubprocess per-agent prewalk", () => {
 		expect(result.exitCode).toBe(0);
 		expect(session.getActiveToolNames()).not.toContain("todo");
 		expect(session.getActiveToolNames()).toContain("read");
-	});
-});
-// Plan-mode spawns are read-only exploration: the task tool must strip a
-// prewalk-enabled agent definition before spawning so the hidden
-// plan/implement nudges never reach an agent without edit tools.
-describe("task tool plan-mode prewalk guard", () => {
-	const prewalkAgent: AgentDefinition = {
-		name: "task",
-		description: "General-purpose task agent",
-		systemPrompt: "You are a task agent.",
-		source: "bundled",
-		prewalk: true,
-	};
-
-	beforeEach(() => {
-		AgentRegistry.resetGlobalForTests();
-		AgentLifecycleManager.resetGlobalForTests();
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-		AgentLifecycleManager.resetGlobalForTests();
-		AgentRegistry.resetGlobalForTests();
-	});
-
-	function toolSession(planMode: boolean): ToolSession {
-		return {
-			cwd: "/tmp",
-			hasUI: false,
-			settings: Settings.isolated({ "task.isolation.enabled": false }),
-			getSessionFile: () => null,
-			getPlanModeState: () => (planMode ? { enabled: true, planFilePath: "local://PLAN.md" } : undefined),
-		} as unknown as ToolSession;
-	}
-
-	async function spawnedAgentPrewalk(planMode: boolean): Promise<boolean | string | undefined> {
-		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
-			agents: [prewalkAgent],
-			projectAgentsDir: null,
-		});
-		let forwarded: AgentDefinition | undefined;
-		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async (options): Promise<SingleResult> => {
-			forwarded = options.agent;
-			return {
-				index: options.index ?? 0,
-				id: options.id ?? "X",
-				agent: "task",
-				agentSource: "bundled",
-				task: "t",
-				assignment: "do the thing",
-				exitCode: 0,
-				output: "done",
-				stderr: "",
-				truncated: false,
-				durationMs: 1,
-				tokens: 0,
-				requests: 1,
-			};
-		});
-		const tool = await TaskTool.create(toolSession(planMode));
-		await tool.execute("tc", { agent: prewalkAgent.name, task: "explore the thing" });
-		expect(forwarded).toBeDefined();
-		return forwarded?.prewalk;
-	}
-
-	it("strips prewalk from the agent definition while plan mode is active", async () => {
-		expect(await spawnedAgentPrewalk(true)).toBeUndefined();
-	});
-
-	it("keeps the agent definition's prewalk outside plan mode", async () => {
-		expect(await spawnedAgentPrewalk(false)).toBe(true);
 	});
 });
