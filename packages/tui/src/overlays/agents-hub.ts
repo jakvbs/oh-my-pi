@@ -63,8 +63,6 @@ export interface HubAgent {
 	source: AgentSource;
 	filePath?: string;
 	model?: string[];
-	prewalk?: boolean | string;
-	advisor?: boolean | string;
 	disabled: boolean;
 	/** `task.agentModelOverrides[name]` as a comma-joined pattern list. */
 	overrideModel?: string;

@@ -16,7 +16,7 @@ import {
 	validateAgentCompactionThresholdOverrides,
 } from "../config/compaction-threshold";
 import { type ServiceTierInheritSettingValue, validateAgentServiceTierOverrides } from "../config/service-tier";
-import { isProviderEnabled, isUserSourceEnabled } from "../capability";
+import { isProviderEnabled } from "../capability";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { sessionLocalProtocolOptions } from "../internal-urls/context";
@@ -273,7 +273,7 @@ function assertSpawnAllowed(request: StructuredSubagentRequest, agentName: strin
 
 /**
  * In-flight agent discovery, keyed by resolved cwd, the effective extension
- * roots and the provider/source toggles `discoverAgents` consults. Concurrent
+ * roots and the `omp-plugins` toggle `discoverAgents` consults. Concurrent
  * preflights (task batch items, eval `agent()` fan-out) share one disk scan;
  * the entry is dropped when the scan settles, so any later call rescans and
  * policy resolution stays as fresh as before. A toggle flipped mid-scan changes
@@ -285,13 +285,7 @@ const inflightDiscovery = new Map<string, { fn: typeof discoverAgents; promise: 
 
 function discoverAgentsShared(cwd: string, extensionRoots?: EffectiveExtensionRoots): Promise<DiscoveryResult> {
 	const fn = discoverAgents;
-	const policy = [
-		isProviderEnabled("omp-plugins"),
-		isProviderEnabled("claude-plugins"),
-		isUserSourceEnabled("claude-plugins"),
-		isUserSourceEnabled("claude"),
-	].join(",");
-	const key = `${path.resolve(cwd)}\0${policy}\0${JSON.stringify(extensionRoots ?? null)}`;
+	const key = `${path.resolve(cwd)}\0${isProviderEnabled("omp-plugins")}\0${JSON.stringify(extensionRoots ?? null)}`;
 	const existing = inflightDiscovery.get(key);
 	if (existing && existing.fn === fn) return existing.promise;
 	const promise = fn(cwd, undefined, extensionRoots);
