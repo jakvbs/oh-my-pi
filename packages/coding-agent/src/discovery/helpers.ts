@@ -823,6 +823,11 @@ async function readExtensionModuleManifest(
 	return null;
 }
 
+/** Co-located `*.test.*` / `*.spec.*` files are test suites, never extension entry points. */
+export function isTestModuleName(name: string): boolean {
+	return /\.(test|spec)\.[cm]?[jt]s$/.test(name);
+}
+
 /**
  * Discover extension module entry points in a directory.
  *
@@ -871,7 +876,7 @@ export async function discoverExtensionModulePaths(_ctx: LoadContext, dir: strin
 
 	// Process direct files
 	for (const match of directFiles) {
-		if (match.path.includes("/")) continue;
+		if (match.path.includes("/") || isTestModuleName(match.path)) continue;
 		discovered.add(path.join(dir, match.path));
 	}
 	// Track which subdirectories have package.json manifests with declared extensions

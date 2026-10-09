@@ -22,7 +22,7 @@ import { type ExtensionModule, extensionModuleCapability } from "../../capabilit
 import { type Hook, hookCapability } from "../../capability/hook";
 import { isServiceTierFamily, isServiceTierForFamily } from "../../config/service-tier";
 import { loadCapability } from "../../discovery";
-import { getExtensionNameFromPath } from "../../discovery/helpers";
+import { getExtensionNameFromPath, isTestModuleName } from "../../discovery/helpers";
 import type { ExecOptions } from "../../exec/exec";
 import { execCommand } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
@@ -517,7 +517,7 @@ export async function bindPreparedExtensions(
 }
 
 function isExtensionFile(name: string): boolean {
-	return name.endsWith(".ts") || name.endsWith(".js");
+	return (name.endsWith(".ts") || name.endsWith(".js")) && !isTestModuleName(name);
 }
 
 const CONFIGURED_EXTENSION_DIRECTORY_OPTIONS = {
