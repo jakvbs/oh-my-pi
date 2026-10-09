@@ -1,5 +1,4 @@
 import { clearSubmittedText, restoreDetachedDraft } from "./helpers/draft";
-import * as path from "node:path";
 import { formatKeyHint } from "@oh-my-pi/pi-tui/app-keybindings";
 import {
 	formatModelString,
@@ -32,7 +31,6 @@ import { cfgSkillful } from "../session/settings";
 import { formatSlowModeResetClock } from "../session/anthropic-slow-mode";
 import { cfgExtendedContext } from "../session/context-settings";
 import { cfgGoalEnabled } from "../goals/settings";
-import { cfgPlanEnabled } from "../plan-mode/settings";
 
 export function refreshStatusLine(ctx: InteractiveModeContext): void {
 	ctx.statusLine.invalidate();
@@ -237,38 +235,6 @@ export const BUILTIN_MODE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
-		name: "plan",
-		icon: "plan",
-		description: "Toggle plan mode (agent plans before executing)",
-		inlineHint: "[prompt]",
-		allowArgs: true,
-		getTuiAutocompleteDescription: runtime => {
-			if (!cfgPlanEnabled.get(runtime.ctx.settings)) return "Plan: disabled in settings";
-			if (runtime.ctx.planModeEnabled) {
-				const planFile = runtime.ctx.planModePlanFilePath;
-				return `Plan: on${planFile ? ` (${path.basename(planFile)})` : ""}`;
-			}
-			if (runtime.ctx.goalModeEnabled) return "Plan: blocked by goal mode";
-			return "Plan: off";
-		},
-		handleTui: async (command, runtime) => {
-			await runWithDetachedModeDraft(command, runtime, () =>
-				runtime.ctx.handlePlanModeCommand(command.args || undefined, runtime.input),
-			);
-		},
-	},
-	{
-		name: "plan-review",
-		icon: "plan",
-		description: "Re-open the plan review for the latest plan (plan mode only)",
-		getTuiAutocompleteDescription: runtime =>
-			runtime.ctx.planModeEnabled ? "Plan review: available" : "Plan review: plan mode inactive",
-		handleTui: async (_command, runtime) => {
-			await runtime.ctx.openPlanReview();
-			clearSubmittedText(runtime);
-		},
-	},
-	{
 		name: "goal",
 		icon: "goal",
 		description: "Toggle goal mode (persistent autonomous objective for this session)",
@@ -284,7 +250,6 @@ export const BUILTIN_MODE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		allowArgs: true,
 		getTuiAutocompleteDescription: runtime => {
 			if (!cfgGoalEnabled.get(runtime.ctx.settings)) return "Goal: disabled in settings";
-			if (runtime.ctx.planModeEnabled) return "Goal: blocked by plan mode";
 			const state = runtime.ctx.session.getGoalModeState();
 			return state ? `Goal: ${state.goal.status} (${shortDetail(state.goal.objective)})` : "Goal: off";
 		},

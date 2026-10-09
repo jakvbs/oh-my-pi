@@ -16,7 +16,6 @@ import * as toolsSettings from "../tools/settings";
 import * as lspSettings from "../lsp/settings";
 import * as execSettings from "../exec/settings";
 import * as taskSettings from "../task/settings";
-import * as planModeSettings from "../plan-mode/settings";
 import * as goalsSettings from "../goals/settings";
 import * as titleSettings from "../utils/title-settings";
 import * as extensibilitySettings from "../extensibility/settings";
@@ -45,7 +44,6 @@ const DOMAINS: readonly Readonly<Record<string, unknown>>[] = [
 	lspSettings,
 	execSettings,
 	taskSettings,
-	planModeSettings,
 	goalsSettings,
 	titleSettings,
 	extensibilitySettings,

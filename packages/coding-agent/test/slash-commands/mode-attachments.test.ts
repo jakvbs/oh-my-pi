@@ -9,7 +9,6 @@ function createHarness(
 	inputResult: { images?: ImageContent[]; text?: string } | Promise<{ images?: ImageContent[]; text?: string }>,
 ) {
 	const oldImage: ImageContent = { type: "image", data: "b2xk", mimeType: "image/png" };
-	const handlePlanModeCommand = vi.fn(async (_prompt?: string, _input?: Attachments) => true);
 	const handleGoalModeCommand = vi.fn(async (_prompt?: string, _input?: Attachments) => true);
 	const handleGuidedGoalCommand = vi.fn(async (_prompt?: string, _input?: Attachments) => true);
 	let editorText = "";
@@ -38,8 +37,6 @@ function createHarness(
 	const showError = vi.fn();
 	const ctx = {
 		editor,
-		planModeEnabled: false,
-		planModePaused: false,
 		goalModeEnabled: false,
 		goalModePaused: false,
 		skillCommands: new Map(),
@@ -66,7 +63,6 @@ function createHarness(
 		showStatus: vi.fn(),
 		showWarning: vi.fn(),
 		showError,
-		handlePlanModeCommand,
 		handleGoalModeCommand,
 		handleGuidedGoalCommand,
 	} as unknown as InteractiveModeContext;
@@ -75,7 +71,6 @@ function createHarness(
 	return {
 		editor,
 		showError,
-		handlePlanModeCommand,
 		handleGoalModeCommand,
 		handleGuidedGoalCommand,
 	};
@@ -86,9 +81,9 @@ describe("mode command attachments", () => {
 		const replacements: ImageContent[] = [{ type: "image", data: "bmV3", mimeType: "image/jpeg" }];
 		const harness = createHarness({ images: replacements });
 
-		await harness.editor.onSubmit?.("/plan inspect this");
+		await harness.editor.onSubmit?.("/goal inspect this");
 
-		const input = harness.handlePlanModeCommand.mock.calls[0]?.[1];
+		const input = harness.handleGoalModeCommand.mock.calls[0]?.[1];
 		expect(input?.images).toBe(replacements);
 		expect(input?.imageLinks).toEqual(["file:///replacement.png"]);
 		expect(harness.editor.pendingImages).toEqual([]);
@@ -108,9 +103,9 @@ describe("mode command attachments", () => {
 	it("preserves source links when an extension leaves attachments unchanged", async () => {
 		const harness = createHarness({});
 
-		await harness.editor.onSubmit?.("/plan inspect this [Image #1]");
+		await harness.editor.onSubmit?.("/goal inspect this [Image #1]");
 
-		expect(harness.handlePlanModeCommand).toHaveBeenCalledWith(
+		expect(harness.handleGoalModeCommand).toHaveBeenCalledWith(
 			"inspect this [Image #1]",
 			expect.objectContaining({ imageLinks: ["file:///old.png"] }),
 		);
@@ -130,7 +125,7 @@ describe("mode command attachments", () => {
 	it("detaches submitted images before awaiting input extensions", async () => {
 		const inputResult = Promise.withResolvers<{ images?: ImageContent[] }>();
 		const harness = createHarness(inputResult.promise);
-		const submission = harness.editor.onSubmit?.("/plan inspect this [Image #1]");
+		const submission = harness.editor.onSubmit?.("/goal inspect this [Image #1]");
 		if (!submission) throw new Error("expected editor submit handler");
 
 		const laterImage: ImageContent = { type: "image", data: "bmV3", mimeType: "image/png" };
@@ -140,7 +135,7 @@ describe("mode command attachments", () => {
 		inputResult.resolve({});
 		await submission;
 
-		expect(harness.handlePlanModeCommand.mock.calls[0]?.[1]?.images).toHaveLength(1);
+		expect(harness.handleGoalModeCommand.mock.calls[0]?.[1]?.images).toHaveLength(1);
 		expect(harness.editor.getText()).toBe("later draft");
 		expect(harness.editor.pendingImages).toEqual([laterImage]);
 		expect(harness.editor.pendingImageLinks).toEqual(["file:///later.png"]);
@@ -155,30 +150,29 @@ describe("mode command attachments", () => {
 		harness.editor.setText("later draft");
 		harness.editor.pendingImages.push(laterImage);
 		harness.editor.pendingImageLinks.push("file:///later.png");
-		inputResult.resolve({ text: "/plan inspect this" });
+		inputResult.resolve({ text: "/goal inspect this" });
 		await submission;
 
-		expect(harness.handlePlanModeCommand).toHaveBeenCalled();
+		expect(harness.handleGoalModeCommand).toHaveBeenCalled();
 		expect(harness.editor.getText()).toBe("later draft");
 		expect(harness.editor.pendingImages).toEqual([laterImage]);
 		expect(harness.editor.pendingImageLinks).toEqual(["file:///later.png"]);
 	});
 
 	it("restores a failed mode command into an empty editor", async () => {
-		const failedPlan = createHarness({});
-		failedPlan.handlePlanModeCommand.mockRejectedValueOnce(new Error("plan setup failed"));
-		const planSubmission = failedPlan.editor.onSubmit?.("/plan inspect this [Image #1]");
-		if (!planSubmission) throw new Error("expected editor submit handler");
+		const failedGoal = createHarness({});
+		failedGoal.handleGoalModeCommand.mockRejectedValueOnce(new Error("goal setup failed"));
+		const goalSubmission = failedGoal.editor.onSubmit?.("/goal inspect this [Image #1]");
+		if (!goalSubmission) throw new Error("expected editor submit handler");
 
-		await planSubmission;
-		expect(failedPlan.editor.getText()).toBe("/plan inspect this [Image #1]");
-		expect(failedPlan.editor.pendingImages).toHaveLength(1);
-		expect(failedPlan.editor.pendingImageLinks).toEqual(["file:///old.png"]);
-		expect(failedPlan.showError).toHaveBeenCalledWith("plan setup failed");
+		await goalSubmission;
+		expect(failedGoal.editor.getText()).toBe("/goal inspect this [Image #1]");
+		expect(failedGoal.editor.pendingImages).toHaveLength(1);
+		expect(failedGoal.editor.pendingImageLinks).toEqual(["file:///old.png"]);
+		expect(failedGoal.showError).toHaveBeenCalledWith("goal setup failed");
 	});
 
 	it.each([
-		["/plan", "handlePlanModeCommand"],
 		["/goal", "handleGoalModeCommand"],
 		["/guided-goal", "handleGuidedGoalCommand"],
 	] as const)("restores a failed %s beside a later draft, remapping its image markers", async (command, handler) => {

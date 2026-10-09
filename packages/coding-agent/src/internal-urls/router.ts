@@ -356,7 +356,7 @@ export class InternalUrlRouter {
 	}
 
 	/**
-	 * Absolute roots of every `sandbox`-scope writable scheme (plan mode keeps them writable), located
+	 * Absolute roots of every `sandbox`-scope writable scheme, located
 	 * for `context` through {@link locateSync}; {@link register} requires such schemes to be linkable.
 	 */
 	sandboxRoots(context?: ResolveContext): string[] {

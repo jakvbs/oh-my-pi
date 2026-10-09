@@ -6,7 +6,6 @@ import { hashlineFileHash } from "@oh-my-pi/pi-natives";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
 import type { ClientBridge } from "@oh-my-pi/pi-coding-agent/session/client-bridge";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { WriteTool } from "@oh-my-pi/pi-coding-agent/tools/write";
@@ -16,7 +15,6 @@ const FILE_CONTENT = "bridge write content\n";
 
 interface SessionOptions {
 	bridge?: ClientBridge;
-	planMode?: PlanModeState;
 }
 
 function createSession(cwd: string, options: SessionOptions = {}): ToolSession {
@@ -33,7 +31,6 @@ function createSession(cwd: string, options: SessionOptions = {}): ToolSession {
 		allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 		settings: Settings.isolated(),
 		getClientBridge: options.bridge ? () => options.bridge : undefined,
-		getPlanModeState: options.planMode ? () => options.planMode : undefined,
 	};
 }
 
@@ -126,7 +123,7 @@ describe("write tool ACP fs routing", () => {
 		expect(resultText(result)).toContain(`Successfully wrote ${FILE_CONTENT.length} bytes to progress.txt`);
 	});
 
-	it("writes local plan artifacts to disk instead of the ACP bridge", async () => {
+	it("writes local:// artifacts to disk instead of the ACP bridge", async () => {
 		const planPath = "local://PLAN.md";
 		const planContent = "# Plan\n\nhello world\n";
 		const bridge: ClientBridge = {
@@ -136,10 +133,7 @@ describe("write tool ACP fs routing", () => {
 			},
 		};
 		const bridgeSpy = spyOn(bridge, "writeTextFile");
-		const session = createSession(tmpDir, {
-			bridge,
-			planMode: { enabled: true, planFilePath: planPath, workflow: "parallel", reentry: false },
-		});
+		const session = createSession(tmpDir, { bridge });
 
 		await new WriteTool(session).execute("call-plan", { path: planPath, content: planContent });
 
@@ -155,9 +149,7 @@ describe("write tool ACP fs routing", () => {
 	});
 
 	it("treats bracketed `[local://...#TAG]` headers as local artifacts, not bridge writes", async () => {
-		const planPath = "local://PLAN.md";
 		const scratchPath = "local://scratch.md";
-		// Active plan file is unrelated to the scratch artifact we are writing.
 		const bracketedScratch = `[${scratchPath}#ABCD]`;
 		const scratchContent = "scratch notes\n";
 		const bridge: ClientBridge = {
@@ -165,10 +157,7 @@ describe("write tool ACP fs routing", () => {
 			writeTextFile: async () => undefined,
 		};
 		const bridgeSpy = spyOn(bridge, "writeTextFile");
-		const session = createSession(tmpDir, {
-			bridge,
-			planMode: { enabled: true, planFilePath: planPath, workflow: "parallel", reentry: false },
-		});
+		const session = createSession(tmpDir, { bridge });
 
 		await new WriteTool(session).execute("call-bracketed", { path: bracketedScratch, content: scratchContent });
 

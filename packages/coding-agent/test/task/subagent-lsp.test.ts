@@ -6,7 +6,6 @@ import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { LoadExtensionsResult } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@oh-my-pi/pi-coding-agent/sdk";
 import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession, AgentSessionEvent, PromptOptions } from "@oh-my-pi/pi-coding-agent/session/agent-session";
@@ -92,7 +91,6 @@ function createSession(
 	options: {
 		isolationEnabled?: boolean;
 		parentEnableLsp?: boolean;
-		planMode?: PlanModeState;
 		sessionFile?: string | null;
 		taskEnableLsp?: boolean;
 	} = {},
@@ -115,7 +113,6 @@ function createSession(
 		}),
 		getSessionFile: () => options.sessionFile ?? null,
 		modelRegistry,
-		getPlanModeState: () => options.planMode,
 	} as unknown as ToolSession;
 }
 
@@ -260,29 +257,5 @@ describe("subagent LSP availability", () => {
 		} finally {
 			await removeWithRetries(tempDir);
 		}
-	});
-
-	it("clamps plan-mode mixed-capability tools despite ordinary settings", async () => {
-		mockAgents({
-			name: "task",
-			description: "Reviewer-like task agent",
-			systemPrompt: "Review with read-only specialty tools.",
-			source: "bundled",
-			tools: ["bash", "ast_grep", "todo"],
-		});
-		const { getOptions } = mockCreateAgentSession();
-		const planMode = { enabled: true, planFilePath: "local://PLAN.md" };
-
-		const tool = await TaskTool.create(createSession({ planMode, taskEnableLsp: true }));
-		await tool.execute("tool-call", TEST_TASK);
-
-		const options = getOptions();
-		expect(options?.enableLsp).toBe(false);
-		expect(options?.enableIrc).toBe(false);
-		expect(options?.restrictToolNames).toBe(true);
-		expect(options?.toolNames).toEqual(["read", "grep", "glob", "web_search", "ast_grep"]);
-		expect(options?.toolNames).not.toContain("lsp");
-		expect(options?.toolNames).not.toContain("bash");
-		expect(options?.toolNames).not.toContain("todo");
 	});
 });

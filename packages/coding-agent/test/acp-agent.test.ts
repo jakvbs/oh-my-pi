@@ -7,13 +7,11 @@ import type { Model } from "@oh-my-pi/pi-ai";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { ExtensionUIContext } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
 import {
 	ACP_BOOTSTRAP_RACE_GUARD_MS,
 	AcpAgent,
 	createAcpExtensionUiContext,
 } from "@oh-my-pi/pi-coding-agent/modes/acp/acp-agent";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
 import type {
 	AgentSession,
 	AgentSessionEvent,
@@ -43,8 +41,6 @@ import {
 	zSessionNotification,
 } from "@oh-my-pi/pi-utils/acp";
 import { TOOL_NAME as DELAYED_MCP_TOOL_NAME } from "./fixtures/delayed-tool-mcp";
-
-import { cfgPlanAutosave, cfgPlanAutosaveDir, cfgPlanEnabled } from "@oh-my-pi/pi-coding-agent/plan-mode/settings";
 
 /** Validates an ACP wire payload against the in-house protocol schemas. */
 function expectAcpStructure(schema: Validator<unknown>, value: unknown): void {
@@ -140,7 +136,6 @@ class FakeAgentSession {
 	subscribeCommandMetadataChanged(_listener: () => void): () => void {
 		return () => {};
 	}
-	planModeState: PlanModeState | undefined;
 	waitForIdleCalls = 0;
 	waitForIdleBlocker: (() => Promise<void>) | undefined;
 	asyncJobDrain: ((options?: { timeoutMs?: number }) => Promise<boolean>) | undefined;
@@ -341,30 +336,6 @@ class FakeAgentSession {
 	setActiveToolsByName(_toolNames: string[]): void {}
 
 	setClientBridge(_bridge: unknown): void {}
-
-	getPlanModeState(): PlanModeState | undefined {
-		return this.planModeState;
-	}
-
-	setPlanModeState(state: PlanModeState | undefined): void {
-		this.planModeState = state;
-	}
-
-	planProposalHandler: ((title: string) => Promise<unknown> | unknown) | undefined;
-
-	setPlanProposalHandler(handler: ((title: string) => Promise<unknown> | unknown) | null): void {
-		this.planProposalHandler = handler ?? undefined;
-	}
-
-	peekPlanProposalHandler(): ((title: string) => Promise<unknown> | unknown) | undefined {
-		return this.planProposalHandler;
-	}
-
-	planReferencePath: string | undefined;
-
-	setPlanReferencePath(path: string): void {
-		this.planReferencePath = path;
-	}
 
 	getToolByName(_name: string): undefined {
 		return undefined;
@@ -627,25 +598,22 @@ describe("ACP agent", () => {
 		await Bun.sleep(0);
 	});
 
-	it("advertises plan mode and emits schema-valid mode updates", async () => {
+	it("advertises only the default mode and rejects unknown modes", async () => {
 		const harness = await createHarness();
-		cfgPlanEnabled.set(Settings.instance, true);
 
 		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
 		expectAcpStructure(zNewSessionResponse, created);
-		expect(created.modes?.availableModes.map(mode => mode.id)).toEqual(["default", "plan"]);
+		expect(created.modes?.availableModes.map(mode => mode.id)).toEqual(["default"]);
 		const initialModeConfig = created.configOptions?.find(option => option.id === "mode") as
 			| { currentValue?: unknown; options?: Array<{ value: string }> }
 			| undefined;
 		expect(initialModeConfig?.currentValue).toBe("default");
-		expect(initialModeConfig?.options?.map(option => option.value)).toEqual(["default", "plan"]);
+		expect(initialModeConfig?.options?.map(option => option.value)).toEqual(["default"]);
 
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" });
-
-		const session = harness.findSession(created.sessionId)!;
-		expect(session.planModeState).toEqual(
-			expect.objectContaining({ enabled: true, planFilePath: "local://PLAN.md", workflow: "parallel" }),
+		await expect(harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" })).rejects.toThrow(
+			/Unsupported ACP mode: plan/,
 		);
+		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "default" });
 		const modeNotifications = harness.updates.filter(
 			notification =>
 				notification.sessionId === created.sessionId &&
@@ -653,234 +621,6 @@ describe("ACP agent", () => {
 					notification.update.sessionUpdate === "config_option_update"),
 		);
 		expectAcpNotifications(modeNotifications);
-		expect(
-			modeNotifications.some(
-				notification =>
-					notification.update.sessionUpdate === "current_mode_update" &&
-					notification.update.currentModeId === "plan",
-			),
-		).toBe(true);
-		const configNotification = modeNotifications.findLast(
-			notification => notification.update.sessionUpdate === "config_option_update",
-		);
-		const currentModeConfig =
-			configNotification?.update.sessionUpdate === "config_option_update"
-				? (configNotification.update.configOptions.find(option => option.id === "mode") as
-						| { currentValue?: unknown }
-						| undefined)
-				: undefined;
-		expect(currentModeConfig?.currentValue).toBe("plan");
-
-		// Regression for #1869: entering plan mode must wire a plan-proposal
-		// handler so the agent's `xd://propose` write has a gate to dispatch to
-		// instead of erroring with no approval path.
-		expect(typeof session.planProposalHandler).toBe("function");
-
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "default" });
-		expect(session.planModeState).toBeUndefined();
-		expect(session.planProposalHandler).toBeUndefined();
-
-		harness.abortController.abort();
-		await Bun.sleep(0);
-	});
-
-	it("plan-proposal handler errors when the plan file is missing", async () => {
-		const harness = await createHarness();
-		cfgPlanEnabled.set(Settings.instance, true);
-
-		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
-		const session = harness.findSession(created.sessionId)!;
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" });
-
-		const handler = session.planProposalHandler;
-
-		// No plan file written → handler surfaces a ToolError telling the
-		// agent to write the plan before requesting approval.
-		await expect(handler!("demo")).rejects.toThrow(/Plan file not found/);
-		// Plan mode must remain active so the agent can recover.
-		expect(session.planModeState?.enabled).toBe(true);
-		expect(typeof session.planProposalHandler).toBe("function");
-
-		harness.abortController.abort();
-		await Bun.sleep(0);
-	});
-
-	it("plan-proposal handler approves the agent-named plan and exits plan mode on submit", async () => {
-		const harness = await createHarness();
-		cfgPlanEnabled.set(Settings.instance, true);
-
-		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
-		const session = harness.findSession(created.sessionId)!;
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" });
-
-		const localOptions = {
-			getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
-			getSessionId: () => session.sessionManager.getSessionId(),
-		};
-		cleanupRoots.push(resolveLocalUrlToPath("local://", localOptions));
-		// On Windows, long artifact roots are shortened by the local:// resolver to
-		// avoid MAX_PATH. Write through the same resolver the ACP handler reads from.
-		const planPath = resolveLocalUrlToPath("local://words-counter-plan.md", localOptions);
-		await Bun.write(planPath, "# Words Counter\n\nFile contents.");
-
-		const updatesBefore = harness.updates.length;
-		const handler = session.planProposalHandler!;
-		const result = (await handler("words-counter")) as {
-			content: Array<{ type: string; text: string }>;
-			details: { planFilePath: string; title: string; planExists: boolean };
-		};
-
-		// Plan-approval payload is shaped for `event-controller` / ACP renderers.
-		expect(result.details.title).toBe("words-counter");
-		expect(result.details.planFilePath).toBe("local://words-counter-plan.md");
-		expect(result.details.planExists).toBe(true);
-		expect(result.content[0]?.text).toMatch(/Plan approved/);
-		// Plan file keeps its agent-chosen name — no rename.
-		expect(await Bun.file(planPath).exists()).toBe(true);
-		// Mode + handler are cleared; the agent regains write tools next turn.
-		expect(session.planModeState).toBeUndefined();
-		expect(session.planProposalHandler).toBeUndefined();
-		expect(session.planReferencePath).toBe("local://words-counter-plan.md");
-		const approvalUpdates = harness.updates.slice(updatesBefore);
-		// Mode-change notifications reached the client so Zed's UI and config
-		// selector both reflect the approval-driven exit.
-		expect(
-			approvalUpdates.some(
-				notification =>
-					notification.update.sessionUpdate === "current_mode_update" &&
-					notification.update.currentModeId === "default",
-			),
-		).toBe(true);
-		const configUpdate = approvalUpdates.find(
-			notification => notification.update.sessionUpdate === "config_option_update",
-		);
-		if (configUpdate?.update.sessionUpdate !== "config_option_update") {
-			throw new Error("expected config_option_update after plan approval");
-		}
-		const modeConfig = configUpdate.update.configOptions.find(option => option.id === "mode") as
-			| { currentValue?: unknown }
-			| undefined;
-		expect(modeConfig?.currentValue).toBe("default");
-
-		harness.abortController.abort();
-		await Bun.sleep(0);
-	});
-	it("plan-proposal handler autosaves the approved plan without leaking the path", async () => {
-		const harness = await createHarness();
-		cfgPlanEnabled.set(Settings.instance, true);
-		cfgPlanAutosave.set(Settings.instance, true);
-
-		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
-		const session = harness.findSession(created.sessionId)!;
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" });
-
-		const localOptions = {
-			getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
-			getSessionId: () => session.sessionManager.getSessionId(),
-		};
-		cleanupRoots.push(resolveLocalUrlToPath("local://", localOptions));
-		const planPath = resolveLocalUrlToPath("local://words-counter-plan.md", localOptions);
-		await Bun.write(planPath, "# Words Counter\n\nFile contents.");
-
-		const handler = session.planProposalHandler!;
-		const result = (await handler("words-counter")) as {
-			content: Array<{ type: string; text: string }>;
-			details: { planFilePath: string; title: string; planExists: boolean };
-		};
-
-		expect(result.details.planExists).toBe(true);
-		expect(result.content[0]?.text).toMatch(/Plan approved/);
-		expect(result.content[0]?.text).not.toContain(harness.cwdA);
-		expect(result.content[0]?.text).not.toContain("autosaved to");
-		const saved = path.join(harness.cwdA, ".omp", "plans", "WORDS_COUNTER_PLAN.md");
-		expect(await Bun.file(saved).text()).toBe("# Words Counter\n\nFile contents.");
-		expect(session.planModeState).toBeUndefined();
-
-		harness.abortController.abort();
-		await Bun.sleep(0);
-	});
-
-	it("plan-proposal handler approves and notes autosave failure without the path", async () => {
-		const harness = await createHarness();
-		cfgPlanEnabled.set(Settings.instance, true);
-		const blocker = path.join(harness.cwdA, "blocker");
-		await Bun.write(blocker, "x");
-		cfgPlanAutosave.set(Settings.instance, true);
-		cfgPlanAutosaveDir.set(Settings.instance, path.join(blocker, "sub"));
-
-		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
-		const session = harness.findSession(created.sessionId)!;
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" });
-
-		const localOptions = {
-			getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
-			getSessionId: () => session.sessionManager.getSessionId(),
-		};
-		cleanupRoots.push(resolveLocalUrlToPath("local://", localOptions));
-		const planPath = resolveLocalUrlToPath("local://words-counter-plan.md", localOptions);
-		await Bun.write(planPath, "# Words Counter\n\nFile contents.");
-
-		const handler = session.planProposalHandler!;
-		const result = (await handler("words-counter")) as {
-			content: Array<{ type: string; text: string }>;
-		};
-		const text = result.content[0]?.text ?? "";
-
-		expect(text).toMatch(/Plan approved/);
-		expect(text).toMatch(/autosave failed/);
-		expect(text).not.toContain(harness.cwdA);
-		expect(session.planModeState).toBeUndefined();
-		expect(session.planReferencePath).toBe("local://words-counter-plan.md");
-
-		harness.abortController.abort();
-		await Bun.sleep(0);
-	});
-
-	it("plan-proposal handler treats dismissed elicitation as refine, never approves", async () => {
-		// Regression for the P1 review finding on #1870: when a form-capable
-		// ACP client dismissed/cancelled the elicitation, the handler was
-		// returning the dismissal as approval — silently granting write
-		// access without explicit consent. Dismissal MUST fall through to
-		// refine semantics: plan mode stays active, the plan file stays put,
-		// and no mode/config updates are emitted.
-		const harness = await createHarness({
-			elicitationHandler: async () => ({ action: "cancel" }),
-		});
-		cfgPlanEnabled.set(Settings.instance, true);
-
-		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
-		const session = harness.findSession(created.sessionId)!;
-		await harness.agent.setSessionMode({ sessionId: created.sessionId, modeId: "plan" });
-
-		const localOptions = {
-			getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
-			getSessionId: () => session.sessionManager.getSessionId(),
-		};
-		cleanupRoots.push(resolveLocalUrlToPath("local://", localOptions));
-		const planPath = resolveLocalUrlToPath("local://PLAN.md", localOptions);
-		await Bun.write(planPath, "# Words Counter\n\nFile contents.");
-
-		const updatesBefore = harness.updates.length;
-		const handler = session.planProposalHandler!;
-		const result = (await handler("words-counter")) as { content: Array<{ type: string; text: string }> };
-
-		expect(result.content[0]?.text).toMatch(/refinement requested/i);
-		// Plan file stays put; no rename, no write-access grant.
-		expect(await Bun.file(planPath).exists()).toBe(true);
-		expect(await Bun.file(resolveLocalUrlToPath("local://words-counter.md", localOptions)).exists()).toBe(false);
-		// Plan mode + proposal handler stay active so the agent can iterate.
-		expect(session.planModeState?.enabled).toBe(true);
-		expect(typeof session.planProposalHandler).toBe("function");
-		expect(session.planReferencePath).toBeUndefined();
-		// No mode-exit notifications were emitted.
-		const postDismissUpdates = harness.updates.slice(updatesBefore);
-		expect(
-			postDismissUpdates.some(
-				notification =>
-					notification.update.sessionUpdate === "current_mode_update" &&
-					notification.update.currentModeId === "default",
-			),
-		).toBe(false);
 
 		harness.abortController.abort();
 		await Bun.sleep(0);

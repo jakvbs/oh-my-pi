@@ -16,7 +16,6 @@ import {
 	artifactsDirsFromRegistry,
 	resetRegisteredArtifactDirsForTests,
 } from "@oh-my-pi/pi-coding-agent/internal-urls/registry-helpers";
-import * as planHandoff from "@oh-my-pi/pi-coding-agent/plan-mode/plan-handoff";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
 import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
@@ -49,7 +48,6 @@ function session(
 	options: {
 		cwd?: string;
 		settings?: Settings;
-		planMode?: boolean;
 		outputSchema?: unknown;
 		isolationEnabled?: boolean;
 		isolationApply?: boolean;
@@ -80,7 +78,6 @@ function session(
 			}),
 		getSessionFile: () => null,
 		getSessionAgents: () => options.sessionAgents ?? [],
-		getPlanModeState: () => (options.planMode ? { enabled: true } : undefined),
 	} as unknown as ToolSession;
 }
 
@@ -220,24 +217,6 @@ describe("structured subagent primitive", () => {
 		}
 	});
 
-	it("attenuates plan-mode agents and rejects mutable isolation controls before discovery", async () => {
-		mockDiscovery();
-		const policy = await resolveEffectiveSubagentPolicy(
-			request({ session: session({ planMode: true }), enableLsp: true, enableIrc: true }),
-		);
-		expect(policy.effectiveAgent.tools).toEqual(["read", "grep", "glob", "web_search", "ast_grep"]);
-		expect(policy.enableLsp).toBe(false);
-		expect(policy.enableIrc).toBe(false);
-
-		vi.restoreAllMocks();
-		const discover = vi.spyOn(discoveryModule, "discoverAgents");
-		await expect(
-			resolveEffectiveSubagentPolicy(
-				request({ session: session({ planMode: true }), isolation: { requested: false } }),
-			),
-		).rejects.toThrow("isolation, apply, and merge controls are unavailable in plan mode");
-		expect(discover).not.toHaveBeenCalled();
-	});
 	it("reloads project task and retry policy before resolving an agent added during the session", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-task-hot-reload-"));
 		const projectDir = path.join(root, "project");
@@ -688,7 +667,7 @@ describe("structured subagent primitive", () => {
 		for (const run of settled) await fs.rm(run.artifactsDir, { recursive: true, force: true });
 	});
 
-	it("suppresses plan capability sources while preserving non-plan propagation", async () => {
+	it("propagates capability sources unless MCP or tool restriction suppresses them", async () => {
 		mockDiscovery();
 		const mcpManager = {} as NonNullable<ToolSession["mcpManager"]>;
 		const extensionPaths = ["/plugins/example.ts"];
@@ -703,8 +682,6 @@ describe("structured subagent primitive", () => {
 		const customToolPaths = [{ path: "/tools/example.ts", source: "project" }] as unknown as NonNullable<
 			ToolSession["customToolPaths"]
 		>;
-		const planSession = session({ planMode: true });
-		Object.assign(planSession, { mcpManager, extensionPaths, customToolPaths });
 		const nonPlanSession = session();
 		let explicitRoot = "/plugins/explicit";
 		const extensionRoots = () => ({
@@ -737,7 +714,6 @@ describe("structured subagent primitive", () => {
 			return result();
 		});
 
-		const planRun = await runStructuredSubagent(request({ session: planSession, retainArtifacts: true }));
 		const nonPlanRun = await runStructuredSubagent(request({ session: nonPlanSession, retainArtifacts: true }));
 		const mcpDisabledRun = await runStructuredSubagent(
 			request({ session: mcpDisabledSession, retainArtifacts: true }),
@@ -745,34 +721,26 @@ describe("structured subagent primitive", () => {
 		const restrictedRun = await runStructuredSubagent(request({ session: restrictedSession, retainArtifacts: true }));
 
 		expect(options[0]).toMatchObject({
-			enableMCP: false,
-			restrictToolNames: true,
-			preloadedExtensionPaths: [],
-			preloadedCustomToolPaths: [],
-		});
-		expect(options[0]?.mcpManager).toBeUndefined();
-		expect(options[1]).toMatchObject({
 			enableMCP: true,
 			mcpManager,
 			preloadedExtensionPaths: extensionPaths,
 			preloadedPreparedExtensions: preparedExtensions,
 			preloadedCustomToolPaths: customToolPaths,
 		});
-		expect(options[1]?.restrictToolNames).toBe(false);
-		expect(options[1]?.extensionRoots?.()).toEqual(extensionRoots());
+		expect(options[0]?.restrictToolNames).toBe(false);
+		expect(options[0]?.extensionRoots?.()).toEqual(extensionRoots());
 		explicitRoot = "/plugins/explicit-after-spawn";
-		expect(options[1]?.extensionRoots?.().explicit).toEqual([explicitRoot]);
-		expect(options[2]).toMatchObject({ enableMCP: false });
-		expect(options[2]?.mcpManager).toBeUndefined();
-		expect(options[3]).toMatchObject({
+		expect(options[0]?.extensionRoots?.().explicit).toEqual([explicitRoot]);
+		expect(options[1]).toMatchObject({ enableMCP: false });
+		expect(options[1]?.mcpManager).toBeUndefined();
+		expect(options[2]).toMatchObject({
 			enableMCP: false,
 			restrictToolNames: true,
 			preloadedExtensionPaths: [],
 			preloadedCustomToolPaths: [],
 		});
-		expect(options[3]?.mcpManager).toBeUndefined();
-		expect(options[3]?.getApiKey).toBe(getApiKey);
-		await fs.rm(planRun.artifactsDir, { recursive: true, force: true });
+		expect(options[2]?.mcpManager).toBeUndefined();
+		expect(options[2]?.getApiKey).toBe(getApiKey);
 		await fs.rm(nonPlanRun.artifactsDir, { recursive: true, force: true });
 		await fs.rm(mcpDisabledRun.artifactsDir, { recursive: true, force: true });
 		await fs.rm(restrictedRun.artifactsDir, { recursive: true, force: true });
@@ -791,19 +759,6 @@ describe("structured subagent primitive", () => {
 		await expect(runStructuredSubagent(request({ session: failingSession }))).rejects.toThrow(
 			"Subagent execution failed: allocate failed",
 		);
-
-		const artifactsDir = remove.mock.calls[0]?.[0];
-		expect(typeof artifactsDir).toBe("string");
-		expect(artifactsDirsFromRegistry()).toEqual([]);
-		await expect(fs.stat(artifactsDir as string)).rejects.toThrow();
-	});
-
-	it("unregisters and removes a temporary lease when plan reference loading fails", async () => {
-		mockDiscovery();
-		vi.spyOn(planHandoff, "loadOverallPlanReference").mockRejectedValue(new Error("plan unavailable"));
-		const remove = vi.spyOn(fs, "rm");
-
-		await expect(runStructuredSubagent(request())).rejects.toThrow("Subagent execution failed: plan unavailable");
 
 		const artifactsDir = remove.mock.calls[0]?.[0];
 		expect(typeof artifactsDir).toBe("string");

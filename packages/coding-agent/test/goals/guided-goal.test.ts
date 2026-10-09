@@ -41,7 +41,6 @@ async function createHarness(options?: { goalEnabled?: boolean }): Promise<Guide
 	const settings = Settings.isolated({
 		"compaction.enabled": false,
 		"goal.enabled": options?.goalEnabled ?? true,
-		"plan.enabled": true,
 	});
 	const authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 	const modelRegistry = new ModelRegistry(authStorage);

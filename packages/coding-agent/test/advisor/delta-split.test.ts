@@ -40,7 +40,6 @@ function toolResult(id: string, ts: number): AgentMessage {
 const OPTS = {
 	includeToolIntent: true,
 	watchedRoles: true,
-	expandPrimaryContext: true,
 	expandEditDiffs: true,
 	expandToolIO: true,
 	includeThinking: true,

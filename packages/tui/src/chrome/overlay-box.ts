@@ -1,6 +1,6 @@
 /**
  * Shared box-drawing chrome for overlays — string helpers for fullscreen
- * surfaces (the `/copy` picker, the plan-review overlay, …) and the
+ * surfaces (the `/copy` picker, …) and the
  * {@link OverlayPanel} container for inline overlays hosted in the editor slot
  * or an anchored container. Everything paints with `theme.boxRound` glyphs
  * (rounded corners, sharp tee/cross junctions) and the `border`/`accent` theme

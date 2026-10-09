@@ -840,8 +840,7 @@ mod lifecycle {
 				home_dir:             dir.path().to_owned(),
 				url_schemes:          Vec::new(),
 				url_alias_schemes:    Vec::new(),
-				plan_writable_roots:  Vec::new(),
-				plan_active:          false,
+				sandbox_roots:        Vec::new(),
 				block_auto_generated: false,
 			};
 			Self { dir, policy, store: EditStore::new() }

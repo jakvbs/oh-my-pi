@@ -21,8 +21,6 @@ import {
 } from "./persistence-failure";
 import { initializeExtensions } from "./runtime-init";
 
-import { cfgPlanDefaultOnStartup, cfgPlanEnabled } from "../plan-mode/settings";
-
 /**
  * Options for print mode.
  */
@@ -37,8 +35,6 @@ export interface PrintModeOptions {
 	initialImages?: ImageContent[];
 	/** If true, include thinking blocks in text output */
 	printThoughts?: boolean;
-	/** Whether the caller explicitly started the headless plan flow. */
-	planYolo?: boolean;
 	/** Manager returned by session creation; only print mode waits for its servers. */
 	mcpManager?: MCPManager;
 }
@@ -130,7 +126,7 @@ async function runPrintModeCore(
 	options: PrintModeOptions,
 	signalTeardownActive: () => boolean,
 ): Promise<number> {
-	const { mode, messages = [], initialMessage, initialImages, printThoughts, planYolo = false } = options;
+	const { mode, messages = [], initialMessage, initialImages, printThoughts } = options;
 
 	// process.stdout.write is fire-and-forget: a large final record (e.g. a
 	// multi-MB agent_end) can be dropped when the process exits before the pipe
@@ -169,26 +165,6 @@ async function runPrintModeCore(
 			process.stderr.write(`Extension error (${err.extensionPath}): ${err.error}\n`);
 		},
 	});
-
-	// `plan.defaultOnStartup` opens fresh *interactive* sessions in plan mode so a
-	// human can review the plan before it executes. Headless print mode has no
-	// surface to review, approve, or exit a plan from, and the turn carries no
-	// deterministic way out of plan mode — the model must voluntarily emit a valid
-	// `xd://propose` execute-dispatch, and when it does not the run strands until
-	// the deadline (issue #8272). So do not honor the startup default here; the
-	// supported headless plan flow is `--plan-yolo` (auto-approve → implement),
-	// which is wired independently through the prewalk coordinator.
-	const planStartupIgnored =
-		cfgPlanDefaultOnStartup.get(session.settings) &&
-		cfgPlanEnabled.get(session.settings) &&
-		session.sessionManager.buildSessionContext().messages.length === 0 &&
-		!session.sessionManager.getEntries().some(entry => entry.type === "mode_change") &&
-		!planYolo;
-	if (planStartupIgnored) {
-		process.stderr.write(
-			"Note: plan.defaultOnStartup is ignored in print mode (no interactive surface to review the plan). Use --plan-yolo for a headless plan flow.\n",
-		);
-	}
 
 	// process.stderr.write is fire-and-forget as well: a diagnostic buffered
 	// behind a backpressured pipe would still be undelivered when runPrintMode
@@ -302,8 +278,8 @@ async function runPrintModeCore(
 	const assistantMsg = session.getLastAssistantMessage();
 	// The terminal stop reason decides the process exit code in every output
 	// mode: `--mode json` used to report success for the same turn-fatal error
-	// text mode exits 1 on (issue #11498). Silent aborts (plan-mode compaction
-	// transitions) and aborts initiated by signal teardown stay non-fatal here;
+	// text mode exits 1 on (issue #11498). Silent aborts (TTSR rule
+	// interrupts) and aborts initiated by signal teardown stay non-fatal here;
 	// postmortem owns the signal-specific exit code (130/143/129).
 	const terminalFailure =
 		!strictMCPFailure &&

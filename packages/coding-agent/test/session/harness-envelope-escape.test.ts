@@ -66,7 +66,6 @@ function makeBridge(streaming: boolean) {
 		agent: { steer: (message: AgentMessage) => steered.push(message) } as unknown as Agent,
 		isDisposed: () => false,
 		isStreaming: () => streaming,
-		planModeEnabled: () => false,
 		emitSessionEvent: async () => {},
 		wakeForIrc: (records: AgentMessage[]) => woken.push(records),
 	} as unknown as IrcBridgeHost;

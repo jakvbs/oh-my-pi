@@ -38,7 +38,6 @@ export type RpcGoalSession = Pick<
 	| "goalRuntime"
 	| "getGoalModeState"
 	| "setGoalModeState"
-	| "getPlanModeState"
 	| "getEnabledToolNames"
 	| "setActiveToolsByName"
 	| "sendGoalModeContext"
@@ -233,9 +232,6 @@ export class RpcGoalController {
 		if (!cfgGoalEnabled.get(this.#session.settings)) {
 			throw new Error("Goal mode is disabled (goal.enabled).");
 		}
-		if (this.#session.getPlanModeState()?.enabled) {
-			throw new Error("Exit plan mode before starting a goal.");
-		}
 	}
 
 	async #create(command: RpcGoalCommand): Promise<RpcGoalResult> {
@@ -406,7 +402,6 @@ export class RpcGoalController {
 		const session = this.#session;
 		if (!cfgGoalContinuationModes.get(session.settings).includes(RPC_GOAL_CONTINUATION_MODE)) return false;
 		if (this.#hostStopped || this.#suppressContinuation || session.isDisposed) return false;
-		if (session.getPlanModeState()?.enabled) return false;
 		const state = session.getGoalModeState();
 		if (!state?.enabled || state.goal.status !== "active") return false;
 		const phases = session.getTodoPhases();
@@ -419,7 +414,7 @@ export class RpcGoalController {
 	 * Decide at a yield to continue the goal; admit the continuation once the yielding
 	 * run has fully unwound. While waiting, {@link continuationPending} is true, so no
 	 * settle report calls the session settled. At admission every gate is re-read:
-	 * an abort, disposal, pause, plan mode, or another turn starting meanwhile drops it.
+	 * an abort, disposal, pause, or another turn starting meanwhile drops it.
 	 */
 	#scheduleContinuation(): void {
 		if (this.#sessionChanges > 0) {

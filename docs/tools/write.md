@@ -13,7 +13,7 @@
   - `packages/coding-agent/src/lsp/writethrough.ts` — format-on-write and diagnostics writethrough.
   - `packages/coding-agent/src/tools/auto-generated-guard.ts` — block overwriting generated files.
   - `packages/coding-agent/src/tools/fs-cache-invalidation.ts` — invalidate shared FS scan caches after writes.
-  - `packages/coding-agent/src/tools/plan-mode-guard.ts` — resolve paths and enforce plan-mode write policy.
+  - `packages/coding-agent/src/tools/write-target.ts` — resolve write target paths and detect local sandbox targets.
 
 ## Inputs
 | Field | Type | Required | Description |
@@ -55,12 +55,12 @@ Single-shot result.
 
 ## Flow
 1. `WriteTool.execute()` unwraps a copied `[path#TAG]` argument and peels a valid read selector from internal URLs so write and read address the same resource. Malformed/range selectors on writable URLs are rejected.
-2. It requires `content` unless the target's write policy makes it optional (`proc://<id>/kill`). Device-only sessions allow device/coordination writes and, in active plan mode, local sandbox drafts; other targets fail before mutation. Hashline display prefixes are stripped from text payloads, but messages, process input, settings, and conflict directives reach their handlers verbatim.
+2. It requires `content` unless the target's write policy makes it optional (`proc://<id>/kill`). Device-only sessions allow device/coordination writes and local sandbox drafts; other targets fail before mutation. Hashline display prefixes are stripped from text payloads, but messages, process input, settings, and conflict directives reach their handlers verbatim.
 3. It validates URI-like targets. Unknown schemes and common `xd://` misspellings fail instead of becoming local filenames; prefix with `./` to deliberately create a URI-looking POSIX filename.
 4. If `path` is an internal URL whose handler exposes `write`, the tool delegates to it. `xd://` validates and dispatches JSON to the mounted tool while preserving its result and approval tier; `local://` falls through to the session-local filesystem path.
 5. `conflict://...` is one of those handler-owned writes, implemented by `ConflictProtocolHandler` and `tools/conflict-uri.ts`. Scope reads such as `conflict://<id>/ours` are read-only; writable conflict URIs omit the scope. Registered markers are revalidated before replacement.
 6. It calls `#resolveArchiveWritePath()`. Candidate archive files are checked longest-first; when none exists, the shortest candidate archive path is used for creating a new container.
-7. Archive writes call `enforcePlanModeWrite(..., { op: exists ? "update" : "create" })`, then `#writeArchiveEntry()`.
+7. Archive writes call `#writeArchiveEntry()`.
    - The parent directory is created recursively.
    - Existing entries are loaded through `readArchiveEntries()`, the target is replaced in the entry map, and `writeArchive()` serializes a complete replacement.
    - Empty writes to missing selector-shaped members are refused. Replacing an existing text member with an incomplete read projection is also refused.
@@ -68,7 +68,7 @@ Single-shot result.
    - ZIP-format aliases remain ZIP. Tar gzip compression is selected for `.tar.gz`/`.tgz`, zstd for `.tar.zst`/`.tzst`; `.asar` containers are rewritten through the same boundary. Read-only formats (`.7z`, `.rar`, …) are rejected.
    - `invalidateFsScanAfterWrite()` runs on the archive file path.
 8. If not an archive, it tries SQLite candidates. Existing non-SQLite files suppress SQLite interpretation; candidates that are neither regular files nor directories (FIFO, device, socket) are rejected before the SQLite header is read.
-9. SQLite writes call `enforcePlanModeWrite(..., { op: "update" })`, then `#writeSqliteRow()`.
+9. SQLite writes call `#writeSqliteRow()`.
    - The database must already exist.
    - It opens Bun SQLite with `{ create: false, strict: true }` and `PRAGMA busy_timeout = 3000`.
    - Whitespace-only `content` with a row key deletes a row.
@@ -76,7 +76,7 @@ Single-shot result.
    - The scan cache is invalidated and the connection closes in `finally`.
 10. Otherwise it treats `path` as a plain filesystem file.
    - It rejects high-confidence mis-dispatched read targets: a missing selector-shaped filename with empty content, or a missing semicolon-joined list of selector paths. Existing literal paths win; non-empty content is the escape hatch for a single deliberate selector-shaped filename.
-   - Plan-mode policy and path resolution run before mutation. An existing target that is neither a regular file nor a directory (including through a symlink) is refused; existing regular files then pass the generated-file guard, which opens and reads the file head on the main thread and could block forever on such a target.
+   - Path resolution runs before mutation. An existing target that is neither a regular file nor a directory (including through a symlink) is refused; existing regular files then pass the generated-file guard, which opens and reads the file head on the main thread and could block forever on such a target.
    - If submitted content ends in an OMP read-truncation notice and covers less than the current source, the overwrite is refused. This also applies to text handler-owned resources; tool-device arguments are exempt.
    - ACP bridge `writeTextFile` is tried first when available; otherwise the session writethrough writes the content. LSP settings may format, synchronize, and diagnose the write.
    - A leading shebang may add execute bits. The filesystem scan cache is invalidated.
@@ -143,8 +143,8 @@ content: ""
 ```
 
 ### Writable internal resources and tool devices
-- `agent://<id>` with non-empty `content` sends a message to that peer (delivery receipt text); `agent://all` broadcasts to visible live peers. This write is read-approved and allowed in plan mode and `deviceOnlyWrite` when messaging is available. `agent://` reads remain output artifacts.
-- `proc://<id>` sends `content` to service stdin (Enter appended unless already newline-terminated); empty content sends Enter, never cancels. `write({ path: "proc://<id>/kill" })` cancels a job or owned subagent, or stops a service; `content` is optional and ignored. `proc://<id>/mode` requires `content` of `persist` or `session` to toggle persistence, or `detached` to restart without a PTY and persist beyond the broker. Proc writes require exec approval. Stdin and `/mode` writes are blocked in plan mode and unavailable in `deviceOnlyWrite` sessions; `/kill` is allowed in both. Proc reads do not consume job delivery. `/kill` and `/mode` are write-only.
+- `agent://<id>` with non-empty `content` sends a message to that peer (delivery receipt text); `agent://all` broadcasts to visible live peers. This write is read-approved and allowed in `deviceOnlyWrite` when messaging is available. `agent://` reads remain output artifacts.
+- `proc://<id>` sends `content` to service stdin (Enter appended unless already newline-terminated); empty content sends Enter, never cancels. `write({ path: "proc://<id>/kill" })` cancels a job or owned subagent, or stops a service; `content` is optional and ignored. `proc://<id>/mode` requires `content` of `persist` or `session` to toggle persistence, or `detached` to restart without a PTY and persist beyond the broker. Proc writes require exec approval. Stdin and `/mode` writes are unavailable in `deviceOnlyWrite` sessions; `/kill` is allowed there. Proc reads do not consume job delivery. `/kill` and `/mode` are write-only.
 - A registered internal handler with a `write` hook owns its resource semantics (for example, `cfg://`, `agent://`, `proc://`). File-backed schemes (`local://`, `vault://`) have no hook: the router locates the target file (`local://` in the session-local artifact sandbox, `vault://` under the vault root) and the write follows the plain-file path.
 - `xd://` lists/dispatches tool devices mounted behind `write`. Read `xd://<name>` first, then pass one JSON object as `content`. Device schema, updates, result blocks, error flag, renderer metadata, and approval tier are preserved. The outer approval gate uses `tools.approval.<device>` before the generic `write` policy. `xd://report_issue` separately accepts a plain issue description.
 - Unknown URI-like schemes are refused to prevent silent local-file creation. Use `./scheme://...` only when that filename is intentional.
@@ -173,7 +173,6 @@ content: ""
   - May talk to configured LSP servers through `packages/coding-agent/src/lsp/index.ts`.
 - Session state
   - Invalidates shared filesystem scan cache entries through `invalidateFsScanAfterWrite()`.
-  - Enforces plan-mode write restrictions before mutating the target.
   - Updates file mutation/snapshot state for plain files and conflict resolutions; resolved conflict ids are invalidated.
   - `xd://` dispatches a mounted tool and may therefore have that tool's documented side effects.
 - Background work / cancellation

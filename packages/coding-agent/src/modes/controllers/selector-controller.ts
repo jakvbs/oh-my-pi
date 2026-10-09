@@ -1693,7 +1693,6 @@ export class SelectorController {
 			hasUI: true,
 			settings: this.ctx.settings,
 			getSessionFile: () => this.ctx.sessionManager.getSessionFile() ?? null,
-			getPlanModeState: () => this.ctx.session.getPlanModeState(),
 		};
 		const askTool = new AskTool(toolSession);
 		const context = this.ctx.session.buildAskReanswerContext(uiContext);

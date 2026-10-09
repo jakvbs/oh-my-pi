@@ -108,15 +108,6 @@ export interface Prewalk {
 	thinkingLevel?: ConfiguredThinkingLevel;
 }
 
-/**
- * PlanYolo starts in read-only plan mode, auto-approves the proposal, then
- * switches to a target model for implementation.
- */
-export interface PlanYolo {
-	target: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-}
-
 /** Details shown when confirming a usage-reserve-triggered model fallback. */
 export interface UsageFallbackConfirmation {
 	from: string;
@@ -189,8 +180,6 @@ export interface AgentSessionConfig {
 	deferRetryFallbackValidation?: boolean;
 	/** Prewalk from the starting model to a fast/cheap target after implementation begins. */
 	prewalk?: Prewalk;
-	/** Force read-only plan mode at start, auto-approve, then switch to the target. */
-	planYolo?: PlanYolo;
 	/** Initial per-family service tiers for the live session. */
 	serviceTierByFamily?: ServiceTierByFamily;
 	/** Prompt templates for expansion. */

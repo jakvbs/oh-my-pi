@@ -70,7 +70,6 @@ export interface TodoTrackerHost {
 	getActiveToolNames(): string[];
 	getEnabledToolNames(): string[];
 	toolRegistry(): Map<string, AgentTool>;
-	planModeEnabled(): boolean;
 	/** Whether prewalk will hand off after its plan nudge owns todo creation. */
 	prewalkWillHandoff(): boolean;
 	consumeLastServedToolChoiceLabel(): string | undefined;
@@ -149,7 +148,7 @@ export class TodoTracker {
 	): { message: AgentMessage; toolChoice?: ToolChoice } | undefined {
 		const mode = cfgTodoEager.get(this.#host.settings);
 		if (mode === "default" || !cfgTodoEnabled.get(this.#host.settings)) return undefined;
-		if (this.#host.planModeEnabled() || this.#phases.length > 0) return undefined;
+		if (this.#phases.length > 0) return undefined;
 		// An actionable prewalk drives todo creation in a plan-first-then-todo order;
 		// the forced eager prelude's "call todo first this turn" contradicts it (#10510).
 		if (this.#host.prewalkWillHandoff()) return undefined;
@@ -187,7 +186,7 @@ export class TodoTracker {
 	/** Builds the first-turn eager task-delegation prelude. */
 	createEagerTaskPrelude(promptText: string | undefined): AgentMessage | undefined {
 		if (cfgTaskEager.get(this.#host.settings) !== "always") return undefined;
-		if (this.#host.agentKind() === "sub" || this.#host.planModeEnabled()) return undefined;
+		if (this.#host.agentKind() === "sub") return undefined;
 		if (promptText !== undefined) {
 			if (this.#host.agent.state.messages.some(message => message.role === "user")) return undefined;
 			const trimmed = promptText.trimEnd();
@@ -217,7 +216,6 @@ export class TodoTracker {
 	/** Checks a terminal assistant turn and schedules continuation for incomplete todos. */
 	async checkCompletion(message: AssistantMessage): Promise<boolean> {
 		if (this.#host.consumeLastServedToolChoiceLabel() === "user-force") return false;
-		if (this.#host.planModeEnabled()) return false;
 		if (this.#reminderAwaitingProgress) {
 			logger.debug("Todo completion: prior reminder still awaiting agent action; staying silent", {
 				attempt: this.#reminderCount,
@@ -311,7 +309,7 @@ export class TodoTracker {
 		if (this.#mutationsSinceLastTouch < MID_RUN_NUDGE_MUTATION_THRESHOLD) return null;
 		if (this.#midRunNudgeCount >= MID_RUN_NUDGE_MAX_PER_CYCLE) return null;
 		if (!cfgTodoEnabled.get(this.#host.settings) || !cfgTodoReminders.get(this.#host.settings)) return null;
-		if (this.#host.planModeEnabled() || !this.#host.getActiveToolNames().includes("todo")) return null;
+		if (!this.#host.getActiveToolNames().includes("todo")) return null;
 		const incomplete = this.#phases
 			.flatMap(phase => phase.tasks)
 			.filter(task => task.status === "pending" || task.status === "in_progress");

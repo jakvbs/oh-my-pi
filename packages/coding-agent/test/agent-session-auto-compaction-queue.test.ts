@@ -525,9 +525,8 @@ describe("AgentSession auto-compaction queue resume", () => {
 	});
 
 	it("leaves the resume to the caller when suppressContinuation is set", async () => {
-		// Plan-mode "Approve and compact context" dispatches the execution turn
-		// itself after compaction; resuming the aborted approval turn on top of it
-		// would double-prompt.
+		// A caller that compacts and then dispatches its own execution turn;
+		// resuming the aborted turn on top of it would double-prompt.
 		cfgCompactionKeepRecentTokens.set(session.settings, 1);
 		cfgCompactionAutoContinue.override(session.settings, true);
 		sessionManager.appendMessage({
@@ -1157,7 +1156,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 	});
 
 	it("drops an inherited resume when the vetoed second compaction suppresses continuation", async () => {
-		// A `suppressContinuation` takeover (plan-mode approve-and-compact) owns
+		// A `suppressContinuation` takeover (a caller dispatching its own follow-up turn) owns
 		// whatever turn follows; on cancel it deliberately dispatches nothing, so
 		// the inherited resume must not resurrect the pre-approval turn later.
 		const prompted = await vetoedTakeoverAfterWithheldResume({ suppressContinuation: true });

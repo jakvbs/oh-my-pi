@@ -383,10 +383,6 @@
 			"types": "./src/modes/utils/*.ts",
 			"import": "./src/modes/utils/*.ts"
 		},
-		"./plan-mode/*": {
-			"types": "./src/plan-mode/*.ts",
-			"import": "./src/plan-mode/*.ts"
-		},
 		"./registry/*": {
 			"types": "./src/registry/*.ts",
 			"import": "./src/registry/*.ts"

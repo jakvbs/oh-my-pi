@@ -65,7 +65,6 @@ function makeToolSession(bridge: ClientBridge): ToolSession {
 		settings: Settings.isolated({ "edit.mode": "apply_patch" }),
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
-		getPlanModeState: () => undefined,
 		getClientBridge: () => bridge,
 	} as unknown as ToolSession;
 }

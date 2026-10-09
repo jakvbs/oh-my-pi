@@ -882,19 +882,12 @@ describe("AgentSession aside delivery", () => {
 		expect(contexts).toHaveLength(0);
 	});
 
-	it("marks parent IRC but not peer IRC across idle wake and plan-mode persistence", async () => {
-		const manager = SessionManager.inMemory();
+	it("marks parent IRC but not peer IRC on idle wake", async () => {
 		const wakeRecords: AgentMessage[] = [];
-		const appended: AgentMessage[] = [];
-		let planMode = false;
 		const host: IrcBridgeHost = {
-			agent: {
-				appendMessage: (message: AgentMessage) => appended.push(message),
-			} as unknown as Agent,
-			sessionManager: manager,
+			agent: {} as Agent,
 			isDisposed: () => false,
 			isStreaming: () => false,
-			planModeEnabled: () => planMode,
 			emitSessionEvent: async () => {},
 			wakeForIrc: records => wakeRecords.push(...records),
 		};
@@ -937,22 +930,6 @@ describe("AgentSession aside delivery", () => {
 			});
 			if (peerWake?.role !== "custom") throw new Error("Expected peer IRC wake record");
 			expect(peerWake.details).not.toHaveProperty("fromParent");
-
-			planMode = true;
-			await irc.deliver({
-				id: "parent-plan",
-				from: "ParentMarkerSender",
-				to: recipient,
-				body: "plan-mode parent assignment",
-				ts: 3,
-			});
-			expect(appended).toHaveLength(1);
-			const persisted = manager.getBranch().find(entry => entry.type === "custom_message");
-			expect(persisted).toMatchObject({
-				type: "custom_message",
-				customType: "irc:incoming",
-				details: { from: "ParentMarkerSender", fromParent: true },
-			});
 		} finally {
 			registry.unregister(recipient);
 		}
@@ -966,10 +943,8 @@ describe("AgentSession aside delivery", () => {
 		// test never touch the host.
 		const host: IrcBridgeHost = {
 			agent: {} as Agent,
-			sessionManager: {} as SessionManager,
 			isDisposed: () => false,
 			isStreaming: () => false,
-			planModeEnabled: () => false,
 			emitSessionEvent: async () => {},
 			wakeForIrc: () => {},
 		};
@@ -1008,10 +983,8 @@ describe("AgentSession aside delivery", () => {
 		// Rollback restores the same ordering guarantee as the other queues.
 		const host: IrcBridgeHost = {
 			agent: {} as Agent,
-			sessionManager: {} as SessionManager,
 			isDisposed: () => false,
 			isStreaming: () => false,
-			planModeEnabled: () => false,
 			emitSessionEvent: async () => {},
 			wakeForIrc: () => {},
 		};
@@ -1042,10 +1015,8 @@ describe("AgentSession aside delivery", () => {
 			agent: {
 				emitExternalEvent: (event: { message: AgentMessage }) => emitted.push(event.message),
 			} as unknown as Agent,
-			sessionManager: {} as SessionManager,
 			isDisposed: () => false,
 			isStreaming: () => false,
-			planModeEnabled: () => false,
 			emitSessionEvent: async () => {},
 			wakeForIrc: () => {},
 		};
@@ -1173,60 +1144,10 @@ describe("AgentSession aside delivery", () => {
 		}
 	});
 
-	it("routes a custom aside folded in plan mode through the event-emitting path so message_end fires", async () => {
-		// Regression: the plan-mode (and adjacent post-Esc-suppression) fold branches in
-		// sendCustomMessage used to append directly to agent state + session storage, emitting
-		// no message_end. The interactive extension sender skips its own transcript rebuild
-		// when the send began while streaming because it expects that event — without it the
-		// persisted message stays invisible until an unrelated rebuild. Plan mode is the
-		// deterministic way to reach the fold branch without racing a real stream settle.
-		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
-		const modelRegistry = new ModelRegistry(authStorage);
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
-			convertToLlm,
-			streamFn: () => new AssistantMessageEventStream(),
-		});
-		const settings = Settings.isolated({ "compaction.enabled": false, "todo.enabled": false });
-		settings.setModelRole("default", `${model.provider}/${model.id}`);
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(tempDir.path()),
-			settings,
-			modelRegistry,
-			toolRegistry: new Map(),
-		});
-		session.setPlanModeState({ enabled: true, planFilePath: "local://PLAN.md" });
-
-		const messageEndTypes: string[] = [];
-		const messageEndSeen = Promise.withResolvers<void>();
-		session.subscribe(event => {
-			if (event.type === "message_end" && event.message.role === "custom") {
-				messageEndTypes.push(event.message.customType);
-				messageEndSeen.resolve();
-			}
-		});
-
-		expect(session.isStreaming).toBe(false);
-		const dispatched = await session.sendCustomMessage(
-			{ customType: "ext-aside", content: "PLAN_MODE_FOLD_ASIDE", display: true, attribution: "agent" },
-			{ deliverAs: "aside" },
-		);
-		await messageEndSeen.promise;
-
-		expect(dispatched).toBe(false);
-		expect(messageEndTypes).toContain("ext-aside");
-		const persisted = session.agent.state.messages.some(
-			message => message.role === "custom" && message.customType === "ext-aside",
-		);
-		expect(persisted).toBe(true);
-	});
-
 	it("validates the session generation before an idle sendCustomMessage aside dispatch", async () => {
 		// Regression: the streaming branch of sendCustomMessage's aside delivery checks
-		// #sessionGeneration before enqueueing (#queueCustomMessage), but the idle branch (plan
-		// mode fold / post-interrupt fold / #promptAgentInitiatedMessage) never compared its own
+		// #sessionGeneration before enqueueing (#queueCustomMessage), but the idle branch
+		// (post-interrupt fold / #promptAgentInitiatedMessage) never compared its own
 		// captured generation. An image attachment whose normalization outlives a concurrent
 		// newSession() used to prompt or fold the stale message into the newly created session.
 		const modelRegistry = new ModelRegistry(authStorage);

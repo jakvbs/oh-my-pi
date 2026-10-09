@@ -77,7 +77,6 @@ export type SymbolKey =
 	| "sep.pipe"
 	// Icons
 	| "icon.model"
-	| "icon.plan"
 	| "icon.prewalk"
 	| "icon.goal"
 	| "icon.pause"
@@ -360,7 +359,6 @@ export type SlashCommandIconName =
 	| "cart"
 	// Shared icon.* symbols
 	| "model"
-	| "plan"
 	| "prewalk"
 	| "goal"
 	| "pause"
@@ -455,7 +453,6 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"sep.pipe": " │ ",
 	// Icons
 	"icon.model": "⬢",
-	"icon.plan": "🗺",
 	"icon.prewalk": "🏃",
 	"icon.goal": "🎯",
 	"icon.pause": "⏸",
@@ -811,7 +808,6 @@ const NERD_SYMBOLS: SymbolMap = {
 	// pick:  | alt:   ◆
 	"icon.model": "\uec19",
 	// pick:  | alt:  
-	"icon.plan": "\uf2d2",
 	"icon.prewalk": "\uf29d",
 	// pick:  (nf-fa-bullseye) | alt:  (nf-md-target) ◎ ⌖
 	"icon.goal": "\uf140",
@@ -1232,9 +1228,8 @@ const ASCII_SYMBOLS: SymbolMap = {
 	"sep.pipe": " | ",
 	// Icons
 	"icon.model": "[M]",
-	// Mode icons are always followed by their word label ("Plan", "Prewalk", "Goal");
+	// Mode icons are always followed by their word label ("Prewalk", "Goal");
 	// an ASCII word here would just repeat it, so render the label alone.
-	"icon.plan": "",
 	"icon.prewalk": "",
 	"icon.goal": "",
 	"icon.pause": "||",

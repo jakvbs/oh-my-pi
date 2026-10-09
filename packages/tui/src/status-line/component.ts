@@ -727,7 +727,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	 * round-trips because the same {@link StatusLineSession} ref is reused.
 	 */
 	#activeMeters: WeakMap<TSession, ActiveMeter> = new WeakMap();
-	#planModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#loopModeStatus: SegmentContext["loopMode"] = null;
 	#goalModeStatus: { enabled: boolean; paused: boolean } | null = null;
 	#vimStatus: SegmentContext["vim"] = null;
@@ -1089,18 +1088,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			this.#activeMeters.set(this.session, meter);
 		}
 		return meter;
-	}
-
-	setPlanModeStatus(status: { enabled: boolean; paused: boolean } | undefined): void {
-		const next = status ?? null;
-		if (
-			this.#planModeStatus === next ||
-			(this.#planModeStatus?.enabled === next?.enabled && this.#planModeStatus?.paused === next?.paused)
-		) {
-			return;
-		}
-		this.#planModeStatus = next;
-		this.#invalidateStatusLineRenderCache();
 	}
 
 	setLoopModeStatus(status: NonNullable<SegmentContext["loopMode"]> | undefined): void {
@@ -2422,7 +2409,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			options: segmentOptions ?? {},
 			compactThinkingLevel: this.#resolveSettings().compactThinkingLevel ?? false,
 			hookStatuses: this.#sortedHookStatuses,
-			planMode: this.#planModeStatus,
 			loopMode: this.#loopModeStatus,
 			prewalk:
 				typeof this.session.getPrewalkState === "function" && this.session.getPrewalkState()

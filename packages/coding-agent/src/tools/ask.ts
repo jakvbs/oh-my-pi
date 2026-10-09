@@ -13,7 +13,7 @@ import type { AskToolDetails, QuestionResult } from "@oh-my-pi/pi-tui/tools/ask"
  *   - Users will always be able to select "Other" to provide custom text input
  *   - Use multi: true to allow multiple answers to be selected for a question
  *   - Use recommended: <index> to mark the default option; "(Recommended)" suffix is added automatically
- *   - Questions may time out and auto-select the recommended option (configurable, disabled in plan mode)
+ *   - Questions may time out and auto-select the recommended option (configurable)
  */
 
 import { type as arkType } from "@oh-my-pi/omptype";
@@ -737,12 +737,9 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 				extensionUi.editor(title, prefill, dialogOptions, editorOptions),
 		};
 
-		// Determine timeout based on settings and plan mode
-		const planModeEnabled = this.session.getPlanModeState?.()?.enabled ?? false;
 		// `ask.timeout` is in seconds (0 = disabled); convert to ms
 		const timeoutSeconds = cfgAskTimeout.get(this.session.settings);
-		const settingsTimeout = timeoutSeconds === 0 ? null : timeoutSeconds * 1000;
-		const timeout = planModeEnabled ? null : settingsTimeout;
+		const timeout = timeoutSeconds === 0 ? null : timeoutSeconds * 1000;
 
 		// Send notification if waiting and not suppressed
 		this.#sendAskNotification();

@@ -36,7 +36,7 @@ export class NativeCompactionError extends Error {
 
 /**
  * Outcome of a compaction attempt, surfaced by `CommandController.executeCompaction`
- * so callers (e.g. the plan-mode approval flow) can distinguish a deliberate abort
+ * so callers can distinguish a deliberate abort
  * from an unrelated failure.
  *
  *   "ok"        — compaction completed; transcript was summarized.

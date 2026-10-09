@@ -65,7 +65,6 @@ describe("streamed edit revisions", () => {
 				settings,
 				getArtifactsDir: () => null,
 				getSessionId: () => null,
-				getPlanModeState: () => undefined,
 			} as unknown as ToolSession;
 			const tool = new EditTool(toolSession, "hashline");
 			const tag = getEditStore(toolSession).recordSnapshot(filePath, initial);
@@ -108,7 +107,6 @@ describe("streaming edit abort", () => {
 				settings,
 				getArtifactsDir: () => null,
 				getSessionId: () => null,
-				getPlanModeState: () => undefined,
 			} as unknown as ToolSession;
 			const tool = new EditTool(toolSession, "patch");
 			const args = { path: "sample.txt", edits: [{ diff: "@@\n-missing\n+replacement\n" }] };
@@ -167,7 +165,6 @@ describe("streaming edit abort", () => {
 				settings,
 				getArtifactsDir: () => null,
 				getSessionId: () => null,
-				getPlanModeState: () => undefined,
 			} as unknown as ToolSession;
 			const tool = new EditTool(toolSession, "replace");
 			const args = { path: "sample.txt", old_string: "alpha\n", new_string: "alpha\n" };

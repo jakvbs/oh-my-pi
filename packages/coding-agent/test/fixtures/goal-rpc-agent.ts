@@ -16,7 +16,6 @@ import { cfgAsyncEnabled } from "@oh-my-pi/pi-coding-agent/tools/settings";
 // GOAL_RPC_SCRIPT="complete" (default): the first goal turn does some work and ends; only
 // the next (continuation) turn completes the goal with the goal tool.
 // GOAL_RPC_SCRIPT="idle": every turn replies with text only (no progress).
-// GOAL_RPC_PLAN="1": the session starts in plan mode.
 const cwd = process.cwd();
 const authStorage = await AuthStorage.create(path.join(cwd, "auth.db"));
 authStorage.keys.setRuntime("anthropic", "test-key");
@@ -81,7 +80,4 @@ const turns: MockResponse[] =
 				];
 const mock = createMockModel({ handler: () => turns.shift() ?? { content: ["Nothing left to do."] } });
 session.agent.streamFn = mock.stream;
-if (Bun.env.GOAL_RPC_PLAN === "1") {
-	session.setPlanModeState({ enabled: true, planFilePath: path.join(cwd, "plan.md") });
-}
 await runRpcMode(session);

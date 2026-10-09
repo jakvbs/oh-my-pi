@@ -45,12 +45,7 @@ import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
 import { outputMeta } from "./output-meta";
 import { formatPathRelativeToCwd, probeLiteralPathExists, specialFileKind } from "./path-utils";
 import { splitPathAndSel } from "@oh-my-pi/pi-tui/tools/read";
-import {
-	enforcePlanModeWrite,
-	resolvePlanPath,
-	targetsLocalSandbox,
-	unwrapHashlineHeaderPath,
-} from "./plan-mode-guard";
+import { resolveWriteTargetPath, targetsLocalSandbox, unwrapHashlineHeaderPath } from "./write-target";
 import { decodeUtf8Text } from "./read-format";
 import { routeReadThroughBridge } from "./read-summary";
 import { shortenPath } from "@oh-my-pi/pi-tui/render/render-utils";
@@ -522,14 +517,14 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 		const fallbackCandidate = candidates[candidates.length - 1]!;
 		const fallback: ResolvedArchiveWritePath = {
-			absolutePath: await resolvePlanPath(this.session, fallbackCandidate.archivePath, signal),
+			absolutePath: await resolveWriteTargetPath(this.session, fallbackCandidate.archivePath, signal),
 			archivePath: fallbackCandidate.archivePath,
 			archiveSubPath: normalizeArchiveWriteSubPath(fallbackCandidate.subPath),
 			exists: false,
 		};
 
 		for (const candidate of candidates) {
-			const absolutePath = await resolvePlanPath(this.session, candidate.archivePath, signal);
+			const absolutePath = await resolveWriteTargetPath(this.session, candidate.archivePath, signal);
 			try {
 				const stat = await Bun.file(absolutePath).stat();
 				if (stat.isDirectory()) {
@@ -632,7 +627,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const fallbackCandidate = candidates[candidates.length - 1]!;
 		const fallbackTarget = parseSqliteWriteTarget(fallbackCandidate.subPath, fallbackCandidate.queryString);
 		const fallback: ResolvedSqliteWritePath = {
-			absolutePath: await resolvePlanPath(this.session, fallbackCandidate.sqlitePath, signal),
+			absolutePath: await resolveWriteTargetPath(this.session, fallbackCandidate.sqlitePath, signal),
 			sqlitePath: fallbackCandidate.sqlitePath,
 			table: fallbackTarget.table,
 			key: fallbackTarget.key,
@@ -642,7 +637,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		let sawExistingNonSqlite = false;
 		for (const candidate of candidates) {
 			const target = parseSqliteWriteTarget(candidate.subPath, candidate.queryString);
-			const absolutePath = await resolvePlanPath(this.session, candidate.sqlitePath, signal);
+			const absolutePath = await resolveWriteTargetPath(this.session, candidate.sqlitePath, signal);
 			try {
 				const stat = await Bun.file(absolutePath).stat();
 				if (stat.isDirectory()) {
@@ -766,8 +761,8 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<WriteToolDetails>> {
 		// Strip a hashline `[path#TAG]` wrapper up front so every downstream
-		// decision (scheme routing, internal-URL handler dispatch, plan-mode
-		// guard, plan path resolution, ACP bridge routing) sees the same
+		// decision (scheme routing, internal-URL handler dispatch, target
+		// path resolution, ACP bridge routing) sees the same
 		// filesystem target. Without this, a model that pastes a `read`
 		// header as the `path` arg would slip past internal-URL detection
 		// (which fails on a leading `[`) and the bridge router would send a
@@ -822,15 +817,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 						const currentResource = await router.resolve(path, sessionResolveContext(this.session, { signal }));
 						assertNotShorterReadProjection(path, content, currentResource.content, cleanContent);
 					}
-					// Handler-owned writes mutate state outside the sandbox unless they
-					// coordinate (peer messages, background-work cancellation) or dispatch a
-					// device (which keeps each dispatched tool's own tier and policy).
-					if (policy?.scope !== "device") {
-						if (!coordination) {
-							await enforcePlanModeWrite(this.session, path, { op: "update", signal });
-						}
-						emitWriteProgress(onUpdate, cleanBytes, path);
-					}
+					if (policy?.scope !== "device") emitWriteProgress(onUpdate, cleanBytes, path);
 					const handlerResult = await router.write(
 						path,
 						cleanContent,
@@ -857,17 +844,12 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				}
 				// Read-only scheme: the router rejects the write with its uniform error.
 				if (!policy) await router.write(path, cleanContent);
-				// `via: "file"`: the pipeline below writes the located target (resolvePlanPath),
+				// `via: "file"`: the pipeline below writes the located target (resolveWriteTargetPath),
 				// so write and read share one path.
 			}
 
 			const resolvedArchivePath = await this.#resolveArchiveWritePath(path, signal);
 			if (resolvedArchivePath) {
-				await enforcePlanModeWrite(this.session, resolvedArchivePath.archivePath, {
-					op: resolvedArchivePath.exists ? "update" : "create",
-					signal,
-				});
-
 				emitWriteProgress(
 					onUpdate,
 					cleanBytes,
@@ -891,8 +873,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 			const resolvedSqlitePath = await this.#resolveSqliteWritePath(path, signal);
 			if (resolvedSqlitePath) {
-				await enforcePlanModeWrite(this.session, resolvedSqlitePath.sqlitePath, { op: "update", signal });
-
 				emitWriteProgress(onUpdate, cleanBytes, path, resolvedSqlitePath.absolutePath);
 				const sqliteResult = await this.#writeSqliteRow(path, cleanContent, resolvedSqlitePath);
 				if (stripped) {
@@ -908,8 +888,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			}
 
 			await assertNotReadSelectorMisfire(path, cleanContent, this.session.cwd);
-			await enforcePlanModeWrite(this.session, path, { op: "create", signal });
-			const absolutePath = await resolvePlanPath(this.session, path, signal);
+			const absolutePath = await resolveWriteTargetPath(this.session, path, signal);
 			// A located URL write keeps its URL identity in progress, results, and the hashline header.
 			const displayPath = target ? path : formatPathRelativeToCwd(absolutePath, this.session.cwd);
 			const batchRequest = getLspBatchRequest(context?.toolCall);

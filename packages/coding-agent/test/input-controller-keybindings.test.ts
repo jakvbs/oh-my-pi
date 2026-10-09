@@ -221,7 +221,6 @@ async function createContext() {
 		settings: Settings.isolated(),
 		chatContainer: { children: [], setToolActivityVisible: vi.fn() },
 		handleHotkeysCommand: vi.fn(),
-		handlePlanModeCommand: vi.fn(),
 		handleClearCommand: vi.fn(),
 		showTreeSelector: vi.fn(),
 		showUserMessageSelector: vi.fn(),

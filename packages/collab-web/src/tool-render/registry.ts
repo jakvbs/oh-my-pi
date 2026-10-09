@@ -47,7 +47,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	report_tool_issue: reportToolIssueRenderer,
 	resolve: resolveRenderer,
 	reject: resolveRenderer,
-	propose: resolveRenderer,
 	grep: grepRenderer,
 	search: grepRenderer,
 	task: taskRenderer,

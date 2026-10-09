@@ -630,16 +630,16 @@ Model roles assign model selectors to workloads. Configure them under `modelRole
 
 Built-in roles are grouped in the model picker:
 
-- **Chat roles:** `default`, `smol`, `slow`, `vision`, `plan`, `commit`, `tiny`, `memory`, `task`, and `advisor`. The `tiny` and `memory` roles accept both ordinary chat models and `tiny` catalog models.
+- **Chat roles:** `default`, `smol`, `slow`, `vision`, `commit`, `tiny`, `task`, and `advisor`. The `tiny` role accepts both ordinary chat models and `tiny` catalog models.
 - **Model-kind roles:** `image`, `web`, and `judge`. These select image generation, search/grounded chat, and judgment runners respectively. The `judge` role also accepts tiny and chat models.
 
 `vision` and `image` are different workloads: `vision` selects a chat model for image analysis, such as `read screenshot.png?q=...`; `image` selects a model with catalog kind `image` for `generate_image`. Assigning a model to `vision` does not give it image-input support: image questions additionally check that the model can send image input to its provider.
 
-The `tiny` role selects lightweight models for background work such as session titles; when unset, it resolves through `@smol`. The `memory` role resolves through `@tiny` when unset. See [model settings](./settings.md#models) for configuration and fallback-chain examples.
+The `tiny` role selects lightweight models for background work such as session titles; when unset, it resolves through `@smol`. See [model settings](./settings.md#models) for configuration and fallback-chain examples.
 
-Assigning a non-default role in `/models` normally saves its selector without switching the active conversation model. A workload uses the role when invoked; assigning `plan` does not itself enter plan mode, and calling `todo` does not itself select the plan model. While plan mode is active, changing the `plan` role reapplies its model. Assigning `default` normally also switches the active model, unless a higher-priority settings layer overrides the edited assignment. The session-only model picker changes the active model without rewriting role assignments.
+Assigning a non-default role in `/models` normally saves its selector without switching the active conversation model. A workload uses the role when invoked. Assigning `default` normally also switches the active model, unless a higher-priority settings layer overrides the edited assignment. The session-only model picker changes the active model without rewriting role assignments.
 
-Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default`. Quote `@` aliases in YAML values (`plan: "@slow"`). Chat-role values can append a thinking selector such as `:minimal`, `:low`, `:medium`, or `:high`; model-kind roles do not use chat thinking suffixes.
+Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default`. Quote `@` aliases in YAML values (`commit: "@smol"`). Chat-role values can append a thinking selector such as `:minimal`, `:low`, `:medium`, or `:high`; model-kind roles do not use chat thinking suffixes.
 
 Role values can contain comma-separated selectors; selection uses the first available match,
 not a per-request retry chain. Request-failure fallbacks are configured separately under

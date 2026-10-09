@@ -82,7 +82,7 @@ describe("native composer facts", () => {
 		const first = line.describeComposerFacts();
 		expect(line.describeComposerFacts()).toBe(first);
 
-		line.setPlanModeStatus({ enabled: true, paused: false });
+		line.setGoalModeStatus({ enabled: true, paused: false });
 		expect(line.describeComposerFacts()).not.toBe(first);
 		expect(facts(line).map(seg => seg.key)).toEqual(["mode"]);
 	});

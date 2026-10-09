@@ -30,7 +30,6 @@ import { resetYieldTurnState } from "@oh-my-pi/pi-coding-agent/tools/yield";
 import { logger, removeSyncWithRetries, Snowflake, untilAborted } from "@oh-my-pi/pi-utils";
 
 import { cfgExternalThinking } from "@oh-my-pi/pi-coding-agent/session/settings";
-import { cfgPlanEnabled } from "@oh-my-pi/pi-coding-agent/plan-mode/settings";
 import { cfgToolsXdev } from "@oh-my-pi/pi-coding-agent/tools/settings";
 
 const toolActivationExtension: ExtensionFactory = pi => {
@@ -1693,7 +1692,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 	});
 
 	it("activates the yield tool when requireYieldTool is set and toolNames is explicit", async () => {
-		// Regression for #1408: plan-mode subagents pass an explicit `toolNames` list
+		// Regression for #1408: subagents pass an explicit `toolNames` list
 		// (e.g. `["read", "grep", "glob", "lsp", "web_search"]`). Without this
 		// invariant, `yield` ended up registered but not active, and the model
 		// could not satisfy the idle-reminder contract that demands a `yield` call.
@@ -1756,37 +1755,11 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	it("keeps the write tool registered for plan mode even when no deferrable tool is requested", async () => {
-		// Regression for #1428 (adapted to the xd://propose device): plan mode
-		// submits its finalized plan by writing the chosen slug/title to
-		// xd://propose, dispatched through the plan-proposal handler
-		// (interactive-mode.ts: `setPlanProposalHandler`). With an explicit
-		// read-only `toolNames` (e.g. `read`, `search`, `find`, `web_search`)
-		// the registry has no `write` and no `deferrable` tool; dropping it would
-		// silently activate plan mode with no way to submit the plan.
-		const tempDir = makeTempDir();
-
-		const { session } = await createAgentSession({
-			...baseOptions(tempDir),
-			toolNames: ["read", "grep", "glob", "web_search"],
-		});
-
-		try {
-			expect(session.getToolByName("write")).toBeDefined();
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	it("keeps an idle device-only write out of the active tool set", async () => {
 		const tempDir = makeTempDir();
 
-		const settings = Settings.isolated();
-		cfgPlanEnabled.set(settings, false);
-
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
-			settings,
 			toolNames: ["read", "grep", "glob", "web_search"],
 		});
 
@@ -1799,21 +1772,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			await expect(
 				write!.execute("device-only-fs", { path: path.join(tempDir, "nope.txt"), content: "x" }),
 			).rejects.toThrow("Filesystem writes are not available");
-		} finally {
-			await session.dispose();
-		}
-	});
-
-	it("does not activate write merely because plan mode is available", async () => {
-		const tempDir = makeTempDir();
-		const { session } = await createAgentSession({
-			...baseOptions(tempDir),
-			toolNames: ["read"],
-		});
-
-		try {
-			await session.setActiveToolsByName(["read"]);
-			expect(session.getActiveToolNames()).not.toContain("write");
 		} finally {
 			await session.dispose();
 		}
@@ -2198,18 +2156,15 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		if (!cursorModel) throw new Error("expected bundled Cursor model");
 		const allowedTarget = path.join(tempDir, "allowed.txt");
 		const revokedTarget = path.join(tempDir, "revoked.txt");
-		const transportTarget = path.join(tempDir, "transport-only.txt");
 		fs.writeFileSync(allowedTarget, "remove me");
 		fs.writeFileSync(revokedTarget, "keep me");
-		fs.writeFileSync(transportTarget, "keep me too");
 
 		await withProviderAuth(["cursor"], async () => {
 			const { session } = await createAgentSession({ ...baseOptions(tempDir), toolNames: ["read"] });
 			try {
 				const handlers = await captureCursorExecHandlers(session, cursorModel);
 				await session.setActiveToolsByName(["read", "write"]);
-				const fullWriteDescription = session.getToolByName("write")?.description;
-				expect(fullWriteDescription).toBeDefined();
+				expect(session.getToolByName("write")?.description).toBeDefined();
 
 				const allowed = await handlers.delete({
 					toolCallId: "sdk-write-active",
@@ -2226,17 +2181,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 				} as never);
 				expect(revoked.isError).toBe(true);
 				expect(fs.existsSync(revokedTarget)).toBe(true);
-
-				session.setPlanModeState({ enabled: true, planFilePath: "local://PLAN.md" });
-				await session.setActiveToolsByName(["read", "write"]);
-				expect(session.getActiveToolNames()).toContain("write");
-				expect(session.getToolByName("write")?.description).not.toBe(fullWriteDescription);
-				const transportOnly = await handlers.delete({
-					toolCallId: "sdk-write-transport-only",
-					path: transportTarget,
-				} as never);
-				expect(transportOnly.isError).toBe(true);
-				expect(fs.existsSync(transportTarget)).toBe(true);
 			} finally {
 				await session.dispose();
 			}

@@ -331,16 +331,6 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		expect(continuation.messageTexts.some(text => text.includes(TASK_DELEGATION_MARKER))).toBe(false);
 	});
-	it("does not re-inject the eager task reminder in plan mode", async () => {
-		const { session, waitForCall } = await createHarness();
-		session.setPlanModeState({ enabled: true, planFilePath: path.join(tempDir.path(), "plan.md") });
-		stubCompaction();
-
-		const continuation = await runToContinuation(session, waitForCall);
-
-		expect(continuation.messageTexts.some(text => text.includes(TASK_DELEGATION_MARKER))).toBe(false);
-	});
-
 	it("re-injects the eager todo reminder on the auto-continuation turn (todo.eager preferred)", async () => {
 		const { session, waitForCall } = await createHarness({
 			"task.eager": "default",

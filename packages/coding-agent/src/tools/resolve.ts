@@ -1,7 +1,6 @@
 import {
 	RESOLVE_DEVICE_NAME,
 	REJECT_DEVICE_NAME,
-	PROPOSE_DEVICE_NAME,
 	type ResolutionDeviceName,
 	type ResolveAction,
 	type ResolveDetails,
@@ -13,11 +12,9 @@ import {
  *
  *   write xd://resolve   reason text  → APPLY the pending staged preview
  *   write xd://reject    reason text  → DISCARD the pending staged preview
- *   write xd://propose   plan <slug>  → submit the plan for approval (plan mode)
  *
  * Nothing rides the system prompt: the flows that stage work teach the call
- * shape at the moment it becomes relevant (the preview reminder for
- * resolve/reject, the plan-mode prompt for propose).
+ * shape at the moment it becomes relevant (the preview reminder).
  *
  * Rendering rides the write tool's xd:// delegation: renderers.ts keys the
  * resolve renderer under `resolve` and `reject` so device writes and legacy
@@ -39,7 +36,6 @@ import type { XdevDispatch } from "./xdev";
 /** The plain-text resolution device URLs (`xd://resolve`, …). */
 export const RESOLVE_DEVICE_PATH = `${XD_URL_PREFIX}${RESOLVE_DEVICE_NAME}`;
 export const REJECT_DEVICE_PATH = `${XD_URL_PREFIX}${REJECT_DEVICE_NAME}`;
-export const PROPOSE_DEVICE_PATH = `${XD_URL_PREFIX}${PROPOSE_DEVICE_NAME}`;
 
 /**
  * Model-visible banner prepended to a staged preview's tool result text. The
@@ -56,8 +52,6 @@ export function resolutionDeviceUsage(device: ResolutionDeviceName): string {
 			return `Write a one-sentence reason as plain text to ${RESOLVE_DEVICE_PATH} to APPLY the pending staged action (e.g. a tool preview).`;
 		case REJECT_DEVICE_NAME:
 			return `Write a one-sentence reason as plain text to ${REJECT_DEVICE_PATH} to DISCARD the pending staged action (e.g. a tool preview).`;
-		case PROPOSE_DEVICE_NAME:
-			return `Write your plan's <slug> (matching local://<slug>-plan.md) as plain text to ${PROPOSE_DEVICE_PATH} to submit the plan for approval. Valid only while plan mode is active.`;
 	}
 }
 
@@ -80,17 +74,10 @@ export function isPreviewResolutionToolCall(toolCall: { name: string; arguments?
 	return device === RESOLVE_DEVICE_NAME || device === REJECT_DEVICE_NAME;
 }
 
-/** Whether an assistant tool call is a `write` targeting `xd://propose` (plan-mode decision detection). */
-export function isProposeToolCall(toolCall: { name: string; arguments?: Record<string, unknown> }): boolean {
-	const path = toolCallWritePath(toolCall);
-	return path !== undefined && parseXdUrl(path)?.name === PROPOSE_DEVICE_NAME;
-}
-
 /**
  * The XdevDispatch metadata carried on a completed `write` execution result, or
  * `undefined` when the execution was not a device dispatch. Consumers check
- * `.tool` (e.g. `PROPOSE_DEVICE_NAME` for plan-mode decision tracking and the
- * event-controller's plan-approval hook).
+ * `.tool` to tell resolution devices apart.
  */
 export function writeDeviceDispatch(toolName: string, result: unknown): XdevDispatch | undefined {
 	if (toolName !== "write") return undefined;
@@ -102,9 +89,6 @@ export function writeDeviceDispatch(toolName: string, result: unknown): XdevDisp
 	// Envelope verified above; the write tool stored a real XdevDispatch here.
 	return xdev as XdevDispatch;
 }
-
-/** Handler installed by plan mode; `xd://propose` dispatches the written plan title to it. */
-export type PlanProposalHandler = (title: string) => Promise<AgentToolResult<unknown>>;
 
 /** Parse a completed `write` dispatch targeting `xd://resolve` or `xd://reject`. */
 export function resolveDispatchDetails(toolName: string, result: unknown): ResolveDetails | undefined {
@@ -272,8 +256,6 @@ async function runResolveInvocation(
  * Execute a resolution-device write. `text` is the raw plain-text body:
  * - `xd://resolve` / `xd://reject` → the reason; dispatches to the pending
  *   preview invoker (in-flight queue directive first).
- * - `xd://propose` → the plan title; dispatches to the plan-proposal handler
- *   installed by plan mode.
  */
 export async function dispatchResolutionDevice(
 	session: ToolSession,
@@ -281,25 +263,11 @@ export async function dispatchResolutionDevice(
 	text: string,
 ): Promise<{ result: AgentToolResult<unknown>; xdev: XdevDispatch }> {
 	const body = text.trim();
-	if (device === PROPOSE_DEVICE_NAME) {
-		const handler = session.peekPlanProposalHandler?.();
-		if (!handler) {
-			throw new ToolError(
-				`No plan is awaiting approval — ${PROPOSE_DEVICE_PATH} only accepts a plan title while plan mode is active.`,
-			);
-		}
-		const result = await handler(body);
-		return { result, xdev: { tool: device, mode: "execute", args: { title: body }, inner: result.details } };
-	}
-
 	const action: ResolveAction = device === RESOLVE_DEVICE_NAME ? "apply" : "discard";
 	const xdevBase: XdevDispatch = { tool: device, mode: "execute", args: { reason: body } };
 	const invoker = session.peekQueueInvoker?.() ?? session.peekPendingInvoker?.();
 	if (!invoker) {
 		session.clearPendingInvokers?.();
-		const proposeHint = session.peekPlanProposalHandler?.()
-			? ` To submit the plan for approval, write its title to ${PROPOSE_DEVICE_PATH} instead.`
-			: "";
 		// Rejecting is a request to reach the "no staged change" end-state, which
 		// already holds when nothing is pending — honor it as a successful
 		// cancellation instead of surfacing a hard error. Apply still errors.
@@ -307,14 +275,14 @@ export async function dispatchResolutionDevice(
 			const details: ResolveDetails = { action, reason: body };
 			return {
 				result: {
-					content: [{ type: "text", text: `Nothing to reject; no pending action remains.${proposeHint}` }],
+					content: [{ type: "text", text: "Nothing to reject; no pending action remains." }],
 					details,
 				},
 				xdev: { ...xdevBase, inner: details },
 			};
 		}
 		throw new ToolError(
-			`No pending action to apply — ${RESOLVE_DEVICE_PATH} is only valid while a staged preview is pending.${proposeHint}`,
+			`No pending action to apply — ${RESOLVE_DEVICE_PATH} is only valid while a staged preview is pending.`,
 		);
 	}
 	const invocation: ResolveInvocation = { action, reason: body };

@@ -41,7 +41,6 @@ export function createGallerySegmentContext(sessionOptions?: GallerySessionOptio
 			time: { format: "24h", showSeconds: true },
 		},
 		compactThinkingLevel: false,
-		planMode: { enabled: true, paused: false },
 		prewalk: null,
 		loopMode: null,
 		goalMode: null,
@@ -109,46 +108,42 @@ function variantsFor(id: StatusLineSegmentId): readonly SegmentVariantSpec[] {
 			];
 		case "mode":
 			return [
-				{ label: "active", context: { planMode: { enabled: true, paused: false } } },
-				{ label: "warning / paused", context: { planMode: { enabled: true, paused: true } } },
-				{ label: "prewalk active", context: { planMode: null, prewalk: { enabled: true } } },
+				{ label: "prewalk active", context: { prewalk: { enabled: true } } },
 				{
 					label: "loop active",
 					context: {
-						planMode: null,
 						loopMode: { state: "running", limit: { kind: "iterations", initial: 10, remaining: 4 } },
 					},
 				},
 				{
 					label: "loop paused",
 					context: {
-						planMode: null,
 						loopMode: { state: "paused", limit: { kind: "iterations", initial: 10, remaining: 4 } },
 					},
 				},
 				{
 					label: "goal active",
-					context: { planMode: null, goalMode: { enabled: true, paused: false } },
+					context: { goalMode: { enabled: true, paused: false } },
 					session: { goalStatus: "active" },
 				},
 				{
 					label: "goal paused",
-					context: { planMode: null, goalMode: { enabled: true, paused: true } },
+					context: { goalMode: { enabled: true, paused: true } },
 					session: { goalStatus: "paused" },
 				},
 				{
 					label: "goal complete",
-					context: { planMode: null, goalMode: { enabled: true, paused: false } },
+					context: { goalMode: { enabled: true, paused: false } },
 					session: { goalStatus: "complete" },
 				},
 				{
 					label: "goal budget warning",
-					context: { planMode: null, goalMode: { enabled: true, paused: false } },
+					context: { goalMode: { enabled: true, paused: false } },
 					session: { goalStatus: "budget-limited" },
 				},
 				{
 					label: "goal dropped",
-					context: { planMode: null, goalMode: { enabled: true, paused: false } },
+					context: { goalMode: { enabled: true, paused: false } },
 					session: { goalStatus: "dropped" },
 				},
 			];

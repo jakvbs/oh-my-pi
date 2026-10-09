@@ -64,7 +64,6 @@ export interface SessionToolsHost {
 	isDisposed(): boolean;
 	isStreaming(): boolean;
 	queuedMessageCount(): number;
-	planModeEnabled(): boolean;
 	model(): Model | undefined;
 	clearInheritedProviderPromptCacheKey(): void;
 	emitNotice(level: "info" | "warning" | "error", message: string, source?: string): void;
@@ -960,7 +959,7 @@ export class SessionTools {
 
 		const pinnedWrite = isPresentationPinned("write");
 		const activeDeferrableTool = tools.some(tool => tool.deferrable === true);
-		const transportNeeded = mountNames.size > 0 || activeDeferrableTool || this.#host.planModeEnabled();
+		const transportNeeded = mountNames.size > 0 || activeDeferrableTool;
 		if (transportNeeded && !builtInWriteAvailable) {
 			const writeRegistration = this.#ensureWriteRegistered?.();
 			builtInWriteAvailable = writeRegistration ? (await untilAborted(signal, writeRegistration)) === true : false;
@@ -1702,8 +1701,9 @@ export class SessionTools {
 			this.#builtInToolNames.has("write") &&
 			this.#presentationPinnedToolNames?.has("write") !== true &&
 			this.#runtimeSelectedToolNames?.has("write") !== true &&
-			((this.#host.planModeEnabled() && (!writeSelected || deviceOnlyWriteActive)) ||
-				(writeSelected && deviceOnlyWriteActive && (retainedMountedDevice || retainedDeferrableTool)));
+			writeSelected &&
+			deviceOnlyWriteActive &&
+			(retainedMountedDevice || retainedDeferrableTool);
 		const previousRuntimeSelectedToolNames = this.#runtimeSelectedToolNames;
 		this.#runtimeSelectedToolNames = new Set(
 			normalized.filter(name => !mounted.has(name) && !(name === "write" && transportWriteActive)),

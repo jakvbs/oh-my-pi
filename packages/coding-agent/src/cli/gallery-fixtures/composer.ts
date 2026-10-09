@@ -20,7 +20,7 @@ function renderComposer(shape: string, width: number): readonly string[] {
 		sessionAccent: false,
 		contextLine: "annotated",
 	});
-	status.setPlanModeStatus({ enabled: true, paused: false });
+	status.setGoalModeStatus({ enabled: true, paused: false });
 	try {
 		return renderComposerShapePreview(shape, width, status);
 	} finally {

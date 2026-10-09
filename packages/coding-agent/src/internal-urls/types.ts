@@ -66,9 +66,9 @@ export type SchemeBacking = "file" | "virtual" | "remote" | "device";
 export type SchemeSelectors = "lines" | "none" | "opaque";
 
 /**
- * Mutation class of a writable scheme; drives plan-mode and device-only `write` gates.
- * - `workspace`: mutates user/external state; blocked in plan mode and device-only sessions.
- * - `sandbox`: session scratch space (local://); allowed in plan mode and device-only sessions.
+ * Mutation class of a writable scheme; drives the device-only `write` gate.
+ * - `workspace`: mutates user/external state; blocked in device-only sessions.
+ * - `sandbox`: session scratch space (local://); allowed in device-only sessions.
  * - `coordination`: peer messaging (agent://); always allowed. {@link SchemeWritePolicy.cancels} grants the same per URL.
  * - `device`: tool-device dispatch (xd://); always allowed, the device enforces its own policy.
  */
@@ -97,7 +97,7 @@ export interface SchemeWritePolicy {
 	contentOptional?(url: InternalUrl): boolean;
 	/**
 	 * True when this URL's write only cancels background work (`proc://<id>/kill`), so it
-	 * passes the plan-mode and device-only gates like a `coordination`-scoped write. Approval
+	 * passes the device-only gate like a `coordination`-scoped write. Approval
 	 * still follows {@link SchemeWritePolicy.tier}.
 	 */
 	cancels?(url: InternalUrl): boolean;

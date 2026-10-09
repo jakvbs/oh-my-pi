@@ -48,7 +48,6 @@ describe("RPC goal command", () => {
 	async function start(options: {
 		continuation: boolean;
 		script?: "complete" | "idle" | "slow";
-		plan?: boolean;
 		persist?: boolean;
 	}): Promise<RpcClient> {
 		directory = await fs.mkdtemp(path.join(os.tmpdir(), "omp-rpc-goal-"));
@@ -60,7 +59,6 @@ describe("RPC goal command", () => {
 				PI_NO_TITLE: "1",
 				GOAL_RPC_CONTINUATION: options.continuation ? "1" : "0",
 				GOAL_RPC_SCRIPT: options.script ?? "complete",
-				GOAL_RPC_PLAN: options.plan ? "1" : "0",
 				GOAL_RPC_PERSIST: options.persist ? "1" : "0",
 			},
 		});
@@ -83,15 +81,6 @@ describe("RPC goal command", () => {
 		// Continuation is off: nothing ran, so no model turn happened.
 		expect(state.messageCount).toBe(0);
 		expect(state.isStreaming).toBe(false);
-	}, 30_000);
-
-	test("plan mode refuses create and resume", async () => {
-		const rpc = await start({ continuation: true, plan: true });
-		const refused = await rejectionOf(rpc.goal("create", { objective: "not while planning" }));
-		expect(refused).toMatchObject({ command: "goal", message: "Exit plan mode before starting a goal." });
-		const state = await rpc.getState();
-		expect(state.goal).toBeNull();
-		expect(state.messageCount).toBe(0);
 	}, 30_000);
 
 	test("continuation stops after a turn with no progress and the goal stays active", async () => {
@@ -474,7 +463,6 @@ describe("RpcGoalController continuation gate", () => {
 			queuedMessageCount: 0,
 			hasPendingAsyncWork: () => false,
 			settleAsyncWork: async () => {},
-			getPlanModeState: () => undefined,
 			getGoalModeState: () => goalState,
 			setGoalModeState: (state: GoalModeState | undefined) => {
 				goalState = state;

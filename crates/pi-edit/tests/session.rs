@@ -421,8 +421,7 @@ async fn hashline_rem_streaming_preview_does_not_error_on_invalid_utf8() {
 			home_dir:             cwd,
 			url_schemes:          Vec::new(),
 			url_alias_schemes:    Vec::new(),
-			plan_writable_roots:  Vec::new(),
-			plan_active:          false,
+			sandbox_roots:        Vec::new(),
 			block_auto_generated: true,
 		},
 		allow_fuzzy:        true,
@@ -497,31 +496,9 @@ async fn writer_failure_is_surfaced_verbatim() {
 }
 
 #[tokio::test]
-async fn plan_mode_rejects_working_tree_writes_before_writing() {
-	let mut ws = Workspace::new(EditMode::Replace);
-	ws.config.policy.plan_active = true;
-	ws.write("a.txt", "one\n");
-	let writer = DiskWriter::default();
-	let err = ws
-		.apply_json(
-			&serde_json::json!({ "path": "a.txt", "old_string": "one", "new_string": "two" }),
-			&writer,
-		)
-		.await
-		.expect_err("plan mode");
-	assert_eq!(
-		err.to_string(),
-		"Plan mode: the working tree is read-only. Write your plan to a local://<slug>-plan.md file \
-		 instead."
-	);
-	assert_eq!(writer.requests.lock().len(), 0);
-}
-
-#[tokio::test]
 async fn internal_url_targets_wait_for_host_answers() {
 	let mut ws = Workspace::new(EditMode::Replace);
 	ws.config.policy.url_schemes = vec!["local".into()];
-	ws.config.policy.plan_active = true;
 	let sandbox = tempfile::tempdir().expect("sandbox");
 	let backing = sandbox.path().join("plan.md");
 	std::fs::write(&backing, "one\n").unwrap();
@@ -558,9 +535,8 @@ async fn internal_url_targets_wait_for_host_answers() {
 	assert!(!session.preview_pending());
 
 	session.provide("local://plan.md".into(), UrlResolution {
-		absolute:      Some(backing.clone()),
-		error:         None,
-		plan_writable: true,
+		absolute: Some(backing.clone()),
+		error:    None,
 	});
 	assert!(session.preview_pending());
 	let batch = session.preview();
@@ -576,9 +552,8 @@ async fn internal_url_targets_wait_for_host_answers() {
 	session.finish();
 	assert_eq!(session.begin_apply_url_targets(), ["local://plan.md"]);
 	session.provide("local://plan.md".into(), UrlResolution {
-		absolute:      Some(backing.clone()),
-		error:         None,
-		plan_writable: true,
+		absolute: Some(backing.clone()),
+		error:    None,
 	});
 	session
 		.apply(ApplyRequest::default(), &writer)
@@ -599,9 +574,8 @@ async fn apply_never_reuses_url_answers_given_to_previews() {
 	std::fs::write(&stale, "one\n").unwrap();
 	std::fs::write(&fresh, "one\n").unwrap();
 	let answer = |absolute: &std::path::Path| UrlResolution {
-		absolute:      Some(absolute.to_owned()),
-		error:         None,
-		plan_writable: false,
+		absolute: Some(absolute.to_owned()),
+		error:    None,
 	};
 	let writer = DiskWriter::default();
 
@@ -687,9 +661,8 @@ async fn begin_apply_url_targets_cover_every_url_before_the_first_stage() {
 		for url in targets {
 			let name = url.trim_start_matches("local://");
 			session.provide(url.clone(), UrlResolution {
-				absolute:      Some(sandbox.path().join(name)),
-				error:         None,
-				plan_writable: false,
+				absolute: Some(sandbox.path().join(name)),
+				error:    None,
 			});
 		}
 		let writer = DiskWriter::default();

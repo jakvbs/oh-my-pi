@@ -21,7 +21,7 @@ use std::{
 };
 
 use crate::{
-	engine::{FileOp, Resolved},
+	engine::Resolved,
 	error::{EditError, EditResult},
 	notebook,
 	path_policy::{PathPolicy, UrlResolution, canonical_key},
@@ -189,14 +189,6 @@ impl FileCache {
 		self.clear();
 		self.urls.clear();
 		self.unresolved.clear();
-	}
-
-	/// Plan-mode write guard, judging URL targets by their host answers.
-	///
-	/// # Errors
-	/// [`EditError::Plan`] when plan mode refuses the write.
-	pub fn enforce_write(&self, display: &str, op: FileOp, move_to: Option<&str>) -> EditResult<()> {
-		self.policy.enforce_write(display, op, move_to, &self.urls)
 	}
 
 	fn read_resolved(&mut self, resolved: &Resolved) -> EditResult<Option<Arc<FileRead>>> {
