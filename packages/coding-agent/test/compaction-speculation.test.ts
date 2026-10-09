@@ -117,7 +117,6 @@ describe("async speculative compaction", () => {
 			goalModeState: () => undefined,
 			planReferencePath: () => "",
 			nonMessageTokenSource: () => ({}),
-			memoryBackendSession: () => undefined,
 			emitSessionEvent: async (event: { type: string }) => {
 				events.push(event.type);
 			},

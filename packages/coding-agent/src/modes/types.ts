@@ -453,7 +453,6 @@ export interface InteractiveModeContext {
 	handleWorktreeCommand(branch?: string, options?: { keepChanges?: boolean }): Promise<void>;
 	withBtwSessionMove(operation: () => Promise<boolean>): Promise<boolean>;
 	handleRenameCommand(title: string): Promise<void>;
-	handleMemoryCommand(text: string): Promise<void>;
 	handleSTTToggle(): Promise<void>;
 	/** Space-bar push-to-talk into `target`: a recognized hold starts dictation and its release stops
 	 *  it. Gated on `stt.enabled`, so a disabled STT leaves the space bar typing normally. */

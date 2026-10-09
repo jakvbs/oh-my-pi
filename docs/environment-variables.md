@@ -24,7 +24,7 @@ The agent/root locations respect profiles, `PI_CONFIG_DIR`, and—only for the d
 
 Additional rule inside each `.env` file: every `OMP_*` key is mirrored to its `PI_*` alias, and that mirrored value replaces a same-file `PI_*` value. This mirroring applies to parsed dotenv files, not arbitrary variables inherited from the parent process.
 
-Variables declared on a setting definition (see [settings precedence](./settings.md#precedence)) are parsed by the setting's type unless noted otherwise. Boolean ones (`PI_INTENT_TRACING`, `PI_AUTO_QA`, `HINDSIGHT_AUTO_RECALL`, …) follow `parseFlag`: an empty value is ignored, so the setting applies; `1`, `y`, `true`, `yes`, and `on` (all-lowercase or all-uppercase) mean true; any other non-empty value means false.
+Variables declared on a setting definition (see [settings precedence](./settings.md#precedence)) are parsed by the setting's type unless noted otherwise. Boolean ones (`PI_INTENT_TRACING`, `PI_AUTO_QA`, …) follow `parseFlag`: an empty value is ignored, so the setting applies; `1`, `y`, `true`, `yes`, and `on` (all-lowercase or all-uppercase) mean true; any other non-empty value means false.
 
 ---
 
@@ -477,44 +477,11 @@ Shell subprocess filtering is separate (`packages/utils/src/env.ts`): it strips 
 | `OMP_MCP_REQUIRE_READY`      | Set to `1` to make print mode exit 1 before the first turn if any configured MCP server remains pending or has failed. Without it, unavailable servers produce per-server stderr warnings and the turn proceeds.                                                                                                                                                                                                                                                                                                                                                 |
 | `PI_DISABLE_UUTILS_BUILTINS` | Non-empty except `0`/`false` disables the bash tool's uutils built-ins; `shell.env.PI_DISABLE_UUTILS_BUILTINS` wins                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `OMP_NO_WEBP`                | `1` or `true` (case-insensitive) disables WebP in image-resize format selection                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `MNEMOPI_EMBEDDING_MODEL`    | Embedding-model fallback for `mnemopi.embeddingModel`: used when that setting is unset, `null`, or blank; otherwise the setting wins                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `PI_AUTO_QA`                 | Boolean flag with highest precedence for the automatic tool-issue report injection/recording; any non-empty value other than `1`/`y`/`true`/`yes`/`on` disables it; unset or empty consults the `dev.autoqa` setting                                                                                                                                                                                                                                                                                                                                                       |
 | `PI_AUTO_QA_PUSH`            | `1`/`true` bypasses the consent dialog and forces tool-issue push recording in headless/non-interactive environments                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `PI_AUTO_QA_PUSH_URL`        | Endpoint override for auto QA grievance push; wins over the `dev.autoqaPush.endpoint` setting                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `PI_AUTO_QA_PUSH_TOKEN` | Bearer-token override for auto QA grievance push; wins over `dev.autoqaPush.token` |
 | `OMP_DAEMON_IDLE_GRACE_MS`   | Milliseconds a daemon broker waits after its last `omp` client disconnects before it shuts down and stops the non-detached daemons it supervises, such as services started with the bash tool's `name` (default `3000`). Read once when an `omp` process launches the broker, using the base-10 `parseInt` prefix (`5s` reads as `5`, `2.5` as `2`); `0` shuts the broker down as soon as the last client disconnects, and negative values or values without leading digits use the default |
-
-### Hindsight memory backend
-
-Each supported environment variable overrides the corresponding `hindsight.*` setting, which in
-turn overrides its built-in default. String values are trimmed and a blank value is ignored.
-Boolean values follow the setting-backed flag rules above: an empty value is ignored; `1`, `y`,
-`true`, `yes`, and `on` (all-lowercase or all-uppercase) mean true; any other value means false.
-Integer values use the base-10 `parseInt` prefix (`5000ms` reads as `5000`, `2.5` as `2`);
-empty and non-numeric values are ignored, and the parsed integer is not clamped. Enum values
-must match one of the listed lowercase values (surrounding whitespace is ignored); invalid values
-are ignored.
-
-| Variable                           | Setting overridden              | Accepted value / built-in default                                                 |
-| ---------------------------------- | ------------------------------- | --------------------------------------------------------------------------------- |
-| `HINDSIGHT_API_URL`                | `hindsight.apiUrl`              | Non-empty string; default `http://localhost:8888`                                 |
-| `HINDSIGHT_API_TOKEN`              | `hindsight.apiToken`            | Non-empty string; unset by default                                                |
-| `HINDSIGHT_BANK_ID`                | `hindsight.bankId`              | Non-empty string; unset by default, so the selected scoping mode derives the bank |
-| `HINDSIGHT_BANK_MISSION`           | `hindsight.bankMission`         | Non-empty string; default empty string                                            |
-| `HINDSIGHT_RETAIN_MODE`            | `hindsight.retainMode`          | `full-session` or `last-turn`; default `full-session`                             |
-| `HINDSIGHT_RECALL_BUDGET`          | `hindsight.recallBudget`        | `low`, `mid`, or `high`; default `mid`                                            |
-| `HINDSIGHT_AUTO_RECALL`            | `hindsight.autoRecall`          | Boolean; default `true`                                                           |
-| `HINDSIGHT_AUTO_RETAIN`            | `hindsight.autoRetain`          | Boolean; default `true`                                                           |
-| `HINDSIGHT_SCOPING`                | `hindsight.scoping`             | `global`, `per-project`, or `per-project-tagged`; default `per-project-tagged`    |
-| `HINDSIGHT_DEBUG`                  | `hindsight.debug`               | Boolean; default `false`                                                          |
-| `HINDSIGHT_RECALL_MAX_TOKENS`      | `hindsight.recallMaxTokens`     | Integer; default `1024`                                                           |
-| `HINDSIGHT_RECALL_CONTEXT_TURNS`   | `hindsight.recallContextTurns`  | Integer; default `1`                                                              |
-| `HINDSIGHT_RECALL_MAX_QUERY_CHARS` | `hindsight.recallMaxQueryChars` | Integer; default `800`                                                            |
-| `HINDSIGHT_RETAIN_EVERY_N_TURNS`   | `hindsight.retainEveryNTurns`   | Integer; default `3`                                                              |
-| `HINDSIGHT_REQUEST_TIMEOUT_MS`     | `hindsight.requestTimeoutMs`    | Integer milliseconds; default `30000`                                             |
-| `HINDSIGHT_REFLECT_TIMEOUT_MS`     | `hindsight.reflectTimeoutMs`    | Integer milliseconds; default `120000`                                            |
-| `HINDSIGHT_RECALL_TIMEOUT_MS`      | `hindsight.recallTimeoutMs`     | Integer milliseconds; default `30000`                                             |
-| `HINDSIGHT_RETAIN_TIMEOUT_MS`      | `hindsight.retainTimeoutMs`     | Integer milliseconds; default `60000`                                             |
 
 `PI_NO_PTY` is also set internally when CLI `--no-pty` is used.
 

@@ -66,9 +66,6 @@ import {
 	cfgTaskEnableEffort,
 	cfgTaskAgentModelOverrides,
 } from "@oh-my-pi/pi-coding-agent/task/settings";
-import { cfgMnemopiDbPath, cfgMnemopiScoping } from "@oh-my-pi/pi-coding-agent/mnemopi/settings";
-import { cfgMemoryBackend } from "@oh-my-pi/pi-coding-agent/memory-backend/settings";
-import { cfgHindsightBankId, cfgHindsightScoping } from "@oh-my-pi/pi-coding-agent/hindsight/settings";
 import { cfgEditMode } from "@oh-my-pi/pi-coding-agent/edit/settings";
 import { cfgExaEnabled } from "@oh-my-pi/pi-coding-agent/web/settings";
 import {
@@ -1903,7 +1900,7 @@ describe("Settings", () => {
 				{ judge: ["local/gemma-3-1b", "@tiny", "@smol", "@default"] },
 			],
 			["tiny model", "providers.tinyModel", "lfm2.5-230m", { tiny: "local/lfm2.5-230m" }, {}],
-			["memory model", "providers.memoryModel", "lfm2-1.2b", { memory: "local/lfm2-1.2b" }, {}],
+			["retired memory model", "providers.memoryModel", "lfm2-1.2b", {}, {}],
 			["local speech model", "tts.localModel", "kokoro", {}, {}],
 			["fast dictation model", "stt.modelName", "fast", { dictation: "local/whisper-base" }, {}],
 			["balanced dictation model", "stt.modelName", "balanced", { dictation: "local/whisper-small" }, {}],
@@ -2009,7 +2006,7 @@ describe("Settings", () => {
 			expect(cfgRetryFallbackChains.get(settings).web).toEqual(webExaCandidates.slice(1));
 		});
 
-		it("preserves explicit roles and empty chains while prepending local tiny and memory models", async () => {
+		it("preserves explicit roles and empty chains while prepending local tiny models", async () => {
 			await writeSettings({
 				modelRoles: {
 					web: "custom/web",
@@ -2045,7 +2042,7 @@ describe("Settings", () => {
 				dictation: "custom/dictation",
 				judge: "custom/judge",
 				tiny: "local/lfm2.5-230m,custom/tiny,@smol",
-				memory: "local/lfm2-1.2b,custom/memory",
+				memory: "custom/memory",
 			});
 			expect(cfgRetryFallbackChains.get(settings)).toEqual({
 				web: [],
@@ -2213,60 +2210,6 @@ describe("Settings", () => {
 			expect(cfgEditMode.get(settings)).toBe("hashline");
 			expect(editVariantForModel(settings, "claude-opus-4-5")).toBe("hashline");
 			expect(editVariantForModel(settings, "gpt-5.2")).toBe("apply_patch");
-		});
-
-		it("maps legacy hindsight.dynamicBankId=true onto hindsight.scoping=per-project", async () => {
-			await writeSettings({
-				hindsight: { dynamicBankId: true },
-			});
-
-			const settings = await Settings.init({ cwd: projectDir, agentDir });
-
-			expect(cfgHindsightScoping.get(settings)).toBe("per-project");
-		});
-
-		it("does not override an explicit hindsight.scoping when migrating", async () => {
-			await writeSettings({
-				hindsight: { dynamicBankId: true, scoping: "global" },
-			});
-
-			const settings = await Settings.init({ cwd: projectDir, agentDir });
-
-			expect(cfgHindsightScoping.get(settings)).toBe("global");
-		});
-
-		it("promotes legacy hindsight.agentName onto hindsight.bankId when bankId is unset", async () => {
-			await writeSettings({
-				hindsight: { agentName: "ada-cli" },
-			});
-
-			const settings = await Settings.init({ cwd: projectDir, agentDir });
-
-			expect(cfgHindsightBankId.get(settings)).toBe("ada-cli");
-		});
-
-		it("migrates the legacy mnemosyne memory backend to mnemopi", async () => {
-			await writeSettings({
-				memory: { backend: "mnemosyne" },
-				mnemosyne: { dbPath: "/tmp/old.db", scoping: "global" },
-			});
-
-			const settings = await Settings.init({ cwd: projectDir, agentDir });
-
-			expect(cfgMemoryBackend.get(settings)).toBe("mnemopi");
-			expect(cfgMnemopiDbPath.get(settings)).toBe("/tmp/old.db");
-			expect(cfgMnemopiScoping.get(settings)).toBe("global");
-		});
-
-		it("does not clobber an explicit mnemopi block when the legacy mnemosyne block is also present", async () => {
-			await writeSettings({
-				mnemosyne: { dbPath: "/tmp/old.db" },
-				mnemopi: { dbPath: "/tmp/new.db" },
-			});
-
-			const settings = await Settings.init({ cwd: projectDir, agentDir });
-
-			expect(cfgMnemopiDbPath.get(settings)).toBe("/tmp/new.db");
 		});
 
 		it("migrates boolean task.eager/todo.eager true to always", async () => {

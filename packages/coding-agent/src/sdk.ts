@@ -43,7 +43,6 @@ import {
 	discoverWatchdogFiles,
 	formatActiveRepoWatchdogPrompt,
 	formatAdvisorContextPrompt,
-	formatAdvisorMemoryPrompt,
 } from "./advisor";
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
@@ -132,7 +131,6 @@ import {
 	setActiveSkills,
 } from "./extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal } from "./extensibility/slash-commands";
-import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
 import { stripXdUrlPrefix } from "@oh-my-pi/pi-tui/tools/xd-url";
 import { setSharedLspEnabled } from "./lsp/client";
@@ -149,9 +147,6 @@ import {
 import { parseMCPToolName } from "@oh-my-pi/pi-tui/tools/mcp";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { resolveMCPToolAlias } from "./mcp/tool-bridge";
-import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
-import { MEMORY_BACKEND_TOOL_NAMES } from "./memory-backend/tool-names";
-import type { MnemopiSessionState } from "./mnemopi/state";
 import mcpXdevGuidanceTemplate from "./prompts/system/mcp-xdev-guidance.md" with { type: "text" };
 import lateDiagnosticTemplate from "./prompts/tools/lsp-late-diagnostic.md" with { type: "text" };
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
@@ -300,7 +295,6 @@ import {
 	cfgSessionToolGates,
 } from "./tools/settings";
 import { cfgToolsFormat } from "./session/context-settings";
-import { cfgAutolearnEnabled } from "./autolearn/settings";
 import {
 	cfgDefaultThinkingLevel,
 	cfgExternalThinking,
@@ -760,10 +754,6 @@ export interface CreateAgentSessionOptions {
 	bindProcessState?: boolean;
 	/** Whether this is a subagent session. Default: false. */
 	isSubagent?: boolean;
-	/** Parent Hindsight state to alias for subagent memory tools. */
-	parentHindsightSessionState?: HindsightSessionState;
-	/** Parent Mnemopi state to alias for subagent memory tools. */
-	parentMnemopiSessionState?: MnemopiSessionState;
 	/** Pre-allocated agent identity for IRC routing. Default: "Main" for top-level, parentTaskPrefix-derived for sub. */
 	agentId?: string;
 	/** Display name for the agent in IRC. Default: "main" or "sub". */
@@ -1316,7 +1306,7 @@ const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
 /** Matches the truncation applied to per-server instructions inside `rebuildSystemPrompt`. */
 const MAX_MCP_INSTRUCTIONS_LENGTH = 4000;
 /** Built-ins `createTools` force-includes into explicit tool lists; the active set mirrors them. */
-const SESSION_MANAGED_BUILTIN_TOOL_NAMES = ["manage_skill", "learn", "context_notes", "new_context"];
+const SESSION_MANAGED_BUILTIN_TOOL_NAMES = ["manage_skill", "context_notes", "new_context"];
 
 let sshCleanupRegistered = false;
 
@@ -2243,8 +2233,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			sessionManager,
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
 			isDisposed: () => session?.isDisposed ?? false,
-			getHindsightSessionState: () => session?.getHindsightSessionState(),
-			getMnemopiSessionState: () => session?.getMnemopiSessionState(),
 			getAgentId: () => resolvedAgentId,
 			getToolByName: name => session?.getToolByName(name),
 			agentRegistry,
@@ -3182,7 +3170,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			cwd,
 			sessionManager,
 			modelRegistry,
-			() => (hasSession ? createSessionMemoryRuntimeContext(session, agentDir, cwd) : undefined),
 			settings,
 			localProtocolOptions,
 			() => (hasSession ? session.getAsyncJobSnapshot() : null),
@@ -3607,11 +3594,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// pruning) must agree: every prompt rebuild re-syncs the agent's pruning.
 		const resolveInlineToolDescriptors = (): boolean =>
 			shouldInlineToolDescriptors(cfgInlineToolDescriptors.get(settings), (agent?.state.model ?? model)?.id);
-		// Latest memory backend instructions rendered for advisor system prompts.
-		// Populated by the initial rebuildSystemPrompt below (before the session is
-		// constructed) and refreshed on every later rebuild via
-		// `setAdvisorMemoryPrompt`.
-		let advisorMemoryPrompt: string | undefined;
 		// The process agent dir uses the process-wide store; a session rooted in
 		// another agent dir keeps its own, closed when the session is disposed.
 		const ownedSkillDescriptionStore =
@@ -3682,15 +3664,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					setActiveRules(nextActiveRules);
 				}
 			}
-			const memoryBackend = restrictToolNames ? undefined : await resolveMemoryBackend(settings);
-			const memoryInstructions = memoryBackend
-				? await memoryBackend.buildDeveloperInstructions(agentDir, settings, session)
-				: undefined;
-			// Advisors get the same memory block (sharpshooter decisions, mnemopi/
-			// hindsight instructions) wrapped as shared background knowledge; the
-			// tool-availability caveat lives in the wrapper template.
-			advisorMemoryPrompt = formatAdvisorMemoryPrompt(memoryInstructions);
-			if (hasSession) session.setAdvisorMemoryPrompt(advisorMemoryPrompt);
 			const inlineToolDescriptors = resolveInlineToolDescriptors();
 			// Unset only during the initial build; the agent is constructed with it.
 			if (agent) agent.pruneToolDescriptions = inlineToolDescriptors;
@@ -3703,7 +3676,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				};
 			}
 
-			// Build combined append prompt: memory instructions + auto-learn guidance
+			// Build combined append prompt: auto-learn guidance
 			// + mounted MCP route guidance + optional MCP server instructions. For UI
 			// sessions MCP discovery is deferred, so the initial registry and
 			// `getServerInstructions()` are empty until the background connect
@@ -3717,14 +3690,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// same-named custom tool while auto-learn is off get no guidance.
 			const autoLearnInstructions = restrictToolNames
 				? undefined
-				: buildAutoLearnInstructions({
-						manageSkill: hasSession
-							? session.hasBuiltInTool("manage_skill")
-							: builtInRegistryToolNames.has("manage_skill"),
-						learn: hasSession ? session.hasBuiltInTool("learn") : builtInRegistryToolNames.has("learn"),
-					});
+				: buildAutoLearnInstructions(
+						hasSession ? session.hasBuiltInTool("manage_skill") : builtInRegistryToolNames.has("manage_skill"),
+					);
 			const appendParts: string[] = [];
-			if (memoryInstructions) appendParts.push(memoryInstructions);
 			if (autoLearnInstructions) appendParts.push(autoLearnInstructions);
 			// List each mounted MCP tool once. A routed tool that the xd:// catalog
 			// would list carries its catalog summary on the route line and gets no
@@ -3817,7 +3786,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				secretsEnabled: obfuscator?.obfuscates() === true,
 				workspaceTree: workspaceTreePromise,
 				includeWorkspaceTree,
-				memoryBackend: memoryBackend?.id,
 				settingsApproval: toolSession.settingsApproval === true,
 				model: getActiveModelString(),
 				includeModelInPrompt: cfgIncludeModelInPrompt.get(settings),
@@ -4409,7 +4377,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			cacheWarmer,
 			advisorWatchdogPrompt,
 			advisorContextPrompt,
-			advisorMemoryPrompt,
 			advisorSharedInstructions: discoveredAdvisors.sharedInstructions,
 			advisorSharedMaxNotesPerUpdate: discoveredAdvisors.sharedMaxNotesPerUpdate,
 			advisorConfigs: discoveredAdvisors.advisors,
@@ -4451,17 +4418,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			allowSessionModelFallback: options.hasUI === true && options.allowSessionModelFallback !== false,
 			rebindModelAfterDiscovery: options.model === undefined || options.rebindModelAfterDiscovery === true,
 			toolRegistry,
-			memoryEnabled: !restrictToolNames,
-			memoryAgentDir: agentDir,
-			memoryIsSubagent: isSubagentSession,
-			createMemoryTools: restrictToolNames
-				? undefined
-				: async () => {
-						const tools = await Promise.all(
-							MEMORY_BACKEND_TOOL_NAMES.map(name => BUILTIN_TOOLS[name](toolSession)),
-						);
-						return tools.filter((tool): tool is AgentTool => tool !== null);
-					},
 			createThinkTool: async () => (await HIDDEN_TOOLS.think(toolSession)) ?? null,
 			builtInToolNames: builtInRegistryToolNames,
 			mcpManagerToolNames: initialMcpManagerToolNames,
@@ -4977,25 +4933,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			}
 		}
 
-		const startMemoryBackend = async () => {
-			const memoryBackend = await resolveMemoryBackend(settings);
-			await memoryBackend.start({
-				session,
-				settings,
-				modelRegistry,
-				agentDir,
-				isSubagent: isSubagentSession,
-				parentHindsightSessionState: options.parentHindsightSessionState,
-				parentMnemopiSessionState: options.parentMnemopiSessionState,
-			});
-		};
-
 		const runAutoLearnCapture = createAutoLearnCaptureRunner({
 			sourceAgent: agent,
 			captureTools: () =>
-				(["manage_skill", "learn"] as const)
-					.map(name => session.getToolByName(name))
-					.filter((tool): tool is AgentTool => tool !== undefined),
+				[session.getToolByName("manage_skill")].filter((tool): tool is AgentTool => tool !== undefined),
 			onPayload,
 			onResponse,
 			createAgent: captureOptions => {
@@ -5035,8 +4976,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					streamFn: primaryStreamFn,
 					transformToolCallArguments,
 					// No fallback resolver. The capture agent advertises only
-					// `learn`/`manage_skill`, both of which stay top-level and never
-					// mount as devices, so it has nothing legitimate to recover — while
+					// `manage_skill`, which stays top-level and never mounts as a device, so it has nothing legitimate to recover — while
 					// the primary session's resolver is bound to the primary agent's
 					// tools and would have let a capture response reach a main-session
 					// MCP tool, side effects included. A hallucinated call from here
@@ -5056,32 +4996,18 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			},
 		});
 
-		// Auto-learn can immediately trigger a private capture after the first real
-		// stop. When it is enabled at startup and a memory backend is selected,
-		// install that backend's per-session state first so the capture turn's
-		// `learn` tool observes the same initialized state as normal memory tools.
-		// Other sessions keep memory startup in the background to preserve the
-		// existing startup profile.
-		//
 		// The controller is installed for every top-level session and gates each
 		// stop on the live `autolearn.enabled`, so enabling or disabling it
 		// mid-session takes effect at the next stop; the tool registry reconciles
-		// `learn`/`manage_skill` on the same setting, and captures resolve those
-		// tools per run. The subscription lives for the session's lifetime; the
-		// reference is intentionally discarded (the listener retains it).
-		if (!restrictToolNames) {
-			if (cfgAutolearnEnabled.get(settings) && !isSubagentSession) {
-				await logger.time("startMemoryStartupTask", startMemoryBackend);
-			} else {
-				void logger.time("startMemoryStartupTask", startMemoryBackend);
-			}
-			if (!isSubagentSession) {
-				new AutoLearnController({
-					session,
-					settings,
-					capture: content => session.runAutolearnCapture(signal => runAutoLearnCapture(content, signal)),
-				});
-			}
+		// `manage_skill` on the same setting, and captures resolve it per run. The
+		// subscription lives for the session's lifetime; the reference is
+		// intentionally discarded (the listener retains it).
+		if (!restrictToolNames && !isSubagentSession) {
+			new AutoLearnController({
+				session,
+				settings,
+				capture: content => session.runAutolearnCapture(signal => runAutoLearnCapture(content, signal)),
+			});
 		}
 
 		// MCP manager wiring has two ownership models:

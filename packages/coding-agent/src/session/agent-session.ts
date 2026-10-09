@@ -160,13 +160,10 @@ import { expandSlashCommand, type FileSlashCommand, loadSlashCommands } from "..
 import { normalizeToolEventInput, resolveToolEventInput } from "../extensibility/tool-event-input";
 import { GoalRuntime } from "../goals/runtime";
 import type { GoalModeState, GoalTokenUsage } from "../goals/state";
-import type { HindsightSessionState } from "../hindsight/state";
 import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
 import { type ChainJudge, hasNativeJudge, journalJudgmentUsage, resolveJudge, sharedJudgmentCache } from "../judgment";
 import type { IrcMessage } from "@oh-my-pi/pi-tui/tools/irc";
 import type { DaemonCompletionNotification } from "../launch/protocol";
-import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
-import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
 import { MAGIC_KEYWORDS, type MagicKeywordContext, type MagicKeywordId } from "../modes/magic-keywords";
 import { containsMagicKeyword } from "@oh-my-pi/pi-tui/prompt/magic-keywords";
 import { theme } from "@oh-my-pi/pi-tui/theme";
@@ -200,8 +197,6 @@ import {
 import type { SecretObfuscator } from "../secrets/obfuscator";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import { cfgSecretsEnabled } from "../secrets/settings";
-import { releaseSharpshooterSession } from "../sharpshooter/backend";
-import { flushSharpshooterExtraction } from "../sharpshooter/extract";
 import { toolReadsSkillUris } from "../system-prompt";
 import {
 	AUTO_THINKING,
@@ -412,7 +407,6 @@ import {
 	type PersistedSessionInit,
 	type SessionManager,
 } from "./session-manager";
-import { SessionMemory, type SessionMemoryHost } from "./session-memory";
 import { buildSessionMetadata } from "./session-metadata";
 import { SessionProviderBoundary, type SessionProviderBoundaryHost } from "./session-provider-boundary";
 import { SessionStatsTracker, type SessionStatsTrackerHost } from "./session-stats";
@@ -722,8 +716,6 @@ export class AgentSession implements SettingsScope {
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
 	readonly settings: Settings;
-	/** Session-start policy, independent of the selected project memory backend. */
-	readonly memoryEnabled: boolean;
 	/** Entries of tools mounted under `xd://`; empty when virtual devices are unmounted. */
 	getXdevToolEntries: () => Array<{ name: string; summary: string }>;
 	readonly yieldQueue: YieldQueue;
@@ -999,11 +991,10 @@ export class AgentSession implements SettingsScope {
 	#postPromptTasksResolve: (() => void) | undefined = undefined;
 	#postPromptTasksAbortController = new AbortController();
 	/**
-	 * Cancels the current turn's pre-dispatch setup (memory-backend auto-recall and
-	 * other awaited preparation in {@link #prepareAgentStart}) when {@link abort} runs.
+	 * Cancels the current turn's pre-dispatch setup (awaited preparation in {@link #prepareAgentStart}) when {@link abort} runs.
 	 * Bumping {@link #promptGeneration} only makes the cooperative `isCurrent()` checks
-	 * return false; a blocking network recall cannot observe that until it resolves, so
-	 * Esc would otherwise stall for the full recall timeout (issue #12668).
+	 * return false; a blocking `before_agent_start` hook cannot observe that until it resolves, so
+	 * Esc would otherwise stall until it returns (issue #12668).
 	 */
 	#promptSetupAbortController: AbortController | undefined;
 	#activeAgentContinue: ActiveAgentContinue | undefined;
@@ -1081,8 +1072,6 @@ export class AgentSession implements SettingsScope {
 	#synchronouslyTerminatedYieldToolCallIds = new Set<string>();
 	#providerSessionState = new Map<string, ProviderSessionState>();
 	readonly #cacheWarmer: CacheWarmer | undefined;
-	#hindsightSessionState: HindsightSessionState | undefined = undefined;
-	readonly #memory: SessionMemory;
 	readonly rawSseDebugBuffer: RawSseDebugBuffer;
 
 	#resetPromptMaintenanceState(): void {
@@ -1580,7 +1569,6 @@ export class AgentSession implements SettingsScope {
 		this.sessionManager = config.sessionManager;
 		this.settings = config.settings;
 		this.#skillDescriptions = config.skillDescriptions ?? new SkillDescriptionCatalog();
-		this.memoryEnabled = config.memoryEnabled ?? true;
 		this.#modelRegistry = config.modelRegistry;
 		this.#allowSessionModelFallback = config.allowSessionModelFallback === true;
 		this.#extensionRoots =
@@ -1790,32 +1778,6 @@ export class AgentSession implements SettingsScope {
 			sessionId: () => this.sessionId,
 		};
 		this.#stats = new SessionStatsTracker(statsHost);
-		const memoryHost: SessionMemoryHost = {
-			agent: this.agent,
-			settings: this.settings,
-			modelRegistry: this.#modelRegistry,
-			isDisposed: () => this.#isDisposed,
-			cwd: () => this.sessionManager.getCwd(),
-			addDisposer: dispose => this.addDisposer(dispose),
-			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
-			memoryBackendSession: () => this,
-			getHindsightSessionState: () => this.getHindsightSessionState(),
-			setHindsightSessionState: state => this.setHindsightSessionState(state),
-			getMnemopiSessionState: () => this.getMnemopiSessionState(),
-			takeMnemopiSessionState: () => setMnemopiSessionState(this, undefined),
-			setBaseSystemPrompt: prompt => {
-				this.#tools.setBaseSystemPrompt(prompt);
-				this.agent.setSystemPrompt(prompt);
-			},
-			refreshBaseSystemPrompt: () => this.#tools.refreshBaseSystemPrompt(),
-			replaceMemoryTools: tools => this.#tools.replaceMemoryTools(tools),
-		};
-		this.#memory = new SessionMemory(memoryHost, {
-			memoryEnabled: this.memoryEnabled,
-			memoryAgentDir: config.memoryAgentDir,
-			memoryIsSubagent: config.memoryIsSubagent,
-			createMemoryTools: config.createMemoryTools,
-		});
 		// Resolve the wire service-tier per request so the Fireworks Priority
 		// toggle scopes priority to Fireworks alone, without mutating the shared
 		// session `serviceTier` that drives `/fast` and OpenAI/Anthropic priority.
@@ -1965,10 +1927,7 @@ export class AgentSession implements SettingsScope {
 			queuedMessageCount: () => this.queuedMessageCount,
 			planModeEnabled: () => this.#planModeState?.enabled === true,
 			model: () => this.model,
-			memoryBackendSession: () => this,
 			clearInheritedProviderPromptCacheKey: () => this.#clearInheritedProviderPromptCacheKey(),
-			clearMemoryPromotionSnapshot: () => this.#memory.clearPromotionSnapshot(),
-			captureMemoryPromotionSnapshot: prompt => this.#memory.capturePromotionSnapshot(prompt),
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
 			notifyCommandMetadataChanged: () => this.#notifyCommandMetadataChanged(),
 			localProtocolOptions: () => this.#localProtocolOptions(),
@@ -2188,7 +2147,6 @@ export class AgentSession implements SettingsScope {
 			sharedInstructions: config.advisorSharedInstructions,
 			sharedMaxNotesPerUpdate: config.advisorSharedMaxNotesPerUpdate,
 			contextPrompt: config.advisorContextPrompt,
-			memoryPrompt: config.advisorMemoryPrompt,
 			configs: config.advisorConfigs,
 			configWarnings: config.advisorConfigWarnings,
 			streamFn: config.advisorStreamFn,
@@ -2241,7 +2199,6 @@ export class AgentSession implements SettingsScope {
 				if (this.#isDisposed) return;
 				this.#experimentalContextNotesReminder = { prompt, generation: this.#promptGeneration };
 			},
-			memoryBackendSession: () => this,
 			emitSessionEvent: (event, options) => this.#emitSessionEvent(event, options),
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
 			scheduleAgentContinue: options => this.#scheduleAgentContinue(options),
@@ -2658,20 +2615,6 @@ export class AgentSession implements SettingsScope {
 	/** Hint forwarded to provider calls that support websocket transport; read live from `providers.openaiWebsockets`. */
 	get preferWebsockets(): boolean | undefined {
 		return resolveOpenAIWebsocketPreference(this.settings);
-	}
-
-	getHindsightSessionState(): HindsightSessionState | undefined {
-		return this.#hindsightSessionState;
-	}
-
-	setHindsightSessionState(state: HindsightSessionState | undefined): HindsightSessionState | undefined {
-		const previous = this.#hindsightSessionState;
-		this.#hindsightSessionState = state;
-		return previous;
-	}
-
-	getMnemopiSessionState(): MnemopiSessionState | undefined {
-		return getMnemopiSessionState(this);
 	}
 
 	/** TTSR manager for time-traveling stream rules */
@@ -5330,7 +5273,6 @@ export class AgentSession implements SettingsScope {
 		if (this.agent.prepareQueuedMessages === this.#prepareQueuedUserMessages) {
 			this.agent.prepareQueuedMessages = undefined;
 		}
-		this.#memory.cancelLocalMemoryStartup();
 		this.#titleGenerationAbortController.abort();
 		this.#abortAutolearnCapture();
 		this.#irc.flushPending();
@@ -5399,18 +5341,6 @@ export class AgentSession implements SettingsScope {
 		}
 	}
 
-	async #disposeMnemopi(
-		state: MnemopiSessionState | undefined,
-		consolidateTimeoutMs: number | undefined,
-	): Promise<void> {
-		try {
-			await state?.dispose({ timeoutMs: consolidateTimeoutMs });
-		} finally {
-			// Consolidation may embed final memories, so terminate its worker only afterward.
-			await shutdownMnemopiEmbedClient();
-		}
-	}
-
 	async #doDispose(options: AgentSessionDisposeOptions = {}): Promise<void> {
 		this.beginDispose();
 		// Stop cache warming before the drain windows below: an armed tick firing
@@ -5449,27 +5379,13 @@ export class AgentSession implements SettingsScope {
 			logger.warn("Post-prompt tasks still draining at dispose deadline", { error: String(error) });
 		}
 		await this.#drainAutolearnCapture();
-		await this.#memory.transition;
 
-		const hindsightState = this.getHindsightSessionState();
-		const mnemopiState = setMnemopiSessionState(this, undefined);
-		// Bound the wait for a just-fired sharpshooter extraction before dropping
-		// its subscriptions, so print-mode exits don't cut queued-delta writes.
-		const sharpshooterFlushed = flushSharpshooterExtraction(this, options.mnemopiConsolidateTimeoutMs);
-		try {
-			releaseSharpshooterSession(this);
-		} catch (error) {
-			logger.warn("Session dispose: Sharpshooter release failed", { error: String(error) });
-		}
 		const advisorRecorderClosed = this.#advisors.recorderClosed();
 		releaseShellSessions(this.sessionManager.getSessionId());
 		const results = await Promise.allSettled([
 			this.#disposeOwnedAsyncJobs(),
 			this.#disconnectOwnedMcp(),
 			advisorRecorderClosed,
-			hindsightState?.flushRetainQueue() ?? Promise.resolve(),
-			this.#disposeMnemopi(mnemopiState, options.mnemopiConsolidateTimeoutMs),
-			sharpshooterFlushed,
 		]);
 		for (const result of results) {
 			if (result.status === "rejected") {
@@ -5484,8 +5400,6 @@ export class AgentSession implements SettingsScope {
 		this.#movedFromEmptySessionFile = undefined;
 		this.#closeAllProviderSessions("dispose");
 		this.#maintenance.cancelSpeculation();
-		this.setHindsightSessionState(undefined);
-		hindsightState?.dispose();
 		this.#disconnectFromAgent();
 		// beginDispose() drained the rest; this catches registrations made during teardown.
 		for (const dispose of this.#disposers.splice(0)) dispose();
@@ -5611,7 +5525,6 @@ export class AgentSession implements SettingsScope {
 		this.#closeAllProviderSessions("fresh session");
 		this.#freshProviderSessionId = Bun.randomUUIDv7();
 		this.#syncAgentSessionId();
-		this.#memory.rekeyForCurrentSessionId();
 		this.agent.appendOnlyContext?.invalidateForModelChange();
 		return {
 			previousSessionId,
@@ -5691,7 +5604,6 @@ export class AgentSession implements SettingsScope {
 		this.#closeAllProviderSessions("reset context");
 		this.#freshProviderSessionId = Bun.randomUUIDv7();
 		this.#syncAgentSessionId();
-		this.#memory.rekeyForCurrentSessionId();
 		this.agent.appendOnlyContext?.invalidateForModelChange();
 
 		// Re-arm the approved-plan reference: the reset dropped the plan-approved
@@ -5705,7 +5617,6 @@ export class AgentSession implements SettingsScope {
 		// Re-prime the advisors across the conversation boundary and undo any
 		// memory promotion so the next turn rebuilds from the base system prompt.
 		this.#advisors.resetSessionState();
-		await this.#memory.resetContextForNewTranscript();
 
 		// Record a durable boundary on the persisted branch. The collapsed live
 		// transcript and the model-context rebuild start emission after the latest
@@ -6146,32 +6057,6 @@ export class AgentSession implements SettingsScope {
 	 */
 	getAdvertisedSessionAgents(): readonly AgentDefinition[] {
 		return this.#tools.advertisedSessionAgents;
-	}
-
-	/** Cancels the local rollout-memory startup owned by this session. */
-	cancelLocalMemoryStartup(): void {
-		this.#memory.cancelLocalMemoryStartup();
-	}
-
-	/** Starts a new local rollout-memory generation and cancels its predecessor. */
-	beginLocalMemoryStartup(): AbortSignal {
-		return this.#memory.beginLocalMemoryStartup();
-	}
-
-	/** Releases the local startup slot if `signal` still owns it. */
-	endLocalMemoryStartup(signal: AbortSignal): void {
-		this.#memory.endLocalMemoryStartup(signal);
-	}
-
-	/** Apply the backend; cwd rebinding can skip Mnemopi auto-retention while still draining writes. */
-	applyMemoryBackend(options: { retainMnemopi?: boolean } = {}): Promise<void> {
-		if (!this.memoryEnabled) return Promise.resolve();
-		return this.#memory.applyMemoryBackend(options);
-	}
-
-	/** Resolves once every memory-setting edit so far, and the backend transitions it started, has settled. */
-	settleMemoryBackend(): Promise<void> {
-		return this.#memory.settle();
 	}
 
 	/** Rebuilds the stable base prompt, optionally discarding a stale asynchronous rebuild. */
@@ -7299,15 +7184,12 @@ export class AgentSession implements SettingsScope {
 			!signal?.aborted;
 		const cancelled = { baseXdevCatalogDelivered: false, commit: () => undefined };
 		for (let attempt = 0; attempt < AGENT_START_POLICY_MAX_ATTEMPTS; attempt++) {
-			await this.#memory.transition;
 			if (!isCurrent()) return cancelled;
 			const sourceBase = this.#tools.baseSystemPrompt;
-			const basePreparation = await this.#tools.buildSystemPromptForAgentStart(prompt, isCurrent, signal);
-			if (!isCurrent()) return cancelled;
-			const result = await this.#extensionRunner?.emitBeforeAgentStart(prompt, images, basePreparation.systemPrompt);
+			const result = await this.#extensionRunner?.emitBeforeAgentStart(prompt, images, sourceBase);
 			if (!isCurrent()) return cancelled;
 			// Overrides are opaque replacements, not string patches. Re-run only policy preparation
-			// against the winning base; discard this attempt's returned context and staged memory.
+			// against the winning base; discard this attempt's returned context.
 			const overrideIsCurrent = () => {
 				if (result?.systemPrompt === undefined) return true;
 				const currentBase = this.#tools.baseSystemPrompt;
@@ -7347,11 +7229,10 @@ export class AgentSession implements SettingsScope {
 			return {
 				baseXdevCatalogDelivered: result?.systemPrompt === undefined,
 				commit: () => {
-					// No await may separate ownership validation from publishing memory and policy.
+					// No await may separate ownership validation from publishing policy.
 					if (!isCurrent() || !overrideIsCurrent()) return undefined;
-					if (basePreparation.commit?.() === false) return undefined;
 					if (result?.systemPrompt !== undefined) {
-						this.#tools.setTurnSystemPromptOverride(result.systemPrompt, basePreparation.systemPrompt);
+						this.#tools.setTurnSystemPromptOverride(result.systemPrompt, sourceBase);
 					} else {
 						this.#tools.clearTurnSystemPromptOverride();
 						this.agent.setSystemPrompt(this.#tools.baseSystemPrompt);
@@ -9253,7 +9134,7 @@ export class AgentSession implements SettingsScope {
 			for (const controller of this.#imageDescriptionAbortControllers) controller.abort(options?.reason);
 			this.abortRetry();
 			this.#promptGeneration++;
-			// Cancel any awaited pre-dispatch setup (e.g. Hindsight auto-recall) so the
+			// Cancel any awaited pre-dispatch setup so the
 			// admitted submission unwinds now instead of at the recall timeout (#12668).
 			this.#promptSetupAbortController?.abort(options?.reason);
 			this.#scheduledHiddenNextTurnGeneration = undefined;
@@ -9400,8 +9281,6 @@ export class AgentSession implements SettingsScope {
 			// post-/new turns keep sending the previous session's StablePrefix, and
 			// #syncAppendOnlyContext only re-runs on model or setting changes.
 			this.agent.appendOnlyContext?.invalidateForModelChange();
-			this.#memory.rekeyForCurrentSessionId();
-			await this.#memory.resetContextForNewTranscript();
 			this.#pendingNextTurnMessages = [];
 			// The abort above may have skipped the loop's final aside poll (issue: stranded
 			// asides survive an aborted turn by design so a resumed session can still see
@@ -9551,10 +9430,8 @@ export class AgentSession implements SettingsScope {
 			this.#freshProviderSessionId = undefined;
 			this.#adoptInheritedProviderPromptCacheKey();
 			this.#syncAgentSessionId();
-			this.#memory.rekeyForCurrentSessionId();
 			this.#advisors.reattachRecorderFeeds();
 			advisorRecordersDetached = false;
-			await this.#memory.resetContextForNewTranscript();
 
 			// Emit session_switch event with reason "fork" to hooks
 			if (this.#extensionRunner) {
@@ -10885,7 +10762,6 @@ export class AgentSession implements SettingsScope {
 		const previousTools = [...this.agent.state.tools];
 		const previousBaseSystemPrompt = this.#tools.baseSystemPrompt;
 		const previousSystemPrompt = this.agent.state.systemPrompt;
-		const previousBaseSystemPromptBeforeMemoryPromotion = this.#memory.promotionSnapshot;
 		const previousFreshProviderSessionId = this.#freshProviderSessionId;
 		const previousInheritedProviderPromptCacheKey = this.#inheritedProviderPromptCacheKey;
 
@@ -10953,7 +10829,6 @@ export class AgentSession implements SettingsScope {
 				this.#adoptInheritedProviderPromptCacheKey();
 			}
 			this.#syncAgentSessionId(undefined, false);
-			this.#memory.rekeyForCurrentSessionId();
 
 			let sessionContext = this.buildDisplaySessionContext();
 			// Resolve the target's model before announcing the switch, so an
@@ -11070,7 +10945,6 @@ export class AgentSession implements SettingsScope {
 			);
 
 			if (switchingToDifferentSession) {
-				await this.#memory.resetContextForNewTranscript();
 			}
 			if (switchingToDifferentSession || didReloadConversationChange) {
 				this.#clearSessionScopedToolState();
@@ -11124,10 +10998,8 @@ export class AgentSession implements SettingsScope {
 			this.sessionManager.restoreState(previousSessionState);
 			this.#freshProviderSessionId = previousFreshProviderSessionId;
 			this.#syncAgentSessionId(previousSessionState.sessionId, false);
-			this.#memory.rekeyForCurrentSessionId();
 			this.agent.setTools(previousTools);
 			this.#tools.setBaseSystemPrompt(previousBaseSystemPrompt);
-			this.#memory.restorePromotionSnapshot(previousBaseSystemPromptBeforeMemoryPromotion);
 			this.agent.setSystemPrompt(previousSystemPrompt);
 			this.agent.replaceMessages(previousAgentMessages);
 			this.agent.replaceQueues(previousSteeringMessages, previousFollowUpMessages);
@@ -11341,8 +11213,6 @@ export class AgentSession implements SettingsScope {
 			this.#freshProviderSessionId = undefined;
 			this.#clearInheritedProviderPromptCacheKey();
 			this.#syncAgentSessionId();
-			this.#memory.rekeyForCurrentSessionId();
-			await this.#memory.resetContextForNewTranscript();
 
 			// Reload messages from entries (works for both file and in-memory mode)
 			const sessionContext = this.buildDisplaySessionContext();
@@ -11463,8 +11333,6 @@ export class AgentSession implements SettingsScope {
 			this.#modelMentions.syncFromBranch();
 			this.#freshProviderSessionId = undefined;
 			this.#syncAgentSessionId();
-			this.#memory.rekeyForCurrentSessionId();
-			await this.#memory.resetContextForNewTranscript();
 
 			const sessionContext = this.buildDisplaySessionContext();
 
@@ -12941,15 +12809,6 @@ export class AgentSession implements SettingsScope {
 	 */
 	setAdvisorContextPrompt(contextPrompt: string | undefined): void {
 		this.#advisors.setContextPrompt(contextPrompt);
-	}
-
-	/**
-	 * Refresh the memory backend instructions advisor sessions run against.
-	 * Store-only: live advisors pick the new value up at their next runtime
-	 * build (compaction, reset, toggle) — see `SessionAdvisors#setMemoryPrompt`.
-	 */
-	setAdvisorMemoryPrompt(memoryPrompt: string | undefined): void {
-		this.#advisors.setMemoryPrompt(memoryPrompt);
 	}
 
 	/**

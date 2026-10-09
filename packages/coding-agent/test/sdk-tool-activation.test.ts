@@ -16,7 +16,6 @@ import {
 } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
 import { ExtensionToolWrapper } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/wrapper";
 import type { MCPManager } from "@oh-my-pi/pi-coding-agent/mcp/manager";
-import * as memoryBackendModule from "@oh-my-pi/pi-coding-agent/memory-backend";
 import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
 import {
 	type CreateAgentSessionOptions,
@@ -1013,52 +1012,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	it("serializes complete memory-tool replacement with late extension activation", async () => {
-		const tempDir = makeTempDir();
-		const activationEntered = Promise.withResolvers<void>();
-		const releaseActivation = Promise.withResolvers<void>();
-		const lateRegistrationExtension: ExtensionFactory = pi => {
-			pi.on("session_start", async () => {
-				await Promise.resolve();
-				pi.registerTool({
-					name: "memory_race_lifecycle_tool",
-					label: "Memory Race Lifecycle Tool",
-					description: "Lifecycle tool activated before a memory-tool replacement.",
-					parameters: type({}),
-					async execute() {
-						return { content: [{ type: "text", text: "lifecycle" }] };
-					},
-				});
-			});
-		};
-
-		const { session } = await createAgentSession({
-			...baseOptions(tempDir),
-			extensions: [lateRegistrationExtension],
-		});
-		const originalSetActiveToolPresentation = session.setActiveToolPresentation.bind(session);
-		vi.spyOn(session, "setActiveToolPresentation").mockImplementation(async (...args) => {
-			activationEntered.resolve();
-			await releaseActivation.promise;
-			return originalSetActiveToolPresentation(...args);
-		});
-
-		try {
-			const runner = session.extensionRunner;
-			if (!runner) throw new Error("expected extension runner");
-			const emission = runner.emit({ type: "session_start" });
-			await activationEntered.promise;
-			const memoryRefresh = session.applyMemoryBackend();
-
-			releaseActivation.resolve();
-			await Promise.all([emission, memoryRefresh]);
-			expect(session.getEnabledToolNames()).toContain("memory_race_lifecycle_tool");
-		} finally {
-			releaseActivation.resolve();
-			await session.dispose();
-		}
-	});
-
 	it("keeps an explicitly disabled tool disabled when its extension re-registers it", async () => {
 		const tempDir = makeTempDir();
 		const disabledReplacementExtension: ExtensionFactory = pi => {
@@ -2010,7 +1963,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 				modelRoles: { image: "openai/gpt-image-1" },
 				"generate_image.enabled": true,
 				"speechgen.enabled": true,
-				"memory.backend": "hindsight",
 				"autolearn.enabled": true,
 			});
 
@@ -2057,10 +2009,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			for (const name of [
 				"generate_image",
 				"tts",
-				"recall",
-				"retain",
-				"reflect",
-				"learn",
 				"manage_skill",
 				"default_active_tool",
 				"default_inactive_tool",
@@ -2089,7 +2037,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		try {
 			const activeToolNames = normal.getActiveToolNames();
 			expect(activeToolNames).toEqual(
-				expect.arrayContaining(["read", "yield", "generate_image", "learn", "manage_skill", "write"]),
+				expect.arrayContaining(["read", "yield", "generate_image", "manage_skill", "write"]),
 			);
 			// Explicit and force-included tools stay top-level. Ambient custom and
 			// extension capabilities mount through the device-only write transport.
@@ -2106,9 +2054,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 					"tts",
 					"default_active_tool",
 					"sdk_custom_tool",
-					"recall",
-					"retain",
-					"reflect",
 				]),
 			);
 		} finally {
@@ -2356,13 +2301,17 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			let deactivation: Promise<void> | undefined;
 			try {
 				const handlers = await captureCursorExecHandlers(session, cursorModel);
-				vi.spyOn(memoryBackendModule, "resolveMemoryBackend").mockResolvedValue({
-					buildDeveloperInstructions: async () => {
-						rebuildStarted.resolve();
-						await releaseRebuild.promise;
-						return undefined;
-					},
-				} as never);
+				const time = logger.time;
+				vi.spyOn(logger, "time").mockImplementation(((
+					op: string,
+					fn?: (...args: unknown[]) => unknown,
+					...args: unknown[]
+				) => {
+					if (op !== "resolveActiveRepoContext" || !fn)
+						return (time as (...a: unknown[]) => unknown)(op, fn, ...args);
+					rebuildStarted.resolve();
+					return releaseRebuild.promise.then(() => fn(...args));
+				}) as typeof logger.time);
 
 				deactivation = session.setActiveToolsByName(["read"]);
 				try {

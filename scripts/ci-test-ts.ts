@@ -92,7 +92,6 @@ const fastWorkspacePackages = [
 	"packages/ai",
 	"packages/snapcompact",
 	"packages/agent",
-	"packages/mnemopi",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
@@ -105,7 +104,7 @@ const nativeAndIntegrationPackages = [
 ];
 
 const codingAgentNativePathPatterns = [
-	/(^|\/)[^/]*(bash|native|browser|cmux|mnemopi|hindsight|memory)[^/]*\.test\.ts$/i,
+	/(^|\/)[^/]*(bash|native|browser|cmux|memory)[^/]*\.test\.ts$/i,
 	/^test\/[^/]*(ask|gh|irc|task|eval|search|read|write|edit|ast|resolve|sqlite|web-search|fetch|image|ssh|tool)[^/]*\.test\.ts$/,
 	/^test\/core\/python-[^/]*\.test\.ts$/,
 	/^test\/core\/[^/]*executor[^/]*\.test\.ts$/,
@@ -557,7 +556,7 @@ const FILE_OVERSUBSCRIBE = 2;
 // flight. Left unbudgeted that oversubscribes the runner by design — the
 // workspace bucket asked for 4 x 8 = 32 files on a 4-core box — and because
 // bun's per-test timeout is wall-clock, CPU-starved suites blow it and fail at
-// random (mnemopi's sqlite/CLI files did, a different set each run). Spend one
+// random (SQLite/CLI-heavy files did, a different set each run). Spend one
 // budget instead: each live chunk gets an equal share, never below 1 and never
 // above the width it asked for. A chunk that runs alone still gets everything,
 // so the sequential CI path is unchanged.
@@ -567,8 +566,7 @@ function budgetedParallel(requested: number, poolWidth: number): number {
 }
 
 // Bun's 5s default per-test timeout is a unit-test default, and this repo's
-// suites are not unit tests: mnemopi builds real SQLite schemas per case, the
-// coding-agent suites drive sessions and subprocesses. Those cases already run
+// suites are not unit tests: the coding-agent suites drive sessions and subprocesses. Those cases already run
 // 1-4s on a quiet CI runner, so any scheduling hiccup crosses 5s and reports a
 // timeout that says nothing about the code. Timing out is still worth catching,
 // so keep a ceiling — just one loose enough to only fire on a real hang. The

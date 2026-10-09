@@ -1108,12 +1108,9 @@ function shouldInheritDefaultBeforePriority(role: ModelRole): boolean {
  * is unset, so it stays a distinct strong model out of the box. The `tiny`
  * role — the override for online title/classifier tasks — resolves through
  * `smol` so it picks the same configured, inherited, or built-in fast model.
- * The `memory` role first reuses a configured/effective `tiny` role, then the
- * same `smol` priority list.
  */
 const ROLE_PRIORITY_ALIAS: Partial<Record<ModelRole, keyof typeof MODEL_PRIO>> = {
 	advisor: "slow",
-	memory: "smol",
 	tiny: "smol",
 };
 
@@ -1125,7 +1122,6 @@ interface ConfiguredRoleFallback {
 
 const ROLE_CONFIGURED_FALLBACK: Partial<Record<ModelRole, ConfiguredRoleFallback>> = {
 	advisor: { role: "slow", configuredOnly: true },
-	memory: { role: "tiny", configuredOnly: false },
 	tiny: { role: "smol", configuredOnly: false },
 };
 

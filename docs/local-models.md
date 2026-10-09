@@ -5,7 +5,6 @@ This document covers the on-device models in the `local` catalog and records the
 ```yaml
 modelRoles:
   tiny: local/lfm2.5-230m
-  memory: local/lfm2-1.2b
   speech: local/kokoro
   dictation: local/parakeet-tdt-0.6b-v3
   # A local tiny model may also serve typed judgments:
@@ -14,7 +13,6 @@ modelRoles:
 retry:
   fallbackChains:
     tiny: []
-    memory: []
     speech: []
     dictation: []
     judge: []
@@ -134,74 +132,6 @@ The tiny-model CLI and source registry retain **title** and **memory** groupings
 **Shipped local options**: `lfm2.5-230m`, `lfm2.5-350m`, `falcon-h1-90m`.
 When `modelRoles.tiny` is unset, title generation resolves its built-in online role path; no local weights are downloaded automatically. A local primary is an explicit no-billing boundary: if its worker fails or returns no title, the session stays untitled instead of falling through to an online model. The default download for a bare `omp tiny-models` command is `lfm2.5-230m`.
 
-## Task 2: Mnemopi memory (`modelRoles.memory`)
-
-Mnemopi runs two small-LLM tasks:
-
-1. **Extraction** — pull durable, structured items from a single message.
-2. **Consolidation** — summarize a list of memories into 1–3 faithful sentences.
-
-These need **bigger models than titles: 1B–1.7B**. We tested LFM2-1.2B, Qwen2.5-1.5B, Qwen3-1.7B,
-and gemma-3-1b (q4, CPU) via four parallel agents each running 27–31 experiments.
-
-### Extraction findings
-
-The experiments exposed two problems with the stock 5-category JSON prompt:
-
-1. The all-empty example `{"facts":[],...}` was **copied verbatim**, producing no facts.
-2. Object-valued category entries previously became `[object Object]`.
-
-The managed memory path now puts extraction instructions in a system turn and the raw
-message in the user turn, for both local and online models. It requests **one plain-text
-fact per line**, or exactly `NO_FACTS` for greetings and other nonpersistent content.
-The current parser also accepts structured category objects with string entries or
-recognized text fields; it no longer coerces arbitrary objects to strings.
-
-### Technique polarity flips vs titles
-
-- At 1B+, **few-shot is the dominant quality lever**: e.g. Qwen2.5-1.5B extraction F1 0.52 → 0.83
-  going 1 → 3 shots; gemma recall 0.65 → 0.92 with 2 shots.
-- **Prefill HURTS extraction** — it forces output on small talk, producing false positives.
-- **System-split** (instructions in the system role) helps models that have a system role.
-- **Greedy >= temperature** for both tasks.
-- **Token biasing** is again a no-op.
-
-### Per-model verdicts (head-to-head, 16-fixture set)
-
-- **Qwen3-1.7B** — most disciplined extraction: returns empty on small talk, no buried-fact leak,
-  preserves language, clean flat JSON. Weaknesses: coarse granularity, missed a multi-turn value
-  update.
-- **Qwen2.5-1.5B** — best extraction granularity (atomic facts), caught the value update, zero
-  small-talk leakage. Weaknesses: weakest consolidation (run-on, no dedup) and one degenerate
-  buried-fact output.
-- **gemma-3-1b** — best consolidation (dedup works, faithful, clean single-memory). Weaknesses: leaks
-  small talk and translated German.
-- **LFM2-1.2B** — solid and fastest to load. Weaknesses: `Label: value` noise, small-talk + buried
-  leaks, a fluffy single-memory summary.
-
-### Recommendation and current availability
-
-The experiments favored **Qwen3-1.7B** for extraction precision. Its shipped ONNX export is
-disabled because `onnxruntime-node` does not support its RotaryEmbedding cache updates;
-the ONNX worker rejects it before loading the runtime. It is available through the MLX
-backend on Apple silicon (`providers.tinyModelDevice: mlx` or `PI_TINY_DEVICE=mlx`).
-`omp tiny-models download all` skips ONNX-disabled models unless MLX is active.
-
-Of the runnable options, `lfm2-1.2b` loads fastest and is a solid all-rounder; nothing selects it automatically.
-`gemma-3-1b` favors consolidation quality, while `qwen2.5-1.5b` favors fine-grained extraction.
-
-**Configured local options**: `llama3.2:3b`, `qwen3-1.7b` (ONNX-disabled as described above),
-`gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`.
-When `modelRoles.memory` is unset, it resolves through the effective `tiny` role and then the built-in smol priority list; no local weights are downloaded automatically.
-
-### Mnemopi parser behavior
-
-`packages/mnemopi/src/core/extraction.ts` preserves structured facts, instructions,
-preferences, timelines, and knowledge-graph triples. It extracts recognized text fields
-from object-valued entries rather than returning `[object Object]`. The plain-line
-fallback still ignores lines of 10 characters or fewer, so a short fact such as
-`Name: Can` is discarded; structured string entries do not have that length gate.
-
 ## Local speech and dictation models
 
 The `speech` role accepts TTS catalog models and the `dictation` role accepts STT catalog models. `omp setup speech` offers the local entries accepted by those roles, persists the selected `modelRoles.speech` and `modelRoles.dictation` values, and downloads their model/runtime files.
@@ -229,8 +159,7 @@ Kokoro and the transformers.js Whisper models read `providers.tinyModelDevice` /
 
 ## Integration notes
 
-- Local tiny inference for title, memory, or judgment workloads is selected with a `local/<model-id>` role assignment. An unset `tiny` role stays on its online default; an unset `memory` role follows the effective `tiny` role and can therefore become local when `tiny` is local. Unset `speech` and `dictation` roles use their own built-in priority lists, whose first candidates are local.
+- Local tiny inference for title or judgment workloads is selected with a `local/<model-id>` role assignment. An unset `tiny` role stays on its online default. Unset `speech` and `dictation` roles use their own built-in priority lists, whose first candidates are local.
 - Local inference runs **in a worker** (off the main thread); weights are downloaded only when a local candidate is used or explicitly prefetched with `omp tiny-models` or `omp setup speech`, then cached on disk.
-- Session-title generation uses `modelRoles.tiny`; Mnemopi extraction and consolidation use `modelRoles.memory` when its LLM mode is enabled. Their distinct prompts and benchmark groups do not impose separate runtime model types.
+- Session-title generation uses `modelRoles.tiny`.
 - Auto-thinking, Smart unexpected-stop detection, typed Eval judgments, and AI-assisted git staging use the `judge` role. Assign `typesafe/jev-latest` for TypeSafe or a compatible local tiny model for on-device judgment; order alternatives under `retry.fallbackChains.judge`.
-- Managed memory extraction uses the shared line-format, small-talk-guarded system prompt on both local and online transports. A local primary additionally selects the local consolidation prompt. Explicit external Mnemopi endpoints remain authoritative instead of being replaced by the memory role.

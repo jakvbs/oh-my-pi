@@ -887,7 +887,8 @@ describe("AgentSession advisor toggle", () => {
 		const createBranchedSession = sessionManager.createBranchedSession.bind(sessionManager);
 		vi.spyOn(sessionManager, "createBranchedSession").mockImplementation(parentId => {
 			const result = createBranchedSession(parentId);
-			queueMicrotask(() => appendAdvisorCost(advisor, 9, 3));
+			// Emitted while the transition holds the recorder feeds detached.
+			appendAdvisorCost(advisor, 9, 3);
 			return result;
 		});
 

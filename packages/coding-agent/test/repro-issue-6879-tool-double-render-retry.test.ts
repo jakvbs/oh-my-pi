@@ -369,12 +369,12 @@ describe("issue #6879 — tool output appears twice after a superseded turn", ()
 
 	it("keeps a successful internal read single when replay beats its live completion", async () => {
 		const ec = mode.eventController;
-		const memoryPath = "memory://root/rollout_summaries/successful-read";
+		const internalPath = "omp://docs/tools/read.md";
 		const readCall: ToolCall = {
 			type: "toolCall",
 			id: "read-success",
 			name: "read",
-			arguments: { path: memoryPath, i: "Read successful memory" },
+			arguments: { path: internalPath, i: "Read harness doc" },
 		};
 		await ec.handleEvent({ type: "agent_start" } as Extract<AgentSessionEvent, { type: "agent_start" }>);
 		await ec.handleEvent({ type: "message_start", message: assistantMessage([], "toolUse") } as Extract<
@@ -408,7 +408,7 @@ describe("issue #6879 — tool output appears twice after a superseded turn", ()
 				id: "user-success",
 				parentId: null,
 				timestamp: Date.now(),
-				message: { role: "user", content: [{ type: "text", text: "read memory" }], timestamp: 1 },
+				message: { role: "user", content: [{ type: "text", text: "read doc" }], timestamp: 1 },
 			},
 			{
 				type: "message",
@@ -426,7 +426,7 @@ describe("issue #6879 — tool output appears twice after a superseded turn", ()
 					role: "toolResult",
 					toolCallId: readCall.id,
 					toolName: readCall.name,
-					content: [{ type: "text", text: "successful memory contents" }],
+					content: [{ type: "text", text: "successful doc contents" }],
 					isError: false,
 					timestamp: 3,
 				},
@@ -438,7 +438,7 @@ describe("issue #6879 — tool output appears twice after a superseded turn", ()
 		mode.rebuildChatFromMessages();
 
 		const replayCards = mode.chatContainer.children.filter(child =>
-			Bun.stripANSI(child.render(120).join("\n")).includes(memoryPath),
+			Bun.stripANSI(child.render(120).join("\n")).includes(internalPath),
 		);
 		expect(replayCards).toHaveLength(1);
 		const replayChildCount = mode.chatContainer.children.length;
@@ -449,12 +449,12 @@ describe("issue #6879 — tool output appears twice after a superseded turn", ()
 			type: "tool_execution_end",
 			toolCallId: readCall.id,
 			toolName: readCall.name,
-			result: { content: [{ type: "text", text: "successful memory contents" }] },
+			result: { content: [{ type: "text", text: "successful doc contents" }] },
 			isError: false,
 		} as Extract<AgentSessionEvent, { type: "tool_execution_end" }>);
 
 		const matchingCards = mode.chatContainer.children.filter(child =>
-			Bun.stripANSI(child.render(120).join("\n")).includes(memoryPath),
+			Bun.stripANSI(child.render(120).join("\n")).includes(internalPath),
 		);
 		expect(matchingCards).toHaveLength(1);
 		expect(mode.chatContainer.children).toHaveLength(replayChildCount);

@@ -1484,7 +1484,7 @@ export class Settings {
 			await active.promise.catch(() => {});
 		}
 		// Holds the refresh slot while running inline (not through `#exclusive`): callers resume
-		// right after listeners are notified, as consumers sequencing a move (memory rebind) expect.
+		// right after listeners are notified, as consumers sequencing a move expect.
 		const settled = Promise.withResolvers<void>();
 		settled.promise.catch(() => {});
 		const entry = { kind: "rescope" as const, promise: settled.promise };
@@ -2939,64 +2939,6 @@ export class Settings {
 			raw["codexResets.autoRedeem"] = raw["codexResets.autoRedeem"] ? "yes" : "no";
 		}
 
-		// Map legacy `memories.enabled` boolean to the explicit `memory.backend`
-		// enum if the latter hasn't been set yet. Idempotent: subsequent
-		// migrations are no-ops once memory.backend is materialised.
-		const memoryBackendObj = raw.memory as Record<string, unknown> | undefined;
-		const memoryBackendSet = memoryBackendObj && typeof memoryBackendObj.backend === "string";
-		const memoriesObj = raw.memories as Record<string, unknown> | undefined;
-		if (!memoryBackendSet && memoriesObj && typeof memoriesObj.enabled === "boolean") {
-			const next = memoriesObj.enabled ? "local" : "off";
-			const memoryRoot = (memoryBackendObj ?? {}) as Record<string, unknown>;
-			memoryRoot.backend = next;
-			raw.memory = memoryRoot;
-		}
-
-		// Rename the legacy local `mnemosyne` memory backend to `mnemopi`.
-		// - `memory.backend: "mnemosyne"` now selects the renamed backend.
-		// - the top-level `mnemosyne` settings object becomes `mnemopi`.
-		// Idempotent: skips the object move once `mnemopi` is materialised.
-		if (memoryBackendObj && memoryBackendObj.backend === "mnemosyne") {
-			memoryBackendObj.backend = "mnemopi";
-		}
-		if ("mnemosyne" in raw && !("mnemopi" in raw)) {
-			raw.mnemopi = raw.mnemosyne;
-			delete raw.mnemosyne;
-		}
-
-		// hindsight: dynamicBankId/agentName -> scoping enum + bankId
-		// - dynamicBankId=true  → scoping="per-project" (closest semantic match;
-		//   the legacy `agent::project::channel::user` tuple was per-project in
-		//   practice — the channel/user env vars were rarely set).
-		// - hindsight.agentName was only used as the agent slot in the legacy
-		//   dynamic tuple; if the user customised it we surface it as the new
-		//   bankId base when no explicit bankId is set.
-		const hindsightObj = raw.hindsight as Record<string, unknown> | undefined;
-		if (hindsightObj) {
-			if ("dynamicBankId" in hindsightObj) {
-				if (!("scoping" in hindsightObj) && hindsightObj.dynamicBankId === true) {
-					hindsightObj.scoping = "per-project";
-				}
-				delete hindsightObj.dynamicBankId;
-			}
-			if ("agentName" in hindsightObj) {
-				const agentName = hindsightObj.agentName;
-				if (
-					!("bankId" in hindsightObj) &&
-					typeof agentName === "string" &&
-					agentName.trim().length > 0 &&
-					agentName !== "omp"
-				) {
-					hindsightObj.bankId = agentName;
-				}
-				delete hindsightObj.agentName;
-			}
-			// mentalModelRefreshIntervalMs removed: the mental-model block is now
-			// frozen for the session lifetime rather than re-listed on a timer that
-			// rewrote the cached prompt prefix mid-session (#11961).
-			delete hindsightObj.mentalModelRefreshIntervalMs;
-		}
-
 		// power.preventIdleSleep / power.preventSystemSleep / power.declareUserActive
 		// / power.preventDisplaySleep (four booleans) → power.sleepPrevention enum.
 		// The enum is cumulative: each level adds the flags of all lower levels.
@@ -3425,7 +3367,7 @@ export class Settings {
 				setRoleChain("judge", dedupe(judgeCandidates));
 			}
 
-			const prependLocalRole = (role: "tiny" | "memory", model: unknown): void => {
+			const prependLocalRole = (role: "tiny", model: unknown): void => {
 				if (typeof model !== "string" || model === "online" || model.length === 0) return;
 				const selector = `local/${model}`;
 				const configured = typeof roles[role] === "string" ? roles[role] : undefined;
@@ -3439,7 +3381,6 @@ export class Settings {
 				rolesChanged = true;
 			};
 			prependLocalRole("tiny", legacy(providerSettings, "tinyModel", "providers.tinyModel"));
-			prependLocalRole("memory", legacy(providerSettings, "memoryModel", "providers.memoryModel"));
 
 			for (const key of [
 				"webSearch",
@@ -3505,8 +3446,6 @@ export class Settings {
 			delete raw["exa.enableResearcher"];
 			delete raw["exa.enableWebsets"];
 		}
-
-		delete raw["hindsight.mentalModelRefreshIntervalMs"];
 
 		return raw;
 	}

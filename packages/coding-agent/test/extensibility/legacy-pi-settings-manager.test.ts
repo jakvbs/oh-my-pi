@@ -134,7 +134,6 @@ describe("legacy pi SettingsManager shim (issue #10397)", () => {
 				projectDir,
 				SessionManager.inMemory(projectDir),
 				new ModelRegistry(authStorage),
-				undefined,
 				sdkSettings,
 			);
 
@@ -185,7 +184,6 @@ describe("legacy pi SettingsManager shim (issue #10397)", () => {
 				projectDir,
 				SessionManager.inMemory(projectDir),
 				new ModelRegistry(authStorage),
-				undefined,
 				sdkSettings,
 			);
 
@@ -241,7 +239,6 @@ describe("legacy pi SettingsManager shim (issue #10397)", () => {
 				projectDir,
 				SessionManager.inMemory(projectDir),
 				new ModelRegistry(authStorage),
-				undefined,
 				sdkSettings,
 			);
 			const registered = runner.getRegisteredTool("settings_scope");

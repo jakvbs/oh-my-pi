@@ -51,15 +51,7 @@ const RULE: Rule = {
 async function createBridgedHarness(dir: string) {
 	const manager = SessionManager.inMemory(dir);
 	const settings = Settings.isolated({ "compaction.enabled": false, "tools.approvalMode": "yolo" });
-	const extensionRunner = new ExtensionRunner(
-		[],
-		new ExtensionRuntime(),
-		dir,
-		manager,
-		modelRegistry,
-		undefined,
-		settings,
-	);
+	const extensionRunner = new ExtensionRunner([], new ExtensionRuntime(), dir, manager, modelRegistry, settings);
 	const mock = createMockModel({ responses: [] });
 	const toolSession: ToolSession = {
 		cwd: dir,

@@ -19,7 +19,6 @@ import { executeAcpBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-c
 import { getProjectDir, removeWithRetries, setProjectDir } from "@oh-my-pi/pi-utils";
 
 import { cfgExtendedContext } from "@oh-my-pi/pi-coding-agent/session/context-settings";
-import { cfgMemoryBackend } from "@oh-my-pi/pi-coding-agent/memory-backend/settings";
 import { cfgWorktreeCleanSource } from "@oh-my-pi/pi-coding-agent/task/settings";
 
 interface FakeAcpBuiltinSession {
@@ -64,8 +63,6 @@ interface FakeAcpBuiltinSession {
 	getTodoPhases(): Array<{ name: string; tasks: Array<{ content: string; status: string }> }>;
 	setTodoPhases(phases: Array<{ name: string; tasks: Array<{ content: string; status: string }> }>): void;
 	refreshBaseSystemPrompt(): Promise<void>;
-	getHindsightSessionState(): undefined;
-	applyMemoryBackend(): Promise<void>;
 	getToolByName(name: string): unknown;
 	compact(args?: string): Promise<void>;
 	getContextUsage(): { tokens?: number; contextWindow: number } | undefined;
@@ -161,9 +158,6 @@ function createRuntime() {
 			this._todoPhases = phases;
 		},
 		async refreshBaseSystemPrompt() {},
-		// Headless `/move` and `/wt` rebind memory for the destination project.
-		getHindsightSessionState: () => undefined,
-		async applyMemoryBackend() {},
 		getAsyncJobSnapshot: () => null,
 		cancelAsyncJob: () => false,
 		formatSessionAsText: () => "",
@@ -1243,36 +1237,6 @@ describe("wave 3 commands", () => {
 			else process.env.OMP_WORKTREE_DIR = originalWorktreeDir;
 			await fs.rm(root, { recursive: true, force: true });
 		}
-	});
-
-	// /memory
-	it("/memory unknown: returns usage message", async () => {
-		const { output, runtime } = createRuntime();
-		const result = await executeAcpBuiltinSlashCommand("/memory unknownverb", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toContain("Usage: /memory");
-	});
-
-	it("/memory stats: tells the user memory is off instead of naming a nonexistent 'off backend'", async () => {
-		const { output, runtime } = createRuntime();
-		const result = await executeAcpBuiltinSlashCommand("/memory stats", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toBe("Memory backend is off — there is nothing to show.");
-	});
-
-	it("/memory diagnose: tells the user memory is off instead of naming a nonexistent 'off backend'", async () => {
-		const { output, runtime } = createRuntime();
-		const result = await executeAcpBuiltinSlashCommand("/memory diagnose", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toBe("Memory backend is off — there is nothing to show.");
-	});
-
-	it("/memory stats: still names the backend when a real backend simply has no stats hook", async () => {
-		const { output, runtime } = createRuntime();
-		cfgMemoryBackend.set(runtime.settings, "local");
-		const result = await executeAcpBuiltinSlashCommand("/memory stats", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toBe("Memory stats is not available for the local backend.");
 	});
 
 	// /todo start fuzzy match
