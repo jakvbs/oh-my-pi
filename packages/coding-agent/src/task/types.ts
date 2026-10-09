@@ -47,7 +47,7 @@ const effortRule = '"lo" | "med" | "hi"' as const;
 
 export const taskItemSchema = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string",
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -57,7 +57,7 @@ export const taskItemSchema = type({
 });
 const taskItemSchemaIsolated = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string",
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -69,7 +69,7 @@ const taskItemSchemaIsolated = type({
 
 export const taskSchema = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string",
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -80,7 +80,7 @@ export const taskSchema = type({
 });
 const taskSchemaNoIsolation = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string",
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -108,8 +108,8 @@ export type TaskToolSchemaInstance = DynamicTaskSchema | BaseType;
 const TASK_AGENT_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const taskSchemaCache = new Map<string, BaseType>();
 
-function taskAgentSchemaRule(defaultAgent: string): string {
-	const trimmed = defaultAgent.trim();
+function taskAgentSchemaRule(defaultAgent: string | undefined): string {
+	const trimmed = defaultAgent?.trim() ?? "";
 	if (TASK_AGENT_NAME_PATTERN.test(trimmed)) {
 		return `string = '${trimmed}'`;
 	}
@@ -119,7 +119,7 @@ function taskAgentSchemaRule(defaultAgent: string): string {
 function createTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
-	defaultAgent: string;
+	defaultAgent: string | undefined;
 	effortEnabled: boolean;
 	evalToolsEnabled: boolean;
 }): BaseType {
@@ -199,14 +199,14 @@ export function getTaskSchema(options: {
 	evalToolsEnabled?: boolean;
 	defaultAgent?: string;
 }): TaskToolSchemaInstance {
-	const defaultAgent = options.defaultAgent ?? "task";
+	const defaultAgent = options.defaultAgent;
 	const effortEnabled = options.effortEnabled ?? false;
 	const evalToolsEnabled = options.evalToolsEnabled ?? true;
-	if (defaultAgent === "task" && !effortEnabled && evalToolsEnabled) {
+	if (defaultAgent === undefined && !effortEnabled && evalToolsEnabled) {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}
-	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}:${defaultAgent}`;
+	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}:${defaultAgent ?? ""}`;
 	const cached = taskSchemaCache.get(key);
 	if (cached) return cached;
 	const schema = createTaskSchema({ ...options, effortEnabled, evalToolsEnabled, defaultAgent });
@@ -219,7 +219,7 @@ export function canSpawnAtDepth(taskDepth: number): boolean {
 	return taskDepth === 0;
 }
 
-/** Agent definition (bundled or discovered) */
+/** Agent definition from discovery or an explicit session model mention. */
 export interface AgentDefinition {
 	name: string;
 	description: string;

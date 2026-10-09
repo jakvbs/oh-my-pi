@@ -1,12 +1,9 @@
-/** Default agent used when a session has unrestricted spawning. */
-export const DEFAULT_SPAWN_AGENT = "task";
-
 /** Spawn policy derived from a parent agent's `spawns` frontmatter. */
 export interface ResolvedSpawnPolicy {
 	/** True when at least one subagent may be spawned. */
 	enabled: boolean;
-	/** Agent used when the caller omits the agent field. */
-	defaultAgent: string;
+	/** Agent used when the caller omits the agent field; unrestricted policies have none. */
+	defaultAgent: string | undefined;
 	/** Explicitly allowed agents, or `null` when the policy is unrestricted. */
 	allowedAgents: readonly string[] | null;
 	/** Text used in spawn rejection messages. */
@@ -29,7 +26,7 @@ export function resolveSpawnPolicy(parentSpawns: string | boolean | null | undef
 	if (normalized === "*") {
 		return {
 			enabled: true,
-			defaultAgent: DEFAULT_SPAWN_AGENT,
+			defaultAgent: undefined,
 			allowedAgents: null,
 			allowedErrorText: "*",
 		};
@@ -42,7 +39,7 @@ export function resolveSpawnPolicy(parentSpawns: string | boolean | null | undef
 	if (allowedAgents.length === 0) {
 		return {
 			enabled: false,
-			defaultAgent: DEFAULT_SPAWN_AGENT,
+			defaultAgent: undefined,
 			allowedAgents,
 			allowedErrorText: "none (spawns disabled for this agent)",
 		};
@@ -50,23 +47,9 @@ export function resolveSpawnPolicy(parentSpawns: string | boolean | null | undef
 
 	return {
 		enabled: true,
-		defaultAgent: allowedAgents[0] ?? DEFAULT_SPAWN_AGENT,
+		defaultAgent: allowedAgents[0],
 		allowedAgents,
 		allowedErrorText: allowedAgents.join(","),
 		allowedPromptText: allowedAgents.map(agent => `\`${agent}\``).join(", "),
 	};
-}
-
-/**
- * Whether the `scout` agent is spawnable in a session: not disabled via
- * `task.disabledAgents`, and permitted by the session spawn policy.
- */
-export function isScoutSpawnable(
-	disabledAgents: readonly string[] | undefined,
-	spawns: string | boolean | null | undefined,
-): boolean {
-	if (disabledAgents?.includes("scout")) return false;
-	const policy = resolveSpawnPolicy(spawns);
-	if (!policy.enabled) return false;
-	return policy.allowedAgents === null || policy.allowedAgents.includes("scout");
 }

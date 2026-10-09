@@ -329,21 +329,19 @@ export async function resolveEffectiveSubagentPolicy(
 ): Promise<EffectiveSubagentPolicy> {
 	await request.session.settings.reloadFromDisk();
 	const spawnPolicy = resolveSpawnPolicy(request.session.getSessionSpawns());
-	const agentName = request.agent?.trim() || spawnPolicy.defaultAgent;
+	const agentName = request.agent?.trim() || spawnPolicy.defaultAgent || "";
 	const planMode = request.session.getPlanModeState?.()?.enabled === true;
 	assertPlanControlsAllowed(request, planMode);
 	assertDepthAndSpawnAllowed(request, agentName);
 
 	const discovery = await discoverAgentsShared(request.session.cwd, request.session.effectiveExtensionRoots?.());
 	const agents = [...discovery.agents, ...(request.session.getSessionAgents?.() ?? [])];
-	const agent = getAgent(agents, agentName);
+	const agent = agentName ? getAgent(agents, agentName) : undefined;
 	if (!agent) {
 		const available = agents.map(candidate => candidate.name).join(", ") || "none";
 		const searched = discovery.searchedDirs?.map(dir => shortenPath(dir)).join(", ") || "none";
-		throw new StructuredSubagentError(
-			"preflight",
-			`Unknown agent "${agentName}". Available: ${available}. Searched: ${searched}`,
-		);
+		const problem = agentName ? `Unknown agent "${agentName}".` : "Missing agent: specify which agent to spawn.";
+		throw new StructuredSubagentError("preflight", `${problem} Available: ${available}. Searched: ${searched}`);
 	}
 	const disabledAgents = cfgTaskDisabledAgents.get(request.session.settings);
 	if (disabledAgents.includes(agentName)) {

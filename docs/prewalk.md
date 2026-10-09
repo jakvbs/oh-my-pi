@@ -77,4 +77,4 @@ If prewalk is already armed, `/prewalk` leaves the existing target in place. `/p
 
 ## Subagent prewalk
 
-Task subagents have separate prewalk controls: agent frontmatter, `task.prewalk`, and per-agent `task.agentPrewalk` overrides. See [Task agent discovery](./task-agent-discovery.md) for their precedence and target selection.
+Task subagents have separate prewalk controls: agent frontmatter and per-agent `task.agentPrewalk` overrides. See [Task agent discovery](./task-agent-discovery.md) for their precedence and target selection.

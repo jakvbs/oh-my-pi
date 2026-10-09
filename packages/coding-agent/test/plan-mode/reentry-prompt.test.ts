@@ -11,7 +11,6 @@ const BASE = {
 	iterative: false,
 	askAvailable: true,
 	taskAvailable: true,
-	scoutAvailable: true,
 	reentry: false,
 	planExists: true,
 } as const;
@@ -55,11 +54,8 @@ describe("plan-mode-active tool availability", () => {
 		expect(parallelWithoutAsk).not.toContain("Presenting a choice between approaches");
 	});
 
-	it("omits scout-via-task dispatch when the task tool is unavailable", () => {
-		const withoutTask = render({ taskAvailable: false, scoutAvailable: true });
-		expect(withoutTask).not.toContain("(via `task`)");
-
-		const withTask = render({ taskAvailable: true, scoutAvailable: true });
-		expect(withTask).toContain("(via `task`)");
+	it("omits subagent dispatch when the task tool is unavailable", () => {
+		expect(render({ taskAvailable: false })).not.toContain("via `task`");
+		expect(render({ taskAvailable: true })).toContain("via `task`");
 	});
 });

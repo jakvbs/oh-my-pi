@@ -22,7 +22,6 @@ import agentCreationUserPrompt from "../prompts/system/agent-creation-user.md" w
 import { createAgentSession } from "../sdk";
 import { refreshAgentDiscovery } from "../task";
 import { discoverAgents } from "../task/discovery";
-import { resolveAgentPrewalkDefault } from "../task/prewalk";
 import { createModelBrowserSource } from "./model-browser-source";
 
 import {
@@ -30,7 +29,6 @@ import {
 	cfgTaskAgentModelOverrides,
 	cfgTaskAgentPrewalk,
 	cfgTaskDisabledAgents,
-	cfgTaskPrewalk,
 } from "../task/settings";
 
 function extractAssistantText(messages: AgentMessage[]): string | null {
@@ -105,7 +103,7 @@ export function createAgentsHubDeps(
 		effectivePrewalkPattern: agent =>
 			resolveAgentPrewalkPattern({
 				settingsOverride: agent.prewalkOverride,
-				agentPrewalk: resolveAgentPrewalkDefault(agent, cfgTaskPrewalk.get(settings)),
+				agentPrewalk: agent.prewalk,
 			}),
 		effectiveAdvisorPattern: agent => {
 			const selection = resolveAgentAdvisorSelection({

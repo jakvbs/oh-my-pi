@@ -3,8 +3,8 @@ import { isRecord, prompt } from "@oh-my-pi/pi-utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { formatModelString } from "../config/model-resolver";
 import modelMentionDescription from "../prompts/agents/model-mention.md" with { type: "text" };
-import { getBundledAgent } from "../task/agents";
 import type { AgentDefinition } from "../task/types";
+import { AUTO_THINKING } from "@oh-my-pi/pi-tui/thinking";
 import {
 	MODEL_MENTION_RE,
 	type ModelMention,
@@ -110,19 +110,21 @@ export class ModelMentionRegistry {
 
 	/** Expose inherited and session-tagged models as general-purpose task agents. */
 	sessionAgents(): AgentDefinition[] {
-		const task = getBundledAgent("task");
-		if (!task) throw new Error("Bundled task agent is unavailable");
 		const inheritedNames = new Set(this.#inheritedAgents.map(agent => agent.name));
 		return [
 			...this.#inheritedAgents,
 			...this.#mentions
 				.filter(mention => !inheritedNames.has(mention.agent))
-				.map(mention => ({
-					...task,
+				.map((mention): AgentDefinition => ({
 					name: mention.agent,
-					description: prompt.render(modelMentionDescription, { name: mention.name, selector: mention.selector }),
+					description: prompt.render(modelMentionDescription, {
+						name: mention.name,
+						selector: mention.selector,
+					}),
+					systemPrompt: "",
 					model: [mention.selector],
-					filePath: undefined,
+					thinkingLevel: AUTO_THINKING,
+					source: "user",
 				})),
 		];
 	}

@@ -33,7 +33,6 @@ import taskDescriptionTemplate from "../prompts/tools/task.md" with { type: "tex
 import taskAsyncContractTemplate from "../prompts/tools/task-async-contract.md" with { type: "text" };
 import taskCoordinationAdvisoryTemplate from "../prompts/tools/task-coordination-advisory.md" with { type: "text" };
 import taskSpawnFeedbackTemplate from "../prompts/tools/task-spawn-feedback.md" with { type: "text" };
-import taskSpecializationAdvisoryTemplate from "../prompts/tools/task-specialization-advisory.md" with { type: "text" };
 import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { type: "text" };
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { truncateForPrompt } from "../tools/approval";
@@ -41,7 +40,7 @@ import { hasWaitTool } from "../tools/wait";
 import { isIrcEnabled } from "../irc/messaging";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
-import { isScoutSpawnable, resolveSpawnPolicy } from "./spawn-policy";
+import { resolveSpawnPolicy } from "./spawn-policy";
 import { type AgentDefinition, canSpawnAtDepth, getTaskSchema, type TaskToolSchemaInstance } from "./types";
 import {
 	type AgentProgress,
@@ -123,7 +122,6 @@ function addUsageTotals(target: Usage, usage: Partial<Usage>): void {
 }
 
 // Re-export types and utilities
-export { loadBundledAgents as BUNDLED_AGENTS } from "./agents";
 export { discoverCommands, expandCommand, getCommand } from "./commands";
 export { discoverAgents, getAgent } from "./discovery";
 export { AgentOutputManager } from "./output-manager";
@@ -171,10 +169,8 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		readOnly: isReadOnlyAgent(agent),
 		blocking: agent.blocking === true,
 	}));
-	const scoutAvailable = isScoutSpawnable(options.disabledAgents, options.parentSpawns);
 	return prompt.render(taskDescriptionTemplate, {
 		agents: renderedAgents,
-		scoutAvailable,
 		spawningDisabled,
 		defaultAgent: spawnPolicy.defaultAgent,
 		isolationEnabled: options.isolationEnabled,
@@ -302,7 +298,7 @@ function resolveSpawnItems(params: TaskParams): TaskItem[] {
  * distinguishes an absent `isolated` from an explicit one. The item's
  * `isolated` (batch form) wins over the top-level flag (flat form).
  */
-function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string): TaskParams {
+function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string | undefined): TaskParams {
 	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
 	if (item.name !== undefined) spawn.name = item.name;
 	if (item.task !== undefined) spawn.task = item.task;
@@ -332,7 +328,7 @@ interface SpawnPlan {
  * validation error the call reports instead when the shape is rejected. Shared
  * by dispatch and the speculative launcher so both derive identical spawns.
  */
-function planSpawns(rawParams: unknown, batchEnabled: boolean, defaultAgent: string): SpawnPlan | string {
+function planSpawns(rawParams: unknown, batchEnabled: boolean, defaultAgent: string | undefined): SpawnPlan | string {
 	const params = repairTaskParams(rawParams as TaskParams);
 	const error = validateShapeParams(batchEnabled, params) ?? validateSpawnParams(params, batchEnabled);
 	if (error) return error;
@@ -410,33 +406,6 @@ function mergeSyncPayloads(
 	};
 }
 
-/** Generic worker agent types; several in one call usually means a more specific type exists. */
-const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["task", "sonic"]);
-
-/**
- * Advisory — never a rejection — nudging the spawner toward tailored
- * specific agent types when one call resolves ≥2 items to a generic
- * `task`/`sonic` worker and the spawner still holds spawn capacity
- * (DepthCapacity: it currently has the `task` tool). `agentNames` are the
- * per-item resolved agent types. Returns undefined when no nudge applies.
- */
-export function buildSpecializationAdvisory(
-	agentNames: string[],
-	depthCapacity: boolean,
-	scoutAvailable = true,
-): string | undefined {
-	if (!depthCapacity) return undefined;
-	const generics = agentNames.filter(name => GENERIC_SPAWN_AGENTS.has(name));
-	if (generics.length < 2) return undefined;
-	return prompt
-		.render(taskSpecializationAdvisoryTemplate, {
-			count: generics.length,
-			agent: generics[0],
-			scoutAvailable,
-		})
-		.trim();
-}
-
 /**
  * Suggestion — never a rejection — nudging the spawner to coordinate via the
  * peer messages when one call creates ≥2 live siblings and it still holds spawn
@@ -450,33 +419,6 @@ export function buildCoordinationAdvisory(
 ): string | undefined {
 	if (!depthCapacity || !ircEnabled || items.length < 2) return undefined;
 	return prompt.render(taskCoordinationAdvisoryTemplate, { count: items.length }).trim();
-}
-
-/**
- * Compose the non-blocking advisory appended to a `task` result: the
- * specialization nudge (from the per-item resolved agent types), plus — only
- * when some spawns keep running after this call (`willRunAsync`) — the
- * coordination suggestion over those still-live spawns (`items`). Coordination
- * is gated on async because a sync spawn has already finished by the time the
- * call returns, so a "coordinate while they run" hint would misfire. Returns
- * undefined when neither applies.
- */
-export function composeSpawnAdvisory(args: {
-	agents: string[];
-	items: TaskItem[];
-	depthCapacity: boolean;
-	ircEnabled: boolean;
-	willRunAsync: boolean;
-	scoutAvailable?: boolean;
-}): string | undefined {
-	return (
-		[
-			buildSpecializationAdvisory(args.agents, args.depthCapacity, args.scoutAvailable),
-			args.willRunAsync ? buildCoordinationAdvisory(args.items, args.depthCapacity, args.ircEnabled) : undefined,
-		]
-			.filter(Boolean)
-			.join("\n\n") || undefined
-	);
 }
 
 /** Sentinel for async jobs whose subagent finished with a failing result; progress is already updated. */
@@ -570,7 +512,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					const agent = item.agent;
 					if (typeof agent === "string" && agent.trim()) return agent.trim();
 				}
-				return defaultAgent;
+				return defaultAgent ?? "unspecified";
 			};
 			const agentCounts = new Map<string, number>();
 			for (const item of tasks) {
@@ -713,7 +655,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		return cfgTaskBatch.get(this.session.settings);
 	}
 
-	#defaultAgent(): string {
+	#defaultAgent(): string | undefined {
 		return resolveSpawnPolicy(this.session.getSessionSpawns()).defaultAgent;
 	}
 
@@ -870,7 +812,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				);
 			}
 		}
-		const resolvedAgents = normalizedSpawnParams.map(spawn => spawn.agent ?? defaultAgent);
 		// Resolve every item before choosing an execution path. No executor or
 		// job manager may observe a batch unless every effective policy is valid.
 		const preflights = await Promise.all(
@@ -927,20 +868,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			if (asyncEnabled && !this.session.asyncJobManager) {
 				logger.warn("task: no AsyncJobManager registered; falling back to sync execution");
 			}
-			const advisory = this.session.suppressSpawnAdvisory
-				? undefined
-				: composeSpawnAdvisory({
-						agents: resolvedAgents,
-						items: asyncItems,
-						depthCapacity,
-						ircEnabled,
-						willRunAsync: false,
-						scoutAvailable: isScoutSpawnable(
-							cfgTaskDisabledAgents.get(this.session.settings),
-							this.session.getSessionSpawns?.() ?? "*",
-						),
-					});
-			const result = await this.#executeSyncFanout(
+			return await this.#executeSyncFanout(
 				toolCallId,
 				params,
 				spawnItems.map((item, index) => ({ item, index, run: adopted.get(index) })),
@@ -948,17 +876,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				signal,
 				onUpdate,
 			);
-			if (!advisory) return result;
-			let appended = false;
-			const content = result.content.map(part => {
-				if (!appended && part.type === "text" && typeof part.text === "string") {
-					appended = true;
-					return { ...part, text: `${part.text}\n\n${advisory}` };
-				}
-				return part;
-			});
-			if (!appended) content.push({ type: "text", text: advisory });
-			return { ...result, content };
 		}
 
 		// Coordination only makes sense for spawns that keep running after this
@@ -966,17 +883,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// by then, so a "coordinate while they run" hint would misfire.
 		const advisory = this.session.suppressSpawnAdvisory
 			? undefined
-			: composeSpawnAdvisory({
-					agents: resolvedAgents,
-					items: asyncItems,
-					depthCapacity,
-					ircEnabled,
-					willRunAsync: asyncItems.length > 0,
-					scoutAvailable: isScoutSpawnable(
-						cfgTaskDisabledAgents.get(this.session.settings),
-						this.session.getSessionSpawns?.() ?? "*",
-					),
-				});
+			: buildCoordinationAdvisory(asyncItems, depthCapacity, ircEnabled);
 		// Returns a fresh result (copied content array, copied text part) rather
 		// than mutating the caller's — task results are short-lived here, but an
 		// in-place edit on a shared/cached AgentToolResult would be a hidden trap.
@@ -1004,8 +911,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			progress: AgentProgress;
 		}> = [];
 		for (const [index, item] of spawnItems.entries()) {
-			const agentType = resolvedAgents[index]!;
 			const policy = policies[index]!;
+			const agentType = policy.agent.name;
 			const agentSource = policy.agent.source;
 			const run = adopted.get(index);
 			const agentId =
@@ -1458,7 +1365,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		toolCallId: string,
 		params: TaskParams,
 		spawns: SyncSpawnRef[],
-		defaultAgent: string,
+		defaultAgent: string | undefined,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 	): Promise<AgentToolResult<TaskToolDetails>> {
@@ -1532,7 +1439,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	async #runSyncSpawns(args: {
 		toolCallId: string;
 		params: TaskParams;
-		defaultAgent: string;
+		defaultAgent: string | undefined;
 		spawns: SyncSpawnRef[];
 		signal?: AbortSignal;
 		onItemProgress?: (index: number, progress: AgentProgress) => void;

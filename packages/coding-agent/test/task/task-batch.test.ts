@@ -303,7 +303,7 @@ describe("task.batch validation", () => {
 							type: "toolCall",
 							id: "tc-no-solution-space",
 							name: "task",
-							arguments: { context: "# Goal\nX", tasks: [{ name: "Alpha", task: "Do A." }] },
+							arguments: { context: "# Goal\nX", tasks: [{ agent: "task", name: "Alpha", task: "Do A." }] },
 						},
 					],
 				},
@@ -391,19 +391,21 @@ describe("task.batch spawning", () => {
 			context: "# Goal\nShared background.",
 			tasks: [
 				{
+					agent: "task",
 					name: "Alpha",
 					task: "Do A.",
 					outputSchema: alphaSchema,
 					schemaMode: "strict",
 				},
 				{
+					agent: "task",
 					name: "Beta",
 					task: "Do B.",
 					outputSchema: betaSchema,
 					schemaMode: "permissive",
 				},
 			],
-		} as TaskParams);
+		});
 
 		const text = getFirstText(result);
 		expect(text).toContain("Spawned 2 background agents");
@@ -530,8 +532,8 @@ describe("task.batch spawning", () => {
 
 		const result = await tool.execute("tc-single", {
 			context: "Shared notes.",
-			tasks: [{ name: "Solo", task: "Do the thing." }],
-		} as TaskParams);
+			tasks: [{ agent: "task", name: "Solo", task: "Do the thing." }],
+		});
 
 		expect(getFirstText(result)).toContain("Spawned agent `Solo`");
 		const job = manager.getJob(result.details!.async!.jobId)!;
@@ -616,10 +618,10 @@ describe("task.batch spawning", () => {
 		const result = await tool.execute("tc-sync-batch", {
 			context: "# Goal\nShared synchronous context.",
 			tasks: [
-				{ name: "Alpha", task: "Do A." },
-				{ name: "Beta", task: "Do B." },
+				{ agent: "task", name: "Alpha", task: "Do A." },
+				{ agent: "task", name: "Beta", task: "Do B." },
 			],
-		} as TaskParams);
+		});
 
 		expect(getFirstText(result)).toContain("All done.");
 		expect(result.details?.async).toBeUndefined();
@@ -644,9 +646,10 @@ describe("task.batch spawning", () => {
 
 		const tool = await TaskTool.create(createSession({ settings: { "async.enabled": false, "task.batch": false } }));
 		const result = await tool.execute("tc-missing-artifact", {
+			agent: "task",
 			name: "MissingArtifact",
 			task: "Return a long report.",
-		} as TaskParams);
+		});
 		const text = getFirstText(result);
 
 		expect(text).not.toContain("agent://MissingArtifact");
@@ -680,10 +683,10 @@ describe("task.batch spawning", () => {
 			{
 				context: "ctx",
 				tasks: [
-					{ name: "First", task: "Do A." },
-					{ name: "Second", task: "Do B." },
+					{ agent: "task", name: "First", task: "Do A." },
+					{ agent: "task", name: "Second", task: "Do B." },
 				],
-			} as TaskParams,
+			},
 			undefined,
 			update => {
 				if (update.details) {

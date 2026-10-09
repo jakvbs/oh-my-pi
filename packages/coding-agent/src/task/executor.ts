@@ -101,7 +101,6 @@ import type { WorkspaceTree } from "../workspace-tree";
 import { isCompletionProbeEnabled, startCompletionProbe } from "./completion-probe";
 import { attributeSubagentError } from "./error-attribution";
 import { generateTaskLabel } from "./label";
-import { resolveAgentPrewalkDefault } from "./prewalk";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
 import { subprocessToolRegistry } from "./subprocess-tool-registry";
@@ -126,7 +125,6 @@ import {
 import { yieldSectionShapes } from "./yield-assembly";
 import { assembleYieldResult } from "@oh-my-pi/pi-tui/tools/task-yield-assembly";
 import {
-	cfgTaskPrewalk,
 	cfgTaskAgentPrewalk,
 	cfgTaskMaxEffort,
 	cfgTaskSoftRequestBudgetNotice,
@@ -155,36 +153,6 @@ import {
 export type { YieldItem } from "@oh-my-pi/pi-tui/tools/task";
 
 const TASK_ABORT_CLEANUP_GRACE_MS = 10_000;
-
-/**
- * Soft per-agent request budgets (assistant requests per run). Crossing the
- * budget injects a wrap-up steering notice (`task.softRequestBudgetNotice`,
- * on by default). At 1.5x the budget the free-running turn is stopped and the
- * agent is driven to one forced final `yield` so partial findings come back
- * as a real report; only if it still refuses to yield within
- * {@link BUDGET_STOP_GRACE_REQUESTS} more requests is the run hard-aborted.
- * Entries are ceilings, not fixed values: the `default` key applies to agents
- * without an explicit entry, and the `task.softRequestBudget` setting can only
- * lower an agent's budget, never raise it above its bundled entry (0 disables
- * the guard entirely).
- */
-export const SOFT_REQUEST_BUDGET: Record<string, number> = {
-	scout: 100,
-	sonic: 100,
-	default: 200,
-};
-
-/**
- * Resolves the effective soft request budget for an agent. The configured
- * `task.softRequestBudget` and the agent's bundled entry are both upper
- * bounds, so the tighter one wins; a configured budget of 0 disables the
- * guard regardless of the bundled entry.
- */
-export function resolveSoftRequestBudget(agentName: string, configuredBudget: number): number {
-	const normalized = Math.max(0, Math.trunc(configuredBudget));
-	if (normalized === 0) return 0;
-	return Math.min(normalized, SOFT_REQUEST_BUDGET[agentName] ?? normalized);
-}
 
 /** Extra requests allowed after a budget stop for the forced yield to land before the run is hard-aborted. */
 export const BUDGET_STOP_GRACE_REQUESTS = 5;
@@ -281,8 +249,8 @@ function resolveSubagentRetryFallbackCandidates(
  * Chain a single-model subagent inherits when its own model patterns supply no
  * fallbacks of their own. The child is pinned to a `subagent:<id>` role whose
  * chain shadows every configured role chain (see
- * {@link installSubagentRetryFallbackChain}), so a role-alias request (`@smol`,
- * the bundled `task` agent's `@task`) MUST inherit that role's chain —
+ * {@link installSubagentRetryFallbackChain}), so a role-alias request (`@smol`
+ * or `@task`) MUST inherit that role's chain —
  * otherwise the pin silently re-routes the child onto the `default` role's
  * chain. Explicit model selectors keep inheriting `default`: they carry no role
  * identity, and a role that happens to be assigned the same model must not
@@ -3977,8 +3945,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// TTL before an adopted idle subagent is parked by the lifecycle manager.
 	// <= 0 disables parking (the session stays live until process teardown).
 	const agentIdleTtlMs = Math.trunc(Number(cfgTaskAgentIdleTtlMs.get(settings)) || 0);
-	const configuredDefaultBudget = Math.max(0, Math.trunc(Number(cfgTaskSoftRequestBudget.get(settings)) || 0));
-	const softRequestBudget = resolveSoftRequestBudget(agent.name, configuredDefaultBudget);
+	const softRequestBudget = Math.max(0, Math.trunc(Number(cfgTaskSoftRequestBudget.get(settings)) || 0));
 	const softRequestBudgetNotice = cfgTaskSoftRequestBudgetNotice.get(settings);
 	const parentDepth = options.taskDepth ?? 0;
 	const childDepth = parentDepth + 1;
@@ -4237,13 +4204,11 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// Per-agent prewalk: the agent definition's `prewalk` frontmatter or the
 			// `task.agentPrewalk` settings override hands the subagent off to a
 			// fast/cheap target at its first edit/write — the same mechanism as the
-			// session-level --prewalk. The bundled generic `task` agent has no
-			// frontmatter default; the `task.prewalk` toggle (default off) arms it.
-			// Resolution failures skip prewalk instead of failing the spawn.
+			// session-level --prewalk. Resolution failures skip prewalk instead of failing the spawn.
 			let prewalk: Prewalk | undefined;
 			const prewalkPattern = resolveAgentPrewalkPattern({
 				settingsOverride: cfgTaskAgentPrewalk.get(settings)[agent.name],
-				agentPrewalk: resolveAgentPrewalkDefault(agent, cfgTaskPrewalk.get(settings)),
+				agentPrewalk: agent.prewalk,
 			});
 			if (prewalkPattern) {
 				await awaitAbortable(modelRegistry.awaitBackgroundRefresh());

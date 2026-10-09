@@ -544,8 +544,6 @@ export interface BuildSystemPromptOptions {
 	taskMaxConcurrency?: number;
 	/** Whether IRC-backed parallel coordination can be included in delegation policy. */
 	taskIrcEnabled?: boolean;
-	/** Whether the read-only `scout` subagent is spawnable (not disabled, allowed by spawn policy). Defaults to true. */
-	scoutAvailable?: boolean;
 	/** Active model's delegation appetite (catalog `delegation-bias` axis); selects the Delegation section's wording. Default: `eager`. */
 	delegationBias?: DelegationBias;
 
@@ -662,7 +660,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskIrcEnabled = false,
 		secretsEnabled = false,
 		workspaceTree: providedWorkspaceTree,
-		scoutAvailable = true,
 		delegationBias = "eager",
 		memoryBackend,
 		settingsApproval = false,
@@ -994,7 +991,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		inlineFirstDelegation: delegationBias === "restrained" && !eagerTasks,
 		taskBatch,
 		MAX_CONCURRENCY: normalizeConcurrencyLimit(taskMaxConcurrency),
-		scoutAvailable,
 		taskIrcEnabled,
 		secretsEnabled,
 		browserEnabled: evalPreludes.some(prelude => prelude.name === "browser"),

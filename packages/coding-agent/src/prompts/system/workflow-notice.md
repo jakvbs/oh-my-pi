@@ -2,7 +2,7 @@
 User message contains **workflowz** → deterministic multi-subagent workflow. Default to `workpool()` for 2+ independent items; use individual `agent()` handles only for dependency-coupled or schema-returning calls.
 
 <when>
-Use for broad research, reviews, migrations, adversarial coverage, and open-ended work lists. Quick lookup/single edit: direct; no agents. {{#if scoutAvailable}}Scout inline FIRST{{else}}Explore inline FIRST{{/if}} — scope files, call sites, and contracts before creating the pool.
+Use for broad research, reviews, migrations, adversarial coverage, and open-ended work lists. Quick lookup/single edit: direct; no agents. Explore inline FIRST — scope files, call sites, and contracts before creating the pool.
 
 Pool-first phases:
 - **Understand**: queue subsystem readers → collect results → synthesize
@@ -40,7 +40,7 @@ State persists across `eval` calls. Every call provides:
 
 ```python
 phase("Review")
-review = workpool({{#if scoutAvailable}}"scout", {{/if}}name="review", context="Return evidence with exact paths; do not edit.")
+review = workpool(name="review", context="Return evidence with exact paths; do not edit.")
 review.push(*[
     "Review authentication correctness",
     "Review authorization boundaries",
@@ -54,7 +54,7 @@ print(review.name)   # background job id; results auto-deliver
 
 ```js
 phase("Review");
-const review = await workpool({{#if scoutAvailable}}"scout", {{/if}}{
+const review = await workpool({
     name: "review",
     context: "Return evidence with exact paths; do not edit.",
 });
@@ -74,13 +74,13 @@ Need a snapshot without consuming/delivering results? `review.peek()` (JS: `awai
 Use handles only when work item B requires A's exact output before B can be written:
 
 ```python
-spec = agent("Extract the protocol", {{#if scoutAvailable}}agent="scout", {{/if}}schema=SPEC).wait()
+spec = agent("Extract the protocol", schema=SPEC).wait()
 impl = agent(f"Implement this protocol: {spec}")
 result = impl.wait()
 ```
 
 ```js
-const specHandle = await agent("Extract the protocol", { {{#if scoutAvailable}}agent: "scout", {{/if}}schema: SPEC });
+const specHandle = await agent("Extract the protocol", { schema: SPEC });
 const spec = await specHandle.wait();
 const impl = await agent(`Implement this protocol: ${JSON.stringify(spec)}`);
 const result = await impl.wait();

@@ -16,7 +16,6 @@ import { buildSessionOptions as buildCliSessionOptions } from "@oh-my-pi/pi-codi
 import { createAgentSession, type ExtensionFactory } from "@oh-my-pi/pi-coding-agent/sdk";
 import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
 import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
-import { getBundledAgent } from "@oh-my-pi/pi-coding-agent/task/agents";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import type { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
@@ -162,8 +161,12 @@ describe("createAgentSession deferred model pattern resolution", () => {
 	});
 
 	test("lets a child task spawn a model agent inherited from its parent", async () => {
-		const bundledTask = getBundledAgent("task");
-		if (!bundledTask) throw new Error("Expected bundled task agent");
+		const bundledTask: AgentDefinition = {
+			name: "task",
+			description: "General-purpose worker",
+			systemPrompt: "Do the task.",
+			source: "project",
+		};
 		const modelAgent: AgentDefinition = {
 			...bundledTask,
 			name: "m1",

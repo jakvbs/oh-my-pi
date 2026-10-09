@@ -26,7 +26,6 @@ import { InternalUrlFilesystem } from "../internal-urls/url-filesystem";
 import grepDescription from "../prompts/tools/grep.md" with { type: "text" };
 import { DEFAULT_MAX_COLUMN, truncateHead } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { sessionDelegationBias } from "../task/prompt-policy";
-import { isScoutSpawnable } from "../task/spawn-policy";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
 import { resolveToolTier } from "./approval";
@@ -56,7 +55,6 @@ import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { toolResult } from "./tool-result";
 
 import { cfgGrepContextAfter, cfgGrepContextBefore } from "./settings";
-import { cfgTaskDisabledAgents } from "../task/settings";
 
 const searchSchema = type({
 	pattern: type("string"),
@@ -425,24 +423,14 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 		const isLineNumberMode = !displayMode.hashLines && displayMode.lineNumbers;
 		const hasFind = this.session.isToolActive?.("find") ?? isFindEnabled(this.session);
 		const eagerDelegation = sessionDelegationBias(this.session) === "eager";
-		const scoutAvailable = isScoutSpawnable(
-			cfgTaskDisabledAgents.get(this.session.settings),
-			this.session.getSessionSpawns?.() ?? "*",
-		);
 		// Every render input is a boolean; pack them so repeat reads skip the template render.
-		const key =
-			(isHlMode ? 1 : 0) |
-			(isLineNumberMode ? 2 : 0) |
-			(hasFind ? 4 : 0) |
-			(eagerDelegation ? 8 : 0) |
-			(scoutAvailable ? 16 : 0);
+		const key = (isHlMode ? 1 : 0) | (isLineNumberMode ? 2 : 0) | (hasFind ? 4 : 0) | (eagerDelegation ? 8 : 0);
 		if (key !== this.#descriptionKey) {
 			this.#description = prompt.render(grepDescription, {
 				IS_HL_MODE: isHlMode,
 				IS_LINE_NUMBER_MODE: isLineNumberMode,
 				hasFind,
 				eagerDelegation,
-				scoutAvailable,
 			});
 			this.#descriptionKey = key;
 		}

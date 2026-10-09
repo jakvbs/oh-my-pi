@@ -48,11 +48,6 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.authGatewayHelp,
 	},
 	{
-		name: "agents",
-		load: () => import("./commands/agents").then(m => m.default),
-		help: commandHelp.agentsHelp,
-	},
-	{
 		name: "anonymize",
 		load: () => import("./commands/anonymize").then(m => m.default),
 		help: commandHelp.anonymizeHelp,

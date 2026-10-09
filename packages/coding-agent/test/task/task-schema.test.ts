@@ -83,11 +83,10 @@ describe("task spawn validation", () => {
 		return result.content.find(part => part.type === "text")?.text ?? "";
 	}
 
-	it("defaults a missing agent to `task`", async () => {
-		// With no `agent`, execute() normalizes to the `task` default, so the
-		// failure is unknown-agent (none discovered), not missing-agent.
+	it("rejects a missing agent instead of choosing an implicit builtin", async () => {
 		const text = await executeText({ task: "..." });
-		expect(text).toContain('Unknown agent "task"');
+		expect(text).toContain("Missing agent: specify which agent to spawn.");
+		expect(text).toContain("Available: none.");
 	});
 
 	it("rejects a missing task", async () => {

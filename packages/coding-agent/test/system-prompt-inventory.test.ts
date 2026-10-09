@@ -974,35 +974,6 @@ describe("system prompt tool inventory", () => {
 		expect(text).not.toContain("`skill://<name>`");
 	});
 
-	it("omits the read-only scout delegation gate when scout is unavailable", async () => {
-		const opts = { toolNames: ["read", "bash", "task"], tools: TOOLS };
-		const withScout = (
-			await buildSystemPrompt({
-				...opts,
-				cwd: tempDir,
-				contextFiles: [],
-				skills: [],
-				rules: [],
-				workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-				scoutAvailable: true,
-			})
-		).systemPrompt.join("\n\n");
-		const withoutScout = (
-			await buildSystemPrompt({
-				...opts,
-				cwd: tempDir,
-				contextFiles: [],
-				skills: [],
-				rules: [],
-				workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-				scoutAvailable: false,
-			})
-		).systemPrompt.join("\n\n");
-
-		expect(withScout).toContain("read-only scout");
-		expect(withoutScout).not.toContain("read-only scout");
-	});
-
 	it("omits todo workflow guidance when the todo tool is absent", async () => {
 		const opts = {
 			cwd: tempDir,

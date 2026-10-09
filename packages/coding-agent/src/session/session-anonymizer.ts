@@ -13,7 +13,6 @@
  * `name: "Probe"` → `PLACEHOLDER_7` and `agent://Probe` → `agent://seg7`.
  */
 import { logger } from "@oh-my-pi/pi-utils";
-import { getBundledAgentsMap } from "../task/agents";
 import { BUILTIN_TOOL_NAMES, isMCPToolName } from "../tools/builtin-names";
 import { lexShellCommand } from "../tools/shell-tokenize";
 import type { SessionEntry, SessionHeader } from "./session-entries";
@@ -31,7 +30,7 @@ export const ANONYMIZED_REVIEW_NOTE =
  * - `num`: numeric/flag field; a string there is redacted.
  * - `time`: ISO timestamp or epoch ms.
  * - `enum`/`identity`: omp- or provider-written identifier (stop reason, model id); other shapes are tokenized.
- * - `agent`/`spawns`: bundled agent names kept, custom agent names tokenized.
+ * - `agent`/`spawns`: agent names tokenized (every agent is user-defined).
  * - `id`: machine-minted ids kept; named ids mapped like the `agent://` segment they mirror.
  * - `path`/`cmd`: mock paths / shell rewrite. `text`: redaction marker. `label`: placeholder.
  * - `error`: redacted except a leading HTTP status.
@@ -1509,7 +1508,7 @@ export class SessionAnonymizer {
 				if (fromTool) return /^[\w.-]+\/[\w.:@+-]+$/.test(value) ? value : this.placeholder(value);
 				return IDENTIFIER.test(value) ? value : this.placeholder(value);
 			case "agent":
-				return getBundledAgentsMap().has(value) ? value : this.placeholder(value);
+				return this.placeholder(value);
 			case "spawns":
 				return value === "" || value === "*"
 					? value

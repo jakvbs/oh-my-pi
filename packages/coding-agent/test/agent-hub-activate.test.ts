@@ -17,7 +17,6 @@ import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/typ
 import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { visitEntriesFromFileStream } from "@oh-my-pi/pi-coding-agent/session/session-loader";
-import { getBundledAgent } from "@oh-my-pi/pi-coding-agent/task/agents";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
 const AGENT_ID = "Worker";
@@ -376,7 +375,10 @@ describe("Agent hub Enter activation", () => {
 					id: "init",
 					parentId: "model",
 					timestamp: createdAt,
-					systemPrompt: `base prompt\n\nROLE\n====\n${getBundledAgent("scout")?.systemPrompt}`,
+					systemPrompt: "base prompt",
+					agent: "scout",
+					modelRole: "smol",
+					readOnly: true,
 					task: "Inspect persisted telemetry.",
 					tools: ["read", "grep"],
 				}),

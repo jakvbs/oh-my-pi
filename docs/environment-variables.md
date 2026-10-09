@@ -617,17 +617,7 @@ These are read as runtime signals; they are usually set by the terminal/OS rathe
 
 ---
 
-## 10) Commit generation controls
-
-| Variable                  | Behavior                                                            |
-| ------------------------- | ------------------------------------------------------------------- |
-| `PI_COMMIT_TEST_FALLBACK` | If `true` (case-insensitive), force commit fallback generation path |
-| `PI_COMMIT_NO_FALLBACK`   | If `true`, disables fallback when agent returns no proposal         |
-| `DEBUG`                   | If set, commit agent error stack traces are printed                 |
-
----
-
-## 11) OpenTelemetry export
+## 10) OpenTelemetry export
 
 OMP initializes OTLP export only when at least one signal has an endpoint. Set `telemetry.otlpExportEnabled: false` (`/settings` → Providers → Privacy) to skip export even when endpoints are configured. `OTEL_SDK_DISABLED=true` also disables initialization.
 

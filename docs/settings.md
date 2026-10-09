@@ -807,7 +807,7 @@ compaction:
 - The hub refuses an edit when the project config sets the same model key; change it in the project config instead.
 - A token base larger than the model's standard window, or a fixed trigger at or past it, opts that model into its extended window (the window `extendedContext` would give it, including long-context pricing tiers) without turning `extendedContext` on. A base is the window size you want, so it opens the extended window even when its scaled trigger lands inside the standard one (a `300k` base on a 272K model compacts at 255K but runs on the larger window, keeping the reserve as headroom); use a base at or below the standard window, or an `f` trigger below it, to stay on the standard window. The hub warns first and saves on a second Enter; it rejects a base larger than the largest window the model can run with, and a fixed trigger at or past it. A subagent whose `task.agentCompactionThresholdOverrides` entry applies ignores model entries, so it keeps the standard window.
 
-Per-agent compaction triggers for task/eval subagents. This keeps the main session at 40,000 tokens while `scout` compacts at 80% of its window and `task` at 90,000 tokens:
+Per-agent compaction triggers for task/eval subagents. This keeps the main session at 40,000 tokens while an `explore` agent compacts at 80% of its window and `task` at 90,000 tokens:
 
 ```yaml
 compaction:
@@ -815,11 +815,11 @@ compaction:
 
 task:
   agentCompactionThresholdOverrides:
-    scout: "80%"
+    explore: "80%"
     task: 90000
 ```
 
-- Keys are exact, case-sensitive agent names (`scout` does not match `Scout`).
+- Keys are exact, case-sensitive agent names (`explore` does not match `Explore`).
 - A number is a fixed token trigger (positive integer); a `"N%"` string is a percentage of the context window, `0 < N ≤ 100`. An entry replaces both `compaction.thresholdTokens` and `compaction.thresholdPercent` for that agent.
 - `null` clears an entry set by a lower-priority settings layer. Any other value fails settings load.
 - Agents without an entry — including agents spawned by an overridden agent — use the main session's `compaction.*` thresholds. The main session is unaffected.

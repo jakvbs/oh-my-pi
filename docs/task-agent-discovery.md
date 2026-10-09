@@ -13,7 +13,6 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 - [`src/task/structured-subagent.ts`](../packages/coding-agent/src/task/structured-subagent.ts)
 - [`src/task/spawn-policy.ts`](../packages/coding-agent/src/task/spawn-policy.ts)
 - [`src/task/commands.ts`](../packages/coding-agent/src/task/commands.ts)
-- [`src/prompts/agents/task.md`](../packages/coding-agent/src/prompts/agents/task.md)
 - [`src/prompts/tools/task.md`](../packages/coding-agent/src/prompts/tools/task.md)
 - [`src/discovery/helpers.ts`](../packages/coding-agent/src/discovery/helpers.ts)
 - [`src/discovery/omp-extension-roots.ts`](../packages/coding-agent/src/discovery/omp-extension-roots.ts)
@@ -28,7 +27,7 @@ Task agents normalize into `AgentDefinition` (`src/task/types.ts`):
 
 - required `name`, `description`, and `systemPrompt`
 - optional `tools`, `spawns`, prioritized `model` list, `thinkingLevel`, `output`, `blocking`, `autoloadSkills`, `readSummarize`, `prewalk`, `advisor`
-- `source`: `"bundled" | "user" | "project"` (extension agents are tagged with their extension root's project/user level)
+- `source`: `"user" | "project"` (extension agents are tagged with their extension root's project/user level)
 - optional `filePath`
 
 Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.ts`):
@@ -39,7 +38,7 @@ Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.
 - `spawns` accepts `*`, CSV, or array
 - backward-compat behavior: if `spawns` missing but `tools` includes `task`, `spawns` becomes `*`
 - `output` is passed through as opaque schema data
-- `read-summarize: false` (normalized to `readSummarize`) disables structural summaries for the subagent's `read` tool — `runSubprocess` applies a `read.summarize.enabled: false` override on the child's isolated settings (`src/task/executor.ts`). `scout` ships with it disabled. When absent, the child inherits the parent's read-summary setting.
+- `read-summarize: false` (normalized to `readSummarize`) disables structural summaries for the subagent's `read` tool — `runSubprocess` applies a `read.summarize.enabled: false` override on the child's isolated settings (`src/task/executor.ts`). When absent, the child inherits the parent's read-summary setting.
 - `model` accepts one selector, CSV, or an array. Entries are tried in order after role aliases are expanded.
 - `thinking-level` / `thinking` selects the agent's configured effort. When `task.enableEffort` (default `false`) exposes it, a task item's coarse `effort` (`lo`, `med`, `hi`) takes precedence at launch. OMP maps that hint to the selected model's lowest, middle, or highest supported effort, then clamps it to `task.maxEffort` (default `max`). The ceiling is carried across retry-fallback model switches. If the selected model has no supported effort at or below the ceiling, the spawn fails; models without a controllable effort surface instead fall back to their normal selector.
 - `blocking: true` makes the parent wait for that agent even when async task execution is enabled
@@ -74,7 +73,7 @@ modelRoles:
 
 `@review` resolves through `modelRoles.review`. Each `modelRoles.<role>` value stores a concrete model selector and may append a thinking suffix such as `:high` (`src/config/model-resolver.ts`). Changing that mapping affects subsequent task resolutions without editing agent definitions. Task/eval preflight reloads the current global, project, and explicit overlay settings before rediscovering agents, so agent files and their role aliases added during a live session resolve from one refreshed configuration state.
 
-With the default batched task schema, supply shared `context` and per-item `task` and `solutionSpace`. `solutionSpace` describes how open-ended the assignment is, rather than its size. Set `agent` only when choosing a non-default agent:
+With the default batched task schema, supply shared `context` and per-item `task` and `solutionSpace`. `solutionSpace` describes how open-ended the assignment is, rather than its size. Every item names its `agent`; unrestricted sessions have no default agent, so an omitted `agent` fails with the list of available agents:
 
 ```json
 {
@@ -95,7 +94,7 @@ With the default batched task schema, supply shared `context` and per-item `task
 
 Type `^` in the composer to choose a model from the same scope and ranking as the `Alt+P` session picker. Accepting a completion inserts an atomic chip showing its display name. For example, type `Have ^`, pick a model, then finish with `review this change`.
 
-On submit, each first-mentioned model receives a branch-local pseudonym (`m1`, `m2`, …). The user message carries `<model agent="m1" name="Display Name"/>`; the task description lists its provider/model selector. `task`, eval `agent()`, and `workpool()` accept that pseudonym as their `agent`. These agents use the bundled general-purpose task template, not a specialist template, and are intended only for requests explicitly naming the tagged model.
+On submit, each first-mentioned model receives a branch-local pseudonym (`m1`, `m2`, …). The user message carries `<model agent="m1" name="Display Name"/>`; the task description lists its provider/model selector. `task`, eval `agent()`, and `workpool()` accept that pseudonym as their `agent`. These agents run with no agent-specific system prompt and are intended only for requests explicitly naming the tagged model.
 
 Tagging a model never rewrites the model-facing `task` description mid-session: the description lists the pseudonyms baked into the current base prompt, and later tags arrive as a hidden `session-agents` system notice on the next user turn. The notice rides the same channel as the eval-prelude and tool-roster deltas, so the provider cache prefix stays byte-stable. The next base-prompt rebuild absorbs the live set into the description.
 
@@ -107,26 +106,9 @@ Session definitions are appended after discovered agents, so an existing agent w
 
 After dispatch, press `Alt+A` to open [Agent Hub](./agent-hub.md). Its live roster shows each task agent's status, current activity, model, age, and usage. Select an agent to read its transcript and steer it directly; parked agents can be revived from the same view. Enable `tui.mouse` to click live task cards and jump-list rows instead, or watch the pinned `Subagents` block above the editor.
 
-## Bundled agents
-
-Bundled agents are embedded at build time (`src/task/agents.ts`) using text imports.
-
-`EMBEDDED_AGENT_DEFS` defines:
-
-- `scout`, `reviewer`, and `security-reviewer` from prompt files
-- `task` and `sonic` from the shared `task.md` body plus injected frontmatter; no bundled agent sets `prewalk` — the generic `task` agent's hand-off is armed by the `task.prewalk` setting (default off), or per agent via `/agents` / `task.agentPrewalk` / user agent frontmatter
-
-Loading path:
-
-1. `loadBundledAgents()` parses embedded markdown with `parseAgent(..., "bundled", "fatal")`
-2. results are cached in-memory (`bundledAgentsCache`)
-3. `clearBundledAgentsCache()` is test-only cache reset
-
-Because bundled parsing uses `level: "fatal"`, unrecoverable YAML errors or invalid required fields throw and can fail discovery entirely.
-
 ## Filesystem and plugin discovery
 
-`discoverAgents(cwd, home, extensionRoots?)` (`src/task/discovery.ts`) merges agents from OMP-native roots, OMP extension packages, and Claude marketplace plugin roots before appending bundled definitions. Direct cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the OMP task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".omp"` filters the native config-dir lists).
+`discoverAgents(cwd, home, extensionRoots?)` (`src/task/discovery.ts`) merges agents from OMP-native roots, OMP extension packages, and Claude marketplace plugin roots. OMP ships no built-in agents: with none discovered, the `task` tool has nothing to spawn. Direct cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the OMP task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".omp"` filters the native config-dir lists).
 
 ### Discovery inputs and precedence
 
@@ -138,7 +120,6 @@ Because bundled parsing uses `level: "fatal"`, unrecoverable YAML errors or inva
    - installed npm/link plugins
    Project and user `extensions:` arrays are not concatenated: settings use array-replacement precedence. Session overlays/runtime overrides and the configured array's project/user provenance are preserved. In `explicit-only` mode (`--no-extensions` or SDK `disableExtensionDiscovery`), only explicit roots contribute this package surface; file entrypoints have no `agents/` subdirectory to scan.
 4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope. User-scope roots additionally require the `claude-plugins` or `claude` user source to be enabled (`isUserSourceEnabled`: normally via `enabledProviders`, e.g. `["claude-plugins"]`; `claude` is also enabled implicitly when `CLAUDE_CONFIG_DIR` is set), except roots whose origin is not the foreign `~/.claude/plugins` tree (omp's own installs with `origin: "omp"` and `--plugin-dir` roots) — mirroring the skills path's exemption.
-5. Bundled agents (`loadBundledAgents()`)
 
 The OMP extension-package surface is disabled when the `omp-plugins` capability provider is disabled. Marketplace roots are excluded from `listOmpExtensionRoots` and enter only through the separately gated Claude-plugin path.
 
@@ -150,13 +131,11 @@ Discovery uses first-wins dedup by exact `agent.name`:
 
 - A `Set<string>` tracks seen names.
 - Loaded agents are flattened in directory order and kept only if name unseen.
-- Bundled agents are filtered against the same set and only added if still unseen.
 
 Implications:
 
 - Project `.omp` overrides user `.omp`.
-- Earlier extension roots override later extension roots, Claude marketplace plugins, and bundled agents.
-- Non-bundled agents override bundled agents with the same name.
+- Earlier extension roots override later extension roots and Claude marketplace plugins.
 - Name matching is case-sensitive (`Task` and `task` are distinct).
 - Within one directory, agent files (`.md` and `.ts`) are read in lexicographic filename order before dedup.
 
@@ -257,7 +236,7 @@ The task item's optional `schemaMode` overrides the parent session mode; the def
 
 Explicit caller schemas are validated during preflight in both modes. Agent/session schemas are preflight-validated when the effective mode is `strict`. Invalid schemas fail before child execution.
 
-The model-facing prompt (`src/prompts/tools/task.md`) tags read-only agents and warns against offloading reasoning to `scout`/`sonic`.
+The model-facing prompt (`src/prompts/tools/task.md`) tags read-only and blocking agents.
 
 ## Command discovery interaction
 

@@ -27,7 +27,7 @@ import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
 import { pluginUsesClaudeModelDialect } from "../discovery/agent-plugin-format";
 import { listClaudePluginRoots } from "../discovery/helpers";
 import { listOmpExtensionRoots } from "../discovery/omp-extension-roots";
-import { loadBundledAgents, parseAgent, parseAgentModule } from "./agents";
+import { parseAgent, parseAgentModule } from "./agents";
 import type { AgentSource } from "@oh-my-pi/pi-tui/tools/task";
 import type { AgentDefinition } from "./types";
 
@@ -86,11 +86,11 @@ async function importAgentModule(filePath: string): Promise<unknown> {
 }
 
 /**
- * Discover agents from filesystem and merge with bundled agents.
+ * Discover agents from the filesystem.
  * Precedence (highest wins): project `.omp/agents`, user `.omp/agents`,
  * OMP extension-package agents from the effective `extensions` setting,
  * installed npm/link plugins, Claude marketplace plugin agents (project scope
- * before user), then bundled.
+ * before user).
  * @param cwd - Current working directory for project agent discovery
  * @param home - Home directory for user and marketplace discovery
  * @param extensionRoots - Session-local extension roots (explicit + mode + configured)
@@ -173,16 +173,10 @@ export async function discoverAgents(
 		return true;
 	});
 
-	const bundledAgents = loadBundledAgents().filter(agent => {
-		if (seen.has(agent.name)) return false;
-		seen.add(agent.name);
-		return true;
-	});
-
 	const projectAgentsDir = projectDirs.length > 0 ? projectDirs[0].path : null;
 
 	return {
-		agents: [...loadedAgents, ...bundledAgents],
+		agents: loadedAgents,
 		projectAgentsDir,
 		searchedDirs: orderedDirs.map(entry => entry.dir),
 	};

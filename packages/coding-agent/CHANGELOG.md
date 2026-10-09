@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; unrestricted task and eval spawns now require an explicit agent name.
+
 ### Added
 
 - Added `/jobs kill <id>|all` to cancel a running background job (or every one this session owns) from the command line, even while the agent is busy ([#14160](https://github.com/can1357/oh-my-pi/pull/14160) by [@KanwarGill](https://github.com/KanwarGill))

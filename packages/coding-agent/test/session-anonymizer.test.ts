@@ -154,7 +154,7 @@ describe("SessionAnonymizer", () => {
 		expect(wireArgs).toEqual({ pattern, path: grepPath.replace(/:10-20$/, "") });
 		expect(at(start, "data", "args", "pattern")).toBe(pattern);
 		const agentIndex = String(content(2, "arguments", "tasks", 0, "name")).replace("PLACEHOLDER_", "");
-		expect(content(2, "arguments", "tasks", 0, "agent")).toBe("scout");
+		expect(content(2, "arguments", "tasks", 0, "agent")).toMatch(/^PLACEHOLDER_\d+$/);
 		expect(content(3, "arguments", "path")).toBe(`agent://seg${agentIndex}`);
 
 		expect(at(toolResult, "message", "content", 0, "text")).toMatch(/^\[redacted #\d+: 53 chars, 1 line\]$/);
