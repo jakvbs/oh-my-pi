@@ -43,8 +43,6 @@
 		".omp/**",
 		"crates/**",
 		"docs/**",
-		"python/**",
-		"sdk/**",
 		"types/**",
 		"packages/browser-relay/extension/**",
 		"packages/natives/native/**",

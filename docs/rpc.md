@@ -1595,17 +1595,6 @@ type as omptype schemas. `bun run gen:rpc` emits:
     frame, and `x-scalar-or-array` marks an array older servers sent as a bare
     scalar.
 - `rpc-wire.generated.ts`: the wire types in TypeScript.
-- `sdk/python/omp-rpc/src/omp_rpc/_wire.py`: Python types, decoders, command methods,
-  and frame listeners for the `omp-rpc` package.
-- `sdk/rust/omp-rpc/src/wire.rs`: Rust serde types, frame decoders, and a `Command`
-  trait implemented by one params struct per command (crate `omp-rpc`).
-- `sdk/go/omp-rpc/wire.go`: Go types, frame decoders, and one `Commands` method per
-  command (module `github.com/can1357/oh-my-pi/sdk/go/omp-rpc`).
-
-The Rust and Go packages ship hand-written process transports on top of the
-generated types: they negotiate v2 and reassemble chunks, page message history,
-wait for a prompt's `prompt_result` (`prompt_and_wait` / `PromptAndWait`), and serve
-host-owned tools and URI schemes. Their READMEs cover the APIs.
 
 `packages/coding-agent/test/rpc-wire` fails when a committed output is stale, and
 type-checks the generated TypeScript against `rpc-types.ts` and the internal types
@@ -1626,18 +1615,3 @@ Current helper characteristics:
 - Drives live voice sessions with `liveStart()`, `liveStop()`, `liveMute()`, and delivers live frames through `onLive()`
 - `promptAndWait()` waits for that prompt's result (or synchronous local completion); `waitForSettled()` also waits for session quiescence. `waitForIdle()` and `collectEvents()` stop at the next `agent_end`, including a non-terminal one, and are not settle barriers.
 - Wraps common protocol commands including OAuth `getLoginProviders()` / `login(...)` and `getLogoutAccounts(...)` / `logout(...)`; use raw protocol frames for unwrapped surfaces such as host-URI registration or delta-only message updates.
-
-### Python package
-
-The bundled [`omp-rpc`](../sdk/python/omp-rpc/pyproject.toml) distribution provides the process-backed Python client. Its import package is `omp_rpc`; the package API, typed commands and events, host-tool/host-URI helpers, and orchestration examples are maintained in the [`omp-rpc` README](../sdk/python/omp-rpc/README.md).
-
-```python
-from omp_rpc import RpcClient
-
-with RpcClient(provider="anthropic", model="claude-sonnet-4-5") as client:
-    state = client.get_state()
-    turn = client.prompt_and_wait("Reply with just the word hello")
-    print(turn.require_assistant_text())
-```
-
-By default, `RpcClient` starts `omp --mode rpc`; pass `command=[...]` to own the exact child command. It handles request correlation, typed notifications, v2 negotiation and chunk reassembly, message pagination, extension UI (including the opt-in `ask` dialog), and host-owned tools and URI schemes. Its command methods and `on_<frame type>` listeners are generated from the wire schema, so it wraps every command above; the `messageUpdates: "delta"` projection stays raw-protocol only. The Python package owns that client API and process lifecycle; this document and `rpc-types.ts` remain the canonical wire contract. Use raw protocol frames when a client library does not wrap the surface you need.

@@ -104,10 +104,6 @@ const nativeAndIntegrationPackages = [
 	"packages/collab-web",
 ];
 
-// Packages the CI buckets deliberately skip but a local full run should still
-// cover. robomp-web lives under python/robomp and is outside every CI TS bucket.
-const localOnlyWorkspacePackages = ["python/robomp/web"];
-
 const codingAgentNativePathPatterns = [
 	/(^|\/)[^/]*(bash|native|browser|cmux|mnemopi|hindsight|memory)[^/]*\.test\.ts$/i,
 	/^test\/[^/]*(ask|gh|irc|task|eval|search|read|write|edit|ast|resolve|sqlite|web-search|fetch|image|ssh|tool)[^/]*\.test\.ts$/,
@@ -349,15 +345,14 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 				...(await commandsForMode("coding-agent-heavy")),
 			];
 		// `local-ts` is the full local TypeScript run that root `bun run test:ts`
-		// drives: every package the old `--workspaces` fan-out covered (the CI
-		// `all` set plus robomp-web, which CI omits), routed through
-		// this one quiet runner so the whole suite shares one progress stream and
-		// one failure report. Repo script tests remain available via `test:scripts`.
+		// drives: every package the old `--workspaces` fan-out covered, routed
+		// through this one quiet runner so the whole suite shares one progress
+		// stream and one failure report. Repo script tests remain available via
+		// `test:scripts`.
 		case "local-ts":
 			return [
 				...fastWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 8, { extraArgs: onlyFailuresArgs })),
 				...nativeAndIntegrationPackages.map(pkg => workspaceTestCommand(pkg, 4, { extraArgs: onlyFailuresArgs })),
-				...localOnlyWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 4, { extraArgs: onlyFailuresArgs })),
 				...(await commandsForMode("coding-agent-heavy")),
 			];
 		// `local` is what root `bun run test` drives: the full TS suite plus the

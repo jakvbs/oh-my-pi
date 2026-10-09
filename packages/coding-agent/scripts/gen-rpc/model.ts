@@ -1,9 +1,6 @@
 /**
  * Normalizes the RPC wire bundle (JSON Schema 2020-12 + `x-rpc`) into a small
- * type model shared by every language emitter.
- *
- * Emitters read only the bundle, never the omptype source, so the bundle is
- * proven sufficient for generators written in other languages.
+ * type model for the TypeScript emitter.
  */
 import type { RpcWireBundle, RpcWireCommand } from "../../src/modes/rpc/wire";
 
@@ -45,13 +42,6 @@ export type WireDef =
 			open: boolean;
 	  }
 	| { name: string; doc?: string; kind: "alias"; type: WireType };
-
-/** Discriminated union definition: dispatch on `property` to a direct member. */
-export interface WireDispatch {
-	property: string;
-	/** Discriminator value → direct member definition name. */
-	cases: Map<string, string>;
-}
 
 export interface WireModel {
 	defs: Map<string, WireDef>;
@@ -147,63 +137,4 @@ export function buildWireModel(bundle: RpcWireBundle): WireModel {
 		serverFrame: bundle["x-rpc"].serverFrame,
 		inbound: bundle["x-rpc"].inbound,
 	};
-}
-
-/** Literal value of `property` on an object definition, if it is a constant. */
-export function constantOf(def: WireDef | undefined, property: string): string | undefined {
-	if (def?.kind !== "object") return undefined;
-	const field = def.fields.find(candidate => candidate.key === property);
-	return field?.type.kind === "literal" && typeof field.type.value === "string" ? field.type.value : undefined;
-}
-
-/** Members of a union alias that are all definition references; undefined otherwise. */
-export function unionMembers(def: WireDef | undefined): string[] | undefined {
-	if (def?.kind !== "alias" || def.type.kind !== "union") return undefined;
-	const names: string[] = [];
-	for (const member of def.type.members) {
-		if (member.kind !== "ref") return undefined;
-		names.push(member.name);
-	}
-	return names;
-}
-
-/** Object definitions reachable through nested union aliases, in declaration order. */
-export function unionLeaves(model: WireModel, name: string): string[] {
-	const members = unionMembers(model.defs.get(name));
-	if (!members) return [name];
-	return members.flatMap(member => unionLeaves(model, member));
-}
-
-/**
- * Finds the property that routes a union to its direct members: every leaf has
- * a constant for it, and no value reaches two direct members.
- */
-export function unionDispatch(model: WireModel, name: string): WireDispatch | undefined {
-	const members = unionMembers(model.defs.get(name));
-	if (!members) return undefined;
-	for (const property of ["type", "role", "method", "stage"]) {
-		const cases = new Map<string, string>();
-		let routes = true;
-		for (const member of members) {
-			for (const leaf of unionLeaves(model, member)) {
-				const value = constantOf(model.defs.get(leaf), property);
-				const routed = value === undefined ? undefined : cases.get(value);
-				if (value === undefined || (routed !== undefined && routed !== member)) {
-					routes = false;
-					break;
-				}
-				cases.set(value, member);
-			}
-			if (!routes) break;
-		}
-		if (routes) return { property, cases };
-	}
-	return undefined;
-}
-
-/** Splits `T | null` into the non-null type, or returns undefined when `type` is not nullable. */
-export function nonNull(type: WireType): WireType | undefined {
-	if (type.kind !== "union" || !type.members.some(member => member.kind === "null")) return undefined;
-	const rest = type.members.filter(member => member.kind !== "null");
-	return rest.length === 1 ? rest[0] : { kind: "union", members: rest };
 }
