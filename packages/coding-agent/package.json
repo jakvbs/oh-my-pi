@@ -564,6 +564,7 @@
 		"puppeteer-core": "catalog:"
 	},
 	"devDependencies": {
+		"@babel/traverse": "catalog:",
 		"@types/bun": "catalog:"
 	},
 	"optionalDependencies": {
