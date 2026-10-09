@@ -865,16 +865,8 @@ export function truncateDiffByHunk(
 // Path Utilities
 // =============================================================================
 
-let cachedHomeDir: string | undefined;
-let cachedHomedir: typeof os.homedir | undefined;
-
 function defaultHomeDir(): string {
-	const homedir = os.homedir;
-	if (cachedHomeDir === undefined || cachedHomedir !== homedir) {
-		cachedHomedir = homedir;
-		cachedHomeDir = homedir();
-	}
-	return cachedHomeDir;
+	return os.homedir();
 }
 
 interface HomePattern {
