@@ -1141,8 +1141,8 @@ export class SessionMaintenance {
 		try {
 			if (ownsCompactionController) {
 				// A manual compaction aborts the live turn, tool loop included. Without a
-				// resume the agent sits idle on a half-finished loop (an autoresearch run,
-				// a pending tool result) until the user types "continue" by hand.
+				// resume the agent sits idle on a half-finished loop (a pending tool
+				// result) until the user types "continue" by hand.
 				// Only a turn the agent actually owns counts: the session-level busy flag
 				// is also true while a prompt is still in async setup (before its message
 				// reaches the agent). The abort bump drops that prompt, so resuming on
