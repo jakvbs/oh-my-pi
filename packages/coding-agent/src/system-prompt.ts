@@ -773,16 +773,16 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		return dedupeContainedContextFiles([...primary, ...extra.flat()]);
 	})();
 	const additionalRootsForTree = additionalWorkspaceRoots.filter(d => path.resolve(d) !== path.resolve(resolvedCwd));
+	// The scan runs even when the tree is not rendered: its AGENTS.md index feeds
+	// <dir-context>, and only the rendered tree churns the prompt cache.
 	const workspaceTreePromise = (async () => {
 		const primary =
 			providedWorkspaceTree !== undefined
 				? await Promise.resolve(providedWorkspaceTree)
-				: includeWorkspaceTree
-					? await logger.time("buildWorkspaceTree", () =>
-							buildWorkspaceTree(resolvedCwd, { timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS }),
-						)
-					: { rootPath: resolvedCwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] };
-		if (additionalRootsForTree.length === 0 || !includeWorkspaceTree) return primary;
+				: await logger.time("buildWorkspaceTree", () =>
+						buildWorkspaceTree(resolvedCwd, { timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS }),
+					);
+		if (additionalRootsForTree.length === 0) return primary;
 		const extraTrees = await Promise.all(
 			additionalRootsForTree.map(root =>
 				buildWorkspaceTree(root, { timeoutMs: SYSTEM_PROMPT_PREP_TIMEOUT_MS }).catch(() => ({

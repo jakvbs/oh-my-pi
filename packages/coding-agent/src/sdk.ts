@@ -1762,30 +1762,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	// both the rendered-tree input and the AGENTS.md directory-context index, so
 	// startup does not perform a second recursive filesystem search. Subagents
 	// inherit the parent's resolved values via options.
+	// The scan runs regardless of `includeWorkspaceTree`: that setting only gates
+	// rendering the tree, while the AGENTS.md index always feeds <dir-context>.
 	const STARTUP_SCAN_DEADLINE_MS = 5000;
-	const emptyWorkspaceTree: WorkspaceTree = {
-		rootPath: cwd,
-		rendered: "",
-		truncated: false,
-		totalLines: 0,
-		agentsMdFiles: [],
-	};
-	const scanWorkspaceTree = (): Promise<WorkspaceTree> => {
-		const scan = logger.time("buildWorkspaceTree", () =>
-			buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }),
-		);
-		scan.catch(() => {});
-		return scan;
-	};
-	// Undefined until needed: enabling `includeWorkspaceTree` mid-session scans
-	// on the next prompt rebuild (see rebuildSystemPrompt).
-	let workspaceTreePromise: Promise<WorkspaceTree> | undefined = options.workspaceTree
+	const workspaceTreePromise: Promise<WorkspaceTree> = options.workspaceTree
 		? Promise.resolve(options.workspaceTree)
-		: cfgIncludeWorkspaceTree.get(settings)
-			? scanWorkspaceTree()
-			: undefined;
-	// Tree from a mid-session scan; supersedes the startup value handed to subagents.
-	let lateWorkspaceTree: WorkspaceTree | undefined;
+		: logger.time("buildWorkspaceTree", () => buildWorkspaceTree(cwd, { timeoutMs: STARTUP_SCAN_DEADLINE_MS }));
+	workspaceTreePromise.catch(() => {});
 
 	// Independent discoveries that depend only on cwd/agentDir — kicked off in parallel and awaited
 	// at their respective consumer sites. Their work can overlap with model resolution, secret loading,
@@ -2150,7 +2133,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	const [initialContextFiles, resolvedWorkspaceTree, watchdogFiles, initialActiveRepoContext, discoveredAdvisors] =
 		await Promise.all([
 			contextFilesPromise,
-			raceWithDeadline("buildWorkspaceTree", workspaceTreePromise ?? Promise.resolve(emptyWorkspaceTree)),
+			raceWithDeadline("buildWorkspaceTree", workspaceTreePromise),
 			watchdogFilesPromise,
 			activeRepoContextPromise,
 			advisorConfigsPromise,
@@ -2272,7 +2255,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			skipPythonPreflight: options.skipPythonPreflight,
 			contextFiles,
 			get workspaceTree() {
-				return lateWorkspaceTree ?? resolvedWorkspaceTree;
+				return resolvedWorkspaceTree;
 			},
 			get skills() {
 				return session?.skills ?? skills;
@@ -3872,16 +3855,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// namespace catalog; native tool calling lets the compact name list suffice.
 			const nativeTools = resolveDialect(cfgToolsFormat.get(settings), agent?.state.model ?? model) === undefined;
 			const includeWorkspaceTree = cfgIncludeWorkspaceTree.get(settings);
-			if (includeWorkspaceTree && !workspaceTreePromise) {
-				const scan = scanWorkspaceTree();
-				workspaceTreePromise = scan;
-				scan.then(
-					tree => {
-						lateWorkspaceTree = tree;
-					},
-					() => {},
-				);
-			}
 			// Mounted xd:// readers stay out of the direct inventory, but their skill
 			// capability still drives catalog/URI guidance: project them into the
 			// compact metadata map (inventory rendering stays driven by `toolNames`).
@@ -3922,7 +3895,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				writeTransportOnly:
 					toolSession.deviceOnlyWrite === true && toolSession.pendingFullWriteDescription !== true,
 				secretsEnabled: obfuscator?.obfuscates() === true,
-				workspaceTree: workspaceTreePromise ?? emptyWorkspaceTree,
+				workspaceTree: workspaceTreePromise,
 				includeWorkspaceTree,
 				memoryBackend: memoryBackend?.id,
 				settingsApproval: toolSession.settingsApproval === true,
