@@ -16,20 +16,11 @@ import { isUserSourceEnabled } from "../capability";
 import type { ContextFile } from "../capability/context-file";
 import type { ExtensionModule } from "../capability/extension-module";
 import { invalidate as invalidateFsCache, readDirEntries, readFile } from "../capability/fs";
-import {
-	MAIN_AGENT_RULE_NAME,
-	parseRuleAgents,
-	parseRuleConditionAndScope,
-	type Rule,
-	type RuleFrontmatter,
-	SUB_AGENT_RULE_NAME,
-} from "../capability/rule";
+import { parseRuleAgents, parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../capability/rule";
 import type { Skill, SkillFrontmatter } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import { resolveClaudePaths } from "../config/claude-paths";
 import type { MCPRequestIdFormat } from "../mcp/types";
-import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
-import { normalizeToolNames } from "../tools/builtin-names";
 
 import { realpathIfExists, resolveContainedPath } from "./contained-path";
 import { buildPluginDirRoot } from "./plugin-dir-roots";
@@ -275,106 +266,6 @@ export function discoverRuleFromMarkdown(
 	const { frontmatter, body } = parseFrontmatter(content, { source: filePath });
 	if (frontmatter.enabled === false) return null;
 	return buildRule(name, body, frontmatter as RuleFrontmatter, filePath, source, options);
-}
-
-/**
- * Parse model field into a prioritized list.
- */
-export function parseModelList(value: unknown): string[] | undefined {
-	const parsed = parseArrayOrCSV(value);
-	if (!parsed) return undefined;
-	const normalized = parsed.map(entry => entry.trim()).filter(Boolean);
-	return normalized.length > 0 ? normalized : undefined;
-}
-
-/** Parsed agent fields from frontmatter (excludes source/filePath/systemPrompt) */
-export interface ParsedAgentFields {
-	name: string;
-	description: string;
-	tools?: string[];
-	model?: string[];
-	output?: unknown;
-	thinkingLevel?: ConfiguredThinkingLevel;
-	autoloadSkills?: string[];
-	readSummarize?: boolean;
-	blocking?: boolean;
-	/** `true` = prewalk into the default target; string = prewalk into that model pattern. */
-	prewalk?: boolean | string;
-	/** `true` = advise with the default advisor-role model; string = advise with that model pattern. */
-	advisor?: boolean | string;
-}
-
-/**
- * Parse agent fields from frontmatter.
- * Returns null if required fields (name, description) are missing.
- */
-export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAgentFields | null {
-	const name = typeof frontmatter.name === "string" ? frontmatter.name : undefined;
-	const description = typeof frontmatter.description === "string" ? frontmatter.description : undefined;
-
-	if (!name || !description) {
-		return null;
-	}
-	// "main" is the sentinel `agentName` for the top-level session (see
-	// MAIN_AGENT_RULE_NAME); "sub" is the fallback `agentName` for a subagent
-	// session with no explicit name (see SUB_AGENT_RULE_NAME / sdk.ts). A
-	// custom agent definition sharing either name would resolve to the same
-	// sentinel value, letting it load rules scoped `agents: [main]` or
-	// `agents: [sub]` that are documented to target only that session kind.
-	const normalizedName = name.trim().toLowerCase();
-	if (normalizedName === MAIN_AGENT_RULE_NAME || normalizedName === SUB_AGENT_RULE_NAME) {
-		return null;
-	}
-
-	let tools =
-		Array.isArray(frontmatter.tools) && frontmatter.tools.length === 0 ? [] : parseArrayOrCSV(frontmatter.tools);
-	if (tools) tools = normalizeToolNames(tools);
-
-	// Subagents with explicit tool lists always need yield
-	if (tools && !tools.includes("yield")) {
-		tools = [...tools, "yield"];
-	}
-
-	const output = frontmatter.output !== undefined ? frontmatter.output : undefined;
-	const rawThinkingLevel =
-		typeof frontmatter.thinkingLevel === "string"
-			? frontmatter.thinkingLevel
-			: typeof frontmatter.thinking === "string"
-				? frontmatter.thinking
-				: undefined;
-
-	const thinkingLevel = parseConfiguredThinkingLevel(rawThinkingLevel);
-	const model = parseModelList(frontmatter.model);
-	const blocking = parseBoolean(frontmatter.blocking);
-	const readSummarize = parseBoolean(frontmatter.readSummarize);
-	// prewalk: true → hand off to the default prewalk target; "<pattern>" → custom target.
-	let prewalk: boolean | string | undefined = parseBoolean(frontmatter.prewalk);
-	if (prewalk === undefined && typeof frontmatter.prewalk === "string") {
-		const trimmed = frontmatter.prewalk.trim();
-		if (trimmed) prewalk = trimmed;
-	}
-	// advisor: true → advise with the default advisor-role model; "<pattern>" → custom advisor model.
-	let advisor: boolean | string | undefined = parseBoolean(frontmatter.advisor);
-	if (advisor === undefined && typeof frontmatter.advisor === "string") {
-		const trimmed = frontmatter.advisor.trim();
-		if (trimmed) advisor = trimmed;
-	}
-	const autoloadSkills = parseArrayOrCSV(frontmatter.autoloadSkills)
-		?.map(s => s.trim())
-		.filter(Boolean);
-	return {
-		name,
-		description,
-		tools,
-		model,
-		output,
-		thinkingLevel,
-		blocking,
-		autoloadSkills,
-		readSummarize,
-		prewalk,
-		advisor,
-	};
 }
 
 async function globIf(

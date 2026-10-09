@@ -11,8 +11,8 @@
   - `packages/coding-agent/src/task/structured-subagent.ts` — shared task/eval preflight, model/schema policy, artifact retention, execution.
   - `packages/coding-agent/src/task/isolation-runner.ts` — isolation capture, merge, recovery, and lifecycle ownership.
   - `packages/coding-agent/src/task/eval-tools.ts` — expose parent-kernel tools to a child.
-  - `packages/coding-agent/src/task/discovery.ts` — discover project/user/plugin agents.
-  - `packages/coding-agent/src/task/agents.ts` — agent frontmatter parsing.
+  - `packages/coding-agent/src/task/discovery.ts` — discover project/user/extension `*.ts` agent modules.
+  - `packages/coding-agent/src/task/agents.ts` — agent module validation (`parseAgentModule`).
   - `packages/coding-agent/src/task/executor.ts` — create child sessions, run subagents, collect output, hand finished sessions to the lifecycle manager.
   - `packages/coding-agent/src/registry/agent-lifecycle.ts` — idle-TTL parking and revival of finished subagents.
   - `packages/coding-agent/src/registry/agent-registry.ts` — process-global agent directory (`running | idle | parked | aborted`).
@@ -127,7 +127,7 @@ Artifacts and side channels:
 - Isolation is enabled with `task.isolation.enabled`; `isolation.backend` selects `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, or `rcopy`, and the PAL resolves the actual backend with fallback.
 - Isolation merge strategy: `task.isolation.merge` selects patch mode (capture/apply root patches) or branch mode (commit to `omp/task/<id>`, cherry-pick into parent). `task.isolation.apply=false` retains captured changes without applying them; nested repositories get separate patch artifacts.
 - Eval-defined tools: `tools` resolves names across the parent's retained Python/JS kernels. Unknown names, disabled sharing, or the same name defined in both kernels fail preflight; these tools are not available in plan mode.
-- Agent source precedence is first-wins by exact name: project `.omp/agents`; user `.omp/agent/agents`; OMP extension-package `agents/` roots in CLI → project settings → user settings → installed npm/link plugin order; Claude marketplace plugin agents (project before user). No built-in agents are appended.
+- Agent source precedence is first-wins by exact name: project `.omp/agents`; user `.omp/agent/agents`; OMP extension-package `agents/` roots in CLI → project settings → user settings → installed npm/link plugin order. Only `*.ts` modules are loaded. No built-in agents are appended.
 - Prewalk: agent frontmatter `prewalk` or `task.agentPrewalk[agentName]` can start on the normal model and hand off to a cheaper resolved model at the first edit/write. Missing/unconfigured targets and exact model+effort no-ops skip the handoff rather than failing the spawn.
 - Advisor: agent frontmatter `advisor` or `task.agentAdvisor[agentName]` (`"on"` / `"off"` / model pattern) pairs the child session with an advisor; an explicit pattern lands on the child's `modelRoles.advisor`. Subagents default to no advisor.
 
@@ -185,7 +185,7 @@ Artifacts and side channels:
 - Shared background convention without batch mode: write it once to a `local://` file and reference that path in each spawn's `task` — subagents share the parent's `local://` root. With `task.batch`, the required `context` parameter carries the shared background directly into each spawn's system prompt.
 - Prefer messaging an existing agent via `write agent://<id>` over a fresh spawn for follow-up work: it already holds the relevant context. Bare `history://` discovers registered transcripts; messaging a parked agent revives it. `history://<id>` shows what an agent has done.
 - Peer messaging has no depth gate. Outbound messages require `write` and a session that permits IRC; plan-mode and restricted sessions retain their messaging restrictions.
-- Agent discovery precedence is first-wins by exact name: project `.omp` agents before user `.omp`, then OMP extension-package roots, and Claude marketplace plugin agents (project before user). Direct `.claude/agents`, `.codex/agents`, and `.gemini/agents` roots are skipped. Create-time discovery is memoized per cwd/effective extension roots; execution-time discovery stays fresh.
+- Agent discovery precedence is first-wins by exact name: project `.omp` agents before user `.omp`, then OMP extension-package roots. Claude plugin agents and direct `.claude/agents`, `.codex/agents`, and `.gemini/agents` roots are skipped. Create-time discovery is memoized per cwd/effective extension roots; execution-time discovery stays fresh.
 - Child sessions do not inherit conversation history. Built-in carry-over is the workspace tree/skills/context files, the shared `local://` root, and the approved-plan reference when one exists.
 - Subagents get no MCP by default: no manager, server instructions, `mcp://` resources or discovery. An agent whose `AgentSpec.mcp` names servers gets only proxy tools for those servers, reusing parent connections and following parent reloads.
 - Branch-mode merge temporarily stashes the parent repo before cherry-picking; a stash-pop conflict leaves the landed commits on HEAD and preserves the stash, reported as `stashConflict`. Patch mode uses `repo.canApplyPatch(...)` before applying the root patch; reverse-only applicability is treated as already applied, while failed forward checks retain the artifact for recovery.

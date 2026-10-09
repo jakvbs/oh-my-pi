@@ -281,8 +281,8 @@ describe("structured subagent primitive", () => {
 				"task:\n  agentModelOverrides:\n    hot-worker: xai-oauth/grok-4.6:medium\n  enableEffort: false\nretry:\n  modelFallback: false\n",
 			);
 			await Bun.write(
-				path.join(projectDir, ".omp", "agents", "hot-worker.md"),
-				"---\nname: hot-worker\ndescription: Newly added worker.\nmodel: openai/gpt-4o\n---\n\nInspect the assignment.\n",
+				path.join(projectDir, ".omp", "agents", "hot-worker.ts"),
+				'export default { name: "hot-worker", description: "Newly added worker.", model: "openai/gpt-4o", systemPrompt: "Inspect the assignment." };\n',
 			);
 
 			const policy = await resolveEffectiveSubagentPolicy(request({ session: liveSession, agent: "hot-worker" }));

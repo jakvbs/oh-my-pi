@@ -3953,7 +3953,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// `yield` call to terminate. The tool registry already includes `yield` (see
 		// `createTools`), but an explicit `toolNames` list would otherwise drop it from the
 		// active set — leaving the model unable to satisfy the contract. Mirror the same
-		// invariant `parseAgentFields` enforces on frontmatter `tools`.
+		// invariant `parseAgentModule` enforces on an agent's `tools`.
 		if (
 			options.requireYieldTool === true &&
 			explicitlyRequestedToolNames &&

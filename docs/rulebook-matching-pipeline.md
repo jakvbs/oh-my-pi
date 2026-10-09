@@ -258,7 +258,7 @@ After rule discovery in `createAgentSession` (`sdk.ts`), `bucketRules(...)` appl
 ### `agents`
 
 - Restricts a rule to matching agents. Accepts a YAML sequence, a single string, or a comma-separated string; patterns are lowercased glob patterns matched case-insensitively against the agent definition name (`scout`, `reviewer`, `foreman-*`). Whitespace around commas inside a `{a, b}` glob-brace group is tolerated and normalized away.
-- The literal `main` matches the top-level session; a subagent with no definition name falls back to `sub`. Both `main` and `sub` are reserved: a custom agent definition cannot use either name (`parseAgentFields` rejects it), so neither sentinel can be shadowed by a real agent.
+- The literal `main` matches the top-level session; a subagent with no definition name falls back to `sub`. Both `main` and `sub` are reserved: a custom agent definition cannot use either name (`parseAgentModule` rejects it), so neither sentinel can be shadowed by a real agent.
 - Omitted (or an empty list) means the rule applies to every agent — the pre-existing behavior.
 - Filtering happens in `bucketRules(...)` at session creation and session-scoped prompt rebuilds, before TTSR registration: an unmatched rule joins no bucket, is never compiled into `TtsrManager`, and is not addressable via `rule://` in that session.
 - Subagents receive the parent's unfiltered discovered rule list and re-evaluate `agents` under their own name, so a scout-only rule loads in scouts and nowhere else.

@@ -22,43 +22,35 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 
 ## Agent definition shape
 
-Task agents normalize into `AgentDefinition` (`src/task/types.ts`):
+Agents are TypeScript modules only: `~/.omp/agent/agents/*.ts` (user), `.omp/agents/*.ts` (project), and `<extension-root>/agents/*.ts`. Markdown files in those directories are ignored. The module's default export is an `AgentSpec` (`src/task/types.ts`):
 
 - required `name`, `description`, and `systemPrompt`
-- optional `tools`, prioritized `model` list, `thinkingLevel`, `output`, `blocking`, `autoloadSkills`, `readSummarize`, `prewalk`, `advisor`
-- `source`: `"user" | "project"` (extension agents are tagged with their extension root's project/user level)
-- optional `filePath`
+- optional `tools`, `model` (one selector or a prioritized list), `thinkingLevel`, `cwd`, `skills`, `mcp`
+- unknown keys reject the module, so a misspelled `mcp`/`skills` cannot silently widen the agent
 
-Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.ts`):
+`parseAgentModule()` (`src/task/agents.ts`) validates the export and normalizes it into `AgentDefinition`:
 
-- missing/non-string `name` or `description` => invalid (`null`), caller treats as parse failure
-- `main` and `sub` are reserved names (checked after trimming and lowercasing); definitions using them are invalid
-- `tools` accepts CSV or array; legacy tool aliases are normalized and `yield` is auto-added. An explicit `tools: []` therefore grants `yield`, not the default toolset.
-- `output` is passed through as opaque schema data
-- `read-summarize: false` (normalized to `readSummarize`) disables structural summaries for the subagent's `read` tool — `runSubprocess` applies a `read.summarize.enabled: false` override on the child's isolated settings (`src/task/executor.ts`). When absent, the child inherits the parent's read-summary setting.
-- `model` accepts one selector, CSV, or an array. Entries are tried in order after role aliases are expanded.
-- `thinking-level` / `thinking` selects the agent's configured effort. When `task.enableEffort` (default `false`) exposes it, a task item's coarse `effort` (`lo`, `med`, `hi`) takes precedence at launch. OMP maps that hint to the selected model's lowest, middle, or highest supported effort, then clamps it to `task.maxEffort` (default `max`). The ceiling is carried across retry-fallback model switches. If the selected model has no supported effort at or below the ceiling, the spawn fails; models without a controllable effort surface instead fall back to their normal selector.
-- `blocking: true` makes the parent wait for that agent even when async task execution is enabled
-- `autoloadSkills` names skills from the parent session to inject before the first child prompt; unknown names are ignored
-- `prewalk: true` starts the subagent on its resolved model and hands off to the default prewalk target (the `smol` role) at its first edit/write, exactly like the session-level `--prewalk`; a string value (e.g. `prewalk: "@smol"` or `prewalk: "openai/gpt-5-mini"`) picks a custom target. The `task.agentPrewalk` settings record (agent name → `"on"` / `"off"` / pattern, configured per agent from the `/agents` hub via its prewalk strip) overrides the frontmatter. Resolution happens in `runSubprocess` (`src/task/executor.ts`). An unavailable target is skipped instead of failing the spawn. A resolved target is skipped only when both its model identity and its effective thinking mode/level match the starting selection after model clamping; a same-model effort downgrade is a real hand-off and still arms and switches at the first edit/write.
-- `advisor: true` pairs spawned sessions of the agent with an advisor running the model resolved for the `advisor` role; a string value (e.g. `advisor: "deepseek/deepseek-v4-flash"` or `advisor: "@smol:high"`) sets an explicit advisor model pattern (optional `:level` suffix), applied as the spawned session's `modelRoles.advisor`. The `task.agentAdvisor` settings record (agent name → `"on"` / `"off"` / pattern, configured per agent from the `/agents` hub via its advisor strip) overrides the frontmatter. Resolution happens in `runSubprocess` (`src/task/executor.ts`); subagents default to no advisor, and the effective opt-in is persisted in `session_init` so cold revival restores it.
+- `main` and `sub` are reserved names (checked after trimming and lowercasing); definitions using them are rejected
+- `tools` legacy aliases are normalized and `yield` is auto-added; an explicit `tools: []` therefore grants `yield`, not the default toolset
+- `model` entries are tried in order after role aliases are expanded
+- `thinkingLevel` selects the agent's configured effort. When `task.enableEffort` (default `false`) exposes it, a task item's coarse `effort` (`lo`, `med`, `hi`) takes precedence at launch. OMP maps that hint to the selected model's lowest, middle, or highest supported effort, then clamps it to `task.maxEffort` (default `max`).
+- `cwd` resolves against the spawning session's cwd (the isolation worktree for isolated runs, where a path leaving it fails the spawn)
+- `skills` filters the inherited skills; `mcp` names the only MCP servers whose proxy tools the subagent gets (absent = no MCP), e.g. a `jira-agent` with `mcp: ["jira"]`
+- `source` is `"user" | "project"` (extension agents are tagged with their extension root's level)
 
 ## Role-backed custom agents
 
-OMP discovers user agents from `~/.omp/agent/agents/*.md` and project agents from `.omp/agents/*.md`. The same directories also load `*.ts` modules whose default export is an `AgentSpec` (`name`, `description`, `systemPrompt`, optional `tools`, `model`, `thinkingLevel`, `cwd`, `skills`, `mcp`); unknown keys reject the module. `cwd` resolves against the spawning session's cwd (the isolation worktree for isolated runs, where a path leaving it fails the spawn), `skills` filters the inherited skills, and `mcp` names the only MCP servers whose proxy tools the subagent gets (absent = no MCP), e.g. a `jira-agent` with `mcp: ["jira"]`.
+Give the agent a role alias, then dispatch it by name. For model routing, task dispatch sets only `agent`; it does not set a worker model:
 
-Give the agent a role alias in frontmatter, then dispatch it by name. For model routing, task dispatch sets only `agent`; it does not set a worker model:
+`~/.omp/agent/agents/reviewer.ts`:
 
-`~/.omp/agent/agents/reviewer.md`:
-
-```md
----
-name: reviewer
-description: Review a change for correctness.
-model: "@review"
----
-
-Review the assigned change and report concrete findings.
+```ts
+export default {
+	name: "reviewer",
+	description: "Review a change for correctness.",
+	model: "@review",
+	systemPrompt: "Review the assigned change and report concrete findings.",
+};
 ```
 
 Set the role mapping in `~/.omp/agent/config.yml`:
@@ -68,9 +60,9 @@ modelRoles:
   review: openai/gpt-5.4:high
 ```
 
-`@review` resolves through `modelRoles.review`. Each `modelRoles.<role>` value stores a concrete model selector and may append a thinking suffix such as `:high` (`src/config/model-resolver.ts`). Changing that mapping affects subsequent task resolutions without editing agent definitions. Task/eval preflight reloads the current global, project, and explicit overlay settings before rediscovering agents, so agent files and their role aliases added during a live session resolve from one refreshed configuration state.
+`@review` resolves through `modelRoles.review`. Each `modelRoles.<role>` value stores a concrete model selector and may append a thinking suffix such as `:high` (`src/config/model-resolver.ts`). Changing that mapping affects subsequent task resolutions without editing agent definitions. Task/eval preflight reloads the current global, project, and explicit overlay settings before rediscovering agents, so agent modules and their role aliases added during a live session resolve from one refreshed configuration state. Discovery re-imports a module whose mtime changed.
 
-With the default batched task schema, supply shared `context` and per-item `task` and `solutionSpace`. `solutionSpace` describes how open-ended the assignment is, rather than its size. Every item names its `agent`; unrestricted sessions have no default agent, so an omitted `agent` fails with the list of available agents:
+With the default batched task schema, supply shared `context` and per-item `task` and `solutionSpace`. `solutionSpace` describes how open-ended the assignment is, rather than its size. Every item names its `agent`; an omitted `agent` fails with the list of available agents:
 
 ```json
 {
@@ -103,9 +95,9 @@ Session definitions are appended after discovered agents, so an existing agent w
 
 After dispatch, press `Alt+A` to open [Agent Hub](./agent-hub.md). Its live roster shows each task agent's status, current activity, model, age, and usage. Select an agent to read its transcript and steer it directly; parked agents can be revived from the same view. Enable `tui.mouse` to click live task cards and jump-list rows instead, or watch the pinned `Subagents` block above the editor.
 
-## Filesystem and plugin discovery
+## Filesystem discovery
 
-`discoverAgents(cwd, home, extensionRoots?)` (`src/task/discovery.ts`) merges agents from OMP-native roots, OMP extension packages, and Claude marketplace plugin roots. OMP ships no built-in agents: with none discovered, the `task` tool has nothing to spawn. Direct cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the OMP task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".omp"` filters the native config-dir lists).
+`discoverAgents(cwd, home, extensionRoots?)` (`src/task/discovery.ts`) merges agents from OMP-native roots and OMP extension packages. OMP ships no built-in agents: with none discovered, the `task` tool has nothing to spawn. Claude Code plugin agents and cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are not agent sources (`TASK_AGENT_CONFIG_SOURCE = ".omp"` filters the native config-dir lists).
 
 ### Discovery inputs and precedence
 
@@ -115,43 +107,27 @@ After dispatch, press `Alt+A` to open [Agent Hub](./agent-hub.md). Its live rost
    - explicit CLI `--extension` / SDK `additionalExtensionPaths` directory roots
    - the session's effective `extensions:` array, in its configured order
    - installed npm/link plugins
-   Project and user `extensions:` arrays are not concatenated: settings use array-replacement precedence. Session overlays/runtime overrides and the configured array's project/user provenance are preserved. In `explicit-only` mode (`--no-extensions` or SDK `disableExtensionDiscovery`), only explicit roots contribute this package surface; file entrypoints have no `agents/` subdirectory to scan.
-4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope. User-scope roots additionally require the `claude-plugins` or `claude` user source to be enabled (`isUserSourceEnabled`: normally via `enabledProviders`, e.g. `["claude-plugins"]`; `claude` is also enabled implicitly when `CLAUDE_CONFIG_DIR` is set), except roots whose origin is not the foreign `~/.claude/plugins` tree (omp's own installs with `origin: "omp"` and `--plugin-dir` roots) — mirroring the skills path's exemption.
+   Project and user `extensions:` arrays are not concatenated: settings use array-replacement precedence. In `explicit-only` mode (`--no-extensions` or SDK `disableExtensionDiscovery`), only explicit roots contribute this package surface; file entrypoints have no `agents/` subdirectory to scan.
 
-The OMP extension-package surface is disabled when the `omp-plugins` capability provider is disabled. Marketplace roots are excluded from `listOmpExtensionRoots` and enter only through the separately gated Claude-plugin path.
-
-Claude-dialect plugin agents discard their frontmatter `model` so Claude aliases are not misread as OMP selectors. This applies to foreign Claude roots and packages whose manifest declares the Claude format, including OMP installs or `--plugin-dir` roots. OMP-native and Agent-Plugins-standard packages retain their model selectors.
+The extension-package surface is disabled when the `omp-plugins` capability provider is disabled.
 
 ## Merge and collision rules
 
-Discovery uses first-wins dedup by exact `agent.name`:
-
-- A `Set<string>` tracks seen names.
-- Loaded agents are flattened in directory order and kept only if name unseen.
-
-Implications:
+Discovery uses first-wins dedup by exact `agent.name`, in directory order:
 
 - Project `.omp` overrides user `.omp`.
-- Earlier extension roots override later extension roots and Claude marketplace plugins.
+- Earlier extension roots override later extension roots.
 - Name matching is case-sensitive (`Task` and `task` are distinct).
-- Within one directory, agent files (`.md` and `.ts`) are read in lexicographic filename order before dedup.
+- Within one directory, `.ts` files are read in lexicographic filename order before dedup.
 
 ## Invalid/missing agent file behavior
 
 Per directory (`loadAgentsFromDir`):
 
-- unreadable/missing directory: treated as empty (`readdir(...).catch(() => [])`)
-- file read or parse failure: warning logged, file skipped
-- parse path uses `parseAgent(..., level: "warn")`
+- unreadable/missing directory: treated as empty
+- an import failure or an export that fails `parseAgentModule` logs a warning and skips the file
 
-Frontmatter failure behavior comes from `parseFrontmatter`:
-
-- the default lenient parser normalizes line endings and kebab-case keys, replaces tabs in YAML, and can repair ambiguous plain scalars before reporting failure
-- an unrecovered parse error at `warn` level logs a warning, then falls back to top-level `key: value` lines
-- fallback values are individually parsed as YAML when possible, preserving scalar/array types
-- if required fields remain invalid, `parseAgentFields` fails, then `AgentParsingError` is thrown and caught by the directory loader (file skipped)
-
-Net effect: one bad custom agent file does not abort discovery of other files.
+Net effect: one bad agent module does not abort discovery of other files.
 
 ## Agent lookup and selection
 
@@ -180,7 +156,7 @@ A missing name fails preflight with `Unknown agent "...". Available: ...`; no su
 For task dispatch, model precedence is:
 
 1. `task.agentModelOverrides[agentName]`
-2. the agent frontmatter's prioritized `model` list
+2. the agent's prioritized `model` list
 3. the parent's active model, then its configured/default model fallback
 
 Role aliases in either of the first two sources are expanded through `modelRoles`. The shared eval bridge can also supply an invocation-local model override ahead of the settings override; the task wire schema does not expose that field.
@@ -203,7 +179,7 @@ extension-registered models — and populates only that model's provider family 
 supports the value, so same-family retry fallbacks retain the tier and cross-family fallbacks never
 inherit it. The resolved map is persisted with the child's session, even when it is empty, so a
 parked agent revived after a restart keeps its per-agent tier instead of re-deriving
-`tier.subagent`. The entry is looked up by task/eval dispatch only. Service tiers are configuration-only; agent frontmatter and
+`tier.subagent`. The entry is looked up by task/eval dispatch only. Service tiers are configuration-only; agent modules and
 the task/eval wire formats do not expose a tier field or automatic Fast policy.
 
 Account selection is independent of model and service-tier selection: an exact, case-sensitive
@@ -259,7 +235,7 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 ### One subagent level
 
-Only the root session (`isSubagent: false`) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Legacy `spawns` frontmatter and persisted metadata are ignored. Cold revival always marks the session as a subagent, including historical nested transcripts.
+Only the root session (`isSubagent: false`) holds `task`; the shared policy rejects a spawn from any subagent, and `runSubprocess` removes `task` from every child tool list. Persisted legacy `spawns` metadata is ignored. Cold revival always marks the session as a subagent, including historical nested transcripts.
 
 For an explicit agent tool list, the legacy `exec` entry expands to `bash` plus `eval` when an eval backend is available. A list containing `task` or `bash` also gains `wait` unless the parent requires an exact restricted tool list; tool construction still omits `wait` when there is no async, IRC, or service wake source. Outbound peer messaging requires `write` in the child tool list and IRC enabled; inbound steering does not.
 
