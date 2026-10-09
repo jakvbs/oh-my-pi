@@ -313,26 +313,6 @@ export const cfgTaskEnableLsp = register({
 	},
 });
 
-export const cfgTaskMaxRecursionDepth = register({
-	id: "task.maxRecursionDepth",
-	protocolDefault: ["rpc", "acp"],
-	type: "number",
-	default: 2,
-	ui: {
-		tab: "tasks",
-		group: "Subagents",
-		label: "Max Task Recursion",
-		description: "How many levels deep subagents can spawn their own subagents",
-		options: [
-			{ value: "-1", label: "Unlimited" },
-			{ value: "0", label: "None" },
-			{ value: "1", label: "Single" },
-			{ value: "2", label: "Double" },
-			{ value: "3", label: "Triple" },
-		],
-	},
-});
-
 export const cfgTaskMaxRuntimeMs = register({
 	id: "task.maxRuntimeMs",
 	type: "number",

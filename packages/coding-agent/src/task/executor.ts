@@ -133,7 +133,6 @@ import {
 	cfgTaskSoftRequestBudget,
 	cfgTaskAgentIdleTtlMs,
 	cfgTaskMaxRuntimeMs,
-	cfgTaskMaxRecursionDepth,
 	cfgTaskAgentAdvisor,
 	cfgTaskAgentAccountPools,
 } from "./settings";
@@ -927,8 +926,10 @@ function getUsageTokens(usage: unknown): number {
  * including timeout=0; a second Task deadline would silently cap longer calls.
  * The proxy only races caller cancellation around source execution.
  */
-export function createMCPProxyTools(mcpManager: MCPManager): CustomTool[] {
-	return mcpManager.getTools().map(tool => {
+export function createMCPProxyTools(mcpManager: MCPManager, servers?: readonly string[]): CustomTool[] {
+	const tools = mcpManager.getTools();
+	const allowed = servers ? tools.filter(tool => servers.includes(tool.mcpServerName ?? "")) : tools;
+	return allowed.map(tool => {
 		const serverName = tool.mcpServerName ?? "";
 		const mcpToolName = tool.mcpToolName ?? "";
 		return {
@@ -1006,7 +1007,11 @@ export interface MCPToolFollower {
  * so those tools win, and every rebind must keep dropping them, or the first
  * reload would replace the child's own tool with the MCP capability.
  */
-export function followMCPTools(mcpManager: MCPManager, reservedNames?: ReadonlySet<string>): MCPToolFollower {
+export function followMCPTools(
+	mcpManager: MCPManager,
+	reservedNames?: ReadonlySet<string>,
+	servers?: readonly string[],
+): MCPToolFollower {
 	let session: MCPToolFollowerSession | undefined;
 	let pending = false;
 	let scheduled = false;
@@ -1014,7 +1019,7 @@ export function followMCPTools(mcpManager: MCPManager, reservedNames?: ReadonlyS
 		scheduled = false;
 		if (!session || !pending) return;
 		pending = false;
-		const proxies = createMCPProxyTools(mcpManager);
+		const proxies = createMCPProxyTools(mcpManager, servers);
 		const tools = reservedNames?.size ? proxies.filter(tool => !reservedNames.has(tool.name)) : proxies;
 		session.refreshMCPTools(tools).catch(error => {
 			logger.warn("Subagent MCP tool refresh failed", {
@@ -3670,6 +3675,8 @@ interface SubagentSessionSpec {
 		| "onFirstChatDispatch"
 	>;
 	prompt: SubagentPromptInputs;
+	/** MCP servers the agent definition allows; absent = every server. */
+	mcpServers?: readonly string[];
 }
 
 /** Launch-only session inputs: a revived session restores these from its transcript or goes without. */
@@ -3694,7 +3701,7 @@ function buildSubagentSessionOptions(
 	const inputs = spec.prompt;
 	// MCP proxies are minted per build, not captured in the spec: a kept-alive
 	// subagent revived after `/mcp reload` must see the manager's current tools.
-	const mcpTools = spec.options.mcpManager ? createMCPProxyTools(spec.options.mcpManager) : [];
+	const mcpTools = spec.options.mcpManager ? createMCPProxyTools(spec.options.mcpManager, spec.mcpServers) : [];
 	const customTools = spec.options.customTools ?? [];
 	return {
 		...spec.options,
@@ -3819,7 +3826,9 @@ function createWarmSubagentReviver(capture: WarmReviveCapture): AgentReviver {
 		}
 		await refreshSubagentIrcRoot(capture.spec.prompt, reopened, capture.sessionFile);
 		const mcpManager = capture.spec.options.mcpManager;
-		const mcpFollower = mcpManager ? followMCPTools(mcpManager, explicitSubagentToolNames(capture.spec)) : undefined;
+		const mcpFollower = mcpManager
+			? followMCPTools(mcpManager, explicitSubagentToolNames(capture.spec), capture.spec.mcpServers)
+			: undefined;
 		let revived: AgentSession;
 		// Account pools are owner policy: take the live exact-name entry, as
 		// dispatch and persisted revival do, never the spawn-time copy.
@@ -3943,7 +3952,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		},
 		options.parentServiceTier,
 	);
-	const maxRecursionDepth = cfgTaskMaxRecursionDepth.get(settings);
 	const maxRuntimeMs = Math.max(0, Math.trunc(Number(options.maxRuntimeMs ?? cfgTaskMaxRuntimeMs.get(settings)) || 0));
 	// TTL before an adopted idle subagent is parked by the lifecycle manager.
 	// <= 0 disables parking (the session stays live until process teardown).
@@ -3951,23 +3959,9 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	const configuredDefaultBudget = Math.max(0, Math.trunc(Number(cfgTaskSoftRequestBudget.get(settings)) || 0));
 	const softRequestBudget = resolveSoftRequestBudget(agent.name, configuredDefaultBudget);
 	const softRequestBudgetNotice = cfgTaskSoftRequestBudgetNotice.get(settings);
-	const parentDepth = options.taskDepth ?? 0;
-	const childDepth = parentDepth + 1;
-	const atMaxDepth = maxRecursionDepth >= 0 && childDepth >= maxRecursionDepth;
+	const childDepth = (options.taskDepth ?? 0) + 1;
 
-	// Add tools if specified
-	let toolNames: string[] | undefined;
-	if (agent.tools) {
-		toolNames = agent.tools;
-		// Auto-include task tool if spawns defined but task not in tools
-		if (agent.spawns !== undefined && !toolNames.includes("task") && !atMaxDepth) {
-			toolNames = [...toolNames, "task"];
-		}
-	}
-
-	if (atMaxDepth && toolNames?.includes("task")) {
-		toolNames = toolNames.filter(name => name !== "task");
-	}
+	let toolNames = agent.tools?.filter(name => name !== "task");
 	if (toolNames?.includes("exec")) {
 		const backends = resolveEvalBackends({ settings } as ToolSession);
 		const expanded = toolNames.filter(name => name !== "exec");
@@ -3995,13 +3989,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 
 	const modelPatterns = normalizeModelPatterns(modelOverride ?? agent.model);
 	const sessionFile = subtaskSessionFile ?? null;
-	const spawnsEnv = atMaxDepth
-		? ""
-		: agent.spawns === undefined
-			? ""
-			: agent.spawns === "*"
-				? "*"
-				: agent.spawns.join(",");
+	const spawnsEnv = "";
 
 	const lspEnabled = enableLsp ?? true;
 	const skipPythonPreflight = Array.isArray(toolNames) && !toolNames.includes("eval");
@@ -4028,7 +4016,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		softRequestBudget,
 		softRequestBudgetNotice,
 		maxRuntimeMs,
-		completionProbe: isCompletionProbeEnabled(settings, parentDepth),
+		completionProbe: isCompletionProbeEnabled(settings, childDepth - 1),
 	});
 	const progress = monitor.progress;
 	let unsubscribe: (() => void) | null = null;
@@ -4213,7 +4201,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			const effectiveThinkingLevel =
 				effortLevel ?? (explicitThinkingLevel ? resolvedThinkingLevel : (thinkingLevel ?? resolvedThinkingLevel));
 			resolvedAt = performance.now();
-			const effectiveCwd = worktree ?? cwd;
+			const effectiveCwd = worktree ?? (agent.cwd ? path.resolve(cwd, agent.cwd) : cwd);
 			const sessionManagerPromise = sessionFile
 				? SessionManager.open(sessionFile, undefined, undefined, {
 						initialCwd: effectiveCwd,
@@ -4302,7 +4290,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// prompt, artifacts dir) — only the SessionManager and settings differ.
 			const sessionSpec: SubagentSessionSpec = {
 				options: {
-					cwd: worktree ?? cwd,
+					cwd: effectiveCwd,
 					additionalDirectories: worktree !== undefined ? undefined : options.additionalDirectories,
 					authStorage,
 					modelRegistry,
@@ -4328,7 +4316,9 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					restrictToolNames: options.restrictToolNames,
 					requireYieldTool: true,
 					contextFiles: options.contextFiles,
-					skills: options.skills,
+					skills: agent.skills
+						? options.skills?.filter(skill => agent.skills?.includes(skill.name))
+						: options.skills,
 					promptTemplates: options.promptTemplates,
 					workspaceTree: options.workspaceTree,
 					rules: options.rules,
@@ -4373,6 +4363,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					ircEnabled,
 					ircRoot: {},
 				},
+				mcpServers: agent.mcp,
 			};
 
 			const sessionManager = await awaitAbortable(sessionManagerPromise);
@@ -4386,7 +4377,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// Subscribe before the builder mints proxies so a manager change during
 			// session startup is replayed on bind instead of lost.
 			const mcpFollower = mcpManager
-				? followMCPTools(mcpManager, explicitSubagentToolNames(sessionSpec))
+				? followMCPTools(mcpManager, explicitSubagentToolNames(sessionSpec), sessionSpec.mcpServers)
 				: undefined;
 			let session: AgentSession;
 			let sessionPromise: Promise<CreateAgentSessionResult> | undefined;

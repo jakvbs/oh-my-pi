@@ -25,7 +25,6 @@ function makeSession(): ToolSession {
 		hasUI: false,
 		settings: Settings.isolated({
 			"task.maxConcurrency": 2,
-			"task.maxRecursionDepth": 2,
 			"task.isolation.enabled": false,
 			"task.enableLsp": false,
 		}),

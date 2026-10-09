@@ -9,18 +9,15 @@ import { EvalTool, getEvalDocTopics, getEvalToolDescription } from "@oh-my-pi/pi
 import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
 
 import { cfgEvalPy } from "@oh-my-pi/pi-coding-agent/eval/settings";
-import { cfgTaskMaxRecursionDepth } from "@oh-my-pi/pi-coding-agent/task/settings";
 
 function makeSession(opts: {
 	spawns?: string | null;
 	backends?: Record<string, boolean>;
 	preludes?: () => readonly EvalPreludeDefinition[];
 	taskDepth?: number;
-	maxRecursionDepth?: number;
 	readActive?: boolean;
 }): ToolSession {
 	const settings = Settings.isolated(opts.backends);
-	if (opts.maxRecursionDepth !== undefined) cfgTaskMaxRecursionDepth.set(settings, opts.maxRecursionDepth);
 	return {
 		cwd: "/tmp/eval-test",
 		hasUI: false,
@@ -76,17 +73,14 @@ describe("eval tool description", () => {
 		expect(new EvalTool(makeSession({ spawns: "" })).docTopics().agents).toBeUndefined();
 	});
 
-	it("drops the agents topic but keeps wait() when recursion depth is exhausted", () => {
-		const belowCap = new EvalTool(makeSession({ taskDepth: 1, maxRecursionDepth: 2 }));
-		const atCap = new EvalTool(makeSession({ taskDepth: 2, maxRecursionDepth: 2 }));
-		const spawningDisabled = new EvalTool(makeSession({ taskDepth: 0, maxRecursionDepth: 0 }));
+	it("drops the agents topic but keeps wait() inside a subagent", () => {
+		const root = new EvalTool(makeSession({ taskDepth: 0 }));
+		const subagent = new EvalTool(makeSession({ taskDepth: 1 }));
 
-		expect(belowCap.docTopics().agents).toContain("agent(prompt");
-		for (const tool of [atCap, spawningDisabled]) {
-			expect(tool.docTopics().agents).toBeUndefined();
-			expect(tool.description).not.toContain("xd://eval/agents");
-			expect(tool.description).toContain("wait(handles");
-		}
+		expect(root.docTopics().agents).toContain("agent(prompt");
+		expect(subagent.docTopics().agents).toBeUndefined();
+		expect(subagent.description).not.toContain("xd://eval/agents");
+		expect(subagent.description).toContain("wait(handles");
 	});
 
 	it("gates only tool-definition guidance, not budget or completion", () => {

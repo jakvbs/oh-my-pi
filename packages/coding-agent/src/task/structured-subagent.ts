@@ -70,7 +70,6 @@ import {
 	cfgTaskIsolationApply,
 	cfgTaskIsolationEnabled,
 	cfgTaskIsolationMerge,
-	cfgTaskMaxRecursionDepth,
 } from "./settings";
 
 /** Final structured completion metadata returned for a schema-bearing run. */
@@ -268,12 +267,8 @@ function assertPlanControlsAllowed(request: StructuredSubagentRequest, planMode:
 
 function assertDepthAndSpawnAllowed(request: StructuredSubagentRequest, agentName: string): void {
 	const taskDepth = request.session.taskDepth ?? 0;
-	const maxDepth = cfgTaskMaxRecursionDepth.get(request.session.settings);
-	if (!canSpawnAtDepth(maxDepth, taskDepth)) {
-		throw new StructuredSubagentError(
-			"preflight",
-			`Cannot spawn another agent at task depth ${taskDepth}; maximum depth is ${maxDepth}.`,
-		);
+	if (!canSpawnAtDepth(taskDepth)) {
+		throw new StructuredSubagentError("preflight", "Subagents cannot spawn agents; only the root session can.");
 	}
 	const blockedAgent = request.blockedAgent ?? $env.PI_BLOCKED_AGENT;
 	if (blockedAgent && blockedAgent === agentName) {

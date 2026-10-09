@@ -51,7 +51,6 @@ function session(
 		settings?: Settings;
 		planMode?: boolean;
 		outputSchema?: unknown;
-		maxDepth?: number;
 		isolationEnabled?: boolean;
 		isolationApply?: boolean;
 		modelRoles?: Record<string, string>;
@@ -67,7 +66,6 @@ function session(
 		settings:
 			options.settings ??
 			Settings.isolated({
-				"task.maxRecursionDepth": options.maxDepth ?? 2,
 				"task.isolation.enabled": options.isolationEnabled ?? false,
 				"isolation.backend": "rcopy",
 				"task.enableLsp": true,

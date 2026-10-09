@@ -246,39 +246,14 @@ describe("runEvalAgent", () => {
 		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("reviewer");
 	});
 
-	it("honors task.maxRecursionDepth without an eval-specific ceiling", async () => {
+	it("rejects spawning from inside a subagent", async () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
 
-		await expect(
-			runEvalAgentAndWait(
-				{ prompt: "hello" },
-				{
-					session: makeSession({
-						settings: Settings.isolated({
-							"async.enabled": false,
-							"task.isolation.enabled": false,
-							"task.maxRecursionDepth": 0,
-						}),
-					}),
-				},
-			),
-		).rejects.toThrow("maximum depth is 0");
-
-		await runEvalAgentAndWait(
-			{ prompt: "hello" },
-			{
-				session: makeSession({
-					depth: 3,
-					settings: Settings.isolated({
-						"async.enabled": false,
-						"task.isolation.enabled": false,
-						"task.maxRecursionDepth": -1,
-					}),
-				}),
-			},
+		await expect(runEvalAgentAndWait({ prompt: "hello" }, { session: makeSession({ depth: 1 }) })).rejects.toThrow(
+			"Subagents cannot spawn agents; only the root session can.",
 		);
-		expect(runSpy).toHaveBeenCalledTimes(1);
+		expect(runSpy).not.toHaveBeenCalled();
 	});
 
 	it("runs plan-mode eval agents with an attenuated policy", async () => {
@@ -305,16 +280,12 @@ describe("runEvalAgent", () => {
 		const abortController = new AbortController();
 		const schema = { type: "object", properties: { ok: { type: "boolean" } } };
 		const session = makeSession({
-			depth: 2,
 			activeModel: "p/current",
 			modelString: "p/fallback",
 			settings: Settings.isolated({
 				"async.enabled": false,
 				"task.isolation.enabled": false,
 				"task.enableLsp": true,
-				// Default task.maxRecursionDepth is 2, which would now (correctly)
-				// block depth=2 — widen it so the test still exercises depth=2.
-				"task.maxRecursionDepth": -1,
 			}),
 		});
 
@@ -327,7 +298,7 @@ describe("runEvalAgent", () => {
 		const firstOptions = runSpy.mock.calls[0]?.[0];
 		const secondOptions = runSpy.mock.calls[1]?.[0];
 		if (!firstOptions || !secondOptions) throw new Error("runSubprocess was not called");
-		expect(firstOptions.taskDepth).toBe(2);
+		expect(firstOptions.taskDepth).toBe(0);
 		expect(firstOptions.signal).not.toBe(abortController.signal);
 		expect(firstOptions.signal?.aborted).toBe(false);
 		expect(firstOptions.parentActiveModelPattern).toBe("p/current");

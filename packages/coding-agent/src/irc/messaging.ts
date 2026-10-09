@@ -5,19 +5,13 @@ import type { Settings } from "../config/settings";
 import { IrcBus } from "./bus";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { ensurePersistedRoster } from "../registry/persisted-agents";
-import { canSpawnAtDepth } from "../task/types";
-
-import { cfgTaskMaxRecursionDepth } from "../task/settings";
-
 function coordinationErrorResult(text: string, details: CoordinationDetails): AgentToolResult<CoordinationDetails> {
 	return { content: [{ type: "text", text }], details, isError: true };
 }
 
-/** Messaging is available to subagents and to top-level sessions able to spawn peers. */
-export function isIrcEnabled(settings: Settings, taskDepth: number): boolean {
-	if (taskDepth > 0) return true;
-	const maxDepth = cfgTaskMaxRecursionDepth.get(settings);
-	return canSpawnAtDepth(maxDepth, taskDepth);
+/** With one subagent level every session is either the spawning root or a subagent, so messaging is always on. */
+export function isIrcEnabled(_settings: Settings, _taskDepth: number): boolean {
+	return true;
 }
 
 export function formatIncoming(msg: IrcMessage): string {

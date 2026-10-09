@@ -58,7 +58,6 @@ import {
 	cfgEvalAutoProvision,
 	cfgEvalToolsEnabled,
 } from "../eval/settings";
-import { cfgTaskMaxRecursionDepth } from "../task/settings";
 import { cfgToolsMaxTimeout, cfgToolsSpeculativeExecutionEnabled } from "./settings";
 
 /** Language tokens the eval tool accepts, in stable display order. */
@@ -387,10 +386,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 		const session = this.session;
 		if (!session) return {};
 		const backends = resolveEvalBackends(session);
-		const depthAllowsSpawning = canSpawnAtDepth(
-			cfgTaskMaxRecursionDepth.get(session.settings),
-			session.taskDepth ?? 0,
-		);
+		const depthAllowsSpawning = canSpawnAtDepth(session.taskDepth ?? 0);
 		return {
 			py: backends.python,
 			js: backends.js,

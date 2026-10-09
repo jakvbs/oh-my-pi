@@ -73,7 +73,6 @@ import {
 	cfgTaskIsolationApply,
 	cfgTaskIsolationEnabled,
 	cfgTaskMaxConcurrency,
-	cfgTaskMaxRecursionDepth,
 	cfgTaskMaxRuntimeMs,
 	cfgTaskSpeculativeLaunch,
 } from "./settings";
@@ -918,10 +917,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			run.discard("task execution mode changed after speculative launch");
 			adopted.delete(index);
 		}
-		const depthCapacity = canSpawnAtDepth(
-			cfgTaskMaxRecursionDepth.get(this.session.settings),
-			this.session.taskDepth ?? 0,
-		);
+		const depthCapacity = canSpawnAtDepth(this.session.taskDepth ?? 0);
 		const ircEnabled = isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0);
 
 		if (!manager || asyncItems.length === 0) {
