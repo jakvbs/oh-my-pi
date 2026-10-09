@@ -25,7 +25,7 @@ const TEST_EXTENSION_ROOTS: EffectiveExtensionRoots = {
 };
 
 function agentDefinition(description: string): string {
-	return `---\nname: reload-agent\ndescription: ${description}\n---\nReload agent.\n`;
+	return `export default { name: "reload-agent", description: "${description}", systemPrompt: "Reload agent." };\n`;
 }
 
 function createTaskSession(cwd: string): ToolSession {
@@ -106,7 +106,7 @@ describe("/reload-plugins runtime refresh", () => {
 
 	test("republishes edited agents to an existing task tool", async () => {
 		const agentDir = path.join(projectDir, ".omp", "agents");
-		const agentFile = path.join(agentDir, "reload-agent.md");
+		const agentFile = path.join(agentDir, "reload-agent.ts");
 		await fs.mkdir(agentDir, { recursive: true });
 		await Bun.write(agentFile, agentDefinition("VERSION_ONE"));
 		const taskTool = await TaskTool.create(createTaskSession(projectDir));

@@ -47,8 +47,8 @@ function buildSkillPackage(dir: string, skillName: string): void {
 function buildAgentPackage(dir: string, agentName: string): void {
 	fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
 	fs.writeFileSync(
-		path.join(dir, "agents", `${agentName}.md`),
-		`---\nname: ${agentName}\ndescription: ${agentName} fixture\n---\nHandle the assigned task.\n`,
+		path.join(dir, "agents", `${agentName}.ts`),
+		`export default { name: "${agentName}", description: "${agentName} fixture", systemPrompt: "Handle the assigned task." };\n`,
 	);
 }
 
