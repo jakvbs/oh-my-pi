@@ -386,6 +386,8 @@ describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () =>
 							PI_NO_TITLE: "1",
 							NO_COLOR: "1",
 							TERM: "xterm-256color",
+							// ci-test-ts marks its children as test runtimes; the CLI under test must stay interactive.
+							PI_TEST_RUNTIME: undefined,
 						},
 					},
 				);
