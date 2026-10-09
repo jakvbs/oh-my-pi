@@ -94,3 +94,6 @@ packages/coding-agent/bench/boot-baseline.json
 /.bazelrc.user
 
 .parity/
+
+# Tokenizer source dumps for crates/pi-natives/tools/{pack,gen}-*; download locally when regenerating.
+crates/pi-natives/tools/cache/
