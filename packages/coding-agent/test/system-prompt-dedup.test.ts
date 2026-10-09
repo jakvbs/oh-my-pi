@@ -174,6 +174,26 @@ describe("SYSTEM.md prompt assembly", () => {
 		expect(promptText).not.toContain("Discovered project SYSTEM prompt");
 	});
 
+	it("lists nested AGENTS.md in <dir-context> when the workspace tree is not rendered", async () => {
+		const projectDir = path.join(tempDir, "project");
+		fs.mkdirSync(path.join(projectDir, "packages", "lib"), { recursive: true });
+		fs.writeFileSync(path.join(projectDir, "packages", "lib", "AGENTS.md"), "Nested package rules");
+
+		const { systemPrompt } = await buildSystemPrompt({
+			cwd: projectDir,
+			contextFiles: [{ path: path.join(projectDir, "AGENTS.md"), content: "Root rules" }],
+			skills: [],
+			rules: [],
+			toolNames: [],
+			activeRepoContext: null,
+		});
+
+		const promptText = systemPrompt.join("\n\n");
+		expect(promptText).toContain("<dir-context>");
+		expect(promptText).toContain("packages/lib/AGENTS.md");
+		expect(promptText).not.toContain("<workspace-tree>");
+	});
+
 	it("renders active child repo context in the main system prompt", async () => {
 		const parentDir = path.join(tempDir, "parent-cwd");
 		fs.mkdirSync(path.join(parentDir, "active-project", ".git"), { recursive: true });
