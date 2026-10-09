@@ -97,11 +97,7 @@ const fastWorkspacePackages = [
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
 // or coding-agent-adjacent benchmark paths. Keep them low-concurrency and in jobs
 // that have downloaded the Linux x64 native addon artifacts.
-const nativeAndIntegrationPackages = [
-	"packages/natives",
-	"packages/tui",
-	"packages/collab-web",
-];
+const nativeAndIntegrationPackages = ["packages/natives", "packages/tui", "packages/collab-web"];
 
 const codingAgentNativePathPatterns = [
 	/(^|\/)[^/]*(bash|native|browser|cmux|memory)[^/]*\.test\.ts$/i,
