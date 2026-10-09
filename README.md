@@ -134,13 +134,13 @@ Originally built on [Mario Zechner](https://github.com/mariozechner)'s wonderful
 
 Most harnesses give the agent a Python sandbox and call it done. Ours runs persistent Python and a Bun worker, and either kernel can call back into the agent's own tools — read, search, task — over a loopback bridge. The agent loads a CSV with tool.read from inside Python, charts it from JavaScript, and never leaves the cell.
 
-![omp TUI running Python code and rendering a chart.](assets/python.webp)
+![omp TUI running Python code and rendering a chart.](https://github.com/can1357/oh-my-pi/blob/main/assets/python.webp?raw=true)
 
 ### 02 · LSP wired into every write
 
 Ask for a rename and you get a rename. The call goes through workspace/willRenameFiles, so re-exports, barrel files, and aliased imports update before the file moves. Everything your IDE knows, the agent knows.
 
-![omp TUI with TypeScript and Biome language servers active.](assets/lspv.webp)
+![omp TUI with TypeScript and Biome language servers active.](https://github.com/can1357/oh-my-pi/blob/main/assets/lspv.webp?raw=true)
 
 _[Read the LSP config docs](docs/lsp-config.md)_
 
@@ -501,7 +501,7 @@ The TUI is the default surface. Tool calls render as cards, edits preview before
 
 The same prompt cards surface over ACP, so editors get the picker without writing one.
 
-![omp TUI showing a multi-select question from the ask tool.](assets/ask.webp)
+![omp TUI showing a multi-select question from the ask tool.](https://github.com/can1357/oh-my-pi/blob/main/assets/ask.webp?raw=true)
 
 ### SDK — embed in Node
 
