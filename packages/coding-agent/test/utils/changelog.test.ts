@@ -362,7 +362,12 @@ describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () =>
 				await fs.mkdir(path.join(root, "xdg-config"), { recursive: true });
 				await fs.mkdir(path.join(root, "xdg-state"), { recursive: true });
 				await fs.mkdir(path.join(root, "xdg-data"), { recursive: true });
-				await Bun.write(path.join(agentDir, "config.yml"), "setupVersion: 1\ncollapseChangelog: false\n");
+				await Bun.write(
+					path.join(agentDir, "config.yml"),
+					// The animated setup splash emits frames for as long as the 6s window runs, so its
+					// byte count tracks host speed instead of what the changelog renders.
+					"setupVersion: 1\ncollapseChangelog: false\nstartup:\n  setupWizard: false\n",
+				);
 
 				const proc = Bun.spawn(
 					["timeout", "6s", "script", "-q", "-c", `bun ${JSON.stringify(cliEntry)}`, "/dev/null"],
