@@ -154,7 +154,7 @@ describe("memories runtime", () => {
 			settings: disabled.settings,
 			modelRegistry: disabled.modelRegistry,
 			agentDir: disabled.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		expect(openSpy).not.toHaveBeenCalled();
 		const explicitlyOff = await createFixture({ "memory.backend": "off", "memories.enabled": true });
@@ -163,7 +163,7 @@ describe("memories runtime", () => {
 			settings: explicitlyOff.settings,
 			modelRegistry: explicitlyOff.modelRegistry,
 			agentDir: explicitlyOff.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 		expect(openSpy).not.toHaveBeenCalled();
 
@@ -173,7 +173,7 @@ describe("memories runtime", () => {
 			settings: subagent.settings,
 			modelRegistry: subagent.modelRegistry,
 			agentDir: subagent.agentDir,
-			taskDepth: 1,
+			isSubagent: true,
 		});
 		expect(openSpy).not.toHaveBeenCalled();
 	});
@@ -190,7 +190,7 @@ describe("memories runtime", () => {
 			settings: fx.settings,
 			modelRegistry: fx.modelRegistry,
 			agentDir: fx.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		await flushAsync();
@@ -241,7 +241,7 @@ describe("memories runtime", () => {
 			settings: fx.settings,
 			modelRegistry: fx.modelRegistry,
 			agentDir: fx.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const memoryRoot = getMemoryRoot(fx.agentDir, fx.session.sessionManager.getCwd());
@@ -320,7 +320,7 @@ describe("memories runtime", () => {
 			settings: fx.settings,
 			modelRegistry: fx.modelRegistry,
 			agentDir: fx.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const memoryRoot = getMemoryRoot(fx.agentDir, fx.session.sessionManager.getCwd());
@@ -387,7 +387,7 @@ describe("memories runtime", () => {
 			settings: fx.settings,
 			modelRegistry: fx.modelRegistry,
 			agentDir: fx.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		await settle(fx.whenSettled, "phase2 sync/prune");
@@ -417,7 +417,7 @@ describe("memories runtime", () => {
 			settings: fx.settings,
 			modelRegistry: fx.modelRegistry,
 			agentDir: fx.agentDir,
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		await settle(fx.whenSettled, "phase2 empty-input cleanup");

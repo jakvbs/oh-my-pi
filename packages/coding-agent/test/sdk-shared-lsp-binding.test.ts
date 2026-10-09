@@ -49,7 +49,7 @@ describe("shared LSP flag with subagents and helper sessions", () => {
 			settings: Settings,
 			extra: Pick<
 				CreateAgentSessionOptions,
-				"parentTaskPrefix" | "taskDepth" | "agentId" | "bindProcessState" | "enableLsp"
+				"parentTaskPrefix" | "isSubagent" | "agentId" | "bindProcessState" | "enableLsp"
 			> = {},
 		): Promise<AgentSession> => {
 			const { session } = await createAgentSession({
@@ -88,7 +88,7 @@ describe("shared LSP flag with subagents and helper sessions", () => {
 
 			await start(createSubagentSettings(parent), {
 				parentTaskPrefix: "0-Sub",
-				taskDepth: 1,
+				isSubagent: true,
 				agentId: "0-Sub",
 				enableLsp: false,
 			});

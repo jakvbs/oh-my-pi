@@ -427,8 +427,6 @@ export interface ExecutorOptions {
 	 * Eval `agent(..., schema=...)` sets this so built-in agents ignore stale yield labels.
 	 */
 	outputSchemaOverridesAgent?: boolean;
-	/** Parent task recursion depth (0 = top-level, 1 = first child, etc.) */
-	taskDepth?: number;
 	/**
 	 * Override the `task.maxRuntimeMs` wall-clock cap for this run. When provided
 	 * it wins over the settings value; `0` disables the per-subagent wall-clock
@@ -3946,8 +3944,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	const agentIdleTtlMs = Math.trunc(Number(cfgTaskAgentIdleTtlMs.get(settings)) || 0);
 	const softRequestBudget = Math.max(0, Math.trunc(Number(cfgTaskSoftRequestBudget.get(settings)) || 0));
 	const softRequestBudgetNotice = cfgTaskSoftRequestBudgetNotice.get(settings);
-	const parentDepth = options.taskDepth ?? 0;
-	const childDepth = parentDepth + 1;
 
 	let toolNames = agent.tools?.filter(name => name !== "task");
 	if (toolNames?.includes("exec")) {
@@ -4000,7 +3996,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		softRequestBudget,
 		softRequestBudgetNotice,
 		maxRuntimeMs,
-		completionProbe: isCompletionProbeEnabled(settings, parentDepth),
+		completionProbe: isCompletionProbeEnabled(settings),
 	});
 	const progress = monitor.progress;
 	let unsubscribe: (() => void) | null = null;
@@ -4312,7 +4308,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					preloadedCustomToolPaths: restrictToolNames ? [] : options.preloadedCustomToolPaths,
 					hasUI: false,
 					prewalk,
-					taskDepth: childDepth,
+					isSubagent: true,
 					// The whole spawn tree shares the root session's observability bus,
 					// so nested lifecycle/progress/event frames reach its surfaces
 					// without leaking into another root session's traffic.

@@ -381,7 +381,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 		return {
 			py: backends.python,
 			js: backends.js,
-			spawns: (session.taskDepth ?? 0) === 0,
+			spawns: !session.isSubagent,
 			autoBackgroundEnabled: cfgEvalAutoBackgroundEnabled.get(session.settings),
 			evalTools: cfgEvalToolsEnabled.get(session.settings),
 			eagerDelegation: sessionDelegationBias(session) === "eager",

@@ -78,7 +78,7 @@ export const sharpshooterBackend: MemoryBackend = {
 	id: "sharpshooter",
 
 	start(options): void {
-		if (options.taskDepth > 0) return;
+		if (options.isSubagent) return;
 		const { session, settings, modelRegistry, agentDir } = options;
 		try {
 			releaseSharpshooterSession(session);

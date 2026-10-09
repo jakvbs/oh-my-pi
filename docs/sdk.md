@@ -390,13 +390,13 @@ For SDK consumers building orchestrators (similar to task executor flow):
 - `outputSchema`: passes structured output expectation into tool context
 - `outputSchemaMode`: selects permissive or strict structured-output enforcement
 - `requireYieldTool`: forces `yield` tool inclusion
-- `taskDepth`: recursion-depth context for nested task sessions
-- `parentTaskPrefix`: artifact naming prefix for nested task outputs
+- `isSubagent`: marks a child session, excluding root-only delegation and memory startup; also implied by `parentTaskPrefix`
+- `parentTaskPrefix`: artifact naming prefix for child task outputs
 - `bindProcessState`: `false` for helper sessions spawned on a host session's behalf (see below)
 
 These are optional for normal single-agent embedding.
 
-Process-wide state that follows one settings instance — setting effects (theme, request limits, the fallback credential-redaction switch) and discovery provider toggles — is held by every top-level session on its own `settings` until it is disposed. With several live sessions the newest holder drives it, and disposing a session hands it back to the previous holder. Sessions with `parentTaskPrefix`/`taskDepth` or `bindProcessState: false` never take it. Independently of the holder, each session's own provider requests redact credential-shaped tokens per that session's `secrets.enabled`.
+Process-wide state that follows one settings instance — setting effects (theme, request limits, the fallback credential-redaction switch) and discovery provider toggles — is held by every top-level session on its own `settings` until it is disposed. With several live sessions the newest holder drives it, and disposing a session hands it back to the previous holder. Sessions with `parentTaskPrefix`, `isSubagent: true`, or `bindProcessState: false` never take it. Independently of the holder, each session's own provider requests redact credential-shaped tokens per that session's `secrets.enabled`.
 
 ## `createAgentSession()` return value
 

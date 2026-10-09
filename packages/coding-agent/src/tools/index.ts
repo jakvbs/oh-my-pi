@@ -313,8 +313,8 @@ export interface ToolSession {
 	 * required yield tool). Suppresses automatic tool-set expansion.
 	 */
 	restrictToolNames?: boolean;
-	/** Task recursion depth (0 = top-level, 1 = first child, etc.) */
-	taskDepth?: number;
+	/** Whether this session is a subagent rather than the spawning root. */
+	isSubagent?: boolean;
 	/** Get this agent's eval executor session ID; keys its retained JS/Python/Ruby/Julia state. */
 	getEvalSessionId?: () => string | null;
 	/** Get session file */
@@ -716,9 +716,9 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		// tools above, must also be force-included into an explicit requestedTools
 		// list so a restricted top-level session whose controller/guidance is
 		// active still exposes the tools the nudge points at. Gated to top-level
-		// (taskDepth 0): the controller only runs there, so a subagent's explicit
+		// sessions: the controller only runs there, so a subagent's explicit
 		// tool whitelist must never be silently widened with write-capable tools.
-		if (cfgAutolearnEnabled.get(session.settings) && (session.taskDepth ?? 0) === 0) {
+		if (cfgAutolearnEnabled.get(session.settings) && !session.isSubagent) {
 			if (!requestedTools.includes("manage_skill")) requestedTools.push("manage_skill");
 			if (
 				["hindsight", "mnemopi", "local"].includes(cfgMemoryBackend.get(session.settings)) &&
@@ -758,10 +758,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "context_notes" || name === "new_context")
 			return cfgCompactionExperimentalContextManagement.get(session.settings);
 		if (name === "checkpoint" || name === "rewind")
-			return (
-				cfgCheckpointEnabled.get(session.settings) &&
-				((session.taskDepth ?? 0) === 0 || requestedTools !== undefined)
-			);
+			return cfgCheckpointEnabled.get(session.settings) && (!session.isSubagent || requestedTools !== undefined);
 		if (name === "wait") {
 			return (
 				cfgAsyncEnabled.get(session.settings) ||
@@ -774,19 +771,16 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		if (name === "memory_edit") return cfgMemoryBackend.get(session.settings) === "mnemopi";
 		if (name === "manage_skill")
-			return (
-				cfgAutolearnEnabled.get(session.settings) &&
-				((session.taskDepth ?? 0) === 0 || requestedTools !== undefined)
-			);
+			return cfgAutolearnEnabled.get(session.settings) && (!session.isSubagent || requestedTools !== undefined);
 		if (name === "learn") {
 			return (
 				cfgAutolearnEnabled.get(session.settings) &&
-				((session.taskDepth ?? 0) === 0 || requestedTools !== undefined) &&
+				(!session.isSubagent || requestedTools !== undefined) &&
 				["hindsight", "mnemopi", "local"].includes(cfgMemoryBackend.get(session.settings))
 			);
 		}
 		if (name === "task") {
-			return (session.taskDepth ?? 0) === 0;
+			return !session.isSubagent;
 		}
 		return true;
 	};

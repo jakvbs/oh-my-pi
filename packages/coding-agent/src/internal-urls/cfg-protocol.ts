@@ -303,7 +303,7 @@ function callerSession(context: ResolveContext | WriteContext | undefined): Tool
  */
 function writerSettings(context: WriteContext | undefined): Settings {
 	const session = callerSession(context);
-	if ((session.taskDepth ?? 0) > 0) {
+	if (session.isSubagent) {
 		throw new Error(
 			`Subagents cannot change settings. Report the setting you need changed to the parent agent instead of writing ${CFG_URL_PREFIX}.`,
 		);

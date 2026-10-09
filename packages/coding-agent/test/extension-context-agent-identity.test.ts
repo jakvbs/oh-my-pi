@@ -85,18 +85,18 @@ describe("ExtensionContext.agent", () => {
 	test("a subagent session reports its kind, id, definition name, depth and parent", async () => {
 		expect(
 			await agentSeenByExtensions({
-				taskDepth: 2,
+				isSubagent: true,
 				parentTaskPrefix: "0-Explore",
 				agentId: "0-Explore",
 				agentDisplayName: "Explore",
 				agentName: "Explore",
 				parentAgentId: "Main",
 			}),
-		).toEqual({ kind: "sub", id: "0-Explore", name: "explore", depth: 2, parentId: "Main" });
+		).toEqual({ kind: "sub", id: "0-Explore", name: "explore", depth: 1, parentId: "Main" });
 	});
 
 	test("a spawned session outside the task tool is a subagent at depth 0", async () => {
-		// `/tan` clones pass a parent prefix but no task depth or agent definition.
+		// `/tan` clones pass a parent prefix but no explicit subagent flag or definition.
 		expect(
 			await agentSeenByExtensions({
 				parentTaskPrefix: "Main-tan-1",
@@ -106,6 +106,19 @@ describe("ExtensionContext.agent", () => {
 			}),
 		).toEqual({ kind: "sub", id: "Main-tan-1", name: "sub", depth: 0, parentId: "Main" });
 	});
+
+	test.each([{ isSubagent: true }, { parentTaskPrefix: "legacy-child" }])(
+		"omits task from a child session even when explicitly requested: %j",
+		async options => {
+			const session = await createSession(() => {}, { ...options, toolNames: ["read", "task"] });
+			try {
+				expect(session.getEnabledToolNames()).toContain("read");
+				expect(session.getEnabledToolNames()).not.toContain("task");
+			} finally {
+				await session.dispose();
+			}
+		},
+	);
 
 	// Advisors share the session's runner for approval enforcement; an extension scoping
 	// tool hooks to the main agent (e.g. injecting hints into tool results) must not act

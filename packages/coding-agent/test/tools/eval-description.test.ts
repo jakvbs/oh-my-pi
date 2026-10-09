@@ -13,7 +13,7 @@ import { cfgEvalPy } from "@oh-my-pi/pi-coding-agent/eval/settings";
 function makeSession(opts: {
 	backends?: Record<string, boolean>;
 	preludes?: () => readonly EvalPreludeDefinition[];
-	taskDepth?: number;
+	isSubagent?: boolean;
 	readActive?: boolean;
 }): ToolSession {
 	const settings = Settings.isolated(opts.backends);
@@ -21,7 +21,7 @@ function makeSession(opts: {
 		cwd: "/tmp/eval-test",
 		hasUI: false,
 		getSessionFile: () => null,
-		taskDepth: opts.taskDepth,
+		isSubagent: opts.isSubagent,
 		isToolActive: (name: string) => name !== "read" || opts.readActive !== false,
 		...(opts.preludes ? { getEvalPreludes: opts.preludes } : {}),
 		settings,
@@ -66,8 +66,8 @@ describe("eval tool description", () => {
 	});
 
 	it("drops the agents topic but keeps wait() inside a subagent", () => {
-		const root = new EvalTool(makeSession({ taskDepth: 0 }));
-		const subagent = new EvalTool(makeSession({ taskDepth: 1 }));
+		const root = new EvalTool(makeSession({ isSubagent: false }));
+		const subagent = new EvalTool(makeSession({ isSubagent: true }));
 
 		expect(root.docTopics().agents).toContain("agent(prompt");
 		expect(subagent.docTopics().agents).toBeUndefined();

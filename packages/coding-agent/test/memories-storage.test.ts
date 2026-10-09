@@ -246,7 +246,7 @@ describe("memories/storage", () => {
 			);
 		});
 
-		startMemoryStartupTask({ session, settings, modelRegistry, agentDir, taskDepth: 0 });
+		startMemoryStartupTask({ session, settings, modelRegistry, agentDir, isSubagent: false });
 
 		await settled.promise;
 		expect(completeSpy).toHaveBeenCalledTimes(2);

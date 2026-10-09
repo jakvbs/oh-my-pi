@@ -105,7 +105,7 @@ describe("SDK workpool yield schema", () => {
 				agentId: "workpool-worker",
 				agentName: "scout",
 				agentDisplayName: "scout",
-				taskDepth: 1,
+				isSubagent: true,
 			});
 			sessions.push(session);
 			const tool = session.getToolByName("yield");
@@ -160,7 +160,7 @@ describe("SDK workpool yield schema", () => {
 				agentId: "workpool-chain",
 				agentName: "scout",
 				agentDisplayName: "scout",
-				taskDepth: 1,
+				isSubagent: true,
 			});
 			sessions.push(session);
 			// A pooled install racing a clear must settle in call order: the clear
@@ -200,7 +200,7 @@ describe("SDK workpool yield schema", () => {
 				agentId: "workpool-rollback",
 				agentName: "scout",
 				agentDisplayName: "scout",
-				taskDepth: 1,
+				isSubagent: true,
 			});
 			sessions.push(session);
 			// The runtime flips before the rebuild runs; a rebuild failure must
@@ -244,7 +244,7 @@ describe("SDK workpool yield schema", () => {
 				agentId: "workpool-double-fail",
 				agentName: "scout",
 				agentDisplayName: "scout",
-				taskDepth: 1,
+				isSubagent: true,
 			});
 			sessions.push(session);
 			// Both rebuilds reject: the clear's rollback must restore the last
@@ -290,7 +290,7 @@ describe("SDK workpool yield schema", () => {
 				agentId: "workpool-republish",
 				agentName: "scout",
 				agentDisplayName: "scout",
-				taskDepth: 1,
+				isSubagent: true,
 			});
 			sessions.push(session);
 			// Overlapping install then clear: the successful refresh publishes
@@ -362,7 +362,7 @@ describe("SDK workpool yield schema", () => {
 				agentId: "workpool-prompt-sync",
 				agentName: "scout",
 				agentDisplayName: "scout",
-				taskDepth: 1,
+				isSubagent: true,
 			});
 			sessions.push(session);
 			live = session;

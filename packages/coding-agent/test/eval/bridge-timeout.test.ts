@@ -20,7 +20,7 @@ function makeToolSession(...tools: AgentTool[]): ToolSession {
 		cwd: process.cwd(),
 		hasUI: false,
 		settings: Settings.isolated({ "async.enabled": false }),
-		taskDepth: 0,
+		isSubagent: false,
 		enableLsp: false,
 		getSessionFile: () => null,
 		getActiveModelString: () => "p/active",

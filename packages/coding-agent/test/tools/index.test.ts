@@ -298,7 +298,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": true }),
 				}),
 				["checkpoint", "rewind"],
@@ -311,7 +311,9 @@ describe("createTools", () => {
 	it("grants wait to subagents when explicitly requested", async () => {
 		const settings = createSettingsWithOverrides({ "async.enabled": true });
 		const main = (await createTools(createTestSession({ settings }), ["read", "wait"])).map(t => t.name);
-		const sub = (await createTools(createTestSession({ taskDepth: 1, settings }), ["read", "wait"])).map(t => t.name);
+		const sub = (await createTools(createTestSession({ isSubagent: true, settings }), ["read", "wait"])).map(
+			t => t.name,
+		);
 		expect(main).toContain("wait");
 		expect(sub).toContain("wait");
 	});
@@ -320,7 +322,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": true }),
 				}),
 			)
@@ -333,7 +335,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": false }),
 				}),
 				["checkpoint", "rewind"],
@@ -360,7 +362,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": true }),
 				}),
 				["checkpoint"],
@@ -374,7 +376,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": true }),
 				}),
 				["rewind"],
@@ -388,7 +390,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": true }),
 				}),
 				["read"],
@@ -402,7 +404,7 @@ describe("createTools", () => {
 		const names = (
 			await createTools(
 				createTestSession({
-					taskDepth: 1,
+					isSubagent: true,
 					restrictToolNames: true,
 					settings: createSettingsWithOverrides({ "checkpoint.enabled": true }),
 				}),

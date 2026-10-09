@@ -392,7 +392,7 @@ describe("interactive collaboration startup", () => {
 		});
 
 		const settings = testSession.session.settings;
-		const session = { settings, hasUI: true, settingsApproval: true, taskDepth: 0 } as unknown as ToolSession;
+		const session = { settings, hasUI: true, settingsApproval: true, isSubagent: false } as unknown as ToolSession;
 		const write = new CfgProtocolHandler().write(parseInternalUrl("cfg://advisor/enabled"), "true", { session });
 		const { request } = await asked.promise;
 		expect(request.title).toContain("advisor.enabled");

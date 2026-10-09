@@ -26,13 +26,12 @@ import { cfgTaskCompletionProbe } from "./settings";
 const PROBE_DELAYS_MS = [2, 5, 10, 30, 60].map(minutes => minutes * 60_000);
 
 /**
- * Whether a subagent spawned by a session at `parentDepth` gets completion probes.
- * Only the interactive TUI shows the estimate, so print/RPC/ACP/SDK hosts never pay
- * for it, and only the main agent's direct subagents (`parentDepth` 0) are probed.
+ * Only the interactive TUI shows completion estimates, so print/RPC/ACP/SDK
+ * hosts never pay for probes.
  * Callers: the task executor and eval workpool, when building a run monitor.
  */
-export function isCompletionProbeEnabled(settings: Settings, parentDepth: number): boolean {
-	return parentDepth === 0 && isInteractiveHost() && cfgTaskCompletionProbe.get(settings);
+export function isCompletionProbeEnabled(settings: Settings): boolean {
+	return isInteractiveHost() && cfgTaskCompletionProbe.get(settings);
 }
 
 /** Inputs for {@link startCompletionProbe}. */

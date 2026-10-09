@@ -1867,7 +1867,7 @@ export class AgentSession implements SettingsScope {
 		this.#memory = new SessionMemory(memoryHost, {
 			memoryEnabled: this.memoryEnabled,
 			memoryAgentDir: config.memoryAgentDir,
-			memoryTaskDepth: config.memoryTaskDepth,
+			memoryIsSubagent: config.memoryIsSubagent,
 			createMemoryTools: config.createMemoryTools,
 		});
 		// Resolve the wire service-tier per request so the Fireworks Priority

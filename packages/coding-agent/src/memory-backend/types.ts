@@ -87,7 +87,7 @@ export interface MemoryBackendStartOptions {
 	settings: Settings;
 	modelRegistry: ModelRegistry;
 	agentDir: string;
-	taskDepth: number;
+	isSubagent: boolean;
 	parentHindsightSessionState?: HindsightSessionState;
 	parentMnemopiSessionState?: MnemopiSessionState;
 }

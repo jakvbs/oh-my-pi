@@ -931,7 +931,7 @@ describe("Mnemopi backend lifecycle", () => {
 			settings,
 			modelRegistry: modelRegistry as never,
 			agentDir: path.dirname(tempDbPath!),
-			taskDepth: 0,
+			isSubagent: false,
 		});
 
 		const started = getMnemopiSessionState(session);
@@ -1241,7 +1241,7 @@ describe("Mnemopi backend lifecycle", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: path.dirname(tempDbPath!),
-			taskDepth: 1,
+			isSubagent: true,
 			parentMnemopiSessionState: parentState,
 		});
 		const childState = getMnemopiSessionState(childSession);
@@ -1279,7 +1279,7 @@ describe("Mnemopi backend lifecycle", () => {
 			settings,
 			modelRegistry: {} as never,
 			agentDir: path.dirname(tempDbPath!),
-			taskDepth: 1,
+			isSubagent: true,
 			parentMnemopiSessionState: parentState,
 		});
 		const childState = getMnemopiSessionState(childSession);

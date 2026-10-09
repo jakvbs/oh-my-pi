@@ -20,7 +20,7 @@ function makeSession(cwd: string, evalSessionId: string, options?: { autoProvisi
 			"task.isolation.enabled": false,
 			"task.enableLsp": true,
 		}),
-		taskDepth: 0,
+		isSubagent: false,
 		enableLsp: true,
 		getSessionFile: () => null,
 		getActiveModelString: () => "p/active",

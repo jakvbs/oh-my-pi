@@ -43,7 +43,7 @@ describe("defaultThinkingLevel on running sessions", () => {
 
 	const start = async (
 		settings: Settings,
-		extra: Pick<CreateAgentSessionOptions, "thinkingLevel" | "taskDepth" | "parentTaskPrefix" | "agentId">,
+		extra: Pick<CreateAgentSessionOptions, "thinkingLevel" | "isSubagent" | "parentTaskPrefix" | "agentId">,
 	): Promise<AgentSession> => {
 		const cwd = path.join(os.tmpdir(), `pi-thinking-default-${Snowflake.next()}`);
 		tempDirs.push(cwd);
@@ -74,7 +74,7 @@ describe("defaultThinkingLevel on running sessions", () => {
 		cfgDefaultThinkingLevel.set(parent, Effort.High);
 		const subagent = await start(createSubagentSettings(parent), {
 			thinkingLevel: Effort.Low,
-			taskDepth: 1,
+			isSubagent: true,
 			parentTaskPrefix: "0-Sub",
 			agentId: "0-Sub",
 		});

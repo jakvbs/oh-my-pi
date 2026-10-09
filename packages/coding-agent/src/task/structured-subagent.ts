@@ -262,9 +262,8 @@ function assertPlanControlsAllowed(request: StructuredSubagentRequest, planMode:
 	}
 }
 
-function assertDepthAndSpawnAllowed(request: StructuredSubagentRequest, agentName: string): void {
-	const taskDepth = request.session.taskDepth ?? 0;
-	if (taskDepth !== 0) {
+function assertSpawnAllowed(request: StructuredSubagentRequest, agentName: string): void {
+	if (request.session.isSubagent) {
 		throw new StructuredSubagentError("preflight", "Subagents cannot spawn agents; only the root session can.");
 	}
 	const blockedAgent = request.blockedAgent ?? $env.PI_BLOCKED_AGENT;
@@ -321,7 +320,7 @@ export async function resolveEffectiveSubagentPolicy(
 	const agentName = request.agent?.trim() || "";
 	const planMode = request.session.getPlanModeState?.()?.enabled === true;
 	assertPlanControlsAllowed(request, planMode);
-	assertDepthAndSpawnAllowed(request, agentName);
+	assertSpawnAllowed(request, agentName);
 
 	const discovery = await discoverAgentsShared(request.session.cwd, request.session.effectiveExtensionRoots?.());
 	const agents = [...discovery.agents, ...(request.session.getSessionAgents?.() ?? [])];
@@ -522,7 +521,6 @@ function buildExecutorOptions(
 		parentToolCallId: request.parentToolCallId,
 		detached: request.detached,
 		id,
-		taskDepth: session.taskDepth ?? 0,
 		invokedAt: request.invokedAt,
 		acquiredAt: request.acquiredAt,
 		modelOverride: policy.modelOverride,
