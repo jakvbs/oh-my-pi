@@ -52,6 +52,26 @@ async function withPendingGuard<T>(promise: Promise<T>, label: string): Promise<
 	]);
 }
 
+// A just-stopped listener keeps accepting for a few milliseconds on some hosts,
+// so a connect then fails as a reset. Wait until the port actually refuses.
+async function closedLoopbackPort(): Promise<number> {
+	const listener = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+	const { port } = listener;
+	listener.stop(true);
+	for (let attempt = 0; attempt < 100 && !(await refusesConnections(port)); attempt++) await Bun.sleep(10);
+	return port;
+}
+
+async function refusesConnections(port: number): Promise<boolean> {
+	try {
+		const socket = await Bun.connect({ hostname: "127.0.0.1", port, socket: { data() {} } });
+		socket.end();
+		return false;
+	} catch {
+		return true;
+	}
+}
+
 describe("MCP Streamable HTTP initialization", () => {
 	it("sends initialized before opening the optional GET SSE stream", async () => {
 		const requests: string[] = [];
@@ -143,13 +163,7 @@ describe("MCP Streamable HTTP failure diagnostics", () => {
 	});
 
 	it("distinguishes connection refusal from a reset", async () => {
-		const unused = Bun.listen({
-			hostname: "127.0.0.1",
-			port: 0,
-			socket: { data() {} },
-		});
-		const port = unused.port;
-		unused.stop(true);
+		const port = await closedLoopbackPort();
 		const transport = new HttpTransport({
 			type: "http",
 			url: `http://127.0.0.1:${port}/mcp`,
