@@ -663,6 +663,10 @@ async function runInteractiveMode(
 				autoStartCollab: joinLink === undefined,
 			}),
 		);
+		if (mode.shutdownRequested || mode.isShuttingDown) {
+			await mode.checkShutdownRequested();
+			return;
+		}
 		startDeferredStartupWork?.();
 
 		if (setupWizard && playStartupSplash) {

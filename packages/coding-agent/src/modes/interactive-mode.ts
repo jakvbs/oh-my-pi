@@ -2300,6 +2300,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// Initialize hooks with TUI-based UI context
 		await logger.time("InteractiveMode.init:hooks", () => this.initHooksAndCustomTools());
+		if (this.shutdownRequested || this.isShuttingDown) return;
 
 		// Restore mode from session (e.g. plan mode on resume)
 		this.session.setSessionBeforeSwitchReconciler?.(async () => {
