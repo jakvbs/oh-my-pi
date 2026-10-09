@@ -87,7 +87,6 @@ import {
 } from "@oh-my-pi/pi-tui/thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";
 import { resolveEvalBackends } from "../tools/eval-backends";
-import { isIrcEnabled } from "../irc/messaging";
 import { LIST_STATUS_ORDER } from "@oh-my-pi/pi-tui/tools/irc";
 import { DEFAULT_PEER_ROSTER_LIMIT } from "@oh-my-pi/pi-tui/tools/irc";
 import { normalizeSchema } from "../tools/jtd-to-json-schema";
@@ -3971,10 +3970,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		toolNames = [...toolNames, "wait"];
 	}
 	// Inbound steering works without messaging; outbound peer coordination requires write.
-	const ircEnabled =
-		options.enableIrc !== false &&
-		isIrcEnabled(subagentSettings, childDepth) &&
-		(toolNames === undefined || toolNames.includes("write"));
+	const ircEnabled = options.enableIrc !== false && (toolNames === undefined || toolNames.includes("write"));
 
 	const modelPatterns = normalizeModelPatterns(modelOverride ?? agent.model);
 	const sessionFile = subtaskSessionFile ?? null;

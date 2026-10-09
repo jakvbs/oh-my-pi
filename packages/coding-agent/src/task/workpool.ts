@@ -6,7 +6,6 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import type { CustomMessage } from "../session/messages";
 import type { ToolSession } from "../tools";
-import { isIrcEnabled } from "../irc/messaging";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { isCompletionProbeEnabled } from "./completion-probe";
 import { runSubagentFollowUpTurn } from "./executor";
@@ -391,7 +390,7 @@ export class WorkPool {
 							workPoolYieldItems,
 							keepAlive: true,
 							retainArtifacts: true,
-							enableIrc: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
+							enableIrc: true,
 							signal,
 							onProgress,
 						});

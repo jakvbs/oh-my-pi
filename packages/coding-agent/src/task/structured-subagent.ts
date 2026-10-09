@@ -30,7 +30,6 @@ import salvagedChildHintTemplate from "../prompts/tools/salvaged-child-hint.md" 
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import type { ToolSession } from "../tools";
-import { isIrcEnabled } from "../irc/messaging";
 import { buildOutputValidator } from "../tools/output-schema-validator";
 import { trackLateCleanup } from "../utils/late-cleanup";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
@@ -421,11 +420,7 @@ export async function resolveEffectiveSubagentPolicy(
 		enableLsp:
 			!planMode &&
 			(request.enableLsp ?? ((request.session.enableLsp ?? true) && cfgTaskEnableLsp.get(request.session.settings))),
-		enableIrc:
-			!planMode &&
-			(request.enableIrc ??
-				(request.session.enableIrc !== false &&
-					isIrcEnabled(request.session.settings, request.session.taskDepth ?? 0))),
+		enableIrc: !planMode && (request.enableIrc ?? request.session.enableIrc !== false),
 	};
 }
 

@@ -37,7 +37,6 @@ import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { typ
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { truncateForPrompt } from "../tools/approval";
 import { hasWaitTool } from "../tools/wait";
-import { isIrcEnabled } from "../irc/messaging";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
 import { resolveSpawnPolicy } from "./spawn-policy";
@@ -639,7 +638,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
 			evalToolsEnabled: evalToolsEnabled(this.session),
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
-			ircEnabled: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
+			ircEnabled: true,
 			parentSpawns: this.session.getSessionSpawns() ?? "*",
 		});
 	}
@@ -753,7 +752,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			...("isolated" in params ? { isolation: { requested: params.isolated } } : {}),
 			blockedAgent: this.#blockedAgent,
 			enableLsp: (this.session.enableLsp ?? true) && cfgTaskEnableLsp.get(this.session.settings),
-			enableIrc: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
+			enableIrc: true,
 			maxRuntimeMs: cfgTaskMaxRuntimeMs.get(this.session.settings),
 		});
 	}
@@ -859,7 +858,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			adopted.delete(index);
 		}
 		const depthCapacity = canSpawnAtDepth(this.session.taskDepth ?? 0);
-		const ircEnabled = isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0);
+		const ircEnabled = true;
 
 		if (!manager || asyncItems.length === 0) {
 			// Sync fallback: async execution disabled, orphaned host that never
@@ -1551,7 +1550,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				...("isolated" in params ? { isolation: { requested: params.isolated } } : {}),
 				blockedAgent: this.#blockedAgent,
 				enableLsp: (this.session.enableLsp ?? true) && cfgTaskEnableLsp.get(this.session.settings),
-				enableIrc: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
+				enableIrc: true,
 				maxRuntimeMs: cfgTaskMaxRuntimeMs.get(this.session.settings),
 				signal,
 				onProgress: progress => {

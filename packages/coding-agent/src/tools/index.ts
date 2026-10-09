@@ -58,7 +58,6 @@ import { GithubTool } from "./gh";
 import { GlobTool } from "./glob";
 import { GrepTool } from "./grep";
 import { IdaTool } from "./ida";
-import { isIrcEnabled } from "../irc/messaging";
 import { FindTool, isFindEnabled } from "./jfind";
 import { LearnTool } from "./learn";
 import { ManageSkillTool } from "./manage-skill";
@@ -768,7 +767,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "wait") {
 			return (
 				cfgAsyncEnabled.get(session.settings) ||
-				(session.enableIrc !== false && isIrcEnabled(session.settings, session.taskDepth ?? 0)) ||
+				session.enableIrc !== false ||
 				cfgLaunchEnabled.get(session.settings)
 			);
 		}
