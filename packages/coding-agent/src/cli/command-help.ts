@@ -98,10 +98,6 @@ export const renderHelp = {
 	description: "Draw a session's entire thread through the production transcript pipeline (with repaint timing)",
 } satisfies CommandMetadata;
 
-export const sayHelp = {
-	description: "Synthesize text with the local TTS engine and play it through the speakers",
-} satisfies CommandMetadata;
-
 export const searchHelp = { description: "Test web search providers" } satisfies CommandMetadata;
 
 export const shareHelp = {
@@ -109,7 +105,7 @@ export const shareHelp = {
 } satisfies CommandMetadata;
 
 export const setupHelp = {
-	description: "Run onboarding setup or install dependencies for optional features",
+	description: "Run the onboarding setup wizard",
 } satisfies CommandMetadata;
 
 export const shellHelp = { description: "Interactive shell console" } satisfies CommandMetadata;

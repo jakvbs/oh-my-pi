@@ -7,7 +7,6 @@
 let
   inherit (pkgs) lib;
   linuxLibraries = with pkgs; [
-    libpulseaudio
     pipewire
     stdenv.cc.cc.lib
     zlib

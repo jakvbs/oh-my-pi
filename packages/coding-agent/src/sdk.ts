@@ -270,7 +270,6 @@ import { isFilesystemSourcePath } from "./tools/path-utils";
 import { isAutoQaEnabled } from "./tools/report-tool-issue";
 import { queueResolveHandler } from "./tools/resolve";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "./tools/todo";
-import { ttsTool } from "./tools/tts";
 import { resolveActiveRepoContext } from "./utils/active-repo-context";
 import { EventBus } from "./utils/event-bus";
 import { normalizeProviderContextImagesForModel } from "./utils/image-loading";
@@ -284,7 +283,6 @@ import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 import {
 	cfgAsyncMaxJobs,
 	cfgGenerateImageEnabled,
-	cfgSpeechgenEnabled,
 	cfgToolsAbortOnFabricatedResult,
 	cfgToolsIntentTracing,
 	cfgToolsMaxTimeout,
@@ -3297,7 +3295,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		for (const tool of toolRegistry.values()) {
 			toolRegistry.set(tool.name, new ExtensionToolWrapper(tool, extensionRunner));
 		}
-		// Image and speech generation are optional custom tools gated by live settings.
+		// Image generation is an optional custom tool gated by live settings.
 		// They install here, not through the custom-tools extension, so the settings
 		// reconcile can add and remove exactly the entries it owns and never a
 		// same-named extension tool, which keeps precedence over them.
@@ -3314,7 +3312,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			if (cfgGenerateImageEnabled.get(settings) && imageGenRequested) {
 				wanted.push(imageGenTool as unknown as CustomTool);
 			}
-			if (cfgSpeechgenEnabled.get(settings)) wanted.push(ttsTool as unknown as CustomTool);
 			const wantedNames = new Set(wanted.map(tool => tool.name));
 			for (const [name, entry] of settingsGatedCustomEntries) {
 				if (wantedNames.has(name)) continue;

@@ -138,11 +138,6 @@
 		"gen:glyphs": "bun --cwd=packages/tui run gen:glyphs",
 		"check-spoofed-versions": "bun scripts/check-spoofed-versions.ts"
 	},
-	"dependencies": {
-		"sherpa-onnx": "1.13.2",
-		"sherpa-onnx-darwin-arm64": "1.13.3",
-		"sherpa-onnx-node": "1.13.2"
-	},
 	"devDependencies": {
 		"@types/bun": "catalog:",
 		"@typescript/native-preview": "catalog:",

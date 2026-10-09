@@ -25,11 +25,10 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../keybinding-matchers";
-import type { SpaceHoldHandler } from "../space-hold";
 import { sanitizeErrorLine } from "../chrome/error-block";
 import { sanitizeDisplayLine, sanitizeDisplayText } from "./extensions/display-text";
 import { editorKey, editorKeys, keyHint, rawKeyHint } from "../chrome/keybinding-hints";
-import { formatKeyHint, type KeyId } from "../app-keybindings";
+import { formatKeyHint } from "../app-keybindings";
 import { bottomBorder, row, topBorder } from "../chrome/overlay-box";
 import { padToWidth } from "../render/utils";
 import { SplitPane } from "../components/layout/split-pane";
@@ -47,8 +46,6 @@ interface BtwHistoryPanelOptions {
 	canFollowUp?: (record: BtwHistoryRecord) => boolean;
 	onFollowUp?: (record: BtwHistoryRecord, question: string, signal: AbortSignal) => Promise<boolean>;
 	/** Configured push-to-talk keys for a follow-up composer. */
-	spaceHoldKeys?: readonly KeyId[];
-	spaceHold?: (input: Input) => SpaceHoldHandler;
 	requestRender: () => void;
 	getHeight: () => number;
 	/**
@@ -283,8 +280,6 @@ export class BtwHistoryPanel implements Component, Focusable {
 	#openComposer(record: BtwHistoryRecord): void {
 		const input = new Input();
 		input.prompt = theme.fg("accent", "Follow up: ");
-		if (this.#options.spaceHoldKeys !== undefined) input.spaceHold.keys = this.#options.spaceHoldKeys;
-		input.spaceHold.handler = this.#options.spaceHold?.(input);
 		const composer: FollowUpComposer = { recordId: record.id, input, abortController: new AbortController() };
 		input.onEscape = () => {
 			composer.abortController.abort();
@@ -334,11 +329,6 @@ export class BtwHistoryPanel implements Component, Focusable {
 			this.#followUpPending = false;
 			this.#options.requestRender();
 		}
-	}
-
-	/** Only an active follow-up composer can claim its configured push-to-talk keys. */
-	capturesInput(data: string): boolean {
-		return this.#composer?.input.capturesInput(data) ?? false;
 	}
 
 	/** Enhanced clipboard pastes belong only to the active composer. */

@@ -265,9 +265,8 @@ Run `omp <command> --help` for each command's own flags and examples.
 | `play` | Replay a `/record` recording in the terminal; Space pauses and `q` quits. | |
 | `predict` | Compare word-completion engines' live ghost text for a prompt. | |
 | `ps` | List and control daemon-supervised background processes (logs, stop, kill, restart). | |
-| `say` | Synthesize text with the local TTS engine and play it through the speakers. | [tts tool](./tools/tts.md) |
 | `share` | Share a saved session via an encrypted link (same as the `/share` slash command). | [session operations](./session-operations-export-share-fork-resume.md) |
-| `setup` | Run onboarding setup or install dependencies for optional features. | |
+| `setup` | Run the onboarding setup wizard. | |
 | `shell` | Interactive shell console. | |
 | `read` | Show what the read tool will return for a path, URL, or internal URI. (The [`read` tool](./tools/read.md) is a separate agent tool.) | |
 | `render` | Draw a session's entire thread through the production transcript pipeline (with repaint timing). | |

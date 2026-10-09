@@ -2528,12 +2528,6 @@ export class AgentSession implements SettingsScope {
 		this.#planProposalHandler = handler ?? undefined;
 	}
 
-	#sessionBeforeSwitchReconciler: (() => Promise<void>) | undefined;
-
-	setSessionBeforeSwitchReconciler(reconciler: (() => Promise<void>) | null): void {
-		this.#sessionBeforeSwitchReconciler = reconciler ?? undefined;
-	}
-
 	#sessionSwitchReconciler: (() => Promise<void>) | undefined;
 
 	setSessionSwitchReconciler(reconciler: (() => Promise<void>) | null): void {
@@ -10666,7 +10660,6 @@ export class AgentSession implements SettingsScope {
 
 		this.#disconnectFromAgent();
 		await this.abort({ goalReason: "internal" });
-		await this.#sessionBeforeSwitchReconciler?.();
 
 		await this.#bash.flushPending();
 		// Flush pending writes before switching so restore snapshots reflect committed state.

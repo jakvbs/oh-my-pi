@@ -126,7 +126,6 @@ export type {
 } from "@oh-my-pi/pi-tui/tools/task";
 export * from "./think";
 export * from "./todo";
-export * from "./tts";
 export * from "./wait";
 export * from "./write";
 export * from "./xdev";

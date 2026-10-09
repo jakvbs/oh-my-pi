@@ -4,7 +4,6 @@ import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import { type Component, Loader, TERMINAL } from "@oh-my-pi/pi-tui";
 import { formatDuration, isRecord, logger, prompt, sanitizeText } from "@oh-my-pi/pi-utils";
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
-import { extractTextContent } from "../../commit/utils";
 import { settings } from "../../config/settings";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { detectCacheInvalidation } from "@oh-my-pi/pi-tui/chat/cache-invalidation-marker";
@@ -40,8 +39,6 @@ import { previewLine, PREVIEW_LIMITS, TRUNCATE_LENGTHS } from "@oh-my-pi/pi-tui/
 import { PROPOSE_DEVICE_NAME } from "@oh-my-pi/pi-tui/tools/resolve";
 import { writeDeviceDispatch } from "../../tools/resolve";
 import { nextActionableTask } from "../../tools/todo";
-import { SpeechEnhancer } from "../../tts/speech-enhancer";
-import { vocalizer } from "../../tts/vocalizer";
 import { canonicalizeMessage } from "@oh-my-pi/pi-tui/chat/thinking-display";
 import { type RunStatus, setRunStatus } from "../../utils/run-status";
 import { setTerminalTitleState } from "../../utils/title-generator";
@@ -72,7 +69,6 @@ import {
 } from "../settings";
 import { cfgCompaction } from "../../session/context-settings";
 import { cfgReadToolResultPreview, cfgToolsApproval, cfgToolsApprovalMode } from "../../tools/settings";
-import { cfgSpeechEnabled, cfgSpeechMode } from "../../tts/settings";
 
 type AgentSessionEventKind = AgentSessionEvent["type"];
 
@@ -282,39 +278,19 @@ export class EventController {
 	// this window only the latest snapshot needs to rebuild streaming state — the
 	// intermediate rebuilds are redundant work. The TUI already caps the paint
 	// rate via its own render cadence; this caps the per-token handler work that
-	// feeds it. Speech stays intact: `#vocalizeDelta` runs at ARRIVAL for every
-	// delta before the snapshot is coalesced away.
+	// feeds it.
 	#pendingMessageUpdate: Extract<AgentSessionEvent, { type: "message_update" }> | undefined = undefined;
 	#messageUpdateTimer: NodeJS.Timeout | undefined = undefined;
 	/** Tail of the serialized dispatch chain; see #runSerialized. */
 	#dispatchTail: Promise<void> = Promise.resolve();
 	/** Whether a chained run is currently in flight (awaiting its own awaits). */
 	#dispatchInFlight = false;
-	// Deltas already fed to speech at arrival by the coalescer. `#handleMessageUpdate`
-	// also vocalizes so the direct `handleEvent` path (tests, session focus replay)
-	// keeps working — the WeakSet makes the coalesced path speak each delta exactly
-	// once instead of twice.
-	#vocalizedMessageUpdates = new WeakSet<object>();
 	static readonly #MESSAGE_UPDATE_COALESCE_MS = 33;
 
 	constructor(private ctx: InteractiveModeContext) {
-		// Enhanced speech (`speech.enhanced`) rewrites blocks through the
-		// tiny/smol role with this session's registry and credentials; the
-		// vocalizer falls back to mechanical cleanup when unset. Tolerates
-		// partial contexts (tests, minimal embeddings) by wiring null.
 		const session = ctx.session;
 		this.#detachToolApprovalPreviewWaiter = session?.extensionRunner?.setToolApprovalPreviewWaiter(toolCallId =>
 			this.#waitForToolApprovalPreview(toolCallId),
-		);
-		vocalizer.setEnhancer(
-			session?.modelRegistry && session.agent && session.settings
-				? new SpeechEnhancer({
-						settings: session.settings,
-						registry: session.modelRegistry,
-						sessionId: session.sessionId,
-						metadataResolver: provider => session.agent.metadataForProvider(provider),
-					})
-				: null,
 		);
 		this.#streamingReveal = new StreamingRevealController({
 			getSmoothStreaming: () => cfgDisplaySmoothStreaming.get(this.ctx.settings),
@@ -330,7 +306,7 @@ export class EventController {
 			agent_start: e => this.#handleAgentStart(e),
 			agent_end: e => this.#handleAgentEnd(e),
 			turn_start: async () => {},
-			turn_end: async e => this.#handleTurnEnd(e),
+			turn_end: async () => {},
 			message_start: e => this.#handleMessageStart(e),
 			message_update: e => this.#handleMessageUpdate(e),
 			message_end: e => this.#handleMessageEnd(e),
@@ -830,16 +806,8 @@ export class EventController {
 		await link;
 	}
 
-	/**
-	 * Queue a streaming `message_update` for the next coalesced handler run.
-	 * Speech is per-delta, so the delta is vocalized at arrival before the
-	 * snapshot is (possibly) superseded by a newer one.
-	 */
+	/** Queue a streaming `message_update` for the next coalesced handler run. */
 	#enqueueMessageUpdate(event: Extract<AgentSessionEvent, { type: "message_update" }>): void {
-		// Speech is per-delta: every delta is spoken at arrival even when its
-		// cumulative snapshot is later superseded and never rebuilt.
-		this.#vocalizeDelta(event);
-		this.#vocalizedMessageUpdates.add(event);
 		this.#pendingMessageUpdate = event;
 		if (this.#messageUpdateTimer) return;
 		this.#messageUpdateTimer = setTimeout(() => {
@@ -1136,7 +1104,6 @@ export class EventController {
 			}
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "user") {
-			vocalizer.clear();
 			// Only genuinely user-attributed prompts anchor the delta; a mid-run
 			// agent-attributed `user` message (advisor tool-loop redirect) must not.
 			if (event.message.attribution !== "agent") {
@@ -1403,45 +1370,8 @@ export class EventController {
 		}
 	}
 
-	/**
-	 * Speak streamed assistant output as a side effect of the turn. The mode
-	 * decides which deltas feed the vocalizer (the vocalizer re-checks enabled):
-	 * assistant|all speak text; all also speaks thinking; yield speaks nothing
-	 * live (the final message is spoken at turn end).
-	 */
-	#vocalizeDelta(event: Extract<AgentSessionEvent, { type: "message_update" }>): void {
-		if (!cfgSpeechEnabled.get(settings)) return;
-		const mode = cfgSpeechMode.get(settings);
-		const delta = event.assistantMessageEvent;
-		if (delta.type === "text_delta" && (mode === "assistant" || mode === "all")) {
-			vocalizer.pushDelta(delta.delta);
-		} else if (delta.type === "thinking_delta" && mode === "all") {
-			vocalizer.pushDelta(delta.delta);
-		}
-	}
-
-	/**
-	 * End-of-turn vocalization: yield mode speaks the final assistant message in
-	 * one shot here (the only mode that is post-hoc); every other mode just makes
-	 * sure the live buffer's trailing partial gets flushed.
-	 */
-	#handleTurnEnd(event: Extract<AgentSessionEvent, { type: "turn_end" }>): void {
-		if (!cfgSpeechEnabled.get(settings)) return;
-		if (cfgSpeechMode.get(settings) !== "yield") {
-			vocalizer.flush();
-			return;
-		}
-		if (event.message.role !== "assistant") return;
-		if (event.message.stopReason === "aborted") return; // interrupted: never speak the aborted partial
-		const text = extractTextContent(event.message);
-		if (text) vocalizer.speak(text);
-	}
-
 	async #handleMessageUpdate(event: Extract<AgentSessionEvent, { type: "message_update" }>): Promise<void> {
 		this.#ensureWorkingLoaderWhileStreaming();
-		if (!this.#vocalizedMessageUpdates.delete(event)) {
-			this.#vocalizeDelta(event);
-		}
 		if (this.ctx.streamingComponent && event.message.role === "assistant") {
 			const unlockedThinkingVisibility = this.ctx.noteDisplayableThinkingContent(event.message);
 			if (unlockedThinkingVisibility) {
@@ -1651,17 +1581,6 @@ export class EventController {
 		if (unlockedThinkingVisibility && this.ctx.streamingComponent) {
 			this.ctx.streamingComponent.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
 			this.#streamingReveal.resyncVisibility();
-		}
-		if (event.message.role === "assistant" && cfgSpeechEnabled.get(settings)) {
-			if (event.message.stopReason === "aborted") {
-				// Esc / Ctrl+C / interrupt: stop speaking now and drop the trailing partial.
-				vocalizer.clear();
-			} else {
-				const mode = cfgSpeechMode.get(settings);
-				// Speak the last partial sentence of a completed message; yield mode
-				// instead speaks the whole final message at turn end.
-				if (mode === "assistant" || mode === "all") vocalizer.flush();
-			}
 		}
 		if (this.ctx.streamingComponent && event.message.role === "assistant") {
 			this.ctx.streamingMessage = event.message;

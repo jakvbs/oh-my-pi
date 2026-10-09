@@ -631,7 +631,7 @@ Model roles assign model selectors to workloads. Configure them under `modelRole
 Built-in roles are grouped in the model picker:
 
 - **Chat roles:** `default`, `smol`, `slow`, `vision`, `plan`, `commit`, `tiny`, `memory`, `task`, and `advisor`. The `tiny` and `memory` roles accept both ordinary chat models and `tiny` catalog models.
-- **Model-kind roles:** `image`, `web`, `speech`, `dictation`, and `judge`. These select image generation, search/grounded chat, text-to-speech, speech-to-text, and judgment runners respectively. The `judge` role also accepts tiny and chat models.
+- **Model-kind roles:** `image`, `web`, and `judge`. These select image generation, search/grounded chat, and judgment runners respectively. The `judge` role also accepts tiny and chat models.
 
 `vision` and `image` are different workloads: `vision` selects a chat model for image analysis, such as `read screenshot.png?q=...`; `image` selects a model with catalog kind `image` for `generate_image`. Assigning a model to `vision` does not give it image-input support: image questions additionally check that the model can send image input to its provider.
 
@@ -691,7 +691,7 @@ Related settings:
 
 `modelRoles` stores model selectors such as `provider/modelId`; `enabledModels` and CLI `--models`
 accept exact selectors, globs, and fuzzy matches. The resulting scope restricts chat models only
-(Ctrl+P cycling, the startup model, chat roles in `/model`); judge, search, image, and speech
+(Ctrl+P cycling, the startup model, chat roles in `/model`); judge, search, image, and other non-chat
 models stay available for their roles, so entries naming them are accepted but have no effect.
 
 `enabledModels`, `enabledProviders`, and `disabledProviders` entries may also be scoped to a path prefix:

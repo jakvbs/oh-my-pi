@@ -1,7 +1,6 @@
 {
   addDriverRunpath,
   autoPatchelfHook,
-  alsa-lib,
   bun,
   bun2nix,
   cmake,
@@ -9,7 +8,6 @@
   cudaPackages_13 ? null,
   darwin,
   lib,
-  libpulseaudio,
   makeBinaryWrapper,
   ninja,
   pkg-config,
@@ -177,17 +175,6 @@ stdenv.mkDerivation {
       # The loader extracts this archived addon at runtime, so fix its
       # interpreter-independent Nix RPATH before Bun embeds it.
       autoPatchelf -- "packages/natives/native/${platform.addon}"
-      # pi-voice dlopens libpulse-simple.so.0 / libpulse.so.0 / libasound.so.2
-      # by bare name; glibc resolves those through the calling object's
-      # RUNPATH, so append the client libraries here. Nothing links them, so
-      # autoPatchelf cannot discover them on its own.
-      patchelf --add-rpath "${
-        lib.makeLibraryPath [
-          libpulseaudio
-          alsa-lib
-        ]
-      }" \
-        "packages/natives/native/${platform.addon}"
     ''}
     ${lib.optionalString stdenv.hostPlatform.isDarwin ''
       # The darwin stdenv links C code against darwin.libiconv, whose install
@@ -236,7 +223,7 @@ stdenv.mkDerivation {
   '';
 
   # Prebuilt addons that omp bun-installs into its cache at first use
-  # (onnxruntime-node, sherpa-onnx-node, sharp) are process.dlopen'd and
+  # (onnxruntime-node, sharp) are process.dlopen'd and
   # need libstdc++.so.6 / libgcc_s.so.1, which nix glibc's default loader path lacks;
   # their own DT_RUNPATH means this executable's RPATH is never consulted for their
   # dependencies, so only LD_LIBRARY_PATH resolves them. The agent injects this value

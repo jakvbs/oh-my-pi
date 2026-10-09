@@ -175,8 +175,6 @@ export type SymbolKey =
 	| "cmd.hammer"
 	| "cmd.power"
 	| "cmd.cart"
-	// STT
-	| "icon.mic"
 	// Compaction divider
 	| "icon.camera"
 	// Thinking Levels
@@ -379,7 +377,6 @@ export type SlashCommandIconName =
 	| "host"
 	| "package"
 	| "fast"
-	| "voice"
 	| "tools"
 	| "rule"
 	| "skill"
@@ -556,8 +553,6 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"cmd.hammer": "🔨",
 	"cmd.power": "⏻",
 	"cmd.cart": "🛒",
-	// STT
-	"icon.mic": "🎤",
 	// Compaction divider
 	"icon.camera": "📷",
 	// Thinking levels
@@ -1010,8 +1005,6 @@ const NERD_SYMBOLS: SymbolMap = {
 	"cmd.power": "\uf011",
 	// pick:  (nf-fa-shopping_cart) | alt: 󰄋 (nf-md-cart)
 	"cmd.cart": "\uf07a",
-	// STT - fa-microphone
-	"icon.mic": "\uf130",
 	// Compaction divider - fa-camera-retro
 	"icon.camera": "\uf083",
 	// Thinking levels — increasing circle slices, with fire reserved for max.
@@ -1334,8 +1327,6 @@ const ASCII_SYMBOLS: SymbolMap = {
 	"cmd.hammer": "",
 	"cmd.power": "",
 	"cmd.cart": "",
-	// STT
-	"icon.mic": "MIC",
 	// Compaction divider
 	"icon.camera": "[o]",
 	// Thinking Levels

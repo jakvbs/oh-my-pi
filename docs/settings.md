@@ -391,8 +391,6 @@ modelRoles:
   # Model-kind workloads
   image: openai/gpt-image-2
   web: web/duckduckgo
-  speech: local/kokoro
-  dictation: local/parakeet-tdt-0.6b-v3
   judge: typesafe/jev-latest
 
 retry:
@@ -403,8 +401,6 @@ retry:
       - web/perplexity
       - web/exa
       - web/firecrawl
-    speech: []
-    dictation: []
     judge:
       - typesafe/jev-preview
       - "@tiny"
@@ -424,7 +420,7 @@ enabledModels:
   - claude-sonnet-4-5
 ```
 
-Built-in chat roles are `default`, `smol`, `slow`, `vision`, `plan`, `commit`, `tiny`, `task`, and `advisor`. The `tiny` role accepts both `tiny` catalog models and ordinary chat models. Built-in model-kind roles are `image`, `web`, `speech`, `dictation`, and `judge`; they select image, search/grounded-chat, TTS, STT, and judgment runners respectively. `judge` also accepts tiny and chat models, which is why aliases such as `@tiny` are valid fallbacks. Catalog kinds are `chat`, `tiny`, `image`, `tts`, `stt`, `search`, and `judge`; a custom model with no `kind` remains a chat model.
+Built-in chat roles are `default`, `smol`, `slow`, `vision`, `plan`, `commit`, `tiny`, `task`, and `advisor`. The `tiny` role accepts both `tiny` catalog models and ordinary chat models. Built-in model-kind roles are `image`, `web`, and `judge`; they select image, search/grounded-chat, and judgment runners respectively. `judge` also accepts tiny and chat models, which is why aliases such as `@tiny` are valid fallbacks. Catalog kinds are `chat`, `tiny`, `image`, `tts`, `stt`, `search`, and `judge`; a custom model with no `kind` remains a chat model.
 
 Open `/model` and enter the **Roles** view to assign roles and edit their fallback rows. Chat roles and model-kind roles appear in separate capability sections, and the picker filters assignments to models accepted by the selected role. List the same catalog directly with `omp models --kind chat`, `omp models --kind tiny`, `omp models --kind image`, `omp models --kind tts`, `omp models --kind stt`, `omp models --kind search`, or `omp models --kind judge`; use `--kind all` for everything.
 
@@ -434,7 +430,7 @@ For one-shot searches, `omp search`, `omp q`, and `omp web-search` accept a cata
 
 Image selection likewise uses full catalog model selectors, not provider names: set `modelRoles.image`, its fallback chain, or the `generate_image` request's optional `model`. OpenRouter image models run through OpenRouter's native images API.
 
-Existing configs are migrated automatically when loaded. Retired backend selectors under `providers` (`webSearch`, `webSearchOrder`, `webSearchExclude`, `webSearchGeminiModel`, `image`, `imageOrder`, `tts`, `judgmentProvider`, `autoThinkingModel`, `unexpectedStopModel`, `tinyModel`, and `memoryModel`) are translated where applicable into `modelRoles` and `retry.fallbackChains`, then removed. The retired `tts.localModel` key is removed (Kokoro is the canonical local TTS model), and `stt.modelName` values are migrated to a canonical `modelRoles.dictation` selector before removal. Other service controls—devices, dtypes, voices, timeouts, and `live.*` behavior—remain ordinary settings.
+Existing configs are migrated automatically when loaded. Retired backend selectors under `providers` (`webSearch`, `webSearchOrder`, `webSearchExclude`, `webSearchGeminiModel`, `image`, `imageOrder`, `tts`, `judgmentProvider`, `autoThinkingModel`, `unexpectedStopModel`, `tinyModel`, and `memoryModel`) are translated where applicable into `modelRoles` and `retry.fallbackChains`, then removed. The retired `tts.localModel` and `stt.modelName` keys are removed. Other service controls such as devices, dtypes, and timeouts remain ordinary settings.
 
 | Key                    | Type    | Default                     | Notes                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------- | ------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -851,7 +847,7 @@ The `cost` segment shows recorded session costs. For an active provider/model wi
 
 ### Providers and services
 
-Model/backend ordering for image generation, web search, speech, dictation, and judgments is configured through the corresponding `modelRoles` and `retry.fallbackChains` entries in [Models](#models). This section contains transport and service behavior that remains independent of model selection.
+Model/backend ordering for image generation, web search, and judgments is configured through the corresponding `modelRoles` and `retry.fallbackChains` entries in [Models](#models). This section contains transport and service behavior that remains independent of model selection.
 
 ```yaml
 providers:
@@ -870,20 +866,6 @@ providers:
 provider:
   appendOnlyContext: auto # auto, on, off
 
-tts:
-  localVoice: af_heart
-  localSpeed: 1
-
-speech:
-  enabled: false
-  voice: af_heart
-  speed: 1
-
-stt:
-  enabled: false
-  language: en
-  submitTrigger: never
-
 exa:
   enabled: true
   searchDelayMs: 1000
@@ -900,13 +882,6 @@ searxng:
 | `providers.tinyModelDevice`         | enum    | `default` | ONNX execution provider, or `mlx` (Apple silicon, via mlx-lm), for local tiny models. Overridden by `PI_TINY_DEVICE`.                                                                                                                                                                                                                                                                                                                                                         |
 | `providers.maxInFlightRequests`     | record  | `{}`      | Positive per-provider concurrency limits for LLM HTTP requests, shared across local `omp` processes using the same config root. Omitted providers are unlimited. `omp config set` rejects non-positive or non-numeric values.                                                                                                                                                                                                          |
 | `providers.tinyModelDtype`          | enum    | `default` | ONNX precision for local tiny models. Overridden by `PI_TINY_DTYPE`.                                                                                                                                                                                                                                                                                                                                                                   |
-| `tts.localVoice`                    | enum    | `af_heart` | Voice used by the local Kokoro TTS runner. Available local voices remain configurable independently of `modelRoles.speech`.                                                                                                                                                                                                                                                                                                           |
-| `tts.localSpeed`                    | number  | `1`       | Speaking rate of the local Kokoro TTS runner (`tts` tool, `omp say`). `1` is normal; values are clamped to `0.5`–`2.5`.                                                                                                                                                                                                                                                                                                              |
-| `speech.voice`                      | enum    | `af_heart` | Kokoro voice used when assistant-output vocalization is enabled.                                                                                                                                                                                                                                                                                                                                                                     |
-| `speech.speed`                      | number  | `1`       | Speaking rate for assistant-output vocalization. `1` is normal; values are clamped to `0.5`–`2.5`.                                                                                                                                                                                                                                                                                                                                   |
-| `stt.enabled`                       | boolean | `false`   | Enable microphone speech-to-text; choose the recognition model with `modelRoles.dictation`.                                                                                                                                                                                                                                                                                                                                           |
-| `stt.language`                      | string  | `en`      | Source language hint for speech-to-text.                                                                                                                                                                                                                                                                                                                                                                                               |
-| `stt.submitTrigger`                 | enum    | `never`   | When completed dictation auto-submits: `never`, `release`, `release-complete`, or `say-submit`.                                                                                                                                                                                                                                                                                                                                        |
 | `providers.openaiWebsockets`        | enum    | `auto`    | `auto`, `off`, `on`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `providers.streamFirstEventTimeoutSeconds` | number | `-1` | First stream-event watchdog: `-1` uses provider/env defaults, `0` disables, positive values set seconds. |
 | `providers.streamIdleTimeoutSeconds` | number | `-1` | Maximum silence between stream events, with the same `-1`/`0` conventions. |
@@ -941,8 +916,8 @@ When a usage refresh detects an eligible banked reset expiring within the next *
 Every schema path not individually tabulated in this catalog is explicitly deferred to `omp config list`. Additional groups include:
 
 - Agent behavior and safety: `ask.*`, `dev.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `task.*`, `tools.*`, and `vault.*`.
-- Execution and content: `commit.*`, `completion.*`, `edit.*`, `error.*`, `extensionHandlers.*`, `generate_image.*`, `git.*`, `images.*`, `live.*`, `paste.*`, `power.*`, `read.*`, `shellMinimizer.*`, `speech.*`, `terminal.*`, and `title.*`.
-- Interface and startup: `composer.*`, `display.*`, `input.*`, `marketplace.*`, `spelling.*`, `statusLine.*`, `startup.*`, `stt.*`, `tui.*`, `ttsr.*`, and `update.*`.
+- Execution and content: `commit.*`, `completion.*`, `edit.*`, `error.*`, `extensionHandlers.*`, `generate_image.*`, `git.*`, `images.*`, `paste.*`, `power.*`, `read.*`, `shellMinimizer.*`, `terminal.*`, and `title.*`.
+- Interface and startup: `composer.*`, `display.*`, `input.*`, `marketplace.*`, `spelling.*`, `statusLine.*`, `startup.*`, `tui.*`, `ttsr.*`, and `update.*`.
 - Discovery, sharing, and auth: `auth.*`, `browser.*`, `claudeResets.*`, `codexResets.*`, `commands.*`, `gc.*`, `ida.*`, `mcp.*`, `share.*`, `skills.*`, `stream.*`, and `telemetry.*`.
 - Ungrouped keys: `setupVersion`, `proseOnlyThinking`, `omitThinking`, `externalThinking`, `includeWorkspaceTree`, `autocompleteMaxVisible`, `emojiAutocomplete`, `disabledExtensions`, `inlineToolDescriptors`, and `treeFilterMode`.
 

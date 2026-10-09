@@ -5,32 +5,27 @@ This document covers the on-device models in the `local` catalog and records the
 ```yaml
 modelRoles:
   tiny: local/lfm2.5-230m
-  speech: local/kokoro
-  dictation: local/parakeet-tdt-0.6b-v3
   # A local tiny model may also serve typed judgments:
   judge: local/lfm2-1.2b
 
 retry:
   fallbackChains:
     tiny: []
-    speech: []
-    dictation: []
     judge: []
 ```
 
-An explicit empty chain keeps each workload local. Leaving a model-kind chain unset instead uses that role's built-in priority list. The `default` fallback chain does not apply to `speech`, `dictation`, or `judge`.
+An explicit empty chain keeps each workload local. Leaving a model-kind chain unset instead uses that role's built-in priority list. The `default` fallback chain does not apply to `judge`.
 
-Inspect the catalog with `omp models --kind tiny`, `omp models --kind tts`, and `omp models --kind stt`. Download tiny models with `omp tiny-models list`, `omp tiny-models download <model-id>`, or `omp tiny-models download all`. Run `omp setup speech` to choose, persist, and download the local speech and dictation models selected by their roles.
+Inspect the catalog with `omp models --kind tiny`. Download tiny models with `omp tiny-models list`, `omp tiny-models download <model-id>`, or `omp tiny-models download all`.
 
 The tiny-model CLI and source registry retain **title** and **memory** groupings because those are the workloads used to benchmark and recommend model sizes. They are not runtime model classes: every entry in both groups has catalog kind `tiny`, and any compatible entry can be assigned to `tiny`, `memory`, or `judge`. Choose based on quality and resource needs rather than the CLI grouping alone.
 
 ## Runtime / environment findings
 
-- **Text/Whisper stack**: `@huggingface/transformers` (transformers.js) v4 running in a Bun
-  worker, using the native `onnxruntime-node` backend by default. Kokoro uses a separate
-  `kokoro-js` side runtime in an isolated worker; Parakeet uses `sherpa-onnx-node`.
+- **Text stack**: `@huggingface/transformers` (transformers.js) v4 running in a Bun
+  worker, using the native `onnxruntime-node` backend by default.
 - **Non-FHS distros (NixOS, and any host without `libstdc++.so.6` on the loader path)**: the
-  on-demand `onnxruntime-node` / `sherpa-onnx-node` / `sharp` addons are prebuilt binaries that
+  on-demand `onnxruntime-node` / `sharp` addons are prebuilt binaries that
   `dlopen` `libstdc++.so.6` and `libgcc_s.so.1`, and they carry their own `DT_RUNPATH`, so nothing in
   the omp executable's own RPATH can resolve them. Set `OMP_NATIVE_LIBRARY_PATH` to the
   colon-separated directories holding those libraries; omp appends it to `LD_LIBRARY_PATH` for the
@@ -132,34 +127,9 @@ The tiny-model CLI and source registry retain **title** and **memory** groupings
 **Shipped local options**: `lfm2.5-230m`, `lfm2.5-350m`, `falcon-h1-90m`.
 When `modelRoles.tiny` is unset, title generation resolves its built-in online role path; no local weights are downloaded automatically. A local primary is an explicit no-billing boundary: if its worker fails or returns no title, the session stays untitled instead of falling through to an online model. The default download for a bare `omp tiny-models` command is `lfm2.5-230m`.
 
-## Local speech and dictation models
-
-The `speech` role accepts TTS catalog models and the `dictation` role accepts STT catalog models. `omp setup speech` offers the local entries accepted by those roles, persists the selected `modelRoles.speech` and `modelRoles.dictation` values, and downloads their model/runtime files.
-
-### Text to speech
-
-| Selector       | Repository                                | Precision | Download | Notes                                  |
-| -------------- | ----------------------------------------- | --------- | -------- | -------------------------------------- |
-| `local/kokoro` | `onnx-community/Kokoro-82M-v1.0-ONNX`    | q8        | ~100 MB  | 24 kHz Kokoro-82M, fully local ONNX TTS |
-
-Kokoro voice selection remains independent of the model role. Set `tts.localVoice` for the `tts` tool and `speech.voice` for assistant-output vocalization. Available local voice ids are `af_heart` (default), `af_bella`, `af_nicole`, `af_aoede`, `af_kore`, `af_sarah`, `am_michael`, `am_fenrir`, `am_puck`, `bf_emma`, `bm_george`, and `bm_fable`. Changing voices does not download another model. Speaking rate is likewise split: `tts.localSpeed` for the `tts` tool and `omp say`, `speech.speed` for vocalization (both default `1`, clamped to `0.5`–`2.5`).
-
-### Speech to text
-
-Use these canonical catalog model ids:
-
-| Selector                         | Repository                                                    | Runtime / precision | Download | Notes                                      |
-| -------------------------------- | ------------------------------------------------------------- | ------------------- | -------- | ------------------------------------------ |
-| `local/whisper-base`             | `onnx-community/whisper-base`                                 | transformers.js q8  | ~60 MB   | Smallest multilingual Whisper option       |
-| `local/whisper-small`            | `onnx-community/whisper-small`                                | transformers.js q8  | ~190 MB  | Balanced multilingual Whisper option       |
-| `local/whisper-large-v3-turbo`   | `onnx-community/whisper-large-v3-turbo`                       | transformers.js q4  | ~600 MB  | Whisper large-v3-turbo, 99 languages       |
-| `local/parakeet-tdt-0.6b-v3`     | `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8`      | sherpa-onnx int8    | ~680 MB  | Default; fast multilingual Parakeet TDT v3 |
-
-Kokoro and the transformers.js Whisper models read `providers.tinyModelDevice` / `PI_TINY_DEVICE` and `providers.tinyModelDtype` / `PI_TINY_DTYPE`; the default precision comes from each speech model's spec, not the text models' q4 default. Kokoro maps the device preference to its narrower CPU/WASM/WebGPU set. MLX is a text-model backend, so selecting it leaves speech inference on CPU. Parakeet uses its shipped sherpa-onnx int8 files. Keep `stt.language`, `stt.submitTrigger`, `tts.localVoice`, and the other speech/live settings for behavior; only model selection moved into roles.
-
 ## Integration notes
 
-- Local tiny inference for title or judgment workloads is selected with a `local/<model-id>` role assignment. An unset `tiny` role stays on its online default. Unset `speech` and `dictation` roles use their own built-in priority lists, whose first candidates are local.
-- Local inference runs **in a worker** (off the main thread); weights are downloaded only when a local candidate is used or explicitly prefetched with `omp tiny-models` or `omp setup speech`, then cached on disk.
+- Local tiny inference for title or judgment workloads is selected with a `local/<model-id>` role assignment. An unset `tiny` role stays on its online default.
+- Local inference runs **in a worker** (off the main thread); weights are downloaded only when a local candidate is used or explicitly prefetched with `omp tiny-models`, then cached on disk.
 - Session-title generation uses `modelRoles.tiny`.
 - Auto-thinking, Smart unexpected-stop detection, typed Eval judgments, and AI-assisted git staging use the `judge` role. Assign `typesafe/jev-latest` for TypeSafe or a compatible local tiny model for on-device judgment; order alternatives under `retry.fallbackChains.judge`.

@@ -293,12 +293,6 @@ export interface Component {
 	handleNativeEvent?(event: NativeUiEvent): void;
 
 	/**
-	 * Pure preflight for focused input that must precede TUI-wide input listeners
-	 * and debug shortcuts. A true result routes the event to this component first.
-	 */
-	capturesInput?(data: string): boolean;
-
-	/**
 	 * Optional handler for keyboard input when component has focus
 	 */
 	handleInput?(data: string): void;
@@ -2801,19 +2795,6 @@ export class TUI extends Container {
 		// key would make idle navigation pay a full frame of latency.
 		if (matchesKey(data, "ctrl+c") || matchesKey(data, "escape")) {
 			this.#inputRenderGraceUntilMs = this.#renderScheduler.now() + TUI.#INPUT_RENDER_GRACE_MS;
-		}
-
-		// A focused input owner can reserve its gesture before TUI-wide listeners
-		// and debug shortcuts see the key, then handle the raw event exactly once.
-		const focusedForCapture = this.#focusedComponent;
-		if (
-			focusedForCapture?.handleInput &&
-			(!isKeyRelease(data) || focusedForCapture.wantsKeyRelease) &&
-			focusedForCapture.capturesInput?.(data)
-		) {
-			focusedForCapture.handleInput(data);
-			this.requestRender();
-			return;
 		}
 
 		if (this.#inputListeners.size > 0) {

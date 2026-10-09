@@ -57,7 +57,6 @@ import type {
 	RenderSessionContextOptions,
 	ShowStatusOptions,
 } from "../../modes/types";
-import { extractVisibleAssistantText } from "../rpc/rpc-live";
 import { LAUNCH_COMPLETION_MESSAGE_TYPE } from "../../session/launch-completion";
 import {
 	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,
@@ -1389,7 +1388,12 @@ export class UiHelpers {
 		return undefined;
 	}
 
+	/** Visible assistant text: text blocks only, no thinking or tool calls. */
 	extractAssistantText(message: AssistantMessage): string {
-		return extractVisibleAssistantText(message);
+		let text = "";
+		for (const content of message.content) {
+			if (content.type === "text") text += content.text;
+		}
+		return text.trim();
 	}
 }

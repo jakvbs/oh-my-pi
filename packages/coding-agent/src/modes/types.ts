@@ -27,8 +27,6 @@ import type { HistoryStorage } from "../session/history-storage";
 import type { SessionContext } from "../session/session-context";
 import type { SessionManager } from "../session/session-manager";
 import type { ShakeMode } from "../session/shake-types";
-import type { DictationTarget } from "../stt";
-import type { SpaceHoldHandler } from "@oh-my-pi/pi-tui/space-hold";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import type { LspStartupServerInfo } from "../tools";
 import type { EventBus } from "../utils/event-bus";
@@ -451,12 +449,6 @@ export interface InteractiveModeContext {
 	handleWorktreeCommand(branch?: string, options?: { keepChanges?: boolean }): Promise<void>;
 	withBtwSessionMove(operation: () => Promise<boolean>): Promise<boolean>;
 	handleRenameCommand(title: string): Promise<void>;
-	handleSTTToggle(): Promise<void>;
-	/** Space-bar push-to-talk into `target`: a recognized hold starts dictation and its release stops
-	 *  it. Gated on `stt.enabled`, so a disabled STT leaves the space bar typing normally. */
-	dictationSpaceHold(target: DictationTarget): SpaceHoldHandler;
-	/** Start or stop the Codex-backed realtime voice session. */
-	handleLiveCommand(): Promise<void>;
 	/** Start a `/record` screen capture, or stop the running one. */
 	toggleRecording(): Promise<void>;
 	executeCompaction(

@@ -141,8 +141,6 @@ import type { ShakeMode } from "../session/shake-types";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES, buildTuiBuiltinSlashCommands } from "../slash-commands/builtin-registry";
 import { buildStaticInlineHint } from "../slash-commands/builtin-completions";
 import { formatCoarseDuration } from "@oh-my-pi/pi-tui/chrome/format";
-import { type DictationTarget, MicCursor, type SttCallbacks, STTController, type SttState } from "../stt";
-import type { SpaceHoldHandler } from "@oh-my-pi/pi-tui/space-hold";
 import { resolveCliEntryCmd } from "../subprocess/worker-client";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
 import { labelEchoesHandle } from "../task/label";
@@ -185,7 +183,6 @@ import {
 	setActiveTodoDescriptionsProvider,
 	todoMatchesAnyDescription,
 } from "@oh-my-pi/pi-tui/tools/todo";
-import { vocalizer } from "../tts/vocalizer";
 import { applyHyperlinkSetting, fileHyperlink } from "@oh-my-pi/pi-tui/render/hyperlink";
 import { renderTreeList } from "@oh-my-pi/pi-tui/render/tree-list";
 import { formatStartupChangelogSummary, type StartupChangelogSelection } from "../utils/changelog";
@@ -252,7 +249,6 @@ import { CommandController } from "./controllers/command-controller";
 import { EventController } from "./controllers/event-controller";
 import { ExtensionUiController } from "./controllers/extension-ui-controller";
 import { InputController } from "./controllers/input-controller";
-import { LiveCommandController } from "./controllers/live-command-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
 import { SelectorController } from "./controllers/selector-controller";
@@ -373,7 +369,6 @@ import { cfgGoalContinuationModes, cfgGoalEnabled } from "../goals/settings";
 import { goalContinuationActivity, goalFromModeData } from "../goals/state";
 import { cfgPlanDefaultOnStartup, cfgPlanEnabled } from "../plan-mode/settings";
 import { cfgStreamRedactPatterns } from "../stream/settings";
-import { cfgSttEnabled } from "../stt/settings";
 import { combine, type SettingValueOf } from "../config/registry";
 import { cfgAdvisorEnabled, cfgAdvisorMaxNotesPerUpdate } from "../advisor/settings";
 import { cfgTierAdvisor } from "../session/settings";
@@ -1495,7 +1490,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	readonly #omfgController: OmfgController;
 	readonly #commandController: CommandController;
 	readonly #todoCommandController: TodoCommandController;
-	readonly #liveCommandController: LiveCommandController;
 	readonly #eventController: EventController;
 	get eventController(): EventController {
 		return this.#eventController;
@@ -1608,8 +1602,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.pendingTools.clear();
 	}
 	readonly #uiHelpers: UiHelpers;
-	#sttController: STTController | undefined;
-	#micCursor: MicCursor | undefined;
 	#resizeHandler?: () => void;
 	#observerRegistry: SessionObserverRegistry;
 	/** Click override for the pinned jump-list density; undefined follows `display.pinnedAgents`. */
@@ -1843,7 +1835,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventController = new EventController(this);
 		this.#commandController = new CommandController(this);
 		this.#todoCommandController = new TodoCommandController(this);
-		this.#liveCommandController = new LiveCommandController(this);
 		this.#selectorController = new SelectorController(this);
 		this.#focusController = new SessionFocusController(this);
 		this.#inputController = new InputController(this);
@@ -2227,9 +2218,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.shutdownRequested || this.isShuttingDown) return;
 
 		// Restore mode from session (e.g. plan mode on resume)
-		this.session.setSessionBeforeSwitchReconciler?.(async () => {
-			await this.#liveCommandController.stop();
-		});
 		this.session.setSessionSwitchReconciler?.(() => this.#reconcileModeFromSession({ preserveActiveGoal: true }));
 		await logger.time("InteractiveMode.init:reconcileMode", () => this.#reconcileModeFromSession());
 
@@ -6272,22 +6260,15 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.loadingAnimation) {
 			this.#stopLoadingAnimation(false);
 		}
-		this.#micCursor?.dispose();
-		this.#micCursor = undefined;
 		// Stop the shared tool-spinner ticker: a live block missed by per-component
 		// stopAnimation would otherwise keep an 80ms interval pinning the process.
 		stopSharedSpinnerTicker();
-		this.#liveCommandController.dispose();
 		this.#downloadActivityHud.dispose();
 		this.#cancelTodoAutoClearTimer();
 		this.#cancelObserverUiSyncTimer();
 		this.#cancelGoalContinuation();
 		clearInterval(this.#jobsSheetTimer);
 		this.#jobsSheetTimer = undefined;
-		if (this.#sttController) {
-			this.#sttController.dispose();
-			this.#sttController = undefined;
-		}
 		this.#extensionUiController.clearExtensionTerminalInputListeners();
 		this.#extensionUiController.clearHookWidgets();
 		this.#extensionUiController.disposeComposerShapes();
@@ -6393,7 +6374,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#cancelLoopAutoSubmit();
 		try {
 			await this.session.abort();
-			await this.#liveCommandController.stop();
 		} catch (err) {
 			this.showWarning(err instanceof Error ? err.message : String(err));
 		}
@@ -6491,7 +6471,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#streamPublisher = undefined;
 			await this.#recorder?.stop();
 			this.#recorder = undefined;
-			await this.#liveCommandController.stop();
 			await this.#btwController.dispose();
 			this.#omfgController.dispose();
 			this.#focusController.dispose();
@@ -7254,61 +7233,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#commandController.handleRenameCommand(title);
 	}
 
-	async handleSTTToggle(): Promise<void> {
-		await this.#readySTTController()?.toggle(this.editor, this.#dictationCallbacks(this.editor));
-	}
-
-	dictationSpaceHold(target: DictationTarget): SpaceHoldHandler {
-		return {
-			enabled: () => cfgSttEnabled.get(settings),
-			onStart: () => void this.#readySTTController()?.start(target, this.#dictationCallbacks(target)),
-			onEnd: () => void this.#sttController?.stop(),
-		};
-	}
-
-	/** The speech-to-text controller, created on first use; undefined (after a warning) while live mode
-	 *  or a disabled STT rules dictation out. */
-	#readySTTController(): STTController | undefined {
-		if (this.#liveCommandController.active) {
-			this.showWarning("End live mode before using push-to-talk speech input.");
-			return undefined;
-		}
-		if (!cfgSttEnabled.get(settings)) {
-			this.showWarning("Speech-to-text is disabled. Enable it in settings: stt.enabled");
-			return undefined;
-		}
-		this.#sttController ??= new STTController({
-			settings: this.settings,
-			registry: this.session.modelRegistry,
-			getSessionId: () => this.session.sessionId,
-		});
-		return this.#sttController;
-	}
-
-	/** Callbacks for a capture dictating into `target`: the mic glyph replaces its cursor while the
-	 *  capture runs. */
-	#dictationCallbacks(target: DictationTarget): SttCallbacks {
-		return {
-			showWarning: (msg: string) => this.showWarning(msg),
-			showStatus: (msg: string) => this.showStatus(msg),
-			onStateChange: (state: SttState) => {
-				// Duck assistant speech while the user is talking (push-to-talk); restore after.
-				if (state === "recording") vocalizer.duck();
-				else vocalizer.unduck();
-				if (state === "recording") {
-					this.#micCursor?.dispose();
-					this.#micCursor = new MicCursor(this.ui, target);
-				} else if (state === "transcribing") {
-					this.#micCursor?.showTranscribing();
-				} else {
-					this.#micCursor?.dispose();
-					this.#micCursor = undefined;
-				}
-				this.ui.requestRender();
-			},
-		};
-	}
-
 	/** Start a `/record` screen capture, or stop the running one and report where it was saved. */
 	async toggleRecording(): Promise<void> {
 		const active = this.#recorder;
@@ -7340,15 +7264,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		this.statusLine.setRecording(true);
 		this.showStatus(`Recording to ${this.#recorder.path} · /record again to stop`);
-	}
-
-	/** Start or stop the Codex-backed realtime voice surface. */
-	async handleLiveCommand(): Promise<void> {
-		if (this.#sttController && this.#sttController.state !== "idle") {
-			this.showWarning("Finish the current speech-to-text capture before starting live mode.");
-			return;
-		}
-		await this.#liveCommandController.handleCommand();
 	}
 
 	async showDebugSelector(): Promise<void> {
