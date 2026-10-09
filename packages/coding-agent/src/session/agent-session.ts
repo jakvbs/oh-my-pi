@@ -487,7 +487,7 @@ import {
 	cfgThemeDark,
 	cfgThemeLight,
 } from "../modes/settings";
-import { cfgTaskBatch, cfgTaskDisabledAgents } from "../task/settings";
+import { cfgTaskBatch } from "../task/settings";
 import {
 	cfgBranchSummaryReserveTokens,
 	cfgExtendedContext,
@@ -899,7 +899,6 @@ export class AgentSession implements SettingsScope {
 	// Agent identity (registry id) used for IRC routing and job ownership.
 	#agentId: string | undefined;
 	#agentKind: "main" | "sub" = "main";
-	#scoutAllowedBySpawnPolicy = true;
 	#providerSessionId: string | undefined;
 	#freshProviderSessionId: string | undefined;
 	/** OAuth account pools enforced on this session's key lookups; lifted on dispose. */
@@ -2072,7 +2071,6 @@ export class AgentSession implements SettingsScope {
 		// replay-safe and transient provider errors after it stay retryable —
 		// same buffering contract print mode declares via setTextOutputCommitted.
 		this.#textOutputCommitted = this.#agentKind === "main";
-		this.#scoutAllowedBySpawnPolicy = config.scoutAllowedBySpawnPolicy ?? true;
 		this.#providerSessionId = config.providerSessionId;
 		this.#accountPoolScope = config.accountPoolScope;
 		this.#inheritedProviderPromptCacheKey =
@@ -6868,10 +6866,6 @@ export class AgentSession implements SettingsScope {
 		};
 	}
 
-	#isScoutAvailable(): boolean {
-		return this.#scoutAllowedBySpawnPolicy && !cfgTaskDisabledAgents.get(this.settings).includes("scout");
-	}
-
 	async #buildPlanModeMessage(): Promise<CustomMessage | null> {
 		const state = this.#planModeState;
 		if (!state?.enabled) return null;
@@ -6899,7 +6893,6 @@ export class AgentSession implements SettingsScope {
 			isHashlineEditMode: this.#resolveActiveEditMode() === "hashline",
 			reentry: state.reentry ?? false,
 			iterative: state.workflow === "iterative",
-			scoutAvailable: this.#isScoutAvailable(),
 		});
 
 		return {
@@ -7039,7 +7032,6 @@ export class AgentSession implements SettingsScope {
 			context ??= {
 				tools: this.getEnabledToolNames(),
 				taskBatch: cfgTaskBatch.get(this.settings),
-				scoutAvailable: this.#isScoutAvailable(),
 				evalTools: cfgEvalToolsEnabled.get(this.settings),
 			};
 			// A notice whose contract needs an inactive tool would demand an

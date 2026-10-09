@@ -7,10 +7,9 @@ import { getTaskSchema } from "@oh-my-pi/pi-coding-agent/task/types";
 import { oneLineLabel } from "@oh-my-pi/pi-tui/tools/task";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 
-// Contract: the task tool's wire shape is flat `{ name?, agent?, task, isolated? }`
-// (batch: `{ context, tasks[] }` of the same items). `agent` defaults to the
-// schema's spawn-policy default, and unknown keys sent by stale callers (`role`,
-// `description`) are stripped by the schema's `+: "delete"` — never rejected.
+// Contract: the task tool's wire shape is flat `{ name?, agent, task, isolated? }`
+// (batch: `{ context, tasks[] }` of the same items). Only an explicit spawn-policy
+// default makes `agent` optional. Unknown stale keys are stripped, not rejected.
 
 describe("oneLineLabel", () => {
 	it("returns short text unchanged", () => {
@@ -59,12 +58,9 @@ describe("task wire schema", () => {
 		}
 	});
 
-	it("defaults a missing agent to 'task'", () => {
+	it("rejects a missing agent without a spawn-policy default", () => {
 		const parsed = taskSchema({ task: "x", solutionSpace: "c" });
-		expect(parsed instanceof type.errors).toBe(false);
-		if (!(parsed instanceof type.errors)) {
-			expect(parsed.agent).toBe("task");
-		}
+		expect(parsed instanceof type.errors).toBe(true);
 	});
 
 	it("deletes stale caller keys (role, description) instead of rejecting", () => {
@@ -83,12 +79,14 @@ describe("task wire schema", () => {
 		}
 	});
 
-	it("defaults batch item agents to 'task' on the fast path and keeps names", () => {
+	it("requires an agent on every batch item on the fast path", () => {
 		const batch = getTaskSchema({ isolationEnabled: false, batchEnabled: true });
+		const parsed = batch({ context: "ctx", tasks: [{ name: "DbMigrator", task: "x", solutionSpace: "c" }] });
+		expect(parsed instanceof type.errors).toBe(true);
 		const items = parsedItems(
-			batch({ context: "ctx", tasks: [{ name: "DbMigrator", task: "x", solutionSpace: "c" }] }),
+			batch({ context: "ctx", tasks: [{ agent: "worker", name: "DbMigrator", task: "x", solutionSpace: "c" }] }),
 		);
-		expect(items[0]?.agent).toBe("task");
+		expect(items[0]?.agent).toBe("worker");
 		expect(items[0]?.name).toBe("DbMigrator");
 	});
 
@@ -110,7 +108,10 @@ describe("task wire schema", () => {
 	it("deletes stale keys from batch items", () => {
 		const batch = getTaskSchema({ isolationEnabled: false, batchEnabled: true });
 		const items = parsedItems(
-			batch({ context: "ctx", tasks: [{ task: "x", solutionSpace: "c", role: "DB migration specialist" }] }),
+			batch({
+				context: "ctx",
+				tasks: [{ agent: "worker", task: "x", solutionSpace: "c", role: "DB migration specialist" }],
+			}),
 		);
 		const item = items[0] ?? {};
 		expect("role" in item).toBe(false);

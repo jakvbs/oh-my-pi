@@ -19,20 +19,12 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { countTokens, Encoding } from "@oh-my-pi/pi-natives";
 import { prompt } from "@oh-my-pi/pi-utils";
-import { loadBundledAgents } from "../packages/coding-agent/src/task/agents";
-import { isReadOnlyAgent } from "../packages/coding-agent/src/task/read-only-policy";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const TOOL_PROMPT_DIR = path.join(REPO_ROOT, "packages/coding-agent/src/prompts/tools");
 const DEFAULT_READ_LIMIT = "300";
 const DEFAULT_MAX_LINES = "3000";
 const DEFAULT_MAX_CONCURRENCY = 32;
-
-interface AgentPromptRow {
-	name: string;
-	description: string;
-	readOnly: boolean;
-}
 
 interface PromptEstimate {
 	path: string;
@@ -115,14 +107,6 @@ async function collectPromptPaths(positionals: readonly string[]): Promise<strin
 	return Array.from(new Set(files)).sort((a, b) => relativePath(a).localeCompare(relativePath(b)));
 }
 
-function bundledAgents(): AgentPromptRow[] {
-	return loadBundledAgents().map(agent => ({
-		name: agent.name,
-		description: agent.description,
-		readOnly: isReadOnlyAgent(agent),
-	}));
-}
-
 function renderContext(): Record<string, unknown> {
 	return {
 		DEFAULT_LIMIT: DEFAULT_READ_LIMIT,
@@ -131,8 +115,8 @@ function renderContext(): Record<string, unknown> {
 		IS_HL_MODE: true,
 		IS_LINE_NUMBER_MODE: false,
 		MAX_CONCURRENCY: DEFAULT_MAX_CONCURRENCY,
-		agentName: "task",
-		agents: bundledAgents(),
+		agentName: "example",
+		agents: [],
 		asyncEnabled: true,
 		autoBackgroundEnabled: false,
 		autoBackgroundThresholdSeconds: 60,

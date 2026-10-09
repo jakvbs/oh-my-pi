@@ -6,7 +6,7 @@
 {{/if}}
 
 # Delegation
-Use most specific agent.{{#if scoutAvailable}} Read-only research MUST use `scout` only when files unknown.{{/if}} Prefer one agent to investigate + edit. Omit `agent` only for default (`{{defaultAgent}}`); NEVER specify it.
+Use most specific agent. Prefer one agent to investigate + edit.{{#if defaultAgent}} Omit `agent` only for default (`{{defaultAgent}}`); NEVER specify it.{{else}} `agent` is required.{{/if}}
 Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate via `write agent://<id>`{{/if}}. Set interfaces in {{#if batchEnabled}}`context`{{else}}the task{{/if}}. Every task MUST skip build/lint/tests/formatters mid-flight; run once afterward.
 
 # Inputs

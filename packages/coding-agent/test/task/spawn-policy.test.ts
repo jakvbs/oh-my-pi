@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "../../src/config/settings";
 import * as taskDiscovery from "../../src/task/discovery";
 import { TaskTool } from "../../src/task/index";
-import { isScoutSpawnable } from "../../src/task/spawn-policy";
 import type { AgentDefinition } from "../../src/task/types";
 import { getTaskSchema } from "../../src/task/types";
 import type { ToolSession } from "../../src/tools";
@@ -18,7 +17,7 @@ const oracleAgent = {
 	name: "oracle",
 	description: "Answer hard questions.",
 	systemPrompt: "Answer hard questions.",
-	source: "bundled",
+	source: "user",
 } satisfies AgentDefinition;
 
 function makeSession(spawns: string): ToolSession {
@@ -62,71 +61,37 @@ describe("task spawn policy surfaces", () => {
 	});
 });
 
-describe("isScoutSpawnable", () => {
-	it("is true with no disabled agents and unrestricted spawns", () => {
-		expect(isScoutSpawnable(undefined, "*")).toBe(true);
-		expect(isScoutSpawnable([], "*")).toBe(true);
-	});
-
-	it("is false when scout is disabled via task.disabledAgents", () => {
-		expect(isScoutSpawnable(["scout"], "*")).toBe(false);
-		expect(isScoutSpawnable(["scout", "reviewer"], "*")).toBe(false);
-	});
-
-	it("is false when spawning is disabled", () => {
-		expect(isScoutSpawnable(undefined, false)).toBe(false);
-		expect(isScoutSpawnable(undefined, "")).toBe(false);
-	});
-
-	it("is false when scout is not in the allowed spawn list", () => {
-		expect(isScoutSpawnable(undefined, "reviewer")).toBe(false);
-	});
-
-	it("is true when scout is in the allowed spawn list", () => {
-		expect(isScoutSpawnable(undefined, "scout,reviewer")).toBe(true);
-		expect(isScoutSpawnable(["reviewer"], "scout")).toBe(true);
-	});
-});
-
-describe("task tool description scout gating", () => {
+describe("task tool without a default agent", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	async function renderDescription(disabledScout: boolean): Promise<string> {
+	it("requires an explicit agent in the unrestricted description", async () => {
 		vi.spyOn(taskDiscovery, "discoverAgents").mockResolvedValue({
-			agents: [
-				{ name: "scout", description: "Read-only scout.", systemPrompt: "Scout.", source: "bundled" },
-				{ name: "reviewer", description: "Reviewer.", systemPrompt: "Review.", source: "bundled" },
-			],
+			agents: [factFinderAgent],
 			projectAgentsDir: null,
 		});
-		const settings = Settings.isolated({
-			"async.enabled": false,
-			"task.batch": true,
-			"task.isolation.enabled": false,
-			...(disabledScout ? { "task.disabledAgents": ["scout"] } : {}),
-		});
-		const tool = await TaskTool.create({
-			cwd: process.cwd(),
-			hasUI: false,
-			settings,
-			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
-		} as unknown as ToolSession);
-		return tool.description;
-	}
 
-	it("mentions scout in the task description when scout is enabled", async () => {
-		expect(await renderDescription(false)).toContain("scout");
+		const tool = await TaskTool.create(makeSession("*"));
+
+		expect(tool.description).toContain("`agent` is required.");
+		expect(tool.description).not.toContain("Omit `agent` only for default");
 	});
 
-	it("omits every scout reference from the task description when scout is disabled", async () => {
-		const description = await renderDescription(true);
-		expect(description).not.toContain("scout");
-		// The read-only agent remains listed as an available agent (the spawn
-		// policy only filters disabledAgents, so reviewer stays); only the
-		// hard-coded scout guidance is dropped.
-		expect(description).toContain("- `reviewer`: Reviewer.");
+	it("rejects a spawn without an agent and lists the available agents", async () => {
+		vi.spyOn(taskDiscovery, "discoverAgents").mockResolvedValue({
+			agents: [factFinderAgent],
+			projectAgentsDir: null,
+		});
+
+		const tool = await TaskTool.create(makeSession("*"));
+		const result = await tool.execute("tc", {
+			context: "shared",
+			tasks: [{ name: "First", task: "check", solutionSpace: "c" }],
+		});
+		const text = result.content.find(part => part.type === "text")?.text ?? "";
+
+		expect(text).toContain("Missing agent: specify which agent to spawn.");
+		expect(text).toContain("Available: fact-finder.");
 	});
 });

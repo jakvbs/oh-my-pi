@@ -182,8 +182,6 @@ export interface AgentSessionConfig {
 	additionalExtensionPaths?: readonly string[];
 	/** Mirror of `disableExtensionDiscovery`; used when no inherited root provider exists. */
 	disableExtensionDiscovery?: boolean;
-	/** Whether the session spawn policy permits the read-only `scout` subagent. Defaults to true. */
-	scoutAllowedBySpawnPolicy?: boolean;
 	/** Whether the caller explicitly requested yolo/auto-approve behavior for this session. */
 	autoApprove?: boolean;
 	/** User-authorized model agents inherited from the parent session for nested delegation. */

@@ -3,12 +3,9 @@ import * as path from "node:path";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import { logger } from "@oh-my-pi/pi-utils";
 import { ADVISOR_TRANSCRIPT_FILENAME, isAdvisorTranscriptName } from "../advisor/transcript-recorder";
-import { resolveExplicitModelRole } from "../config/model-resolver";
 import { assistantTurnProducedOutput } from "../session/messages";
 import { EPHEMERAL_MODEL_CHANGE_ROLE } from "../session/session-entries";
 import { visitEntriesFromFileStream } from "../session/session-loader";
-import { loadBundledAgents } from "../task/agents";
-import { isReadOnlyAgent } from "../task/read-only-policy";
 import {
 	type AgentHistorySummary,
 	type AgentMetricsSummary,
@@ -72,22 +69,6 @@ function summarizePersistedTask(task: string): string | undefined {
 
 function finiteNumber(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function inferBundledAgent(systemPrompt: string): { agent?: string; modelRole?: string; readOnly?: boolean } {
-	const matches = loadBundledAgents().filter(agent => {
-		const rolePrompt = agent.systemPrompt.trim();
-		return rolePrompt.length > 0 && systemPrompt.includes(rolePrompt);
-	});
-	// `task` and `sonic` intentionally share a prompt body. Ambiguous historical
-	// prompts stay unlabelled rather than inventing provenance.
-	if (matches.length !== 1) return {};
-	const [agent] = matches;
-	return {
-		agent: agent.name,
-		modelRole: resolveExplicitModelRole(agent.model),
-		readOnly: isReadOnlyAgent(agent),
-	};
 }
 
 function usageTokens(usage: Record<string, unknown>): number {
@@ -340,18 +321,12 @@ async function readPersistedAgentMetadata(
 				hasSessionInit = true;
 				createdAt ??= timestampOf(record.timestamp);
 				if (typeof record.task === "string") activity = summarizePersistedTask(record.task);
-				const systemPrompt = Array.isArray(record.systemPrompt)
-					? record.systemPrompt.join("\n\n")
-					: record.systemPrompt;
-				const inferred = typeof systemPrompt === "string" ? inferBundledAgent(systemPrompt) : {};
 				history = {
 					...history,
-					...inferred,
-					agent: typeof record.agent === "string" ? record.agent : inferred.agent,
-					modelRole:
-						typeof record.modelRole === "string" ? record.modelRole : (history.modelRole ?? inferred.modelRole),
+					agent: typeof record.agent === "string" ? record.agent : undefined,
+					modelRole: typeof record.modelRole === "string" ? record.modelRole : history.modelRole,
 					resolvedModel: typeof record.resolvedModel === "string" ? record.resolvedModel : history.resolvedModel,
-					readOnly: typeof record.readOnly === "boolean" ? record.readOnly : inferred.readOnly,
+					readOnly: typeof record.readOnly === "boolean" ? record.readOnly : undefined,
 				};
 				return false;
 			},

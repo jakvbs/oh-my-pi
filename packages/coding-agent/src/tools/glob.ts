@@ -9,7 +9,6 @@ import { InternalUrlFilesystem, type UrlFileStat } from "../internal-urls/url-fi
 import globDescription from "../prompts/tools/glob.md" with { type: "text" };
 import { truncateHead } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { sessionDelegationBias } from "../task/prompt-policy";
-import { isScoutSpawnable } from "../task/spawn-policy";
 import type { ToolSession } from ".";
 import { resolveToolTier } from "./approval";
 import { isFindEnabled } from "./jfind";
@@ -28,8 +27,6 @@ import { toPathList } from "@oh-my-pi/pi-tui/render/render-utils";
 import { ToolAbortError, throwIfAborted } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { toolResult } from "./tool-result";
-
-import { cfgTaskDisabledAgents } from "../task/settings";
 
 const findSchema = type({
 	"path?": "string",
@@ -122,14 +119,10 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	get description(): string {
 		const hasFind = this.session.isToolActive?.("find") ?? isFindEnabled(this.session);
 		const eagerDelegation = sessionDelegationBias(this.session) === "eager";
-		const scoutAvailable = isScoutSpawnable(
-			cfgTaskDisabledAgents.get(this.session.settings),
-			this.session.getSessionSpawns?.() ?? "*",
-		);
 		// Every render input is a boolean; pack them so repeat reads skip the template render.
-		const key = (hasFind ? 1 : 0) | (eagerDelegation ? 2 : 0) | (scoutAvailable ? 4 : 0);
+		const key = (hasFind ? 1 : 0) | (eagerDelegation ? 2 : 0);
 		if (key !== this.#descriptionKey) {
-			this.#description = prompt.render(globDescription, { hasFind, eagerDelegation, scoutAvailable });
+			this.#description = prompt.render(globDescription, { hasFind, eagerDelegation });
 			this.#descriptionKey = key;
 		}
 		return this.#description;

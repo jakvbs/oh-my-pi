@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; unrestricted task and eval spawns now require an explicit agent name.
+
 ### Added
 
 - Added OSC 7501 program status reporting: terminals and agent inboxes that support it now show whether omp is working, waiting on your answer or approval (with the question), done, or failed (with the error), without parsing the window title. Turn it off with `terminal.programStatus`.

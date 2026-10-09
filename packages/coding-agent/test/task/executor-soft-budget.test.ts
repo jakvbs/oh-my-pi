@@ -14,7 +14,7 @@ import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession, AgentSessionEvent, PromptOptions } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { CustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { buildBudgetNotice, resolveSoftRequestBudget, runSubprocess } from "@oh-my-pi/pi-coding-agent/task/executor";
+import { buildBudgetNotice, runSubprocess } from "@oh-my-pi/pi-coding-agent/task/executor";
 import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@oh-my-pi/pi-coding-agent/task/types";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
@@ -660,27 +660,5 @@ describe("runSubprocess soft request budget", () => {
 		expect(receipt.outcome).toBe("failed");
 		expect(receipt.error).toMatch(/hard-aborted/);
 		expect(receipt.error).toMatch(new RegExp(`history://${id}`));
-	});
-});
-
-describe("resolveSoftRequestBudget", () => {
-	it("lets a configured budget lower a bundled agent's ceiling", () => {
-		expect(resolveSoftRequestBudget("scout", 20)).toBe(20);
-		expect(resolveSoftRequestBudget("sonic", 20)).toBe(20);
-	});
-
-	it("keeps the bundled ceiling when the configured budget is higher", () => {
-		expect(resolveSoftRequestBudget("scout", 200)).toBe(100);
-		expect(resolveSoftRequestBudget("sonic", 200)).toBe(100);
-	});
-
-	it("uses the configured budget for agents without a bundled entry", () => {
-		expect(resolveSoftRequestBudget("task", 20)).toBe(20);
-	});
-
-	it("keeps 0 disabled and normalizes negative or fractional budgets", () => {
-		expect(resolveSoftRequestBudget("scout", 0)).toBe(0);
-		expect(resolveSoftRequestBudget("scout", -5)).toBe(0);
-		expect(resolveSoftRequestBudget("scout", 20.9)).toBe(20);
 	});
 });

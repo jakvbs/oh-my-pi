@@ -56,8 +56,18 @@ function isEvalAgentResult(value: unknown): value is EvalAgentResult {
 	);
 }
 
-async function runEvalAgentAndWait(args: unknown, options: EvalAgentBridgeOptions): Promise<EvalAgentResult> {
-	const handle = await runEvalAgent(args, options);
+/** Unrestricted sessions have no default agent; tests that omit `agent` target the `task` fixture. */
+function withTaskAgent(args: unknown): unknown {
+	if (args === null || typeof args !== "object" || "agent" in args) return args;
+	return { agent: "task", ...args };
+}
+
+async function runEvalAgentAndWait(
+	args: unknown,
+	options: EvalAgentBridgeOptions,
+	{ defaultAgent = true }: { defaultAgent?: boolean } = {},
+): Promise<EvalAgentResult> {
+	const handle = await runEvalAgent(defaultAgent ? withTaskAgent(args) : args, options);
 	const waited = await runEvalWait({ items: [{ kind: "agent", id: handle.id }] }, options);
 	const snapshot = waited.items[0];
 	if (!snapshot || snapshot.status === "running") throw new Error(`Agent handle ${handle.id} did not settle`);
@@ -189,7 +199,7 @@ describe("runEvalAgent", () => {
 		jobManagers.clear();
 	});
 
-	it("resolves the default task agent and agent overrides", async () => {
+	it("requires an explicit agent under unrestricted spawning and resolves overrides", async () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options =>
 			singleResult(options, {
@@ -198,13 +208,14 @@ describe("runEvalAgent", () => {
 		);
 		const session = makeSession();
 
-		const defaultResult = await runEvalAgentAndWait({ prompt: "hello" }, { session });
+		await expect(runEvalAgent({ prompt: "hello" }, { session })).rejects.toThrow(
+			"Missing agent: specify which agent to spawn. Available: task, reviewer.",
+		);
 		const overrideResult = await runEvalAgentAndWait({ prompt: "hello", agent: "reviewer" }, { session });
 
-		expect(defaultResult.text).toBe("task");
 		expect(overrideResult.text).toBe("reviewer");
-		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("task");
-		expect(runSpy.mock.calls[1]?.[0].agent.name).toBe("reviewer");
+		expect(runSpy).toHaveBeenCalledTimes(1);
+		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("reviewer");
 	});
 
 	it("throws for an unknown agent", async () => {
@@ -240,6 +251,7 @@ describe("runEvalAgent", () => {
 		const result = await runEvalAgentAndWait(
 			{ prompt: "hello" },
 			{ session: makeSession({ spawns: "reviewer,task" }) },
+			{ defaultAgent: false },
 		);
 
 		expect(result.text).toBe("reviewer");
@@ -571,9 +583,9 @@ describe("agent() through eval runtimes", () => {
 
 		const result = await executeJs(
 			[
-				'const textHandle = await agent("hi");',
-				'const dataHandle = await agent("json", { schema: { type: "object" } });',
-				'const node = await agent("handle", { schema: { type: "object" } });',
+				'const textHandle = await agent("hi", { agent: "task" });',
+				'const dataHandle = await agent("json", { agent: "task", schema: { type: "object" } });',
+				'const node = await agent("handle", { agent: "task", schema: { type: "object" } });',
 				"const [text, data, nodeData] = await wait([textHandle, dataHandle, node]);",
 				"return JSON.stringify({ text, data, node: { data: nodeData, handle: node.handle, id: node.id } });",
 			].join("\n"),
@@ -595,7 +607,7 @@ describe("agent() through eval runtimes", () => {
 		const overlap = spyOverlapBarrier(4);
 
 		const result = await executeJs(
-			'const hs = ["a", "b", "c", "d"].map(name => agent(name)); return JSON.stringify(await wait(hs));',
+			'const hs = ["a", "b", "c", "d"].map(name => agent(name, { agent: "task" })); return JSON.stringify(await wait(hs));',
 			{ cwd: tempDir.path(), sessionId: sharedJsSessionId, session, sessionFile },
 		);
 
@@ -617,10 +629,10 @@ describe("agent() through eval runtimes", () => {
 
 		const result = await executeJs(
 			[
-				'const first = [agent("ok"), agent("bad")];',
+				'const first = [agent("ok", { agent: "task" }), agent("bad", { agent: "task" })];',
 				"let raised;",
 				"try { await wait(first); } catch (error) { raised = error.message; }",
-				'const second = await wait([agent("ok"), agent("bad")], { raiseErrors: false });',
+				'const second = await wait([agent("ok", { agent: "task" }), agent("bad", { agent: "task" })], { raiseErrors: false });',
 				"return JSON.stringify({ raised, values: [second[0], second[1].message] });",
 			].join("\n"),
 			{ cwd: tempDir.path(), sessionId: sharedJsSessionId, session, sessionFile },
@@ -654,7 +666,7 @@ describe("agent() through eval runtimes", () => {
 		);
 
 		const result = await executePython(
-			'import json\nplain = agent("hi")\nstructured = agent("structured", schema={"type": "object"})\nnode = agent("handle", schema={"type": "object"})\ntext, data, node_data = wait([plain, structured, node])\nprint(text)\nprint(json.dumps(data))\nprint(json.dumps({"data": node_data, "handle": node.handle, "id": node.id}))',
+			'import json\nplain = agent("hi", agent="task")\nstructured = agent("structured", agent="task", schema={"type": "object"})\nnode = agent("handle", agent="task", schema={"type": "object"})\ntext, data, node_data = wait([plain, structured, node])\nprint(text)\nprint(json.dumps(data))\nprint(json.dumps({"data": node_data, "handle": node.handle, "id": node.id}))',
 			{
 				cwd: tempDir.path(),
 				sessionId,
@@ -684,7 +696,7 @@ describe("agent() through eval runtimes", () => {
 		const overlap = spyOverlapBarrier(4);
 
 		const result = await executePython(
-			'import json\nhs = [agent(n) for n in ["a", "b", "c", "d"]]\nprint(json.dumps(wait(hs)))',
+			'import json\nhs = [agent(n, agent="task") for n in ["a", "b", "c", "d"]]\nprint(json.dumps(wait(hs)))',
 			{ cwd: tempDir.path(), sessionId, sessionFile, kernelMode: "per-call", toolSession: session },
 		);
 		if (result.exitCode === undefined && result.cancelled) {
@@ -753,7 +765,7 @@ describe("agent() through eval runtimes", () => {
 
 		const events: Array<{ op: string; [key: string]: unknown }> = [];
 		const result = await executeJs(
-			'const handle = await agent("investigate", { label: "Scout" }); await handle.wait();',
+			'const handle = await agent("investigate", { agent: "task", label: "Scout" }); await handle.wait();',
 			{
 				cwd: tempDir.path(),
 				sessionId: sharedJsSessionId,
@@ -976,7 +988,7 @@ describe("agent() through eval runtimes", () => {
 		});
 
 		const ac = new AbortController();
-		const cell = executeJs('const handle = await agent("merge"); return await handle.wait();', {
+		const cell = executeJs('const handle = await agent("merge", { agent: "task" }); return await handle.wait();', {
 			cwd: tempDir.path(),
 			sessionId: "agent-bridge-js-interrupt",
 			session,

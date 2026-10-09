@@ -805,7 +805,7 @@ compaction:
 - A `task.agentCompactionThresholdOverrides` entry outranks model entries for that agent, including entries added while it runs.
 - The hub refuses an edit when the project config sets the same model key; change it in the project config instead.
 
-Per-agent compaction triggers for task/eval subagents. This keeps the main session at 40,000 tokens while `scout` compacts at 80% of its window and `task` at 90,000 tokens:
+Per-agent compaction triggers for task/eval subagents. This keeps the main session at 40,000 tokens while an `explore` agent compacts at 80% of its window and `task` at 90,000 tokens:
 
 ```yaml
 compaction:
@@ -813,11 +813,11 @@ compaction:
 
 task:
   agentCompactionThresholdOverrides:
-    scout: "80%"
+    explore: "80%"
     task: 90000
 ```
 
-- Keys are exact, case-sensitive agent names (`scout` does not match `Scout`).
+- Keys are exact, case-sensitive agent names (`explore` does not match `Explore`).
 - A number is a fixed token trigger (positive integer); a `"N%"` string is a percentage of the context window, `0 < N ≤ 100`. An entry replaces both `compaction.thresholdTokens` and `compaction.thresholdPercent` for that agent.
 - `null` clears an entry set by a lower-priority settings layer. Any other value fails settings load.
 - Agents without an entry — including agents spawned by an overridden agent — use the main session's `compaction.*` thresholds. The main session is unaffected.

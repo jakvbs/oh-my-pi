@@ -21,8 +21,6 @@ export interface MagicKeywordContext {
 	tools: readonly string[];
 	/** `task.batch`: whether `task` accepts a `tasks[]` array. */
 	taskBatch: boolean;
-	/** Whether the `scout` agent can be dispatched. */
-	scoutAvailable: boolean;
 	/** `eval.tools.enabled`: whether `@tool`-defined kernel tools exist. */
 	evalTools: boolean;
 }
@@ -59,10 +57,9 @@ export function renderOrchestrateNotice({ tools }: Pick<MagicKeywordContext, "to
 /** Hidden notice for "workflowz", shaped by the active task/eval capabilities. */
 export function renderWorkflowNotice({
 	taskBatch,
-	scoutAvailable,
 	evalTools,
-}: Pick<MagicKeywordContext, "taskBatch" | "scoutAvailable" | "evalTools">): string {
-	return prompt.render(workflowNotice, { taskBatch, scoutAvailable, evalTools }).trim();
+}: Pick<MagicKeywordContext, "taskBatch" | "evalTools">): string {
+	return prompt.render(workflowNotice, { taskBatch, evalTools }).trim();
 }
 
 export const MAGIC_KEYWORDS = [
