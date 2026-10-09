@@ -71,25 +71,13 @@ afterEach(async () => {
 });
 
 describe.serial("commit extension provider resolution", () => {
-	test("agentic pipeline resolves an explicit extension-provided model", async () => {
+	test("pipeline resolves the project commit role from an extension provider", async () => {
 		await expect(
 			runCommitCommand({
 				push: false,
 				dryRun: true,
 				noChangelog: true,
-				model: SELECTOR,
 			}),
-		).resolves.toEqual({ usedFallback: false });
-	});
-
-	test("legacy pipeline resolves the project commit role from an extension provider", async () => {
-		await expect(
-			runCommitCommand({
-				push: false,
-				dryRun: true,
-				noChangelog: true,
-				legacy: true,
-			}),
-		).resolves.toEqual({ usedFallback: false });
+		).resolves.toBeUndefined();
 	});
 });

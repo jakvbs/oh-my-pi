@@ -5,8 +5,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type } from "@oh-my-pi/omptype";
 import { type AssistantMessage, createAssistantMessageEventStream, getCustomApi, type ToolCall } from "@oh-my-pi/pi-ai";
-import { runCommitAgentSession } from "@oh-my-pi/pi-coding-agent/commit/agentic/agent";
-import * as commitTools from "@oh-my-pi/pi-coding-agent/commit/agentic/tools";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
@@ -333,54 +331,4 @@ describe("restricted sessions sharing extension providers", () => {
 		}
 	});
 
-	test("commit agent keeps the selected extension provider credential", async () => {
-		await $`git init --initial-branch=main`.cwd(tempDir).quiet();
-		vi.spyOn(commitTools, "createCommitTools").mockImplementation(options => [
-			{
-				name: "complete_commit",
-				label: "Complete Commit",
-				description: "Complete the commit proposal.",
-				parameters: type({}),
-				async execute() {
-					options.state.proposal = {
-						analysis: {
-							type: "fix",
-							scope: "commit",
-							details: [],
-							issueRefs: [],
-						},
-						summary: "fix(commit): retained extension provider",
-						warnings: [],
-					};
-					return { content: [{ type: "text", text: "complete" }] };
-				},
-			},
-		]);
-		const { session: parent } = await createAgentSession({
-			...createOptions(),
-			extensions: [providerExtension],
-		});
-
-		try {
-			const model = modelRegistry.find(providerName, modelId);
-			if (!model) throw new Error("Expected extension model registration");
-
-			const state = await runCommitAgentSession({
-				cwd: tempDir,
-				model,
-				settings,
-				modelRegistry,
-				authStorage,
-				sessionManager: SessionManager.inMemory(),
-				changelogTargets: [],
-				requireChangelog: false,
-			});
-
-			expect(providerRequests).toBe(2);
-			expect(state.proposal?.summary).toBe("fix(commit): retained extension provider");
-			expect(modelRegistry.authStorage.keys.source(providerName) !== undefined).toBe(true);
-		} finally {
-			await parent.dispose();
-		}
-	});
 });

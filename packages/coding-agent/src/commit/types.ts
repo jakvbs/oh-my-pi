@@ -55,8 +55,6 @@ export interface CommitCommandArgs {
 	dryRun: boolean;
 	/** Skip changelog updates */
 	noChangelog: boolean;
-	/** Use legacy deterministic pipeline */
-	legacy?: boolean;
 	/** Additional user context for the model */
 	context?: string;
 	/** Override the model selection */
