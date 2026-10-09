@@ -310,7 +310,7 @@ Common cases:
 
 ### Restricted children and revival
 
-Restricted task/eval children rebind the parent's already-imported extension
+Restricted task children rebind the parent's already-imported extension
 factories to their own session. Hooks and providers remain available without
 ambient extension discovery. Extension tools cannot widen the restricted tool
 set or replace built-ins, including through late registration. New extension

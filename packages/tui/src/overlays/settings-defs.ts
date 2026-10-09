@@ -52,7 +52,7 @@ export const TAB_LEADS: Record<SettingTab, string> = {
 	context: "What the model sees, and when and how the conversation compacts.",
 	memory: "What omp remembers across sessions and where it keeps it.",
 	files: "How files are read, summarized and edited, and the language servers.",
-	shell: "The bash tool and the eval runtimes.",
+	shell: "The bash tool.",
 	tools: "Which tools the model has, their limits and the external integrations.",
 	tasks: "Modes, subagents, isolation and custom commands.",
 	providers: "Services, provider protocols, timeouts and privacy.",
@@ -83,7 +83,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	context: ["General", "Compaction", "Rules (TTSR)", "Experimental"],
 	memory: ["General", "Auto-Learn", "Mnemopi", "Hindsight", "Sharpshooter"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
-	shell: ["Bash", "Eval & Runtimes"],
+	shell: ["Bash"],
 	tools: [
 		"Available Tools",
 		"Todos",

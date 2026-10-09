@@ -36,7 +36,6 @@ import type { TokenRateMeter } from "../utils/token-rate";
 import type { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import type { BashExecutionComponent } from "@oh-my-pi/pi-tui/chat/bash-execution";
 import type { CustomEditor } from "@oh-my-pi/pi-tui/prompt/custom-editor";
-import type { EvalExecutionComponent } from "@oh-my-pi/pi-tui/chat/eval-execution";
 import type { HookEditorComponent } from "@oh-my-pi/pi-tui/overlays/hook-editor";
 import type { HookInputComponent } from "@oh-my-pi/pi-tui/overlays/hook-input";
 import type { HookSelectorComponent, HookSelectorOptions } from "@oh-my-pi/pi-tui/overlays/hook-selector";
@@ -219,9 +218,6 @@ export interface InteractiveModeContext {
 	pendingTools: Map<string, ToolExecutionHandle>;
 	pendingBashComponents: BashExecutionComponent[];
 	bashComponent: BashExecutionComponent | undefined;
-	pendingPythonComponents: EvalExecutionComponent[];
-	pythonComponent: EvalExecutionComponent | undefined;
-	isPythonMode: boolean;
 	streamingComponent: AssistantMessageComponent | undefined;
 	streamingMessage: AssistantMessage | undefined;
 	/**
@@ -441,7 +437,6 @@ export interface InteractiveModeContext {
 	handleDeleteCommand(): Promise<void>;
 	handleForkCommand(): Promise<void>;
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
-	handlePythonCommand(code: string, excludeFromContext?: boolean): Promise<void>;
 	handleMCPCommand(text: string): Promise<void>;
 	handleSSHCommand(text: string): Promise<void>;
 	handleCompactCommand(

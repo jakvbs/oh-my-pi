@@ -1,6 +1,6 @@
 import "@oh-my-pi/pi-utils/env";
 import chalk from "@oh-my-pi/pi-utils/chalk";
-import { APP_NAME, CONFIG_DIR_NAME } from "@oh-my-pi/pi-utils/dirs";
+import { CONFIG_DIR_NAME } from "@oh-my-pi/pi-utils/dirs";
 
 export function getExtraHelpText(): string {
 	return `${chalk.bold("Environment Variables:")}
@@ -80,7 +80,6 @@ ${chalk.bold("Available Tools (default-enabled unless noted):")}
   grep          - Search file contents
   glob          - Find files by glob pattern
   lsp           - Language server protocol (code intelligence)
-  python        - Execute Python code (requires: ${APP_NAME} setup python)
   notebook      - Edit Jupyter notebooks
   task          - Launch sub-agents for parallel tasks
   todo          - Manage todo/task lists

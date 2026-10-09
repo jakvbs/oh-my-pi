@@ -37,7 +37,6 @@ import { getAgentDir, getModelDbPath, getProjectDir } from "@oh-my-pi/pi-utils/d
 import * as logger from "@oh-my-pi/pi-utils/logger";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import * as prompt from "@oh-my-pi/pi-utils/prompt";
-import { Snowflake } from "@oh-my-pi/pi-utils/snowflake";
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import {
 	discoverAdvisorConfigs,
@@ -91,10 +90,6 @@ import { LiveImageUrlService } from "./blob-broker/service";
 import { wrapStreamFnWithBlobUrlFallback } from "./blob-broker/stream-fallback";
 import { initializeWithSettings } from "./discovery";
 import { setInvocationConfiguredExtensions, withOmpExtensionRootScope } from "./discovery/omp-extension-roots";
-import { disposeVmContextsByOwner } from "./eval/js/context-manager";
-import { getEnabledEvalPreludes, type EvalPreludeDefinition } from "./eval/preludes";
-import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
-import { defaultEvalSessionId } from "./eval/session-id";
 import type { EditMode } from "@oh-my-pi/pi-tui/tools/edit";
 import {
 	type CustomCommandsLoadResult,
@@ -252,7 +247,6 @@ import {
 	defaultLoadModeForToolName,
 	discoverStartupLspServers,
 	EditTool,
-	EvalTool,
 	GlobTool,
 	GrepTool,
 	HIDDEN_TOOLS,
@@ -275,8 +269,6 @@ import {
 } from "./tools";
 import { resolveYieldReportText } from "./tools/yield";
 import { isMCPToolName, normalizeToolNames } from "./tools/builtin-names";
-import { createRatchetPrelude } from "./ratchet/prelude-definition";
-import { createArchivePrelude } from "./archive/prelude-definition";
 import { ToolContextStore } from "./tools/context";
 import { imageGenTool } from "./tools/image-gen";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
@@ -296,9 +288,7 @@ import { shutdownTinyTitleClient } from "./tiny/title-client";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
 import {
-	cfgArchiveEnabled,
 	cfgAsyncMaxJobs,
-	cfgRatchetEnabled,
 	cfgGenerateImageEnabled,
 	cfgSpeechgenEnabled,
 	cfgToolsAbortOnFabricatedResult,
@@ -744,8 +734,6 @@ export interface CreateAgentSessionOptions {
 	lspReadOnly?: boolean;
 	/** Whether this invocation may expose IRC. `false` removes it even for subagents. */
 	enableIrc?: boolean;
-	/** Skip subprocess-kernel availability checks and prelude warmup */
-	skipPythonPreflight?: boolean;
 	/** Tool names explicitly requested (enables disabled-by-default tools) */
 	toolNames?: string[];
 	/** Limit the session to explicitly supplied tool names, without discovered extras. */
@@ -949,7 +937,6 @@ export {
 	BUILTIN_TOOLS,
 	createTools,
 	EditTool,
-	EvalTool,
 	GlobTool,
 	GrepTool,
 	HIDDEN_TOOLS,
@@ -1270,8 +1257,6 @@ export interface BuildSystemPromptOptions {
 	appendPrompt?: string;
 	inlineToolDescriptors?: boolean;
 	includeWorkspaceTree?: boolean;
-	/** Eval preludes to advertise; each contributes its `guidance` block. Default: none. */
-	evalPreludes?: readonly Pick<EvalPreludeDefinition, "name" | "guidance">[];
 }
 
 /**
@@ -1298,7 +1283,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		appendSystemPrompt: options.appendPrompt,
 		inlineToolDescriptors: options.inlineToolDescriptors,
 		includeWorkspaceTree: options.includeWorkspaceTree,
-		evalPreludes: options.evalPreludes,
 		toolNames,
 		tools: promptTools,
 	});
@@ -1348,14 +1332,6 @@ function registerSshCleanup(): void {
 	if (sshCleanupRegistered) return;
 	sshCleanupRegistered = true;
 	postmortem.register("ssh-cleanup", cleanupSshResources);
-}
-
-let evalCleanupRegistered = false;
-
-function registerEvalCleanup(): void {
-	if (evalCleanupRegistered) return;
-	evalCleanupRegistered = true;
-	postmortem.register("python-cleanup", disposeAllKernelSessions);
 }
 
 export function customToolToDefinition(tool: CustomTool, sourcePath?: string): ToolDefinition {
@@ -1673,7 +1649,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	const subagentEventBus = options.subagentEventBus ?? new EventBus();
 
 	registerSshCleanup();
-	registerEvalCleanup();
 
 	const settings = await (options.settings ??
 		options.settingsManager ??
@@ -2185,7 +2160,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		if (AgentLifecycleManager.global().isParking(resolvedAgentId, ref)) return;
 		agentRegistry.unregister(resolvedAgentId, ref);
 	};
-	const evalKernelOwnerId = `agent-session:${Snowflake.next()}`;
 
 	try {
 		const getActiveModelString = (): string | undefined => {
@@ -2246,7 +2220,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					? requestedToolNames?.includes("edit") === true
 					: !requestedToolNames || requestedToolNames.includes("edit");
 			},
-			skipPythonPreflight: options.skipPythonPreflight,
 			contextFiles,
 			get workspaceTree() {
 				return resolvedWorkspaceTree;
@@ -2268,20 +2241,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			isSubagent: isSubagentSession,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
 			sessionManager,
-			getEvalKernelOwnerId: () => evalKernelOwnerId,
-			getEvalSessionId: () => session?.getEvalSessionId() ?? defaultEvalSessionId(toolSession),
-			assertEvalExecutionAllowed: () => session?.assertEvalExecutionAllowed(),
-			trackEvalExecution: (execution, abortController) =>
-				session ? session.trackEvalExecution(execution, abortController) : execution,
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
 			isDisposed: () => session?.isDisposed ?? false,
 			getHindsightSessionState: () => session?.getHindsightSessionState(),
 			getMnemopiSessionState: () => session?.getMnemopiSessionState(),
 			getAgentId: () => resolvedAgentId,
 			getToolByName: name => session?.getToolByName(name),
-			getToolForEvalBridge: name => session?.getToolForEvalBridge(name),
-			getEvalBridgeToolNames: () => session?.getEvalBridgeToolNames() ?? [],
-			getCodeModeDirectToolNames: () => session?.getCodeModeDirectToolNames(),
 			agentRegistry,
 			// The global lifecycle releases through AgentRegistry.global(); wiring it
 			// onto a caller-supplied registry would report a cancel while releasing an
@@ -2370,25 +2335,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// instead of silently routing into the owning session (issue #1923).
 			asyncJobManager: scopedAsyncJobManager,
 		};
-		let ratchetPrelude: EvalPreludeDefinition | undefined;
-		let archivePrelude: EvalPreludeDefinition | undefined;
-		const getEvalPreludes = (): readonly EvalPreludeDefinition[] => {
-			if (restrictToolNames || !toolRegistry.has("eval") || !activeToolNames.has("eval")) return [];
-			const builtins: EvalPreludeDefinition[] = [];
-			if (cfgRatchetEnabled.get(settings)) {
-				ratchetPrelude ??= createRatchetPrelude(toolSession);
-				builtins.push(ratchetPrelude);
-			}
-			if (cfgArchiveEnabled.get(settings)) {
-				archivePrelude ??= createArchivePrelude(toolSession);
-				builtins.push(archivePrelude);
-			}
-			return getEnabledEvalPreludes(builtins);
-		};
-		toolSession.getEvalPreludes = getEvalPreludes;
-		// SessionTools owns the advertised snapshot; before it exists the base
-		// prompt is built from, and therefore advertises, the live set.
-		toolSession.getAdvertisedEvalPreludes = () => session?.getAdvertisedEvalPreludes() ?? getEvalPreludes();
 
 		// Wire process-wide internal URL singletons owned by their real classes.
 		// Top-level sessions install the active snapshots; subagents inherit them.
@@ -3687,7 +3633,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
 			tools: Map<string, AgentTool>,
-			rebuildOptions?: { directToolNames?: readonly string[] },
 		): Promise<BuildSystemPromptResult> => {
 			const promptCwd = sessionManager.getCwd();
 			const activeRepoContext = hasSession
@@ -3853,7 +3798,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				contextFiles,
 				tools: promptTools,
 				toolNames,
-				directToolNames: rebuildOptions?.directToolNames,
 				rules: rulebookRules,
 				alwaysApplyRules,
 				resolvedAppendSystemPrompt: appendPrompt,
@@ -3875,7 +3819,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				includeWorkspaceTree,
 				memoryBackend: memoryBackend?.id,
 				settingsApproval: toolSession.settingsApproval === true,
-				evalPreludes: toolSession.getAdvertisedEvalPreludes?.(),
 				model: getActiveModelString(),
 				includeModelInPrompt: cfgIncludeModelInPrompt.get(settings),
 				personality: agentKind === "sub" ? "none" : cfgPersonality.get(settings),
@@ -4232,7 +4175,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 						getMode: () => cfgProvidersCacheWarming.get(settings),
 						decide: event => extensionRunner.emitCacheWarmingDecision(event),
 					});
-		const codeModeState: { namespacesInfo?: unknown } = {};
 		const transformToolCallArguments = (args: Record<string, unknown>): Record<string, unknown> => {
 			let result = args;
 			const maxTimeout = cfgToolsMaxTimeout.get(settings);
@@ -4299,9 +4241,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				const merged: SimpleStreamOptions = {
 					...streamOptions,
 					forceReasoningOff: externalThinking || streamOptions?.forceReasoningOff,
-					...(codeModeState.namespacesInfo === undefined
-						? {}
-						: { toolNamespacesInfo: codeModeState.namespacesInfo }),
 				};
 				const stream = primaryStreamFn(streamModel, context, {
 					...merged,
@@ -4467,7 +4406,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// block createAgentSession for tens of seconds while the whole file is
 		// streamed and parsed on the main thread.
 		session = new AgentSession({
-			codeModeState,
 			cacheWarmer,
 			advisorWatchdogPrompt,
 			advisorContextPrompt,
@@ -4492,7 +4430,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			extensionPaths,
 			disableExtensionDiscovery: options.disableExtensionDiscovery,
 			autoApprove: options.autoApprove,
-			evalKernelOwnerId,
 			// Defined only for top-level sessions (creation is gated above).
 			// AgentSession uses this to decide whether it may dispose the global
 			// AsyncJobManager on teardown; subagents inherit the parent's and
@@ -4504,8 +4441,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			promptTemplates,
 			slashCommands,
 			extensionRunner,
-			getEvalPreludes,
-			evalToolSession: toolSession,
 			customCommands: customCommandsResult.commands,
 			skills,
 			skillDescriptions,
@@ -4896,7 +4831,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			let tinyClientReleased = false;
 			session.dispose = async () => {
 				try {
-					// Reject new session work (eval starts) the moment disposal
+					// Reject new session work the moment disposal
 					// begins — the lifecycle await below opens an async gap before
 					// AgentSession.dispose() would otherwise set its guards.
 					session.beginDispose();
@@ -5239,19 +5174,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 
 		startDeferredMCPDiscovery?.(session);
 
-		// Route the initial tool surface through the Code Mode-aware path when the
-		// session starts directly on a Codex Code Mode model (`codeMode` `on`, or
-		// `auto` matching the model's `code_mode_only` flag): the Agent above was
-		// handed the unrestricted `initialTools`, so without this the first and all
-		// subsequent turns would expose the full direct tool surface and omit
-		// `tool_namespaces_info` until an unrelated model/setting/tool-selection
-		// change reconciled.
-		try {
-			await session.initializeCodeMode();
-		} catch (error) {
-			logger.warn("Code Mode initialization at session startup failed", { error: String(error) });
-		}
-
 		startupCleanup.move();
 		return {
 			session,
@@ -5277,8 +5199,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					}
 					await asyncJobManager.dispose({ timeoutMs: 3_000 });
 				}
-				await disposeKernelSessionsByOwner(evalKernelOwnerId);
-				await disposeVmContextsByOwner(evalKernelOwnerId);
 				if (ownsAuthStorage) authStorage.close();
 			}
 		} catch (cleanupError) {

@@ -32,7 +32,6 @@ describe("createAgentSession auto-learn tool activation", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 		};
 	}
 

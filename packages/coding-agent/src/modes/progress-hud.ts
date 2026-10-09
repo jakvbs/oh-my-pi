@@ -1,23 +1,19 @@
 /**
- * Editor-anchored, right-aligned progress rows above the working line: judge
- * batches (`judge_batch`) and automatic downloads/installs (model weights,
- * tool binaries, browsers, side runtimes). Both render through
- * {@link renderHudProgressRow} so they read as one HUD.
+ * Editor-anchored, right-aligned progress rows above the working line for
+ * automatic downloads/installs (model weights, tool binaries, side runtimes),
+ * rendered through {@link renderHudProgressRow}.
  */
 import { type Component, renderProgressBar, visibleWidth } from "@oh-my-pi/pi-tui";
 import { col, node, span, text } from "@oh-my-pi/pi-tui/native/describe";
 import type { NativeNode } from "@oh-my-pi/pi-tui/native/node";
 import type { TspSpan } from "@oh-my-pi/pi-wire";
 import { sanitizeStatusText } from "@oh-my-pi/pi-tui/chrome/shared";
-import { formatCost } from "@oh-my-pi/pi-tui/overlays/agent-hub-renderer";
 import { truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 import { formatBytes } from "@oh-my-pi/pi-utils";
 import type { DownloadActivity } from "../downloads/activity";
-import type { JudgmentBatchProgress } from "../eval/judgment-batch-events";
 
 const PROGRESS_BAR_WIDTH = 18;
-const MIN_PROGRESS_BAR_WIDTH = 4;
 
 /**
  * One right-aligned row: `label ━━━─── tail`. When narrow, drops the label,
@@ -69,76 +65,6 @@ function describeHudRow(key: string, label: string, tail: readonly TspSpan[], ba
 	if (bar !== undefined) children.push(node("progress", { value: Math.min(1, Math.max(0, bar)), max: { w: "18ch" } }));
 	children.push(text(tail, { wrap: "none" }));
 	return node("row", { justify: "end", gap: "sm", align: "center", role: "omp.hud.progress" }, children, key);
-}
-
-/** Progress rows for concurrent judge batches. */
-export class JudgmentBatchProgressHud implements Component {
-	readonly #batches = new Map<string, JudgmentBatchProgress>();
-	#native: NativeNode | undefined;
-
-	update(progress: JudgmentBatchProgress): void {
-		this.#batches.set(progress.id, progress);
-		this.#native = undefined;
-	}
-
-	delete(id: string): void {
-		this.#batches.delete(id);
-		this.#native = undefined;
-	}
-
-	clear(): void {
-		this.#batches.clear();
-		this.#native = undefined;
-	}
-
-	describe(): NativeNode {
-		this.#native ??= col(
-			Array.from(this.#batches.values(), progress => {
-				const tail: TspSpan[] = [span(`${progress.done}/${progress.total}`, "strong")];
-				// Zero cost means unpriced, not free — omit rather than show $0.
-				if (progress.cost > 0) tail.push(span(` · ${formatCost(progress.cost)}`, "dim"));
-				if (progress.failed > 0) tail.push(span(` · ${progress.failed} failed`, "warning"));
-				return describeHudRow(progress.id, progress.intent, tail, progress.done / Math.max(1, progress.total));
-			}),
-			{ role: "omp.hud.judge" },
-		);
-		return this.#native;
-	}
-
-	render(width: number): readonly string[] {
-		const available = rowWidth(width);
-		if (available === 0) return [];
-		const rows: string[] = [];
-		for (const progress of this.#batches.values()) rows.push(this.#renderRow(progress, available));
-		return rows;
-	}
-
-	#renderRow(progress: JudgmentBatchProgress, width: number): string {
-		const countText = `${progress.done}/${progress.total}`;
-		// Zero cost means unpriced (local/native without catalog pricing), not free — omit rather than show $0.
-		const costText = progress.cost > 0 ? ` · ${formatCost(progress.cost)}` : "";
-		const failedText = progress.failed > 0 ? ` · ${progress.failed} failed` : "";
-		const compactFailedText = progress.failed > 0 ? ` +${progress.failed}!` : "";
-		let failure = failedText;
-		if (
-			failure &&
-			visibleWidth(countText) + visibleWidth(costText) + visibleWidth(failure) + MIN_PROGRESS_BAR_WIDTH + 1 >
-				width &&
-			visibleWidth(countText) + visibleWidth(costText) + visibleWidth(compactFailedText) <= width
-		) {
-			failure = compactFailedText;
-		}
-
-		const styledCount = theme.bold(theme.fg("text", countText));
-		const styledCost = costText ? theme.fg("dim", costText) : "";
-		const styledFailure = failure ? theme.fg("warning", failure) : "";
-		return renderHudProgressRow(width, {
-			label: progress.intent,
-			tail: `${styledCount}${styledCost}${styledFailure}`,
-			fallback: theme.bold(theme.fg("text", countText)),
-			bar: { value: progress.done, max: progress.total },
-		});
-	}
 }
 
 /** Downloads finishing faster than this never appear (warm caches, tiny files). */

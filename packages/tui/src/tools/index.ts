@@ -9,7 +9,6 @@ import { astGrepToolRenderer } from "./ast-grep";
 import { bashToolRenderer } from "./bash";
 import { debugToolRenderer } from "./debug";
 import { editToolRenderer } from "./edit";
-import { evalToolRenderer } from "./eval";
 import { findToolRenderer } from "./find";
 import { githubToolRenderer } from "./github";
 import { globToolRenderer } from "./glob";
@@ -38,7 +37,6 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	ast_edit: astEditToolRenderer,
 	bash: bashToolRenderer,
 	debug: debugToolRenderer,
-	eval: evalToolRenderer,
 	edit: editToolRenderer,
 	apply_patch: editToolRenderer,
 	find: findToolRenderer,

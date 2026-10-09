@@ -57,7 +57,6 @@ describe("createAgentSession resolveServiceTierByFamily", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 			rules: [],
 			preloadedCustomToolPaths: [],
 			toolNames: ["read"],

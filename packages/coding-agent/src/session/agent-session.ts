@@ -132,12 +132,6 @@ import { combine, type SettingsScope } from "../config/registry";
 import type { Settings } from "../config/settings";
 import { RawSseDebugBuffer } from "@oh-my-pi/pi-tui/apps/debug/raw-sse-buffer";
 import { getEditStore } from "../edit/store";
-import { releaseCompletionHandles } from "../eval/completion-bridge";
-import { releaseJudgmentBatches } from "../eval/judgment-batch-bridge";
-import type { EvalPreludeDefinition } from "../eval/preludes";
-import type { PythonResult } from "../eval/py/executor";
-import { formatEvalStateContext } from "../eval/state";
-import { WorkPoolRegistry } from "../task/workpool";
 import { type BashPtyOptions, type BashResult, releaseShellSessions } from "../exec/bash-executor";
 import type { TtsrManager } from "../export/ttsr";
 import type { LoadedCustomCommand } from "../extensibility/custom-commands";
@@ -217,7 +211,7 @@ import {
 	toReasoningEffort,
 } from "@oh-my-pi/pi-tui/thinking";
 import { isAttachmentOnlyTitleInput, isLowSignalTitleInput } from "../tiny/text";
-import type { ImageAttachmentEntry, ToolSession } from "../tools";
+import type { ImageAttachmentEntry } from "../tools";
 import { resolveApproval } from "../tools/approval";
 import { type AskToolDetails } from "@oh-my-pi/pi-tui/tools/ask";
 import { type AskToolInput, recoverAskQuestions } from "../tools/ask";
@@ -324,7 +318,6 @@ import {
 } from "./codex-auto-reset";
 import { recordCredentialPin, seedCredentialPins } from "./credential-pin";
 import { isDateCwdReminderControl } from "./date-cwd-reminder";
-import { EvalRunner, type EvalRunnerHost } from "./eval-runner";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -449,7 +442,6 @@ import { cfgAdvisorEnabled, cfgAdvisorMaxNotesPerUpdate } from "../advisor/setti
 import {
 	cfgClaudeResets,
 	cfgClaudeResetsAutoRedeem,
-	cfgCodeModeInputs,
 	cfgCodexResets,
 	cfgCodexResetsAutoRedeem,
 	cfgDefaultThinkingLevel,
@@ -476,7 +468,6 @@ import { cfgInterruptMode } from "../modes/settings";
 import { cfgFollowUpMode } from "../modes/settings";
 import { cfgSteeringMode } from "../modes/settings";
 import { cfgDisabledProviders, cfgModelRoles } from "../config/model-settings";
-import { cfgEvalToolsEnabled } from "../eval/settings";
 import { cfgExtensions, type SkillsSettings } from "../extensibility/settings";
 import {
 	cfgImagesAutoResize,
@@ -485,7 +476,6 @@ import {
 	cfgThemeDark,
 	cfgThemeLight,
 } from "../modes/settings";
-import { cfgTaskBatch } from "../task/settings";
 import {
 	cfgBranchSummaryReserveTokens,
 	cfgCompactionModelThresholds,
@@ -494,14 +484,7 @@ import {
 	cfgWorkspaceAdditionalDirectories,
 } from "./context-settings";
 import { cfgTitleGenerator, cfgTitleIcons, cfgTitleRefreshOnReplan, type TitleIcons } from "../utils/title-settings";
-import {
-	cfgArchiveEnabled,
-	cfgRatchetEnabled,
-	cfgDevAutoqa,
-	cfgDevAutoqaConsent,
-	cfgTodoEnabled,
-	cfgToolsApproval,
-} from "../tools/settings";
+import { cfgDevAutoqa, cfgDevAutoqaConsent, cfgTodoEnabled, cfgToolsApproval } from "../tools/settings";
 import { cfgTtsrJudge } from "../export/ttsr-settings";
 
 /** Advisor settings whose edit toggles or rebuilds a running advisor. */
@@ -900,8 +883,6 @@ export class AgentSession implements SettingsScope {
 
 	readonly #bash: BashRunner;
 
-	readonly #eval: EvalRunner;
-	readonly #evalToolSession: ToolSession | undefined;
 	/**
 	 * AsyncJobManager owned by this session (top-level only). Subagents leave
 	 * this undefined and **MUST NOT** dispose the global instance on teardown.
@@ -949,7 +930,6 @@ export class AgentSession implements SettingsScope {
 	#adoptedResetMarkers = new Map<string, number>();
 	// Extension system
 	#extensionRunner: ExtensionRunner | undefined = undefined;
-	#getEvalPreludes: (() => readonly EvalPreludeDefinition[]) | undefined;
 	#skillDescriptions: SkillDescriptionCatalog;
 	#promptSkillsSource: readonly Skill[] | undefined;
 	#promptSkills: readonly Skill[] = [];
@@ -1586,8 +1566,6 @@ export class AgentSession implements SettingsScope {
 		return listPlanFiles({ localProtocolOptions: this.#localProtocolOptions() });
 	}
 
-	#codeModeState: { namespacesInfo?: unknown };
-
 	/** Live generation tok/s for the working row; fed by this session's own streamed deltas. */
 	readonly tokenRate: TokenRateMeter;
 
@@ -1599,7 +1577,6 @@ export class AgentSession implements SettingsScope {
 			(previous, next) =>
 				isHiddenUserCompanion(previous) && (isHiddenUserCompanion(next) || isUserQueuedMessage(next)),
 		);
-		this.#codeModeState = config.codeModeState ?? {};
 		this.sessionManager = config.sessionManager;
 		this.settings = config.settings;
 		this.#skillDescriptions = config.skillDescriptions ?? new SkillDescriptionCatalog();
@@ -1626,24 +1603,6 @@ export class AgentSession implements SettingsScope {
 		};
 		this.#bash = new BashRunner(bashHost);
 		// Power assertions are taken per turn (see #beginInFlight); nothing acquired here.
-		const evalHost: EvalRunnerHost = {
-			agent: this.agent,
-			sessionManager: this.sessionManager,
-			settings: this.settings,
-			evalToolSession: config.evalToolSession,
-			extensionRunner: () => this.#extensionRunner,
-			isStreaming: () => this.isStreaming,
-			appendSessionMessage: message => {
-				this.agent.appendMessage(message);
-				this.sessionManager.appendMessage(message);
-			},
-		};
-		this.#eval = new EvalRunner(evalHost, {
-			kernelOwnerId: config.evalKernelOwnerId ?? `agent-session:${Snowflake.next()}`,
-		});
-		this.#evalToolSession = config.evalToolSession;
-		const initialEvalStateContext = this.#buildEvalStateContextMessage();
-		if (initialEvalStateContext) this.agent.appendMessage(initialEvalStateContext);
 		const ircHost: IrcBridgeHost = {
 			agent: this.agent,
 			sessionManager: this.sessionManager,
@@ -1753,7 +1712,6 @@ export class AgentSession implements SettingsScope {
 			});
 			cfgProvidersCacheWarming.listen(this, () => warmer.onModeChanged());
 		}
-		this.#getEvalPreludes = config.getEvalPreludes;
 		this.#customCommands = config.customCommands ?? [];
 		const recoveryHost: TurnRecoveryHost = {
 			agent: this.agent,
@@ -2007,9 +1965,6 @@ export class AgentSession implements SettingsScope {
 			queuedMessageCount: () => this.queuedMessageCount,
 			planModeEnabled: () => this.#planModeState?.enabled === true,
 			model: () => this.model,
-			setCodeModeNamespacesInfo: info => {
-				this.#codeModeState.namespacesInfo = info;
-			},
 			memoryBackendSession: () => this,
 			clearInheritedProviderPromptCacheKey: () => this.#clearInheritedProviderPromptCacheKey(),
 			clearMemoryPromotionSnapshot: () => this.#memory.clearPromotionSnapshot(),
@@ -2017,7 +1972,6 @@ export class AgentSession implements SettingsScope {
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
 			notifyCommandMetadataChanged: () => this.#notifyCommandMetadataChanged(),
 			localProtocolOptions: () => this.#localProtocolOptions(),
-			evalPreludes: () => this.getEvalPreludes(),
 			sessionAgents: () => this.getSessionAgents(),
 		};
 		this.#tools = new SessionTools(sessionToolsHost, {
@@ -2405,13 +2359,6 @@ export class AgentSession implements SettingsScope {
 		cfgExtendedContext.listen(this, () => this.#reapplyContextWindowPolicy());
 		cfgCompactionModelThresholds.listen(this, () => this.#reapplyContextWindowPolicy());
 		cfgCompactionModelThresholdsEnabled.listen(this, () => this.#reapplyContextWindowPolicy());
-		cfgRatchetEnabled.listen(this, enabled => this.#reconcileEvalPreludeSetting("ratchet.enabled", enabled));
-		cfgArchiveEnabled.listen(this, enabled => this.#reconcileEvalPreludeSetting("archive.enabled", enabled));
-		cfgCodeModeInputs.listen(this, () =>
-			this.#tools.reconcileCodeMode().catch(error => {
-				logger.warn("Code Mode reconcile after setting change failed", { error: String(error) });
-			}),
-		);
 
 		// Config-declared resolution done against the catalog as it stands at
 		// construction can be premature: background discovery is started
@@ -2432,20 +2379,6 @@ export class AgentSession implements SettingsScope {
 	/** Registers teardown to run when this session is disposed (e.g. handle listeners bound to it). */
 	addDisposer(dispose: () => void): void {
 		this.#disposers.push(dispose);
-	}
-
-	/**
-	 * `ratchet.enabled` / `archive.enabled` change the live eval preludes. An empty transcript
-	 * rebuilds the system prompt to advertise them; mid-session the cached prompt stays byte-stable
-	 * and the next user prompt carries a hidden prelude notice instead (see
-	 * {@link SessionTools.takeEvalPreludeNotice}).
-	 */
-	async #reconcileEvalPreludeSetting(path: "ratchet.enabled" | "archive.enabled"): Promise<void> {
-		try {
-			if (this.agent.state.messages.length === 0) await this.refreshBaseSystemPrompt();
-		} catch (error) {
-			logger.warn("Failed to reconcile eval prelude setting change", { path, error: String(error) });
-		}
 	}
 
 	/**
@@ -2863,9 +2796,6 @@ export class AgentSession implements SettingsScope {
 	 */
 	#cancelOwnAsyncJobs(reason?: unknown): void {
 		if (!this.#agentId) return;
-		releaseCompletionHandles(this.#agentId);
-		releaseJudgmentBatches(this.#agentId);
-		WorkPoolRegistry.global().releaseOwner(this.#agentId);
 		const manager = this.#asyncJobManager;
 		manager?.cancelAll({ ownerId: this.#agentId }, reason);
 		manager?.evictCompletedJobs({ ownerId: this.#agentId });
@@ -5410,7 +5340,6 @@ export class AgentSession implements SettingsScope {
 		this.agent.hasBackgroundCompletions = undefined;
 		this.agent.hasQueuedAsides = undefined;
 		this.#advisors.stopRuntime();
-		this.#eval.beginDispose();
 	}
 
 	/**
@@ -5536,7 +5465,6 @@ export class AgentSession implements SettingsScope {
 		releaseShellSessions(this.sessionManager.getSessionId());
 		const results = await Promise.allSettled([
 			this.#disposeOwnedAsyncJobs(),
-			this.#eval.disposeKernels(),
 			this.#disconnectOwnedMcp(),
 			advisorRecorderClosed,
 			hindsightState?.flushRetainQueue() ?? Promise.resolve(),
@@ -5708,17 +5636,17 @@ export class AgentSession implements SettingsScope {
 	 * clears the conversation.
 	 *
 	 * Returns `undefined` without mutating anything while a response is
-	 * streaming or a foreground bash/python execution is in flight.
+	 * streaming or a foreground bash execution is in flight.
 	 */
 	async resetSessionContext(): Promise<ResetSessionContextResult | undefined> {
 		using _transition = this.#beginSessionTransition();
-		// Refuse while a response streams OR a foreground user bash/python
-		// execution is in flight: those complete via recordBashResult()/
-		// recordPythonResult(), which append directly to agent.state when not
+		// Refuse while a response streams OR a foreground user bash
+		// execution is in flight: those complete via recordBashResult(),
+		// which append directly to agent.state when not
 		// streaming, so a command finishing after the reset would land its output
 		// after the boundary and re-enter the supposedly empty context. The
 		// sibling boundary op (branchFromBtw) guards on the same predicates.
-		if (this.isStreaming || this.isBashRunning || this.isEvalRunning) return undefined;
+		if (this.isStreaming || this.isBashRunning) return undefined;
 		const droppedCount = this.agent.state.messages.length;
 
 		// Tear down the same per-turn runtime state that newSession() resets across
@@ -6094,28 +6022,13 @@ export class AgentSession implements SettingsScope {
 		return this.#tools.getToolByName(name);
 	}
 
-	/** Looks up an enabled eval-bridge tool with the session's permission gate applied. */
-	getToolForEvalBridge(name: string): AgentTool | undefined {
-		return this.#tools.getToolForEvalBridge(name);
-	}
-
-	/** Names currently authorized through the eval bridge. */
-	getEvalBridgeToolNames(): string[] {
-		return this.#tools.getEvalBridgeToolNames();
-	}
-
-	/** Tools left directly model-visible by Code Mode; undefined when inactive. */
-	getCodeModeDirectToolNames(): readonly string[] | undefined {
-		return this.#tools.getCodeModeDirectToolNames();
-	}
-
 	/** Whether a registry entry came from a built-in factory. */
 	hasBuiltInTool(name: string): boolean {
 		return this.#tools.hasBuiltInTool(name);
 	}
 
 	/**
-	 * Re-resolves settings-gated tools (built-in `*.enabled` toggles, eval backends,
+	 * Re-resolves settings-gated tools (built-in `*.enabled` toggles,
 	 * image/speech generation, `tools.xdev`) against live settings and refreshes the
 	 * prompt once (`refreshPrompt: false` refreshes only if the tool set changed). The
 	 * SDK runs it whenever a gating setting changes; other runtime owners may call it
@@ -6206,29 +6119,6 @@ export class AgentSession implements SettingsScope {
 		return refresh;
 	}
 
-	/**
-	 * Applies Code Mode at session startup: when the initial model activates
-	 * it (`codeMode` `on`, or `auto` matching a `code_mode_only` catalog flag),
-	 * the initial tool surface is routed through the Code Mode-aware path so
-	 * the restricted direct surface and namespaces snapshot exist before the
-	 * first provider turn instead of waiting for an unrelated reconciliation.
-	 *
-	 * Inactive sessions keep their initial surface untouched: re-applying an
-	 * unchanged set would seed the prompt-rebuild signature cache and suppress
-	 * the first late tool registration's rebuild (non-MCP `xd://` mounts are
-	 * deliberately not part of that signature).
-	 */
-	initializeCodeMode(): Promise<void> {
-		const model = this.model;
-		if (!model || !this.#tools.codeModeChangesBetween(undefined, model)) return Promise.resolve();
-		return this.#tools.reconcileCodeMode();
-	}
-
-	/** Current Code Mode `tool_namespaces_info` snapshot, or `undefined` when inactive. */
-	get codeModeNamespacesInfo(): unknown {
-		return this.#codeModeState.namespacesInfo;
-	}
-
 	/** Selects enabled tools, ignoring names absent from the registry. */
 	setActiveToolsByName(toolNames: string[]): Promise<void> {
 		return this.#tools.setActiveToolsByName(toolNames);
@@ -6247,16 +6137,6 @@ export class AgentSession implements SettingsScope {
 	/** Restores a non-MCP presentation snapshot while retaining the current MCP selection. */
 	restoreNonMCPToolPresentation(nonMCPToolNames: string[], nonMCPMountedToolNames: string[]): Promise<void> {
 		return this.#tools.restoreNonMCPToolPresentation(nonMCPToolNames, nonMCPMountedToolNames);
-	}
-
-	/** Current enabled eval prelude definitions. */
-	getEvalPreludes(): readonly EvalPreludeDefinition[] {
-		return this.#getEvalPreludes?.() ?? [];
-	}
-
-	/** Eval preludes frozen into the provider-visible prompt (see {@link SessionTools.advertisedEvalPreludes}). */
-	getAdvertisedEvalPreludes(): readonly EvalPreludeDefinition[] {
-		return this.#tools.advertisedEvalPreludes;
 	}
 
 	/**
@@ -6396,39 +6276,7 @@ export class AgentSession implements SettingsScope {
 	}
 
 	buildDisplaySessionContext(): SessionContext {
-		return this.#withEvalStateContext(this.#providerBoundary.buildDisplaySessionContext());
-	}
-
-	#withEvalStateContext(context: SessionContext): SessionContext {
-		const evalStateContext = this.#buildEvalStateContextMessage();
-		if (!evalStateContext) return context;
-		return { ...context, messages: [...context.messages, evalStateContext] };
-	}
-
-	#buildEvalStateContextMessage(): CustomMessage | undefined {
-		const session = this.#evalToolSession;
-		if (!session) return undefined;
-		const historyHasEval = this.sessionManager.getBranch().some(entry => {
-			if (entry.type !== "message") return false;
-			const message = entry.message;
-			if (message.role === "pythonExecution" || (message.role === "toolResult" && message.toolName === "eval")) {
-				return true;
-			}
-			return (
-				message.role === "assistant" &&
-				message.content.some(block => block.type === "toolCall" && block.name === "eval")
-			);
-		});
-		const content = formatEvalStateContext(session, { historyHasEval });
-		if (!content) return undefined;
-		return {
-			role: "custom",
-			customType: "eval-state-context",
-			content,
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
+		return this.#providerBoundary.buildDisplaySessionContext();
 	}
 
 	/**
@@ -6497,12 +6345,6 @@ export class AgentSession implements SettingsScope {
 	get sessionId(): string {
 		return this.#activeProviderSessionId();
 	}
-	getEvalSessionId(): string {
-		return this.#eval.getSessionId();
-	}
-	getEvalKernelOwnerId(): string {
-		return this.#eval.getKernelOwnerId();
-	}
 
 	/** Current session display name, if set */
 	get sessionName(): string | undefined {
@@ -6552,18 +6394,11 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/**
-	 * True while a turn, user bash/eval, compaction, handoff, or retry could still write
+	 * True while a turn, user bash, compaction, handoff, or retry could still write
 	 * into the transcript, so a snapshot of it would miss or split that work.
 	 */
 	get isBusyForSnapshot(): boolean {
-		return (
-			this.isStreaming ||
-			this.isBashRunning ||
-			this.isEvalRunning ||
-			this.isCompacting ||
-			this.isGeneratingHandoff ||
-			this.isRetrying
-		);
+		return this.isStreaming || this.isBashRunning || this.isCompacting || this.isGeneratingHandoff || this.isRetrying;
 	}
 
 	#assertIdleForSnapshot(action: string): void {
@@ -6805,8 +6640,6 @@ export class AgentSession implements SettingsScope {
 				: sessionPlanUrl;
 
 		const planExists = fs.existsSync(resolvedPlanPath);
-		// Capability gates, not the visible surface: a Code Mode partition keeps
-		// `task` and `ask` callable through the eval bridge after demoting them.
 		const capableToolNames = this.getEnabledToolNames();
 		const content = prompt.render(planModeActivePrompt, {
 			planFilePath: displayPlanPath,
@@ -6957,8 +6790,6 @@ export class AgentSession implements SettingsScope {
 			if (!this.#magicKeywordEnabled(keyword.id) || !containsMagicKeyword(text, keyword.word)) continue;
 			context ??= {
 				tools: this.getEnabledToolNames(),
-				taskBatch: cfgTaskBatch.get(this.settings),
-				evalTools: cfgEvalToolsEnabled.get(this.settings),
 			};
 			// A notice whose contract needs an inactive tool would demand an
 			// unavailable capability; skip it rather than mislead the model.
@@ -7564,7 +7395,6 @@ export class AgentSession implements SettingsScope {
 			if (!(await this.#runUsageAwarePreflightForNextModelCall())) return false;
 			// Flush any pending bash messages before the new prompt
 			await this.#bash.flushPending();
-			this.#eval.flushPending();
 			this.#irc.flushPending();
 
 			this.#todo.resetCycle();
@@ -7716,15 +7546,13 @@ export class AgentSession implements SettingsScope {
 			const toolRosterNotice = isUserQueuedMessage(message)
 				? this.#tools.takePendingToolRosterNotice({ baseDelivered: baseXdevCatalogDelivered })
 				: undefined;
-			const evalPreludeNotice = isUserQueuedMessage(message) ? this.#tools.takeEvalPreludeNotice() : undefined;
 			const sessionAgentNotice = isUserQueuedMessage(message) ? this.#tools.takeSessionAgentNotice() : undefined;
-			if (xdevMountNotice || toolRosterNotice || evalPreludeNotice || sessionAgentNotice) {
+			if (xdevMountNotice || toolRosterNotice || sessionAgentNotice) {
 				messages.splice(
 					xdevMountNoticeIndex,
 					0,
 					...(xdevMountNotice ? [xdevMountNotice] : []),
 					...(toolRosterNotice ? [toolRosterNotice] : []),
-					...(evalPreludeNotice ? [evalPreludeNotice] : []),
 					...(sessionAgentNotice ? [sessionAgentNotice] : []),
 				);
 			}
@@ -9445,7 +9273,6 @@ export class AgentSession implements SettingsScope {
 				manualCompactionCleanup = this.#maintenance.abortCompaction(options?.reason);
 			}
 			this.abortBash();
-			this.abortEval();
 			const postPromptDrain = this.#cancelPostPromptTasks();
 			this.agent.abort(options?.reason);
 			await postPromptDrain;
@@ -10071,8 +9898,8 @@ export class AgentSession implements SettingsScope {
 		if (this.agent.state.messages.length === 0) {
 			await this.refreshBaseSystemPrompt();
 		} else if (enabled) {
-			// Enabled covers top-level, xd://-mounted, and Code Mode bridge-demoted
-			// tools: every path through which the model can still reach a reader.
+			// Enabled covers top-level and xd://-mounted tools: every path through
+			// which the model can still reach a reader.
 			const hasSkillReader = this.getEnabledToolNames().some(name => toolReadsSkillUris(this.getToolByName(name)));
 			const renderedSkills = this.#skillDescriptions.render(
 				hasSkillReader ? this.skills.filter(skill => skill.hide !== true) : [],
@@ -10470,14 +10297,6 @@ export class AgentSession implements SettingsScope {
 		// Re-evaluate append-only context mode — provider or setting may have changed
 		this.#syncAppendOnlyContext(model);
 
-		if (this.#tools.codeModeChangesBetween(previousModel, model) || this.#tools.codeModeDirectWireMetadataChanged()) {
-			try {
-				await this.#tools.reconcileCodeMode();
-			} catch (error) {
-				logger.warn("Code Mode reconcile after model change failed", { error: String(error) });
-			}
-		}
-
 		try {
 			await this.#tools.reconcileThinkTool();
 		} catch (error) {
@@ -10669,64 +10488,6 @@ export class AgentSession implements SettingsScope {
 	get hasPendingBashMessages(): boolean {
 		return this.#bash.hasPendingMessages;
 	}
-
-	// =========================================================================
-	// User-Initiated Python Execution
-	// =========================================================================
-
-	/**
-	 * Execute Python code in the shared kernel.
-	 * Uses the same kernel session as eval's Python backend, allowing collaborative editing.
-	 * @param code The Python code to execute
-	 * @param onChunk Optional streaming callback for output
-	 * @param options.excludeFromContext If true, execution won't be sent to LLM ($$ prefix)
-	 */
-	executePython(
-		code: string,
-		onChunk?: (chunk: string) => void,
-		options?: { excludeFromContext?: boolean },
-	): Promise<PythonResult> {
-		return this.#eval.executePython(code, onChunk, options);
-	}
-
-	assertEvalExecutionAllowed(): void {
-		this.#eval.assertExecutionAllowed();
-	}
-
-	/**
-	 * Track Python work started outside AgentSession.executePython so dispose can await and abort it too.
-	 */
-	trackEvalExecution<T>(execution: Promise<T>, abortController: AbortController): Promise<T> {
-		return this.#eval.trackExecution(execution, abortController);
-	}
-
-	/**
-	 * Record a Python execution result in session history.
-	 */
-	recordPythonResult(code: string, result: PythonResult, options?: { excludeFromContext?: boolean }): void {
-		this.#eval.recordPythonResult(code, result, options);
-	}
-
-	/**
-	 * Cancel running Python execution.
-	 */
-	abortEval(): void {
-		this.#eval.abort();
-	}
-
-	/** Whether a Python execution is currently running */
-	get isEvalRunning(): boolean {
-		return this.#eval.isRunning;
-	}
-
-	/** Whether there are pending Python messages waiting to be flushed */
-	get hasPendingPythonMessages(): boolean {
-		return this.#eval.hasPendingMessages;
-	}
-
-	/**
-	 * Flush pending Python messages to agent state and session.
-	 */
 
 	// =========================================================================
 	// IRC Delivery
@@ -12038,7 +11799,7 @@ export class AgentSession implements SettingsScope {
 
 		// Update agent state — build display context to populate agent messages.
 		const stateContext = this.sessionManager.buildSessionContext();
-		const displayContext = this.#withEvalStateContext(deobfuscateSessionContext(stateContext, this.#obfuscator));
+		const displayContext = deobfuscateSessionContext(stateContext, this.#obfuscator);
 		this.agent.replaceMessages(displayContext.messages);
 		this.#rehydrateCheckpointRewindState();
 		this.#advisors.resetSessionState({ preserveCost: true });

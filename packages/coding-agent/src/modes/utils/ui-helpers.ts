@@ -25,7 +25,6 @@ import {
 } from "@oh-my-pi/pi-tui/chat/compaction-summary-message";
 import { CustomMessageComponent } from "@oh-my-pi/pi-tui/chat/custom-message";
 import { DynamicBorder } from "@oh-my-pi/pi-tui/chrome/dynamic-border";
-import { EvalExecutionComponent } from "@oh-my-pi/pi-tui/chat/eval-execution";
 import {
 	type LateDiagnosticsFile,
 	LateDiagnosticsMessageComponent,
@@ -262,18 +261,9 @@ export class UiHelpers {
 				this.ctx.chatContainer.addChild(component);
 				break;
 			}
-			case "pythonExecution": {
-				const component = new EvalExecutionComponent(message.code, this.ctx.ui, message.excludeFromContext);
-				if (message.output) {
-					component.appendOutput(message.output);
-				}
-				component.setComplete(message.exitCode, message.cancelled, {
-					truncation: message.meta?.truncation,
-					artifactError: message.meta?.artifactError,
-				});
-				this.ctx.chatContainer.addChild(component);
+			case "pythonExecution":
+				// Legacy `$` Python cells from sessions recorded before eval was removed.
 				break;
-			}
 			case "hookMessage":
 			case "custom": {
 				if (message.display) {
@@ -943,11 +933,7 @@ export class UiHelpers {
 		if (!this.ctx.initialChatRendered || this.ctx.focusedAgentId || this.ctx.viewSession.isStreaming) return false;
 		// In-flight blocks route future events into their components; a rewind
 		// with any of them live takes the full-replay path instead.
-		if (
-			this.ctx.pendingTools.size > 0 ||
-			this.ctx.pendingBashComponents.length > 0 ||
-			this.ctx.pendingPythonComponents.length > 0
-		) {
+		if (this.ctx.pendingTools.size > 0 || this.ctx.pendingBashComponents.length > 0) {
 			return false;
 		}
 		const chat = this.ctx.chatContainer;
@@ -1023,7 +1009,6 @@ export class UiHelpers {
 		const previousTranscriptMessageComponents = this.ctx.transcriptMessageComponents;
 		const previousPendingTools = this.ctx.pendingTools;
 		const previousPendingBashComponents = this.ctx.pendingBashComponents;
-		const previousPendingPythonComponents = this.ctx.pendingPythonComponents;
 		const previousLastAssistantUsage = this.ctx.lastAssistantUsage;
 		const previousServedModelTracker = this.ctx.servedModelTracker;
 		const chatWasAlreadyRendered = this.ctx.initialChatRendered;
@@ -1043,12 +1028,11 @@ export class UiHelpers {
 			this.ctx.chatContainer = stagedChatContainer;
 			this.ctx.transcriptMessageComponents = new WeakMap<AgentMessage, Component>();
 			this.ctx.pendingTools = new Map<string, ToolExecutionHandle>();
-			// Drops deferred bash/python blocks with the old transcript, then repaints
+			// Drops deferred bash blocks with the old transcript, then repaints
 			// the queued-message bar from the live session queue: a mid-turn rebuild
 			// (rewind, /tree) keeps the queue, so it must stay visible and editable.
 			this.ctx.updatePendingMessagesDisplay();
 			this.ctx.pendingBashComponents = [];
-			this.ctx.pendingPythonComponents = [];
 			while (true) {
 				if (this.ctx.viewSession.isStreaming) {
 					// Live events mutate the same component maps; keep their replay atomic so
@@ -1089,7 +1073,6 @@ export class UiHelpers {
 				this.ctx.transcriptMessageComponents = new WeakMap<AgentMessage, Component>();
 				this.ctx.pendingTools.clear();
 				this.ctx.pendingBashComponents = [];
-				this.ctx.pendingPythonComponents = [];
 			}
 
 			const replayedChatChildren = [...stagedChatContainer.children];
@@ -1133,7 +1116,6 @@ export class UiHelpers {
 				this.ctx.transcriptMessageComponents = previousTranscriptMessageComponents;
 				this.ctx.pendingTools = previousPendingTools;
 				this.ctx.pendingBashComponents = previousPendingBashComponents;
-				this.ctx.pendingPythonComponents = previousPendingPythonComponents;
 				this.ctx.lastAssistantUsage = previousLastAssistantUsage;
 				this.ctx.servedModelTracker = previousServedModelTracker;
 				stagedChatContainer.disposeChildren();
@@ -1395,11 +1377,6 @@ export class UiHelpers {
 			this.ctx.chatContainer.addChild(component);
 		}
 		this.ctx.pendingBashComponents = [];
-		for (const component of this.ctx.pendingPythonComponents) {
-			this.ctx.pendingMessagesContainer.removeChild(component);
-			this.ctx.chatContainer.addChild(component);
-		}
-		this.ctx.pendingPythonComponents = [];
 	}
 
 	findLastAssistantMessage(): AssistantMessage | undefined {

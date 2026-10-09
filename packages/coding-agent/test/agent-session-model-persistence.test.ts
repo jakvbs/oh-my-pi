@@ -154,7 +154,6 @@ describe("AgentSession model persistence", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 		});
 		session = result.session;
 		return result;
@@ -513,7 +512,6 @@ describe("AgentSession model persistence", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 		});
 		session = result.session;
 		expect(result.session.model?.id).toBe(defaultModel.id);

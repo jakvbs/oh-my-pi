@@ -62,7 +62,7 @@ describe("worker selector dispatch", () => {
 
 	it("exits promptly when an IPC worker selector is launched without an IPC channel", async () => {
 		const proc = Bun.spawn({
-			cmd: [process.execPath, "packages/coding-agent/src/cli.ts", "__omp_worker_js_eval_process"],
+			cmd: [process.execPath, "packages/coding-agent/src/cli.ts", "__omp_worker_stats_activity"],
 			cwd: path.resolve(__dirname, "../../.."),
 			stdin: "ignore",
 			stdout: "ignore",
@@ -83,7 +83,7 @@ describe("worker selector dispatch", () => {
 				"-e",
 				`
 				const child = Bun.spawn({
-					cmd: [process.execPath, "packages/coding-agent/src/cli.ts", "__omp_worker_js_eval_process"],
+					cmd: [process.execPath, "packages/coding-agent/src/cli.ts", "__omp_worker_stats_activity"],
 					cwd: ${JSON.stringify(repoRoot)},
 					ipc(msg) {},
 					serialization: "advanced",
@@ -132,7 +132,7 @@ describe("worker selector dispatch", () => {
 				"-e",
 				`
 				const child = Bun.spawn({
-					cmd: [process.execPath, "packages/coding-agent/src/cli.ts", "__omp_worker_js_eval_process"],
+					cmd: [process.execPath, "packages/coding-agent/src/cli.ts", "__omp_worker_stats_activity"],
 					cwd: ${JSON.stringify(repoRoot)},
 					env: { ...process.env, PI_TEST_NO_NATIVES: "1" },
 					ipc() {},
@@ -187,7 +187,7 @@ describe("worker selector dispatch", () => {
 			Object.defineProperty(process, "ppid", { value: 1, configurable: true });
 			process.env.PI_TEST_NO_NATIVES = "1";
 			const { runCli } = await import("./packages/coding-agent/src/cli.ts");
-			await runCli(["__omp_worker_js_eval_process"]);
+			await runCli(["__omp_worker_stats_activity"]);
 		`;
 
 			const child = Bun.spawn({

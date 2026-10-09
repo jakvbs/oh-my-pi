@@ -73,7 +73,6 @@ import type { ComposerShapeDefinition } from "@oh-my-pi/pi-tui/overlays/composer
 export type { ComposerShapeDefinition } from "@oh-my-pi/pi-tui/overlays/composer-shape-registry";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { EditToolDetails } from "@oh-my-pi/pi-tui/tools/edit";
-import type { PythonResult } from "../../eval/py/executor";
 import type { BashResult } from "../../exec/bash-executor";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
 import type * as PiCodingAgent from "../../index";
@@ -1020,21 +1019,6 @@ export interface UserBashEvent {
 }
 
 // ============================================================================
-// User Python Events
-// ============================================================================
-
-/** Fired when user executes Python code via $ or $$ prefix */
-export interface UserPythonEvent {
-	type: "user_python";
-	/** The Python code to execute */
-	code: string;
-	/** True if $$ prefix was used (excluded from LLM context) */
-	excludeFromContext: boolean;
-	/** Current working directory */
-	cwd: string;
-}
-
-// ============================================================================
 // Input Events
 // ============================================================================
 
@@ -1239,7 +1223,6 @@ export type ExtensionEvent =
 	| CredentialDisabledEvent
 	| McpNotificationEvent
 	| UserBashEvent
-	| UserPythonEvent
 	| InputEvent
 	| ToolCallEvent
 	| ToolResultEvent
@@ -1287,12 +1270,6 @@ export interface InputEventResult {
 export interface UserBashEventResult {
 	/** Full replacement: extension handled execution, use this result */
 	result?: BashResult;
-}
-
-/** Result from user_python event handler */
-export interface UserPythonEventResult {
-	/** Full replacement: extension handled execution, use this result */
-	result?: PythonResult;
 }
 
 export type { ToolResultEventResult } from "../shared-events";
@@ -1450,7 +1427,6 @@ export interface ExtensionAPI {
 	on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): void;
 	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): void;
 	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): void;
-	on(event: "user_python", handler: ExtensionHandler<UserPythonEvent, UserPythonEventResult>): void;
 	on(event: "mcp_notification", handler: ExtensionHandler<McpNotificationEvent>): void;
 
 	// =========================================================================

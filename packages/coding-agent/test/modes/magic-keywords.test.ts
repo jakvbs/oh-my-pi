@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	MAGIC_KEYWORDS,
-	renderOrchestrateNotice,
-	renderWorkflowNotice,
-} from "@oh-my-pi/pi-coding-agent/modes/magic-keywords";
+import { MAGIC_KEYWORDS, renderOrchestrateNotice } from "@oh-my-pi/pi-coding-agent/modes/magic-keywords";
 
 describe("magic keyword registry", () => {
 	it("keeps ids and words unique so notice types and settings keys cannot collide", () => {
@@ -45,17 +41,5 @@ describe("orchestrate notice", () => {
 		const editOnly = renderOrchestrateNotice({ tools: ["read", "edit"] });
 		expect(editOnly).toContain("with `edit`");
 		expect(editOnly).not.toContain("`edit`/`write`");
-	});
-});
-
-describe("workflow notice", () => {
-	it("defaults to workpools and hides eval-defined tools when disabled", () => {
-		const enabled = renderWorkflowNotice({ taskBatch: true, evalTools: true });
-		const disabled = renderWorkflowNotice({ taskBatch: true, evalTools: false });
-		expect(enabled).toContain("Default to `workpool()`");
-		expect(enabled).toContain("`@tool`");
-		expect(disabled).toContain("Default to `workpool()`");
-		expect(disabled).not.toContain("`@tool`");
-		expect(disabled).not.toContain("tools=None");
 	});
 });

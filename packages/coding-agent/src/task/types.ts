@@ -52,7 +52,6 @@ export const taskItemSchema = type({
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
 	"schemaMode?": '"permissive" | "strict"',
-	"tools?": "string[]",
 	"+": "delete",
 });
 const taskItemSchemaIsolated = type({
@@ -62,7 +61,6 @@ const taskItemSchemaIsolated = type({
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
 	"schemaMode?": '"permissive" | "strict"',
-	"tools?": "string[]",
 	"isolated?": "boolean",
 	"+": "delete",
 });
@@ -74,7 +72,6 @@ export const taskSchema = type({
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
 	"schemaMode?": '"permissive" | "strict"',
-	"tools?": "string[]",
 	"isolated?": "boolean",
 	"+": "delete",
 });
@@ -85,7 +82,6 @@ const taskSchemaNoIsolation = type({
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
 	"schemaMode?": '"permissive" | "strict"',
-	"tools?": "string[]",
 	"+": "delete",
 });
 const taskSchemaBatch = type({
@@ -111,10 +107,8 @@ function createTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
 	effortEnabled: boolean;
-	evalToolsEnabled: boolean;
 }): BaseType {
 	const effortField = options.effortEnabled ? { "effort?": effortRule } : {};
-	const toolsField = options.evalToolsEnabled ? { "tools?": "string[]" } : {};
 	if (options.batchEnabled) {
 		if (options.isolationEnabled) {
 			const item = type.raw({
@@ -125,7 +119,6 @@ function createTaskSchema(options: {
 				...effortField,
 				"outputSchema?": outputSchemaInputSchema,
 				"schemaMode?": '"permissive" | "strict"',
-				...toolsField,
 				"isolated?": "boolean",
 				"+": "delete",
 			});
@@ -143,7 +136,6 @@ function createTaskSchema(options: {
 			...effortField,
 			"outputSchema?": outputSchemaInputSchema,
 			"schemaMode?": '"permissive" | "strict"',
-			...toolsField,
 			"+": "delete",
 		});
 		return type.raw({
@@ -161,7 +153,6 @@ function createTaskSchema(options: {
 			...effortField,
 			"outputSchema?": outputSchemaInputSchema,
 			"schemaMode?": '"permissive" | "strict"',
-			...toolsField,
 			"isolated?": "boolean",
 			"+": "delete",
 		});
@@ -174,7 +165,6 @@ function createTaskSchema(options: {
 		...effortField,
 		"outputSchema?": outputSchemaInputSchema,
 		"schemaMode?": '"permissive" | "strict"',
-		...toolsField,
 		"+": "delete",
 	});
 }
@@ -184,19 +174,16 @@ export function getTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
 	effortEnabled?: boolean;
-	/** Advertise the `tools` field for eval-defined tools (`eval.tools.enabled`, default on). */
-	evalToolsEnabled?: boolean;
 }): TaskToolSchemaInstance {
 	const effortEnabled = options.effortEnabled ?? false;
-	const evalToolsEnabled = options.evalToolsEnabled ?? true;
-	if (!effortEnabled && evalToolsEnabled) {
+	if (!effortEnabled) {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}
-	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}`;
+	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}`;
 	const cached = taskSchemaCache.get(key);
 	if (cached) return cached;
-	const schema = createTaskSchema({ ...options, effortEnabled, evalToolsEnabled });
+	const schema = createTaskSchema({ ...options, effortEnabled });
 	taskSchemaCache.set(key, schema);
 	return schema;
 }

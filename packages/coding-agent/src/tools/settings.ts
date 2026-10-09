@@ -2,7 +2,6 @@ import { combine, register } from "../config/registry";
 import { cfgAutolearnEnabled } from "../autolearn/settings";
 import { cfgBashEnabled } from "../exec/settings";
 import { cfgCompactionExperimentalContextManagement } from "../session/context-settings";
-import { cfgEvalJs, cfgEvalPy } from "../eval/settings";
 import { cfgIdaAvailable } from "../ida/install";
 import { cfgLspEnabled } from "../lsp/settings";
 
@@ -89,7 +88,7 @@ export const cfgToolsOutputMaxColumns = register({
 		group: "Output Limits",
 		label: "Output Column Cap",
 		description:
-			"Per-line byte cap for streaming tool outputs (bash, python, js eval) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables.",
+			"Per-line byte cap for streaming tool outputs (bash) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables.",
 		options: [
 			{ value: "0", label: "Off", description: "No per-line cap" },
 			{ value: "256", label: "256", description: "Tight" },
@@ -132,7 +131,7 @@ export const cfgToolsArtifactMaxBytes = register({
 		group: "Output Limits",
 		label: "Artifact File Cap (MB)",
 		description:
-			"Maximum size of the artifact file saved for streaming tool output (bash, python, js eval). Larger output keeps its beginning (up to 3 MB) and its most recent remainder, with a truncation notice between them. 0 = unlimited.",
+			"Maximum size of the artifact file saved for streaming tool output (bash). Larger output keeps its beginning (up to 3 MB) and its most recent remainder, with a truncation notice between them. 0 = unlimited.",
 		options: [
 			{ value: "0", label: "Unlimited", description: "Save the complete output" },
 			{ value: "4", label: "4 MB" },
@@ -328,7 +327,7 @@ export const cfgToolsApprovalMode = register({
 				value: "write",
 				label: "Write",
 				description:
-					"Auto-approve read-only and write tools; require confirmation for exec tools such as bash, eval, and task.",
+					"Auto-approve read-only and write tools; require confirmation for exec tools such as bash and task.",
 			},
 			{
 				value: "yolo",
@@ -590,31 +589,6 @@ export const cfgGenerateImageEnabled = register({
 	},
 });
 
-export const cfgRatchetEnabled = register({
-	id: "ratchet.enabled",
-	type: "boolean",
-	default: false,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "Ratchet",
-		description: "Enable the ratchet eval/hillclimb prelude; /ratchet turns it on for the current session",
-	},
-});
-
-export const cfgArchiveEnabled = register({
-	id: "archive.enabled",
-	type: "boolean",
-	default: true,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "Archive",
-		description:
-			"Enable the read-only archive eval prelude: prompt history, recent projects, past sessions and recaps",
-	},
-});
-
 export const cfgImagesQuestionTimeoutMs = register({
 	id: "images.questionTimeoutMs",
 	type: "number",
@@ -783,7 +757,7 @@ export const cfgToolsSpeculativeExecutionEnabled = register({
 		group: "Execution",
 		label: "Experimental Speculative Execution",
 		description:
-			"Enable the discard-safe first slice: validated local reads through direct read calls and nested eval. Network requests, provider completions, and live filesystem writes are not part of this baseline.",
+			"Enable the discard-safe first slice: validated local reads through direct read calls. Network requests, provider completions, and live filesystem writes are not part of this baseline.",
 	},
 });
 
@@ -826,7 +800,7 @@ export const cfgToolsMaxTimeout = register({
 });
 
 // Async jobs. RPC hosts start from the neutral background-job defaults (`protocolDefault`), as do the
-// bash/eval auto-background settings.
+// bash auto-background settings.
 export const cfgAsyncEnabled = register({
 	id: "async.enabled",
 	protocolDefault: ["rpc"],
@@ -960,8 +934,6 @@ export const cfgBuiltinToolGates = combine({
 	checkpoint: cfgCheckpointEnabled,
 	contextManagement: cfgCompactionExperimentalContextManagement,
 	debug: cfgDebugEnabled,
-	evalJs: cfgEvalJs,
-	evalPy: cfgEvalPy,
 	find: cfgFindEnabled,
 	github: cfgGithubEnabled,
 	glob: cfgGlobEnabled,

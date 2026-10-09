@@ -8,7 +8,6 @@ import { BashExecutionComponent } from "@oh-my-pi/pi-tui/chat/bash-execution";
 import { ChatTranscriptBuilder } from "@oh-my-pi/pi-tui/chat/chat-transcript-builder";
 import { CompactionSummaryMessageComponent } from "@oh-my-pi/pi-tui/chat/compaction-summary-message";
 import { CustomMessageComponent } from "@oh-my-pi/pi-tui/chat/custom-message";
-import { EvalExecutionComponent } from "@oh-my-pi/pi-tui/chat/eval-execution";
 import { LateDiagnosticsMessageComponent } from "@oh-my-pi/pi-tui/chat/late-diagnostics-message";
 import { StrippedToolCallsPlaceholder } from "@oh-my-pi/pi-tui/chat/stripped-tool-calls-placeholder";
 import { stopSharedSpinnerTicker, ToolExecutionComponent } from "@oh-my-pi/pi-tui/chat/tool-execution";
@@ -317,10 +316,6 @@ describe("native transcript", () => {
 			bash.appendOutput("\x1b[31mred\x1b[0m output\nsecond line");
 			bash.setComplete(1, false);
 			container.addChild(bash);
-			const cell = new EvalExecutionComponent("print(1)", h.tui);
-			cell.appendOutput("1\n");
-			cell.setComplete(0, false);
-			container.addChild(cell);
 			container.addChild(
 				new CompactionSummaryMessageComponent(
 					createCompactionSummaryMessage("Summary text", 256_000, "2026-01-01"),
@@ -380,7 +375,6 @@ describe("native transcript", () => {
 				"omp.assistant",
 				"omp.thinking",
 				"omp.bash",
-				"omp.eval",
 				"omp.compaction",
 				"omp.custom",
 				"omp.notice.ttsr",

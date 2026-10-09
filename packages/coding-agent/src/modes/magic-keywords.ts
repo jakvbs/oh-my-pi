@@ -1,8 +1,6 @@
 import { prompt } from "@oh-my-pi/pi-utils";
-import jevifyNotice from "../prompts/system/jevify-notice.md" with { type: "text" };
 import orchestrateNotice from "../prompts/system/orchestrate-notice.md" with { type: "text" };
 import ultrathinkNotice from "../prompts/system/ultrathink-notice.md" with { type: "text" };
-import workflowNotice from "../prompts/system/workflow-notice.md" with { type: "text" };
 
 /**
  * Magic keywords: standalone lowercase prose words in a user prompt that
@@ -19,10 +17,6 @@ import workflowNotice from "../prompts/system/workflow-notice.md" with { type: "
 export interface MagicKeywordContext {
 	/** Enabled tool names for the turn. */
 	tools: readonly string[];
-	/** `task.batch`: whether `task` accepts a `tasks[]` array. */
-	taskBatch: boolean;
-	/** `eval.tools.enabled`: whether `@tool`-defined kernel tools exist. */
-	evalTools: boolean;
 }
 
 /** One magic keyword: trigger word, gradient, settings copy, and the notice it injects. */
@@ -46,20 +40,9 @@ export interface MagicKeyword {
 /** Hidden notice for "ultrathink": careful multi-step reasoning. */
 export const ULTRATHINK_NOTICE: string = ultrathinkNotice.trim();
 
-/** Hidden notice for "jevify": bulk classification through the eval kernel's `judge()`. */
-export const JEVIFY_NOTICE: string = jevifyNotice.trim();
-
 /** Hidden notice for "orchestrate", naming only the tools the session actually exposes. */
 export function renderOrchestrateNotice({ tools }: Pick<MagicKeywordContext, "tools">): string {
 	return prompt.render(orchestrateNotice, { tools }).trim();
-}
-
-/** Hidden notice for "workflowz", shaped by the active task/eval capabilities. */
-export function renderWorkflowNotice({
-	taskBatch,
-	evalTools,
-}: Pick<MagicKeywordContext, "taskBatch" | "evalTools">): string {
-	return prompt.render(workflowNotice, { taskBatch, evalTools }).trim();
 }
 
 export const MAGIC_KEYWORDS = [
@@ -81,25 +64,6 @@ export const MAGIC_KEYWORDS = [
 		// The contract is entirely about `task` subagent dispatch.
 		requires: ["task"],
 		notice: renderOrchestrateNotice,
-	},
-	{
-		id: "workflow",
-		word: "workflowz",
-		hue: [30, 150],
-		label: "Workflow Keyword",
-		description: "Let standalone workflowz append its hidden eval workflow notice",
-		requires: ["task", "eval"],
-		notice: renderWorkflowNotice,
-	},
-	{
-		id: "jevify",
-		word: "jevify",
-		hue: [300, 420],
-		label: "Jevify Keyword",
-		description: "Let standalone jevify append its hidden bulk-judge classification notice",
-		// The contract is entirely about the eval kernel's `judge()` helper.
-		requires: ["eval"],
-		notice: () => JEVIFY_NOTICE,
 	},
 ] as const satisfies readonly MagicKeyword[];
 

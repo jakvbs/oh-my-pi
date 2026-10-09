@@ -11,7 +11,6 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { logger, TempDir } from "@oh-my-pi/pi-utils";
 
 /**
@@ -116,12 +115,6 @@ describe("AgentSession per-turn prune persistence", () => {
 				});
 				return advisorModel.stream(streamModel, context, options);
 			},
-			// Enough for `#withEvalStateContext` to append its synthetic message
-			// once the history holds an `eval` call.
-			evalToolSession: {
-				cwd: tempDir.path(),
-				getEvalSessionId: () => "prune-persistence-eval",
-			} as unknown as ToolSession,
 		});
 		session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
 	});
@@ -279,13 +272,6 @@ describe("AgentSession per-turn prune persistence", () => {
 			} as unknown as AgentMessage;
 		}
 
-		/** Commits a turn outside the agent loop (no advisor review); its agent end runs the prune pass. */
-		async function commitUnreviewedTurn(messages: AgentMessage[]): Promise<void> {
-			for (const message of messages) session.agent.emitExternalEvent({ type: "message_end", message });
-			session.agent.emitExternalEvent({ type: "agent_end", messages });
-			await session.waitForIdle();
-		}
-
 		/** A real primary turn: its turn end renders the next advisor delta, its agent end runs the prune pass. */
 		async function reviewedTurn(text: string): Promise<void> {
 			await session.agent.prompt(text);
@@ -339,35 +325,6 @@ describe("AgentSession per-turn prune persistence", () => {
 			// the advisor equal clones instead of the objects it last saw, so the
 			// comparison falls through to the fingerprint of the pruned content.
 			session.agent.replaceMessages(structuredClone(session.agent.state.messages));
-
-			const resets = await withPrefixResetCount(() => reviewedTurn("turn two"));
-
-			expect(resets).toBe(0);
-			expectLastReviewIncremental();
-		});
-
-		it("keeps the advisor's context across two prunes while the eval state message moves to the tail", async () => {
-			enableAdvisor();
-			// An `eval` call in history makes every display-context rebuild append a
-			// fresh synthetic `eval-state-context` message at the tail.
-			await commitUnreviewedTurn([
-				assistant([{ type: "toolCall", id: "call-eval", name: "eval", arguments: { code: "1 + 1" } }]),
-				toolResult("call-eval", "eval", "2"),
-				assistant([{ type: "text", text: "Evaluated." }]),
-			]);
-			const tail = session.agent.state.messages.at(-1);
-			expect(tail?.role === "custom" ? tail.customType : undefined).toBe("eval-state-context");
-			// Delivers the eval-state message at its current slot.
-			await reviewedTurn("turn one");
-
-			// Second prune: the synthetic message moves past the newer entries.
-			await commitUnreviewedTurn([
-				assistant([{ type: "toolCall", id: "call-big-2", name: "grep", arguments: { pattern: "FIXME" } }]),
-				toolResult("call-big-2", "grep", "other line\n".repeat(20000), true),
-				assistant([{ type: "text", text: "Nothing there either." }]),
-			]);
-			const secondTail = session.agent.state.messages.at(-1);
-			expect(secondTail?.role === "custom" ? secondTail.customType : undefined).toBe("eval-state-context");
 
 			const resets = await withPrefixResetCount(() => reviewedTurn("turn two"));
 

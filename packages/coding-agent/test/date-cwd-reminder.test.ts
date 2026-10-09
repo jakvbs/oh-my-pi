@@ -230,7 +230,6 @@ describe("date-cwd reminder on the provider wire", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 			isSubagent: true,
 			agentId: "SubAgent",
 		});
@@ -337,7 +336,6 @@ describe("date-cwd reminder on the provider wire", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 			isSubagent: true,
 			agentId: "SubAgent",
 		});

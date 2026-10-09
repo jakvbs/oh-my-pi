@@ -70,7 +70,6 @@ describe("discovery provider toggles with subagents and helper sessions", () => 
 				rules: [],
 				enableMCP: false,
 				enableLsp: false,
-				skipPythonPreflight: true,
 				...extra,
 			});
 			sessions.push(session);

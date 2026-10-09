@@ -92,14 +92,6 @@ const IDLE_RECAP_MAX_SECONDS = 3600;
 
 const RAW_PARTIAL_JSON_RENDERERS: Record<string, true> = { bash: true, edit: true, apply_patch: true };
 
-function hasNestedTodo(details: unknown): boolean {
-	return (
-		isRecord(details) &&
-		Array.isArray(details.statusEvents) &&
-		details.statusEvents.some(event => isRecord(event) && event.op === "todo" && event.committed === true)
-	);
-}
-
 interface AsyncResultJob {
 	jobId?: string;
 	type?: string;
@@ -2143,9 +2135,6 @@ export class EventController {
 		if (event.toolName === "todo" && !event.isError) {
 			const details = event.result.details as { op?: string; phases?: TodoPhase[] } | undefined;
 			if (details?.op !== "view" && details?.phases) this.ctx.setTodos(details.phases);
-		}
-		if (event.toolName === "eval" && hasNestedTodo(event.result.details)) {
-			this.ctx.setTodos(this.ctx.viewSession.getTodoPhases());
 		}
 		if (event.toolName === "todo" && event.isError) {
 			const textContent = event.result.content.find(

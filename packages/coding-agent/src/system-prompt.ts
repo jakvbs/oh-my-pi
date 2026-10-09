@@ -16,7 +16,6 @@ import type { SkillsSettings } from "./extensibility/settings";
 import type { Personality } from "./session/settings";
 import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
 import { expandAtImports } from "./discovery/at-imports";
-import type { EvalPreludeDefinition } from "./eval/preludes";
 import { SkillDescriptionCatalog } from "./extensibility/skill-descriptions";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { InternalUrlRouter } from "./internal-urls/router";
@@ -37,7 +36,6 @@ import { normalizePromptPath } from "./utils/prompt-path";
 import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 import { combine } from "./config/registry";
 import { cfgBashAutoBackgroundEnabled } from "./exec/settings";
-import { cfgEvalAutoBackgroundEnabled } from "./eval/settings";
 import { cfgTtsrBuiltinRules, cfgTtsrDisabledRules, cfgTtsrEnabled } from "./export/ttsr-settings";
 import { cfgTuiAutoGraph, cfgTuiReactions, cfgTuiRenderMermaid, cfgTuiRenderSvg } from "./modes/settings";
 import { cfgSecretsEnabled } from "./secrets/settings";
@@ -77,11 +75,10 @@ export const cfgSystemPromptInputs = combine({
 	renderSvg: cfgTuiRenderSvg,
 	autoGraph: cfgTuiAutoGraph,
 	reactions: cfgTuiReactions,
-	// Rendered into the bash/eval/task tool descriptions (inline catalog) or read by
+	// Rendered into the bash/task tool descriptions (inline catalog) or read by
 	// the prompt builder (eager/batch delegation).
 	asyncEnabled: cfgAsyncEnabled,
 	bashAutoBackground: cfgBashAutoBackgroundEnabled,
-	evalAutoBackground: cfgEvalAutoBackgroundEnabled,
 	taskEager: cfgTaskEager,
 	taskBatch: cfgTaskBatch,
 	// Rule bucketing (TTSR registrations, rulebook, always-apply) runs at rebuild time.
@@ -498,13 +495,6 @@ export interface BuildSystemPromptOptions {
 	tools?: Map<string, SystemPromptToolMetadata>;
 	/** Tool names to include in prompt. */
 	toolNames?: string[];
-	/**
-	 * Names actually exposed as provider-callable tools. Defaults to `toolNames`.
-	 * Code Mode passes its direct keep-set so the rendered tool inventory matches
-	 * the wire surface while capability and safety gates still see every
-	 * bridge-reachable tool in `toolNames`.
-	 */
-	directToolNames?: readonly string[];
 	/** Text to append to system prompt. */
 	appendSystemPrompt?: string;
 	/** Already-loaded append prompt text; bypasses path resolution. */
@@ -557,12 +547,6 @@ export interface BuildSystemPromptOptions {
 	memoryBackend?: string;
 	/** Whether the user approves `cfg://` writes for this session; gates advertising `cfg://`. */
 	settingsApproval?: boolean;
-	/**
-	 * Eval preludes advertised by this prompt. Each prelude's `guidance` is
-	 * appended as its own block after the rendered template, so custom templates
-	 * keep it.
-	 */
-	evalPreludes?: readonly Pick<EvalPreludeDefinition, "name" | "guidance">[];
 	/** Active model identifier (e.g. "anthropic/claude-opus-4") surfaced in the workstation block. */
 	model?: string;
 	/** Whether to surface `model` in the workstation block. Default: true. */
@@ -645,7 +629,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		nativeTools = true,
 		skillsSettings,
 		toolNames: providedToolNames,
-		directToolNames,
 		cwd,
 		additionalWorkspaceRoots = [],
 		contextFiles: providedContextFiles,
@@ -663,7 +646,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		delegationBias = "eager",
 		memoryBackend,
 		settingsApproval = false,
-		evalPreludes = [],
 		model,
 		includeModelInPrompt = true,
 		personality = "default",
@@ -897,14 +879,8 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const xdevToolNames = new Set(xdevTools.map(mounted => mounted.name));
 	// A direct custom tool can share a name with a retained built-in device.
 	// Presence in both toolNames and tools proves it still has a top-level definition.
-	// Bridge-only Code Mode tools stay out of the callable inventory: the eval
-	// description documents their `tool.*` access path instead.
-	const directSet = directToolNames === undefined ? undefined : new Set(directToolNames);
-	const directInventoryNames = directSet === undefined ? toolNames : toolNames.filter(name => directSet.has(name));
 	const inventoryToolNames =
-		xdevToolNames.size === 0
-			? directInventoryNames
-			: directInventoryNames.filter(name => tools?.has(name) || !xdevToolNames.has(name));
+		xdevToolNames.size === 0 ? toolNames : toolNames.filter(name => tools?.has(name) || !xdevToolNames.has(name));
 	const toolInfo = inventoryToolNames.map(name => ({
 		name: toolPromptNames.get(name) ?? name,
 		internalName: name,
@@ -1023,10 +999,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		rendered = prompt.render(systemPromptTemplate, data);
 	}
 	const systemPrompt = [rendered];
-	for (const prelude of evalPreludes) {
-		const guidance = prelude.guidance?.trim();
-		if (guidance) systemPrompt.push(guidance);
-	}
 	// Working-directory content (context files with their paths, workspace
 	// tree/roots, active repo) and session append text form one trailing
 	// `<project-context>` block after every static block, so sessions in

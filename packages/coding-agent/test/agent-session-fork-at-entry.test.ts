@@ -120,12 +120,14 @@ describe("AgentSession.fork(entryId)", () => {
 	});
 
 	it("refuses when user work starts while session_before_branch awaits", async () => {
-		// The hook admits user eval work, which keeps running after the hook returns.
-		const userEval = new AbortController();
+		// The hook admits user bash work, which keeps running after the hook returns.
+		let userWork: Promise<unknown> | undefined;
 		const extensionRunner = {
 			hasHandlers: (eventType: string) => eventType === "session_before_branch",
 			emit: async () => {
-				session!.trackEvalExecution(Promise.withResolvers<void>().promise, userEval).catch(() => undefined);
+				userWork = session!
+					.executeBash('bun -e "await Bun.sleep(60_000)"', () => undefined, { useUserShell: false })
+					.catch(() => undefined);
 				return undefined;
 			},
 		} as unknown as ExtensionRunner;
@@ -139,7 +141,8 @@ describe("AgentSession.fork(entryId)", () => {
 		expect((await fs.readdir(path.dirname(sourceFile))).filter(name => name.endsWith(".jsonl"))).toEqual([
 			path.basename(sourceFile),
 		]);
-		userEval.abort();
+		seeded.abortBash();
+		await userWork;
 	});
 
 	it("refuses when user work starts while the pre-cut flush awaits, keeping the old session's state", async () => {
@@ -152,10 +155,12 @@ describe("AgentSession.fork(entryId)", () => {
 			captureSignal = signal;
 			await capture.promise;
 		});
-		const userEval = new AbortController();
+		let userWork: Promise<unknown> | undefined;
 		const flush = seeded.sessionManager.flush.bind(seeded.sessionManager);
 		vi.spyOn(seeded.sessionManager, "flush").mockImplementation(async () => {
-			seeded.trackEvalExecution(Promise.withResolvers<void>().promise, userEval).catch(() => undefined);
+			userWork ??= seeded
+				.executeBash('bun -e "await Bun.sleep(60_000)"', () => undefined, { useUserShell: false })
+				.catch(() => undefined);
 			await flush();
 		});
 		expect(seeded.isBusyForSnapshot).toBe(false);
@@ -167,7 +172,8 @@ describe("AgentSession.fork(entryId)", () => {
 		expect((await fs.readdir(path.dirname(sourceFile))).filter(name => name.endsWith(".jsonl"))).toEqual([
 			path.basename(sourceFile),
 		]);
-		userEval.abort();
+		seeded.abortBash();
+		await userWork;
 		capture.resolve();
 		await captureRun;
 	});
@@ -175,10 +181,12 @@ describe("AgentSession.fork(entryId)", () => {
 	it("refuses a whole-session fork that requires idle when user work starts while the flush awaits", async () => {
 		const { session: seeded } = await createSeededSession();
 		const sourceFile = seeded.sessionFile!;
-		const userEval = new AbortController();
+		let userWork: Promise<unknown> | undefined;
 		const flush = seeded.sessionManager.flush.bind(seeded.sessionManager);
 		vi.spyOn(seeded.sessionManager, "flush").mockImplementation(async () => {
-			seeded.trackEvalExecution(Promise.withResolvers<void>().promise, userEval).catch(() => undefined);
+			userWork ??= seeded
+				.executeBash('bun -e "await Bun.sleep(60_000)"', () => undefined, { useUserShell: false })
+				.catch(() => undefined);
 			await flush();
 		});
 
@@ -188,7 +196,8 @@ describe("AgentSession.fork(entryId)", () => {
 		expect((await fs.readdir(path.dirname(sourceFile))).filter(name => name.endsWith(".jsonl"))).toEqual([
 			path.basename(sourceFile),
 		]);
-		userEval.abort();
+		seeded.abortBash();
+		await userWork;
 	});
 
 	it.each([

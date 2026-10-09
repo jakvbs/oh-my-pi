@@ -16,7 +16,6 @@ import { AUTO_THINKING } from "@oh-my-pi/pi-tui/thinking";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 import { cfgMagicKeyword, cfgMagicKeywordsEnabled } from "@oh-my-pi/pi-coding-agent/modes/settings";
-import { cfgTaskDisabledAgents } from "@oh-my-pi/pi-coding-agent/task/settings";
 
 const mockTaskTool: AgentTool = {
 	name: "task",
@@ -26,17 +25,9 @@ const mockTaskTool: AgentTool = {
 	execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
 };
 
-const mockEvalTool: AgentTool = {
-	name: "eval",
-	label: "Eval",
-	description: "Mock eval tool",
-	parameters: type({}),
-	execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
-};
-
 async function createMagicKeywordSession(
 	modelRegistry: ModelRegistry,
-	tools: AgentTool[] = [mockTaskTool, mockEvalTool],
+	tools: AgentTool[] = [mockTaskTool],
 ): Promise<{
 	session: AgentSession;
 	settings: Settings;
@@ -92,7 +83,7 @@ describe("AgentSession magic keyword settings", () => {
 		cfgMagicKeywordsEnabled.set(created.settings, false);
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
-		await session.prompt("please workflowz this and ultrathink through it");
+		await session.prompt("please orchestrate this and ultrathink through it");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
 		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
@@ -102,10 +93,9 @@ describe("AgentSession magic keyword settings", () => {
 		const created = await createMagicKeywordSession(modelRegistry);
 		session = created.session;
 		cfgMagicKeyword.orchestrate.set(created.settings, false);
-		cfgMagicKeyword.workflow.set(created.settings, false);
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
-		await session.prompt("please orchestrate and workflowz this");
+		await session.prompt("please orchestrate this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
 		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
@@ -116,38 +106,10 @@ describe("AgentSession magic keyword settings", () => {
 		session = created.session;
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
-		await session.prompt("please orchestrate and workflowz this");
+		await session.prompt("please orchestrate this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([
-			"orchestrate-notice",
-			"workflow-notice",
-		]);
-	});
-
-	it("updates the workflowz notice when scout is disabled during the session", async () => {
-		const created = await createMagicKeywordSession(modelRegistry);
-		session = created.session;
-		cfgTaskDisabledAgents.set(created.settings, ["scout"]);
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-
-		await session.prompt("please workflowz this");
-
-		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ content?: string; customType?: string }>;
-		const notice = promptMessages.find(message => message.customType === "workflow-notice")?.content ?? "";
-		expect(notice.toLowerCase()).not.toContain("scout");
-		expect(notice).toContain("Explore inline FIRST");
-	});
-
-	it("skips workflowz notice when the task tool is inactive", async () => {
-		const created = await createMagicKeywordSession(modelRegistry, []);
-		session = created.session;
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-
-		await session.prompt("please workflowz this");
-
-		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
+		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual(["orchestrate-notice"]);
 	});
 
 	it("skips orchestrate notice when the task tool is inactive", async () => {
@@ -156,38 +118,6 @@ describe("AgentSession magic keyword settings", () => {
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
 		await session.prompt("please orchestrate this");
-
-		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
-	});
-
-	it("appends the jevify notice only while the eval tool is active", async () => {
-		const withEval = await createMagicKeywordSession(modelRegistry, [mockEvalTool]);
-		session = withEval.session;
-		const withEvalSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-		await session.prompt("jevify this commit for unrelated changes");
-		const withEvalMessages = withEvalSpy.mock.calls[0]![0] as unknown as Array<{
-			content?: string;
-			customType?: string;
-		}>;
-		const notice = withEvalMessages.find(message => message.customType === "jevify-notice");
-		expect(notice?.content).toContain("judge(state, questions)");
-		await session.dispose();
-
-		const withoutEval = await createMagicKeywordSession(modelRegistry, [mockTaskTool]);
-		session = withoutEval.session;
-		const withoutEvalSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-		await session.prompt("jevify this commit for unrelated changes");
-		const withoutEvalMessages = withoutEvalSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(withoutEvalMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
-	});
-
-	it("skips workflowz notice when the eval tool is inactive", async () => {
-		const created = await createMagicKeywordSession(modelRegistry, [mockTaskTool]);
-		session = created.session;
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-
-		await session.prompt("please workflowz this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
 		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);

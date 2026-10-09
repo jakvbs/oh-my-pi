@@ -52,7 +52,6 @@ function createContext(options?: {
 		compactionQueuedMessages: [],
 		locallySubmittedUserSignatures: new Set<string>(),
 		isBashMode: false,
-		isPythonMode: false,
 		loopModeEnabled: false,
 		updatePendingMessagesDisplay,
 		showError,

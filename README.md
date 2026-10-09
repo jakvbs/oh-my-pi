@@ -130,13 +130,7 @@ Edits that land on the first attempt. Reads that summarize files instead of dump
 
 Originally built on [Mario Zechner](https://github.com/mariozechner)'s wonderful [Pi](https://github.com/badlogic/pi-mono), omp adds everything you're missing.
 
-### 01 · Code execution w/ tool-calling
-
-Most harnesses give the agent a Python sandbox and call it done. Ours runs persistent Python and a Bun worker, and either kernel can call back into the agent's own tools — read, search, task — over a loopback bridge. The agent loads a CSV with tool.read from inside Python, charts it from JavaScript, and never leaves the cell.
-
-![omp TUI running Python code and rendering a chart.](https://github.com/can1357/oh-my-pi/blob/main/assets/python.webp?raw=true)
-
-### 02 · LSP wired into every write
+### 01 · LSP wired into every write
 
 Ask for a rename and you get a rename. The call goes through workspace/willRenameFiles, so re-exports, barrel files, and aliased imports update before the file moves. Everything your IDE knows, the agent knows.
 
@@ -144,7 +138,7 @@ Ask for a rename and you get a rename. The call goes through workspace/willRenam
 
 _[Read the LSP config docs](docs/lsp-config.md)_
 
-### 03 · Drives a real debugger
+### 02 · Drives a real debugger
 
 A C binary segfaults: the agent attaches lldb, steps to the bad pointer, reads the frame. A Go service hangs: it attaches dlv and walks the goroutines. A Python process is wedged: debugpy, pause, inspect, evaluate. Most agents are still sprinkling print statements.
 
@@ -152,7 +146,7 @@ A C binary segfaults: the agent attaches lldb, steps to the bad pointer, reads t
 
 _[Watch the capture ↗](https://omp.sh/clips/dap.mp4)_
 
-### 04 · Time-traveling stream rules
+### 03 · Time-traveling stream rules
 
 Your rules sit dormant until the model goes off-script. A regex match aborts the stream mid-token, injects the rule as a system reminder, and retries from the same point. You get course-correction without paying context tax on every turn. Injections survive compaction, so the fix sticks.
 
@@ -160,7 +154,7 @@ Your rules sit dormant until the model goes off-script. A regex match aborts the
 
 _[Watch the capture ↗](https://omp.sh/clips/ttsr.mp4)_
 
-### 05 · First-class subagents
+### 04 · First-class subagents
 
 Split a job across workers and get typed results back. task fans out into isolated worktrees, each worker runs its own tool surface, and the final yield is a schema-validated object the parent reads directly. No prose to parse, no merge conflicts between siblings, no orphaned edits.
 
@@ -170,7 +164,7 @@ _[Watch the capture ↗](https://omp.sh/clips/irc.mp4)_
 
 Watch the fan-out while it runs: `Alt+A` opens [Agent Hub](docs/agent-hub.md), where the roster shows current activity and usage for every subagent. Open one to read its live transcript, type a steering message, revive a parked worker, or kill a stuck one without aborting the parent session.
 
-### 06 · A second model, watching every turn.
+### 05 · A second model, watching every turn.
 
 Pair a reviewer model to the 'advisor' role and it reads every turn the main agent takes, injecting notes inline — a quiet aside, a concern, or a hard blocker. It runs on its own context and its own model, so it catches what the doer rushed past. The main agent sees the note and course-corrects, or tells you why it won't.
 
@@ -178,15 +172,7 @@ Pair a reviewer model to the 'advisor' role and it reads every turn the main age
 
 _[Watch the capture ↗](https://omp.sh/clips/advisor.mp4)_
 
-### 07 · Hand someone the link, they're in.
-
-/collab puts your live session on a relay and hands back a link — and a QR. A teammate joins from another terminal with omp join, or just opens it in a browser. Share read-write to pair on the same agent, or /collab view for a read-only link anyone can watch but no one can steer. Frames are sealed client-side; the relay never sees your keys.
-
-![omp TUI: /collab view prints 'Collab session started!' with an omp join command, a my.omp.sh browser link, the note 'Anyone with this link can watch the session but cannot prompt the agent', and a large scannable QR code.](https://omp.sh/clips/collab-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/collab.mp4)_
-
-### 08 · Read a pdf on arxiv, why not?
+### 06 · Read a pdf on arxiv, why not?
 
 web_search chains twenty-three ranked providers and hands whatever URLs it finds straight to read. Arxiv PDFs, GitHub pages, Stack Overflow threads come back as structured markdown with anchors intact — the same tool surface you use on local files. Cite, follow, quote, never lose where you came from.
 
@@ -194,45 +180,45 @@ web_search chains twenty-three ranked providers and hands whatever URLs it finds
 
 _[Watch the capture ↗](https://omp.sh/clips/web.mp4)_
 
-### 09 · Unapologetically native. Even on Windows.
+### 07 · Unapologetically native. Even on Windows.
 
 Other agents shell out to rg, grep, find, and bash. On many machines those binaries don't exist, and on the ones where they do, every call costs a fork-exec round-trip. omp links the real implementations into the process. ripgrep, glob, find: in-process. brush is the bash — with sessions that survive across calls, and 58 command-line utilities (ls, sed, sort, xargs, even jq) ported into the builtins crate and run in-process, zero fork/exec. The same omp binary runs on macOS, Linux, and Windows — no WSL bridge.
 
-### 10 · Code review with priorities and a verdict
+### 08 · Code review with priorities and a verdict
 
 Get a clear verdict on whether the change ships, with every issue ranked P0 through P3 and scored for confidence. /review spawns dedicated reviewer subagents that sweep branches, single commits, or uncommitted work in parallel. You tackle what blocks release first; nothing important hides in a wall of prose.
 
 Want to steer the review yourself? `/annotate code-review` opens the diff so you can pin notes to lines before the reviewers run. `/annotate` also takes the latest reply, a session message, a file, or quoted text and pastes your notes into the prompt. See [`/annotate`](docs/slash-command-internals.md#12-bundled-command-note-annotate).
 
-### 11 · Hashline: edit by content hash
+### 09 · Hashline: edit by content hash
 
 Perfect edits, fewer tokens. The model points at anchors instead of retyping the lines it wants to change, so whitespace battles and string-not-found loops just stop happening. Edit a stale file and the anchors diverge — we reject the patch before it corrupts anything. Grok 4 Fast spends 61% fewer output tokens on the same work.
 
-### 12 · GitHub is just another filesystem
+### 10 · GitHub is just another filesystem
 
 Other harnesses bolt on gh_issue_view, gh_pr_view, gh_search — each with its own parameters the agent has to learn and you have to debug. We skipped that. read already handles paths; PRs are paths. One interface to teach the model, one surface to keep correct.
 
-### 13 · Memory the agent curates
+### 11 · Memory the agent curates
 
 The agent remembers your codebase between sessions. It writes facts mid-run with retain, captures reusable lessons with learn, pulls them back with recall, and compresses each session into a mental model that loads on the first turn of the next one. Pick the engine with `memory.backend` — local, Hindsight, or Mnemopi. Project-scoped by default, so what it learns about this repo stays with this repo.
 
-### 14 · ACP: editor-drivable agent
+### 12 · ACP: editor-drivable agent
 
 Run omp inside Zed and you get the same agent you drive from the terminal — reading the buffer you're actually looking at, writing through the editor's save path, spawning shells in the editor's terminal. Destructive tools pause for a permission prompt you can answer once and forget. No bridge, no plugin, no second brain to keep in sync.
 
-### 15 · Inherits what your other tools already wrote
+### 13 · Inherits what your other tools already wrote
 
 Every other agent ships an importer and expects you to convert. omp reads the eight formats already on disk in their native shape — Cursor MDC, Cline .clinerules, Codex AGENTS.md, Copilot applyTo, and the rest. No migration script, no YAML-to-TOML port, no "supported subset" footnotes. The config your team wrote last quarter still works tonight.
 
-### 16 · omp commit: atomic splits, validated messages
+### 14 · omp commit: atomic splits, validated messages
 
 omp reads the working tree through git_overview, git_file_diff, and git_hunk, then splits unrelated changes into atomic commits ordered by their dependencies. Cycles are rejected before anything is written. Source files score above tests, docs, and configs, so the headline commit is the one that matters. Lock files are excluded from analysis entirely.
 
-### 17 · Read PRs. _Walk skills._ Pull JSON out of subagents.
+### 15 · Read PRs. _Walk skills._ Pull JSON out of subagents.
 
 Sixteen internal schemes — `pr://`, `issue://`, `agent://`, `skill://`, `ssh://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `grep` walks a diff like a directory. `agent://<id>/findings.0.path` pulls a field out of a subagent's output by path.
 
-### 18 · Conflict resolution, made easy.
+### 16 · Conflict resolution, made easy.
 
 Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@base` to `conflict://N` and the file resolves cleanly. Bulk form: `conflict://*`.
 
@@ -240,21 +226,13 @@ Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@b
 
 _[Watch the capture ↗](https://omp.sh/clips/conflict.mp4)_
 
-### 19 · Preview, then accept.
+### 17 · Preview, then accept.
 
 `ast_edit` returns a _(proposed)_ card with the replacement count. The change is staged. The agent writes a one-line reason to `xd://resolve`; the TUI turns it into an **Accept** card and the disk move happens — atomic, all or nothing.
 
 ![omp TUI: ✓ AST Edit: console.log($X) (proposed) 3 replacements · 1 file, then ✓ Accept: 3 replacements in 1 file (AST Edit), followed by 'Applied 3 replacements in src/auth.ts.'](https://omp.sh/clips/codemod-poster.webp)
 
 _[Watch the capture ↗](https://omp.sh/clips/codemod.mp4)_
-
-### 20 · Drives a _real browser_. _Or your Slack?_
-
-Eval's `browser.open(...)` returns a tab handle with direct navigation, inspection, interaction, and element helpers; `tab.run(...)` handles custom JavaScript. It drives Chromium or Electron in an isolated tab runtime. Stealth is on by default, while the browser relay can adopt Chrome tabs you already have open without stealing focus.
-
-### 21 · Hands on the desktop itself
-
-Eval's `computer` helpers — `computer.window(...)`, `win.screenshot()`, `win.ax()`, `el.press()`, plus `computer.run(fnOrCode, options)` for multi-step scripts — control the real host: enumerate windows and displays, capture screenshots, send native input, walk the OS accessibility tree, and use the clipboard. It exposes no browser DOM.
 
 ## Whatever the task needs, _it's already in the box_.
 
@@ -273,7 +251,6 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 **Runtime**
 
 - `bash` — workspace shell with 46 in-process coreutils, optional PTY, and background-job dispatch.
-- `eval` — persistent Python and JavaScript cells with shared prelude and tool re-entry.
 
 **Code intelligence**
 
@@ -287,10 +264,8 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 - `todo` — ordered mutations over the session todo list with phase tracking.
 - `ask` — structured follow-up questions for interactive runs.
 
-**Desktop & web**
+**Web**
 
-- `browser` — Puppeteer tabs over headless Chromium, CDP-attached apps, or your own Chrome via the relay.
-- `computer` — persistent JS against the host desktop: windows, screenshots, native input, AX tree, clipboard.
 - `web_search` — one query across configured providers, returning answer plus citations.
 - `github` — GitHub CLI ops — repo, PR, issues, code search, Actions run-watch.
 - `generate_image` — generate or edit raster images via Gemini, GPT, or xAI Grok image models.
@@ -467,7 +442,6 @@ Inside `pi-natives`, the per-module breakdown (glue and tests omitted):
 
 | Module        | What it does                                                                      | Powered by                                |   ~LoC |
 | ------------- | --------------------------------------------------------------------------------- | ----------------------------------------- | -----: |
-| desktop       | Window/display enumeration · screenshot · native input · AX tree for `computer`   | xcap · enigo · OS AX FFI                  | 10,600 |
 | grep          | Regex search · parallel/sequential · glob & type filters · fuzzy find             | grep-regex · grep-searcher                |  3,280 |
 | text          | ANSI-aware width · truncation · column slicing · SGR-preserving wrap              | unicode-width · segmentation              |  2,070 |
 | snapcompact   | Bitmap-frame rasterization + PNG encode for context compression                   | image · png                               |  1,760 |

@@ -251,7 +251,8 @@ describe("SessionAnonymizer", () => {
 		expect(json).toContain('"op":"start"');
 		expect(json).not.toContain('"status"');
 		expect(json).toMatch(/"arguments":"\[redacted #\d+: \d+ chars, 1 line\]"/);
-		expect(json).toMatch(/"jsonOutputs":"\[redacted #\d+/);
+		// The fork has no built-in `eval`, so its result details are opaque as a whole, like an extension tool's.
+		expect(json).toMatch(/"toolName":"eval","details":"\[redacted #\d+/);
 		expect(json).toMatch(/"data":"\[redacted #\d+/);
 		expect(json).toMatch(/"preserveData":"\[redacted #\d+/);
 		// A dotted task name and its agent:// URI share one token index.

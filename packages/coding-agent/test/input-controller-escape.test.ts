@@ -59,7 +59,6 @@ function createContext(): {
 	spies: {
 		abort: Spy;
 		abortBash: Spy;
-		abortEval: Spy;
 		abortHandoff: Spy;
 		addMessageToChat: Spy;
 		cancelPendingSubmission: Spy;
@@ -88,7 +87,6 @@ function createContext(): {
 	let editorText = "";
 	const abort = vi.fn();
 	const abortBash = vi.fn();
-	const abortEval = vi.fn();
 	const abortHandoff = vi.fn();
 	const addMessageToChat = vi.fn();
 	const cancelPendingSubmission = vi.fn(() => false);
@@ -162,7 +160,6 @@ function createContext(): {
 			promptTemplates: [],
 			abort,
 			abortBash,
-			abortEval,
 			clearQueue,
 			getQueuedMessages,
 			prompt,
@@ -194,7 +191,6 @@ function createContext(): {
 		skillCommands: new Map(),
 		fileSlashCommands: new Set<string>(),
 		isBashMode: false,
-		isPythonMode: false,
 		optimisticUserMessageSignature: undefined,
 		locallySubmittedUserSignatures: new Set<string>(),
 		onInputCallback,
@@ -234,7 +230,6 @@ function createContext(): {
 		spies: {
 			abort,
 			abortBash,
-			abortEval,
 			abortHandoff,
 			addMessageToChat,
 			cancelPendingSubmission,
@@ -448,19 +443,6 @@ describe("InputController escape behavior", () => {
 		editor.onEscape?.();
 
 		expect(spies.abortBash).toHaveBeenCalledTimes(1);
-		expect(spies.abort).not.toHaveBeenCalled();
-	});
-
-	it("prefers aborting python before aborting an overlapping stream", () => {
-		const { ctx, editor, spies } = createContext();
-		(ctx.session as { isStreaming: boolean; isEvalRunning: boolean }).isStreaming = true;
-		(ctx.session as { isStreaming: boolean; isEvalRunning: boolean }).isEvalRunning = true;
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-		editor.onEscape?.();
-
-		expect(spies.abortEval).toHaveBeenCalledTimes(1);
 		expect(spies.abort).not.toHaveBeenCalled();
 	});
 

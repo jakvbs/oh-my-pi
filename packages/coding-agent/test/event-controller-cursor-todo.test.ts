@@ -190,26 +190,6 @@ describe("EventController + Cursor todo bridge", () => {
 		expectRetirableResult(block);
 	});
 
-	it("shows current Todo phases rather than a snapshot captured during Eval", async () => {
-		const f = createFixture();
-		const recorded = [{ name: "Old", tasks: [{ content: "Earlier", status: "completed" }] }];
-		const current = [{ name: "Current", tasks: [{ content: "Later", status: "in_progress" as const }] }];
-		f.ctx.viewSession.getTodoPhases = () => current;
-
-		await f.controller.handleEvent(evalEnd("eval-todo-1", [{ op: "todo", committed: true, phases: recorded }]));
-
-		expect(f.ctx.setTodos).toHaveBeenCalledWith(current);
-	});
-
-	it("keeps the Todo panel current when Eval fails after a nested update", async () => {
-		const f = createFixture();
-		const current = [{ name: "Current", tasks: [{ content: "Committed", status: "completed" as const }] }];
-		f.ctx.viewSession.getTodoPhases = () => current;
-
-		await f.controller.handleEvent(evalEnd("eval-todo-error", [{ op: "todo", committed: true }], true));
-
-		expect(f.ctx.setTodos).toHaveBeenCalledWith(current);
-	});
 	it("does not restart Todo auto-clear after a nested read-only view", async () => {
 		const f = createFixture();
 		f.ctx.viewSession.getTodoPhases = () => [];

@@ -58,7 +58,6 @@ import {
 	createHandoffSummaryMessageComponent,
 } from "./compaction-summary-message";
 import { CustomMessageComponent } from "./custom-message";
-import { EvalExecutionComponent } from "./eval-execution";
 import {
 	type LateDiagnosticsFile,
 	LateDiagnosticsMessageComponent,
@@ -354,16 +353,9 @@ export class ChatTranscriptBuilder {
 				this.container.addChild(component);
 				break;
 			}
-			case "pythonExecution": {
-				const component = new EvalExecutionComponent(message.code, this.#deps.ui, message.excludeFromContext);
-				if (message.output) component.appendOutput(message.output);
-				component.setComplete(message.exitCode, message.cancelled, {
-					truncation: message.meta?.truncation,
-					artifactError: message.meta?.artifactError,
-				});
-				this.container.addChild(component);
+			case "pythonExecution":
+				// Eval cells persisted by older sessions; the eval runtime is gone.
 				break;
-			}
 			case "hookMessage":
 			case "custom":
 				// A directly-invoked `/skill:` custom prompt is the run's initiator

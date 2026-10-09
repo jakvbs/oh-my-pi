@@ -8,9 +8,8 @@
 - Key collaborators:
   - `packages/coding-agent/src/task/types.ts` — dynamic schema, agent definitions, output caps.
   - `packages/tui/src/tools/task.ts` — progress/result and tool-details types.
-  - `packages/coding-agent/src/task/structured-subagent.ts` — shared task/eval preflight, model/schema policy, artifact retention, execution.
+  - `packages/coding-agent/src/task/structured-subagent.ts` — shared task preflight, model/schema policy, artifact retention, execution.
   - `packages/coding-agent/src/task/isolation-runner.ts` — isolation capture, merge, recovery, and lifecycle ownership.
-  - `packages/coding-agent/src/task/eval-tools.ts` — expose parent-kernel tools to a child.
   - `packages/coding-agent/src/task/discovery.ts` — discover project/user/extension `*.ts` agent modules.
   - `packages/coding-agent/src/task/agents.ts` — agent module validation (`parseAgentModule`).
   - `packages/coding-agent/src/task/executor.ts` — create child sessions, run subagents, collect output, hand finished sessions to the lifecycle manager.
@@ -30,7 +29,7 @@
 
 ## Inputs
 
-The wire schema is shape-swapped by `task.batch` (default on). One unit of work is `{ name?, agent?, task, solutionSpace, effort?, outputSchema?, schemaMode?, tools?, isolated? }`. `isolated` exists only when `task.isolation.enabled` is true **and plan mode is disabled**; `effort` requires `task.enableEffort=true` (default off), and `tools` requires `eval.tools.enabled` (default on).
+The wire schema is shape-swapped by `task.batch` (default on). One unit of work is `{ name?, agent?, task, solutionSpace, effort?, outputSchema?, schemaMode?, isolated? }`. `isolated` exists only when `task.isolation.enabled` is true **and plan mode is disabled**; `effort` requires `task.enableEffort=true` (default off).
 
 - **Batch shape** (`task.batch` on): `{ context, tasks: item[] }` — one subagent per item, all run under the same fan-out rules; there is no top-level agent field. `context` is **required** shared background rendered into every spawned subagent's system prompt (`CONTEXT` section); `agent`, `outputSchema`, and `schemaMode` are per item. `effort` is added only when its setting enables it; `isolated` additionally requires plan mode to be disabled.
 - **Flat shape** (`task.batch` off): `{ ...item }` — exactly one spawn per call. Shared background goes into a `local://` file (e.g. `local://ctx.md`) that each spawn's `task` references; subagents share the parent's `local://` root.
@@ -46,12 +45,11 @@ The wire schema is shape-swapped by `task.batch` (default on). One unit of work 
 | `effort` | `"lo" \| "med" \| "hi"` | No | Present only with `task.enableEffort=true`. Per-spawn thinking effort, mapped onto the resolved model's supported range (lowest/middle/highest level it tops out at, e.g. `high`/`xhigh`/`max`). Overrides the agent's default selector, including `auto`; omitting it keeps the agent's configured selector — automatic per-prompt classification only for agents configured `auto`. Item field in batch shape, top-level in flat shape. |
 | `outputSchema` | JSON Schema (`object \| boolean \| string \| null` at the coarse wire-validation layer) | No | Invocation-specific structured-output contract. Takes precedence over the inherited parent session schema. Item field in batch shape, top-level in flat shape. |
 | `schemaMode` | `"permissive" \| "strict"` | No | Validation mode for the effective output schema. Overrides the parent mode; defaults to `permissive`. After schema-retry exhaustion, permissive mode can accept invalid payloads with a warning; strict mode fails. Invalid caller schemas fail preflight in either mode. |
-| `tools` | `string[]` | No | Named tools already defined in the parent's Python or JS eval kernel. Present when `eval.tools.enabled=true`; child calls execute in the parent kernel, not the child's. Rejected in plan mode. Item field in batch shape, top-level in flat shape. |
 | `isolated` | `boolean` | No | Run in an isolated workspace and capture patches/branch changes. Present only when `task.isolation.enabled` is true and plan mode is disabled. Kept-alive task agents retain their workspace through idle/parked transitions and can be revived; release captures final changes and cleans the workspace. |
 
 There is no wire label field: the one-line UI label shown in the TUI/registry is generated automatically from the `task` text by the tiny/title model (fire-and-forget), so callers never provide it.
 
-Users can tag models with `^` in the composer. The resulting session-local `m1`, `m2`, … pseudonyms are accepted as `agent` by task, eval `agent()`, and `workpool()`; each runs with no agent-specific system prompt, pinned to the tagged selector. See [user-tagged model agents](../task-agent-discovery.md#user-tagged-model-agents) for persistence, boundaries, and precedence.
+Users can tag models with `^` in the composer. The resulting session-local `m1`, `m2`, … pseudonyms are accepted as `agent` by task; each runs with no agent-specific system prompt, pinned to the tagged selector. See [user-tagged model agents](../task-agent-discovery.md#user-tagged-model-agents) for persistence, boundaries, and precedence.
 
 Runtime stays permissive: the flat form is accepted even while `task.batch` is on (internal callers such as the commit flow's `analyze_files`, and stale transcripts). The model only ever sees one shape.
 
@@ -89,7 +87,7 @@ Artifacts and side channels:
 ## Flow
 1. `TaskTool.create(...)` discovers agents through a process-level memo keyed by resolved cwd and effective extension roots (`discoverAgentsForCreate`). `refreshAgentDiscovery(...)` replaces the matching description snapshot after explicit reloads.
 2. `execute(...)` repairs raw params (`repairTaskParams`), then validates: `schema` is always rejected; `tasks`/`context` are rejected unless `task.batch` is on; batch calls need a non-empty `tasks` (a `task` per item, unique provided names), a non-empty shared `context`, and no top-level `task` alongside `tasks`; flat calls need `task`. The call is then normalized into its spawn list (`resolveSpawnItems`).
-   Eval-tool names and every item's effective policy are preflighted before normal dispatch registers jobs. Missing/unknown/disabled agents, invalid caller schemas, attempts to delegate from a subagent, and unavailable plan-mode controls fail the call before dispatch.
+   Every item's effective policy is preflighted before normal dispatch registers jobs. Missing/unknown/disabled agents, invalid caller schemas, attempts to delegate from a subagent, and unavailable plan-mode controls fail the call before dispatch.
 3. Execution mode: every item becomes a background job when async is available. The whole call runs sync when `async.enabled=false` or the session has no `AsyncJobManager` (orphaned host); inline spawns run as `SpawnRun`s (`src/task/spawn-run.ts`), each holding a session-scoped semaphore permit until it settles.
 4. Background execution (`async.enabled=true` and an `AsyncJobManager`):
    - agent ids are allocated up front via `AgentOutputManager.allocate(...)` — each item's `name`, or a generated AdjectiveNoun name — one per spawn;
@@ -99,7 +97,7 @@ Artifacts and side channels:
 5. Each `SpawnRun` calls `#runSpawn` → `runStructuredSubagent(...)`. Shared policy resolution reloads settings and rediscovers agents from disk, so runtime resolution can differ from the create-time description.
 6. It resolves the requested agent, enforces root-only spawning and `PI_BLOCKED_AGENT` self-recursion prevention, validates the effective output schema, and applies `before_subagent_spawn` routing/blocking hooks.
 7. Model priority: `task.agentModelOverrides` → agent module `model` → configured task role/session fallback. Output schema priority: per-call `outputSchema` → inherited parent session schema.
-8. Plan mode supplies `read`, `grep`, `glob`, `web_search`, and any configured `ast_grep`, clears the agent's prewalk control, and disables LSP/IRC. Eval-defined tools and isolation/apply/merge controls are rejected.
+8. Plan mode supplies `read`, `grep`, `glob`, `web_search`, and any configured `ast_grep`, clears the agent's prewalk control, and disables LSP/IRC. Isolation/apply/merge controls are rejected.
 9. If `isolated`, it requires a git repo (`getRepoRoot(...)` / `captureBaseline(...)`), maps `isolation.backend` to a backend-kind hint (`parseIsolationBackend`), and materializes the workspace via the natives PAL (`ensureIsolation` → `isoResolve`/`isoStart`), walking the candidate list when a backend is unavailable.
 10. Artifacts dir comes from the parent session file when available, otherwise a temp dir. When the session is executing an approved plan, the plan reference is handed to the subagent.
 11. Non-isolated spawns call `runSubprocess(...)` with parent cwd. Isolated spawns run in their workspace and capture root/nested patches or a branch. Successful changes apply only when `task.isolation.apply=true`; failed capture/merge paths preserve recovery artifacts. Kept-alive runs transfer workspace cleanup to the lifecycle owner rather than tearing it down at completion.
@@ -125,7 +123,6 @@ Artifacts and side channels:
 - Speculative launch (`task.speculativeLaunch`, default on; batch mode only) — while a `{ context, tasks[] }` call streams, the tool's stream session (`src/task/speculative-launch.ts`) starts each item's `SpawnRun` as soon as that item's JSON object closes (`context` must already have closed), and starts the remainder when the call finishes streaming. Dispatch adopts runs whose normalized spawn params still match; an invalid finished call, launched items that differ from the finished call, a blocking hook, or an aborted turn aborts every launched run. Launches need host authorization (`authorizeLaunch`): auto-allowed `task` approval and no extension `tool_call`/`tool_result`/approval lifecycle handlers.
 - Isolation is enabled with `task.isolation.enabled`; `isolation.backend` selects `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, or `rcopy`, and the PAL resolves the actual backend with fallback.
 - Isolation merge strategy: `task.isolation.merge` selects patch mode (capture/apply root patches) or branch mode (commit to `omp/task/<id>`, cherry-pick into parent). `task.isolation.apply=false` retains captured changes without applying them; nested repositories get separate patch artifacts.
-- Eval-defined tools: `tools` resolves names across the parent's retained Python/JS kernels. Unknown names, disabled sharing, or the same name defined in both kernels fail preflight; these tools are not available in plan mode.
 - Agent source precedence is first-wins by exact name: project `.omp/agents`; user `.omp/agent/agents`; OMP extension-package `agents/` roots in CLI → project settings → user settings → installed npm/link plugin order. Only `*.ts` modules are loaded. No built-in agents are appended.
 - Prewalk: `task.agentPrewalk[agentName]` (`"on"` / `"off"` / target pattern) can start on the normal model and hand off to a cheaper resolved model at the first edit/write. Missing/unconfigured targets and exact model+effort no-ops skip the handoff rather than failing the spawn.
 - Advisor: `task.agentAdvisor[agentName]` (`"on"` / `"off"` / model pattern) pairs the child session with an advisor; an explicit pattern lands on the child's `modelRoles.advisor`. Subagents default to no advisor.
@@ -171,8 +168,7 @@ Artifacts and side channels:
   - `tasks` / `context` while `task.batch` is disabled
   - batch calls: missing/empty `tasks`, an item without `task`, duplicate provided names, missing shared `context`, top-level `task` alongside `tasks`
   - flat calls: missing/empty `task`
-  - invalid effort, missing/unknown/settings-disabled agents, attempts to delegate from a subagent, invalid caller output schemas, disabled isolation, or isolation/eval-tool controls in plan mode
-  - unknown eval tools, disabled eval sharing, or a name defined in both parent kernels
+  - invalid effort, missing/unknown/settings-disabled agents, attempts to delegate from a subagent, invalid caller output schemas, disabled isolation, or isolation controls in plan mode
 - Isolation preparation failures return `Isolated subagent execution could not be prepared: ...`. They distinguish missing Git repositories, pure Jujutsu workspaces without colocated Git, and oversized snapshots. Unavailable backends fall back through the PAL candidate list; other setup/capture failures preserve available output and recovery artifacts.
 - Job registration failure returns `Failed to start background task job(s): ...`; a batch that schedules only some jobs reports the failed ids in the immediate text and keeps the started ones running.
 - Child failures surface as `SingleResult.exitCode = 1` with `stderr`/`error` populated; the async job is marked failed but the delivery text still carries the output plus a follow-up/transcript hint.

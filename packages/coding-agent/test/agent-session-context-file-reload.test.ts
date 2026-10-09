@@ -54,7 +54,6 @@ async function expectContextReload(reset: (session: AgentSession) => Promise<unk
 		slashCommands: [],
 		enableMCP: false,
 		enableLsp: false,
-		skipPythonPreflight: true,
 	});
 
 	try {

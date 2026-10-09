@@ -84,8 +84,7 @@ import {
 	resolveTaskEffortLevel,
 	type TaskEffort,
 } from "@oh-my-pi/pi-tui/thinking";
-import type { ContextFileEntry, ToolSession } from "../tools";
-import { resolveEvalBackends } from "../tools/eval-backends";
+import type { ContextFileEntry } from "../tools";
 import { LIST_STATUS_ORDER } from "@oh-my-pi/pi-tui/tools/irc";
 import { DEFAULT_PEER_ROSTER_LIMIT } from "@oh-my-pi/pi-tui/tools/irc";
 import { normalizeSchema } from "../tools/jtd-to-json-schema";
@@ -442,7 +441,7 @@ export interface ExecutorOptions {
 	 * process-global MCP manager. Defaults to `true`.
 	 */
 	enableMCP?: boolean;
-	/** Kernel-defined tools explicitly exposed by the parent eval session. */
+	/** Tools explicitly supplied to the child session. */
 	customTools?: CustomTool[];
 	/** Workpool items accepted by the child yield tool during this turn. */
 	workPoolYieldItems?: WorkPoolYieldItem[];
@@ -3941,9 +3940,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 
 	let toolNames = agent.tools?.filter(name => name !== "task");
 	if (toolNames?.includes("exec")) {
-		const backends = resolveEvalBackends({ settings } as ToolSession);
 		const expanded = toolNames.filter(name => name !== "exec");
-		if (backends.python || backends.js) expanded.push("eval");
 		expanded.push("bash");
 		toolNames = Array.from(new Set(expanded));
 	}
@@ -3966,7 +3963,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	const sessionFile = subtaskSessionFile ?? null;
 
 	const lspEnabled = enableLsp ?? true;
-	const skipPythonPreflight = Array.isArray(toolNames) && !toolNames.includes("eval");
 
 	const monitor = createSubagentRunMonitor({
 		index,
@@ -4314,7 +4310,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					agentName: agent.name,
 					enableLsp: lspEnabled,
 					enableIrc: options.enableIrc,
-					skipPythonPreflight,
 					enableMCP: false,
 					// MCP proxies are minted per build as `mcpTools` in buildSubagentSessionOptions.
 					customTools: options.customTools,

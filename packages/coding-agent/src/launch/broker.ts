@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { FileLock, Process, type PtyRunResult, PtySession } from "@oh-my-pi/pi-natives";
 import { isEnoent, isRecord, logger, postmortem, procmgr, sanitizeText, setProcessName } from "@oh-my-pi/pi-utils";
 import { TerminalQueryResponder } from "@oh-my-pi/pi-utils/vterm";
-import { hostHasInheritableConsole } from "../eval/py/spawn-options";
+import { hostHasInheritableConsole } from "../utils/spawn-options";
 import {
 	truncateHead,
 	truncateHeadBytes,

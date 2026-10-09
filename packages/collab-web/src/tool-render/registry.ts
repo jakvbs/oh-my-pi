@@ -9,7 +9,6 @@ import { astGrepRenderer } from "./tools/ast-grep";
 import { bashRenderer } from "./tools/bash";
 import { debugRenderer } from "./tools/debug";
 import { editRenderer } from "./tools/edit";
-import { evalRenderer } from "./tools/eval";
 import { fetchRenderer } from "./tools/fetch";
 import { generateImageRenderer } from "./tools/generate-image";
 import { githubRenderer } from "./tools/github";
@@ -39,10 +38,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	debug: debugRenderer,
 	edit: editRenderer,
 	apply_patch: editRenderer,
-	eval: evalRenderer,
-	js: evalRenderer,
-	python: evalRenderer,
-	notebook: evalRenderer,
 	fetch: fetchRenderer,
 	glob: globRenderer,
 	find: globRenderer,
