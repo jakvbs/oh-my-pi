@@ -29,7 +29,6 @@ import type { AgentSession } from "../session/agent-session";
 import { CLI_THINKING_LEVELS, getConfiguredThinkingLevelMetadata } from "@oh-my-pi/pi-tui/thinking";
 import { noThinkingMessage, resolveThinkingArgument } from "./helpers/effort";
 import { commandConsumed, errorMessage, usage } from "./helpers/parse";
-import { handleSecurityCommand } from "./helpers/security";
 import type { ParsedSlashCommand, SlashCommandSpec, TuiSlashCommandRuntime } from "./types";
 
 import {
@@ -274,27 +273,6 @@ export function formatTokenCount(value: number): string {
 }
 
 export const BUILTIN_MODE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
-	{
-		name: "security",
-		icon: "shield",
-		description: "Plan, run, inspect, import, and compare OMP-native security scans",
-		allowArgs: true,
-		acpInputHint: "<plan|scan|status|cancel|scans|show|import|export|validate|compare|disposition>",
-		subcommands: [
-			{ name: "plan", description: "Create an immutable security scan plan" },
-			{ name: "scan", description: "Start a planned or newly planned native scan" },
-			{ name: "status", description: "Show native scan operation status" },
-			{ name: "cancel", description: "Cancel a running native scan" },
-			{ name: "scans", description: "List stored project security scans" },
-			{ name: "show", description: "Render a scan or security:// resource" },
-			{ name: "import", description: "Import SARIF or a Codex Security bundle" },
-			{ name: "export", description: "Export a canonical bundle, SARIF, or report" },
-			{ name: "validate", description: "Validate one finding with OMP-native tools" },
-			{ name: "compare", description: "Compare finding lineage across two scans" },
-			{ name: "disposition", description: "Set a finding disposition with rationale" },
-		],
-		handle: handleSecurityCommand,
-	},
 	{
 		name: "settings",
 		icon: "settings",

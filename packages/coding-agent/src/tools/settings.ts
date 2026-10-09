@@ -783,19 +783,6 @@ export const cfgWebSearchEnabled = register({
 	},
 });
 
-export const cfgSecurityEnabled = register({
-	id: "security.enabled",
-	type: "boolean",
-	default: false,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "Security",
-		description:
-			"Enable OMP-native security scan planning, execution, and the read-only security:// resource namespace",
-	},
-});
-
 export const cfgAskEnabled = register({
 	id: "ask.enabled",
 	type: "boolean",
@@ -1030,7 +1017,6 @@ export const cfgBuiltinToolGates = combine({
 	ida: cfgIdaAvailable,
 	launch: cfgLaunchEnabled,
 	lsp: cfgLspEnabled,
-	security: cfgSecurityEnabled,
 	todo: cfgTodoEnabled,
 	webSearch: cfgWebSearchEnabled,
 });

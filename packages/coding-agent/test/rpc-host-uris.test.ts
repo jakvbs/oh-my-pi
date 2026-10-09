@@ -123,7 +123,7 @@ describe("RpcHostUriBridge", () => {
 
 	it("rejects every built-in scheme so hosts can neither shadow nor clear() them", () => {
 		const bridge = new RpcHostUriBridge(() => {});
-		for (const scheme of ["security", "local", "Agent", "mcp"]) {
+		for (const scheme of ["cfg", "local", "Agent", "mcp"]) {
 			expect(() => bridge.setSchemes([{ scheme, writable: true }])).toThrow(
 				`Host URI scheme is reserved by OMP: ${scheme.toLowerCase()}://`,
 			);

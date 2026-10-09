@@ -309,7 +309,6 @@ import {
 	cfgComputerEnabled,
 	cfgRatchetEnabled,
 	cfgGenerateImageEnabled,
-	cfgSecurityEnabled,
 	cfgSpeechgenEnabled,
 	cfgToolsAbortOnFabricatedResult,
 	cfgToolsIntentTracing,
@@ -542,9 +541,7 @@ export interface CreateAgentSessionOptions {
 	modelRegistry?: ModelRegistry;
 	/**
 	 * Request credential resolver. Defaults to the model registry's normal
-	 * session-affine resolver. Security scans use this narrow seam to keep one
-	 * durable OAuth row pinned for the operation without changing ordinary
-	 * provider routing.
+	 * session-affine resolver.
 	 */
 	getApiKey?: AgentOptions["getApiKey"];
 	/**
@@ -1285,8 +1282,6 @@ export interface BuildSystemPromptOptions {
 	appendPrompt?: string;
 	inlineToolDescriptors?: boolean;
 	includeWorkspaceTree?: boolean;
-	/** Include the read-only security:// resource inventory entry. Default: false. */
-	securityEnabled?: boolean;
 	/** Eval preludes to advertise; each contributes its `guidance` block. Default: none. */
 	evalPreludes?: readonly Pick<EvalPreludeDefinition, "name" | "guidance">[];
 }
@@ -1315,7 +1310,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		appendSystemPrompt: options.appendPrompt,
 		inlineToolDescriptors: options.inlineToolDescriptors,
 		includeWorkspaceTree: options.includeWorkspaceTree,
-		securityEnabled: options.securityEnabled,
 		evalPreludes: options.evalPreludes,
 		toolNames,
 		tools: promptTools,
@@ -3941,7 +3935,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				workspaceTree: workspaceTreePromise ?? emptyWorkspaceTree,
 				includeWorkspaceTree,
 				memoryBackend: memoryBackend?.id,
-				securityEnabled: cfgSecurityEnabled.get(settings),
 				settingsApproval: toolSession.settingsApproval === true,
 				evalPreludes: toolSession.getAdvertisedEvalPreludes?.(),
 				model: getActiveModelString(),

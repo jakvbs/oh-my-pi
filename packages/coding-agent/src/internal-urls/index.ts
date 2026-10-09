@@ -24,7 +24,6 @@ export * from "./omp-scope";
 export * from "./parse";
 export * from "./router";
 export * from "./rule-protocol";
-export * from "./security-protocol";
 export * from "./skill-protocol";
 export * from "./ssh-protocol";
 export type * from "./types";

@@ -814,7 +814,7 @@ Scheme names are trimmed and lowercased and must match `[a-z][a-z0-9+.-]*`.
 replaces the entire previous set — schemes missing from the new list are
 unregistered; an empty list clears all host schemes.
 
-Every built-in scheme (`local://`, `skill://`, `artifact://`, `security://`,
+Every built-in scheme (`local://`, `skill://`, `artifact://`,
 `mcp://`, …) is reserved: RPC hosts cannot register or shadow one, and the
 request fails with `Host URI scheme is reserved by OMP: <scheme>://`.
 

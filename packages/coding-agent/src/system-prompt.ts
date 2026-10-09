@@ -557,8 +557,6 @@ export interface BuildSystemPromptOptions {
 	workspaceTree?: WorkspaceTree | Promise<WorkspaceTree>;
 	/** Active `memory.backend` id; undefined when memory is off. */
 	memoryBackend?: string;
-	/** Whether the read-only security:// resource namespace is active. */
-	securityEnabled?: boolean;
 	/** Whether the user approves `cfg://` writes for this session; gates advertising `cfg://`. */
 	settingsApproval?: boolean;
 	/**
@@ -667,7 +665,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		scoutAvailable = true,
 		delegationBias = "eager",
 		memoryBackend,
-		securityEnabled = false,
 		settingsApproval = false,
 		evalPreludes = [],
 		model,
@@ -945,7 +942,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		skillUriAccess: hasSkillUriAccess,
 		ruleCount: rules?.length ?? 0,
 		memoryBackend,
-		securityEnabled,
 		settingsApproval,
 	};
 	const filteredSkills = (options.skillDescriptions ?? new SkillDescriptionCatalog()).render(
