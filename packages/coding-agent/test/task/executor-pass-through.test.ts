@@ -16,7 +16,6 @@ import type { Rule } from "@oh-my-pi/pi-coding-agent/capability/rule";
 import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { cfgCompaction } from "@oh-my-pi/pi-coding-agent/session/context-settings";
-import { parseAgentFields } from "@oh-my-pi/pi-coding-agent/discovery/helpers";
 import type { ToolPathWithSource } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools";
 import type { CustomTool } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools/types";
 import type { LoadExtensionsResult, PreparedExtension } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
@@ -197,9 +196,8 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	it("preserves empty and absent agent tool declarations through session creation", async () => {
 		const session = yieldEmittingSession();
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
-		const emptyFields = parseAgentFields({ name: "quiet", description: "desc", tools: [] });
-		const absentFields = parseAgentFields({ name: "default", description: "desc" });
-		if (!emptyFields || !absentFields) throw new Error("agent fields did not parse");
+		const emptyFields = { name: "quiet", tools: ["yield"] };
+		const absentFields = { name: "default", tools: undefined };
 
 		const emptyResult = await runSubprocess({
 			...baseOptions,
