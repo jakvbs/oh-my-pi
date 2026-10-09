@@ -15,11 +15,10 @@ import { BUILTIN_MODE_SLASH_COMMANDS } from "@oh-my-pi/pi-coding-agent/slash-com
 import { TempDir } from "@oh-my-pi/pi-utils";
 
 /**
- * Issue #8137 — a `/skill:<name>` token embedded in a `/plan [prompt]` (or
- * `/vibe [prompt]`) inline prompt was delivered to the agent as literal text
+ * Issue #8137 — a `/skill:<name>` token embedded in a `/plan [prompt]` inline prompt was delivered to the agent as literal text
  * instead of loading the skill.
  *
- * Contract: entering plan/vibe mode with an inline prompt whose text invokes a
+ * Contract: entering plan mode with an inline prompt whose text invokes a
  * registered skill dispatches the skill as a user-attributed
  * SKILL_PROMPT_MESSAGE (surrounding prose collapsed into the skill args),
  * rather than submitting the raw `.../skill:<name>` text as a normal prompt.
@@ -98,29 +97,8 @@ describe("issue #8137 — inline /skill in mode-command prompts", () => {
 		expect(message?.details).toMatchObject({ name: "grilling", args: "do X" });
 	});
 
-	it("dispatches an inline /skill invocation from a /vibe prompt as a skill message", async () => {
-		vi.spyOn(session, "activateVibeTools").mockResolvedValue(undefined);
-		const promptCustomMessage = vi.spyOn(session, "promptCustomMessage").mockResolvedValue(true);
-		let submitted: { text: string } | undefined;
-		mode.onInputCallback = input => {
-			submitted = input;
-		};
-
-		await mode.handleVibeModeCommand("do X /skill:grilling");
-
-		expect(mode.vibeModeEnabled).toBe(true);
-		expect(submitted).toBeUndefined();
-		expect(promptCustomMessage).toHaveBeenCalledTimes(1);
-		const [message] = promptCustomMessage.mock.calls[0] ?? [];
-		expect(message?.customType).toBe(SKILL_PROMPT_MESSAGE_TYPE);
-		expect(message?.details).toMatchObject({ name: "grilling", args: "do X" });
-	});
-
-	it("clears /plan and /vibe drafts before awaiting the skill turn", async () => {
-		for (const [name, handlerName] of [
-			["plan", "handlePlanModeCommand"],
-			["vibe", "handleVibeModeCommand"],
-		] as const) {
+	it("clears /plan drafts before awaiting the skill turn", async () => {
+		for (const [name, handlerName] of [["plan", "handlePlanModeCommand"]] as const) {
 			let finishTurn!: () => void;
 			const turn = new Promise<void>(resolve => {
 				finishTurn = resolve;

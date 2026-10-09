@@ -73,7 +73,7 @@ import { CollabController } from "../collab/controller";
 import type { CollabHost } from "../collab/host";
 import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import { appKey, editorKey, rawKeyHint } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
-import { formatModelString, type ResolvedModelRoleValue } from "../config/model-resolver";
+import type { ResolvedModelRoleValue } from "../config/model-resolver";
 import { isSettingsInitialized, Settings, settings } from "../config/settings";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import type {
@@ -220,12 +220,6 @@ import {
 	setTerminalTitleSpinnerStyle,
 	setTerminalTitleStateEnabled,
 } from "../utils/title-generator";
-import {
-	aggregateVibeWorkerTokensPerSecond,
-	type VibeOwnerScope,
-	type VibeParentSession,
-	VibeSessionRegistry,
-} from "../vibe/runtime";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { setSvgFigureRendering } from "@oh-my-pi/pi-tui/chat/svg-figure";
 import { setTableCharts } from "@oh-my-pi/pi-tui/chat/table-chart";
@@ -595,17 +589,6 @@ function formatContextTokenCount(value: number): string {
 
 function hasAssistantToolCall(message: AgentMessage): boolean {
 	return message.role === "assistant" && message.content.some(block => block.type === "toolCall");
-}
-
-/**
- * Reads a tool-name snapshot out of a persisted `mode_change` payload. Session
- * files are user-editable and survive across versions, so anything that is not
- * a plain array of strings is treated as absent rather than trusted.
- */
-function readPersistedToolNames(value: unknown): string[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	if (!value.every(name => typeof name === "string")) return undefined;
-	return value as string[];
 }
 
 export function shouldEnterPlanModeOnStartup(
@@ -1206,7 +1189,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	planModePaused = false;
 	goalModeEnabled = false;
 	goalModePaused = false;
-	vibeModeEnabled = false;
 	planModePlanFilePath: string | undefined = undefined;
 	loopModeEnabled = false;
 	loopModePaused = false;
@@ -1507,22 +1489,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	// session switches. While set, short replies like "c" are answers, not
 	// continue shortcuts.
 	#guidedGoalInterviewActive = false;
-	#vibeModePreviousTools: string[] | undefined;
-	#vibeModeOwnerScope: VibeOwnerScope | undefined;
-	// In-flight #enterVibeMode promise: set before the activateVibeTools await
-	// (while vibeModeEnabled is still false) and cleared when entry settles.
-	// Loop reset guards treat a pending entry as active, and a concurrent /vibe
-	// command awaits it instead of dispatching its prompt on the stale toolset.
-	#vibeModeEntry: Promise<void> | undefined;
-	// FIFO tail + live count for concurrent /vibe skill dispatches. A skill
-	// prompt yields on its file read before the turn reserves, so each skill
-	// links behind its predecessor (arrival order) while the count — visible
-	// synchronously, unlike a single shared slot — stops later prompts from
-	// overtaking any of them. Both settle when the dispatch settles, so a
-	// failure unblocks every waiter instead of hanging it.
-	#vibeSkillTail: Promise<void> = Promise.resolve();
-	#vibeSkillInFlight = 0;
-	#vibeScopeSuspendedForSwitch = false;
 	#goalContinuationTimer: NodeJS.Timeout | undefined;
 	/** Submitted continuation turns awaiting their asynchronously delivered `agent_end`. */
 	#pendingGoalContinuationTurns = 0;
@@ -1898,14 +1864,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.statusLine.setCodexResetFireworksHandler(event => {
 			this.#codexResetFireworksController.show(event);
 		});
-		// Vibe worker tok/s aggregator — keeps the status-line render layer off
-		// the heavy vibe/task dependency graph. The director is often idle while
-		// workers stream, so without this the tok/s badge would show a stale
-		// value while parallel work is actively generating tokens.
-		this.statusLine.setVibeWorkerTokenRateProvider(() =>
-			aggregateVibeWorkerTokensPerSecond(this.session.getAgentId() ?? MAIN_AGENT_ID),
-		);
-
 		this.hideToolActivity = cfgDisplayHideToolActivity.get(settings);
 		this.chatContainer.setToolActivityVisible(!this.hideToolActivity);
 		this.hideThinkingBlock = cfgHideThinkingBlock.get(settings);
@@ -2346,7 +2304,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Restore mode from session (e.g. plan mode on resume)
 		this.session.setSessionBeforeSwitchReconciler?.(async () => {
 			await this.#liveCommandController.stop();
-			await this.#quiesceVibeForSessionSwitch();
 		});
 		this.session.setSessionSwitchReconciler?.(() => this.#reconcileModeFromSession({ preserveActiveGoal: true }));
 		await logger.time("InteractiveMode.init:reconcileMode", () => this.#reconcileModeFromSession());
@@ -2912,11 +2869,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 
-		if (action === "reset" && (this.vibeModeEnabled || this.#vibeModeEntry !== undefined)) {
-			this.disableLoopMode("Exit vibe mode before using reset loops. Loop mode disabled.");
-			return;
-		}
-
 		// An exhausted budget ends the loop regardless of the condition, so check
 		// it first: the user's command must not run one last time for nothing.
 		if (isLoopLimitExhausted(this.loopLimit)) {
@@ -2936,16 +2888,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#deferLoopAutoSubmit(() => {
 				void this.#runLoopIteration(action, prompt);
 			});
-			return;
-		}
-
-		// /vibe can be enabled while the gate was awaiting: the pre-gate guard
-		// above is stale, and handleClearCommand would only warn and then let
-		// the iteration submit without resetting. Check the entering transition
-		// too: vibeModeEnabled is still false while activateVibeTools is in
-		// flight, but the reset must not run concurrently with the toolset switch.
-		if (action === "reset" && (this.vibeModeEnabled || this.#vibeModeEntry !== undefined)) {
-			this.disableLoopMode("Exit vibe mode before using reset loops. Loop mode disabled.");
 			return;
 		}
 
@@ -4470,11 +4412,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.requestRender();
 	}
 
-	#updateVibeModeStatus(): void {
-		this.statusLine.setVibeModeStatus(this.vibeModeEnabled ? { enabled: true } : undefined);
-		this.ui.requestRender();
-	}
-
 	/**
 	 * Anchored HUD of in-flight subagents, mirroring the Todos block above the
 	 * editor. Driven entirely by observer-registry change events, so rows appear
@@ -4537,29 +4474,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			clearTimeout(this.#subagentPreviewTickTimer);
 			this.#subagentPreviewTickTimer = undefined;
 		}
-	}
-
-	#vibeParentSession(): VibeParentSession {
-		return {
-			getAgentId: () => this.session.getAgentId() ?? null,
-			getSessionId: () => this.sessionManager.getSessionId(),
-			getSessionFile: () => this.sessionManager.getSessionFile() ?? null,
-			sessionManager: this.sessionManager,
-			asyncJobManager: this.session.asyncJobManager,
-			settings: this.session.settings,
-			// Resolve restored/switched-to workers against this session's active model
-			// (same as the spawn-path ToolSession), not the settings default. This is
-			// the primary fallback in resolveAgentModelPatterns, so the `good` worker's
-			// pi/task inheritance tracks the reopened session's model.
-			getActiveModelString: () => (this.session.model ? formatModelString(this.session.model) : undefined),
-		};
-	}
-
-	async #quiesceVibeForSessionSwitch(): Promise<void> {
-		const ownerScope = this.#vibeModeOwnerScope;
-		if (!this.vibeModeEnabled || !ownerScope) return;
-		await VibeSessionRegistry.global().suspendScope(ownerScope, this.session.asyncJobManager);
-		this.#vibeScopeSuspendedForSwitch = true;
 	}
 
 	#updateGoalModeStatus(): void {
@@ -4726,11 +4640,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
-	async #clearTransientModeState(options?: {
-		preserveVibe?: boolean;
-		vibeScopeAlreadySuspended?: boolean;
-		restorePlanModel?: boolean;
-	}): Promise<void> {
+	async #clearTransientModeState(options?: { restorePlanModel?: boolean }): Promise<void> {
 		if (this.planModeEnabled || this.planModePaused) {
 			const previousModel = this.#planModePreviousModelState;
 			this.session.setPlanModeState(undefined);
@@ -4773,57 +4683,18 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#cancelGoalContinuation();
 			this.#updateGoalModeStatus();
 		}
-
-		if (this.vibeModeEnabled && !options?.preserveVibe) {
-			const ownerScope = this.#vibeModeOwnerScope;
-			// This runs only from #reconcileModeFromSession, i.e. after switchSession
-			// already loaded and restored the target session's active tools. The
-			// #vibeModePreviousTools snapshot belongs to the SOURCE session, so
-			// applying it here would clobber the target's tools — strip only the
-			// transient vibe tools and keep the target's active set intact.
-			await this.session.removeVibeToolsPreservingActive();
-			this.session.setVibeModeState(undefined);
-			this.vibeModeEnabled = false;
-			this.#vibeModePreviousTools = undefined;
-			this.#vibeModeOwnerScope = undefined;
-			if (ownerScope && !options?.vibeScopeAlreadySuspended) {
-				await VibeSessionRegistry.global().suspendScope(ownerScope, this.session.asyncJobManager);
-			}
-			this.#updateVibeModeStatus();
-		}
 	}
 
 	/** Reconcile mode state from session entries on resume/switch. */
 	async #reconcileModeFromSession(options?: { preserveActiveGoal?: boolean }): Promise<void> {
-		const vibeScopeAlreadySuspended = this.#vibeScopeSuspendedForSwitch;
-		this.#vibeScopeSuspendedForSwitch = false;
 		this.#guidedGoalInterviewActive = false;
 		const sessionContext = this.sessionManager.buildSessionContext();
-		const vibeSession = this.#vibeParentSession();
-		const targetVibeScope = VibeSessionRegistry.global().ownerScope(vibeSession);
-		const preserveVibe =
-			this.vibeModeEnabled &&
-			sessionContext.mode === "vibe" &&
-			this.#vibeModeOwnerScope?.ownerId === targetVibeScope.ownerId &&
-			this.#vibeModeOwnerScope.parentSessionId === targetVibeScope.parentSessionId &&
-			this.#vibeModeOwnerScope.parentSessionFile === targetVibeScope.parentSessionFile;
-		// #clearTransientModeState below keeps the live active set instead of
-		// applying a snapshot, so for a vibe -> vibe switch the live toolset is
-		// already the reduced vibe set and cannot serve as the pre-vibe snapshot.
-		// That is the only case the persisted snapshot is for: a cold resume or a
-		// switch in from a non-vibe session built its toolset from the current CLI
-		// flags and settings, and that set — not a historical one — is what exiting
-		// vibe must restore.
-		const vibeToolsetLostToTeardown = this.vibeModeEnabled && !preserveVibe;
 		// A session that records no model (a `/new` boundary) keeps the live model,
 		// which during plan mode is the transient plan-role model; hand it the
 		// pre-plan model instead. A recorded model was already restored by switchSession.
 		await this.#clearTransientModeState({
-			preserveVibe,
-			vibeScopeAlreadySuspended,
 			restorePlanModel: Object.keys(sessionContext.models).length === 0,
 		});
-		await VibeSessionRegistry.global().rehydrate(vibeSession);
 		const goalEnabled = cfgGoalEnabled.get(this.session.settings);
 		if (!goalEnabled && (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused")) {
 			this.session.goalRuntime.clearAccounting();
@@ -4857,17 +4728,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		this.session.goalRuntime.clearAccounting();
-		if (sessionContext.mode === "vibe") {
-			if (!preserveVibe) {
-				await this.#enterVibeMode({
-					persistModeChange: false,
-					previousTools: vibeToolsetLostToTeardown
-						? readPersistedToolNames(sessionContext.modeData?.previousTools)
-						: undefined,
-				});
-			}
-			return;
-		}
 		if (!cfgPlanEnabled.get(this.session.settings)) {
 			// Clear stale plan/plan_paused mode so re-enabling the setting
 			// later doesn't unexpectedly restore an old plan session.
@@ -4896,10 +4756,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (this.goalModeEnabled || this.goalModePaused) {
 			this.showWarning("Exit goal mode first.");
-			return;
-		}
-		if (this.vibeModeEnabled) {
-			this.showWarning("Exit vibe mode first.");
 			return;
 		}
 
@@ -5112,7 +4968,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * Warn that a plan session blocks entering goal/vibe mode, distinguishing an
+	 * Warn that a plan session blocks entering goal mode, distinguishing an
 	 * active session from a paused one. A paused session already restored the
 	 * tools/model and cleared the `xd://propose` handler, so "Exit plan mode
 	 * first." reads as stale right after the user toggled plan mode off (#11692);
@@ -5130,10 +4986,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (this.planModeEnabled || this.planModePaused) {
 			this.#warnPlanModeBlocks();
-			return;
-		}
-		if (this.vibeModeEnabled) {
-			this.showWarning("Exit vibe mode first.");
 			return;
 		}
 		const previousTools = this.session.getEnabledToolNames().filter(name => name !== "goal");
@@ -5775,10 +5627,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.showWarning("Exit goal mode first.");
 			return false;
 		}
-		if (this.vibeModeEnabled) {
-			this.showWarning("Exit vibe mode first.");
-			return false;
-		}
 		if (this.planModeEnabled) {
 			const planFilePath = this.planModePlanFilePath ?? (await this.#getPlanFilePath());
 			if (await this.#hasPlanModeDraftContent(planFilePath)) {
@@ -5837,222 +5685,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		return false;
 	}
 
-	/**
-	 * `/vibe` toggle. Entering installs the ephemeral vibe tools, strips the
-	 * active toolset down to `read`, optional parent-owned `todo`, plus those
-	 * tools, and injects the director context. Exiting unregisters them, restores
-	 * the previous toolset, and kills every worker session so workers cannot
-	 * outlive the mode that directs them.
-	 */
-	async handleVibeModeCommand(
-		initialPrompt?: string,
-		input?: Pick<SubmittedUserInput, "images" | "imageLinks">,
-	): Promise<boolean> {
-		if (this.vibeModeEnabled) {
-			await this.#exitVibeMode();
-			return false;
-		}
-		if (this.planModeEnabled || this.planModePaused) {
-			this.#warnPlanModeBlocks();
-			return false;
-		}
-		if (this.goalModeEnabled || this.goalModePaused) {
-			this.showWarning("Exit goal mode first.");
-			return false;
-		}
-		await this.#enterVibeMode();
-		if (!initialPrompt) return false;
-		if (isKnownSkillCommand(this, initialPrompt)) {
-			// Append synchronously: the skill file read below yields before the
-			// turn reserves, so a concurrent plain prompt must see this claim
-			// before it can take the idle waiter — and a later skill must queue
-			// behind this one rather than overwrite a shared slot.
-			const prev = this.#vibeSkillTail;
-			this.#vibeSkillInFlight++;
-			const mine = (async () => {
-				try {
-					await prev;
-					await this.#waitForInFlightSubmission(true);
-					await invokeSkillCommandFromText(this, initialPrompt, "steer", {
-						images: input?.images,
-						propagateErrors: true,
-					});
-				} finally {
-					this.#vibeSkillInFlight--;
-				}
-			})();
-			// Never reject: a failed skill must not break the chain for later ones.
-			this.#vibeSkillTail = mine.catch(() => {});
-			await mine;
-			return true;
-		}
-		if (this.session.isStreaming) {
-			// Same ordering covenant as below: a skill prompt may be reserving
-			// ahead of us even though the session looks continuously busy.
-			await this.#waitForInFlightSubmission();
-			const images = input?.images?.length ? input.images : undefined;
-			await this.withLocalSubmission(
-				initialPrompt,
-				() =>
-					this.session.prompt(initialPrompt, {
-						streamingBehavior: "steer",
-						images,
-					}),
-				{ imageCount: images?.length ?? 0 },
-			);
-			return true;
-		}
-		const dispatchViaWaiter = (): boolean => {
-			// A skill prompt reserving ahead of us owns the next turn: leave the
-			// waiter armed until it reserves, so the main loop submits in order.
-			if (this.#vibeSkillInFlight > 0) return false;
-			const onInput = this.onInputCallback;
-			if (!onInput) return false;
-			onInput(this.startPendingSubmission({ text: initialPrompt, ...input }, { preserveDraft: true }));
-			return true;
-		};
-		if (dispatchViaWaiter()) return true;
-		// No input waiter: a concurrent dispatch may have just taken the one-shot
-		// waiter — its submission exists but the main loop hasn't handed it to the
-		// session yet. Steering now would overtake it and reverse prompt order, so
-		// yield until it reserves its turn, then re-check for a fresh waiter.
-		await this.#waitForInFlightSubmission();
-		if (dispatchViaWaiter()) return true;
-		// Still no waiter (the main loop is between turns): steer directly instead
-		// of silently swallowing the prompt — the same fallback the normal submit
-		// path uses when its waiter is gone.
-		const images = input?.images?.length ? input.images : undefined;
-		await this.withLocalSubmission(
-			initialPrompt,
-			() =>
-				this.session.prompt(initialPrompt, {
-					streamingBehavior: "steer",
-					images,
-				}),
-			{ imageCount: images?.length ?? 0 },
-		);
-		return true;
-	}
-
-	/**
-	 * Yield until prior dispatches reserve their turn (streaming, queued, or
-	 * dropped) or a fresh waiter arms. Without this, a prompt dispatched right
-	 * after a concurrent submit resolved the one-shot input waiter — or while a
-	 * skill prompt is still reading its file — would reach
-	 * {@link session.prompt} before the main loop submits the earlier input,
-	 * reversing their order. No-op when nothing is in flight; bounded so a
-	 * stalled loop degrades to immediate dispatch. `ignoreSkills` lets a skill
-	 * dispatch wait for earlier plain submissions only: concurrent skills order
-	 * themselves through the tail chain, and counting the live total here would
-	 * stall an earlier skill behind a later one it must precede.
-	 */
-	async #waitForInFlightSubmission(ignoreSkills = false): Promise<void> {
-		for (let index = 0; index < 200; index++) {
-			const skillBlocked = !ignoreSkills && this.#vibeSkillInFlight > 0;
-			const awaited = this.#pendingSubmittedInput;
-			const pendingBlocked =
-				awaited !== undefined &&
-				!awaited.cancelled &&
-				!this.session.isStreaming &&
-				this.session.queuedMessageCount === 0 &&
-				!this.onInputCallback;
-			if (!skillBlocked && !pendingBlocked) return;
-			await Bun.sleep(10);
-		}
-	}
-
-	async #enterVibeMode(options?: { persistModeChange?: boolean; previousTools?: string[] }): Promise<void> {
-		if (this.vibeModeEnabled) {
-			return;
-		}
-		const inFlight = this.#vibeModeEntry;
-		if (inFlight) {
-			// A second /vibe (possibly with a prompt) submitted while activation
-			// is still in flight must not dispatch on the stale toolset: wait for
-			// the first entry, then return with vibe active. A failed entry
-			// rejects here too, so the prompt is dropped instead of running
-			// outside vibe mode.
-			await inFlight;
-			return;
-		}
-		if (this.planModeEnabled || this.planModePaused) {
-			this.#warnPlanModeBlocks();
-			return;
-		}
-		if (this.goalModeEnabled || this.goalModePaused) {
-			this.showWarning("Exit goal mode first.");
-			return;
-		}
-
-		const vibeRegistry = VibeSessionRegistry.global();
-		const ownerScope = vibeRegistry.ownerScope(this.#vibeParentSession());
-		vibeRegistry.activateScope(ownerScope);
-		// When a vibe session switches into another session that is also in vibe
-		// mode, the teardown keeps the live active set, which is by then the reduced
-		// vibe set, so re-snapshotting it here would make the snapshot useless. That
-		// path passes the pre-vibe toolset recorded on the target's own mode_change
-		// entry instead.
-		const previousTools = options?.previousTools ?? this.session.getEnabledToolNames();
-		const vibeBaseTools = ["read"];
-		if (this.session.hasBuiltInTool("todo")) vibeBaseTools.push("todo");
-		// The entry runs as a stored promise so a concurrent /vibe joins it
-		// above instead of dispatching on the stale toolset. The first caller
-		// awaits it below, so a failure is always observed (no unhandled
-		// rejection) and propagates to every joiner, dropping their prompts.
-		const entry = (async () => {
-			await this.session.activateVibeTools(vibeBaseTools);
-			this.#vibeModePreviousTools = previousTools;
-			this.#vibeModeOwnerScope = ownerScope;
-			this.vibeModeEnabled = true;
-			// Suppress cache-miss marker on the next turn: vibe mode changes the
-			// injected context, which predictably invalidates the cache.
-			this.lastAssistantUsage = undefined;
-			this.session.setVibeModeState({ enabled: true });
-			if (this.session.isStreaming) {
-				await this.session.sendVibeModeContext({ deliverAs: "steer" });
-			}
-			this.#updateVibeModeStatus();
-			if (options?.persistModeChange !== false) this.sessionManager.appendModeChange("vibe", { previousTools });
-			this.showStatus(
-				"Vibe mode enabled. You direct fast/good worker sessions; toolset is read + optional parent Todo + vibe tools.",
-			);
-		})();
-		this.#vibeModeEntry = entry;
-		try {
-			await entry;
-		} finally {
-			if (this.#vibeModeEntry === entry) this.#vibeModeEntry = undefined;
-		}
-	}
-
-	async #exitVibeMode(): Promise<void> {
-		if (!this.vibeModeEnabled) {
-			return;
-		}
-		// Tear down with the queued-message drain suppressed: aborting the active
-		// turn would otherwise let a queued user steer/follow-up restart on the
-		// still-live Vibe tools before this teardown removes them (issue #8326).
-		let killed = 0;
-		await this.session.runModeExitTeardown(async () => {
-			if (this.session.isStreaming) {
-				await this.session.abort();
-			}
-			killed = await VibeSessionRegistry.global().killAll(this.#vibeParentSession(), this.#vibeModeOwnerScope);
-			await this.session.deactivateVibeTools(this.#vibeModePreviousTools ?? []);
-			this.session.setVibeModeState(undefined);
-		});
-		this.vibeModeEnabled = false;
-		this.#vibeModePreviousTools = undefined;
-		this.#vibeModeOwnerScope = undefined;
-		this.lastAssistantUsage = undefined;
-		this.#updateVibeModeStatus();
-		this.showStatus(
-			killed > 0
-				? `Vibe mode disabled. Killed ${killed} worker session${killed === 1 ? "" : "s"}.`
-				: "Vibe mode disabled.",
-		);
-	}
-
 	async #handleGoalBudgetCommand(rawBudget: string): Promise<void> {
 		const state = this.session.getGoalModeState();
 		if (!this.goalModeEnabled || !state?.enabled) {
@@ -6085,10 +5717,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	): Promise<boolean> {
 		if (this.planModeEnabled || this.planModePaused) {
 			this.#warnPlanModeBlocks();
-			return false;
-		}
-		if (this.vibeModeEnabled) {
-			this.showWarning("Exit vibe mode first.");
 			return false;
 		}
 		if (!cfgGoalEnabled.get(this.session.settings)) {
@@ -6130,10 +5758,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		try {
 			if (this.planModeEnabled || this.planModePaused) {
 				this.#warnPlanModeBlocks();
-				return false;
-			}
-			if (this.vibeModeEnabled) {
-				this.showWarning("Exit vibe mode first.");
 				return false;
 			}
 			if (!cfgGoalEnabled.get(this.session.settings)) {
@@ -7652,12 +7276,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#commandController.handleContextCommand();
 	}
 
-	#vibeSessionTransitionBlocked(): boolean {
-		if (!this.vibeModeEnabled) return false;
-		this.showWarning("Exit vibe mode first.");
-		return true;
-	}
-
 	async prepareSessionSwitch(): Promise<void> {
 		this.#clearJudgmentBatchProgress(true);
 		await this.#btwController.dispose();
@@ -7668,7 +7286,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async handleClearCommand(): Promise<void> {
-		if (this.#vibeSessionTransitionBlocked()) return;
 		await this.prepareSessionSwitch();
 		await this.#commandController.handleClearCommand();
 	}
@@ -7682,30 +7299,25 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async handleDeleteCommand(): Promise<void> {
-		if (this.#vibeSessionTransitionBlocked()) return;
 		await this.prepareSessionSwitch();
 		await this.#commandController.handleDeleteCommand();
 	}
 
 	async handleForkCommand(): Promise<void> {
-		if (this.#vibeSessionTransitionBlocked()) return;
 		await this.#btwController.dispose();
 		this.#omfgController.dispose();
 		await this.#commandController.handleForkCommand();
 	}
 
 	async handleMoveCommand(targetPath?: string): Promise<void> {
-		if (this.#vibeSessionTransitionBlocked()) return;
 		await this.#commandController.handleMoveCommand(targetPath);
 	}
 
 	async moveSessionTo(directory: string): Promise<boolean> {
-		if (this.#vibeSessionTransitionBlocked()) return false;
 		return this.#commandController.moveSessionTo(directory);
 	}
 
 	async handleWorktreeCommand(branch?: string, options?: { keepChanges?: boolean }): Promise<void> {
-		if (this.#vibeSessionTransitionBlocked()) return;
 		const worktree = await this.#commandController.handleWorktreeCommand(branch, options);
 		if (worktree) this.#ownedWorktrees.push(worktree);
 	}

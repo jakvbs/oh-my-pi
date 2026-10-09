@@ -26,7 +26,7 @@ export const BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE = "background-tan-dispatch";
 
 export const PREWALK_PLAN_MESSAGE_TYPE = "prewalk-plan";
 
-/** Custom message type for the transient Vibe mode directive. */
+/** Custom message type of the removed Vibe mode directive; kept so legacy sessions filter it out of context. */
 export const VIBE_MODE_CONTEXT_MESSAGE_TYPE = "vibe-mode-context";
 
 /** Fallback type for extension-injected messages that omit a custom type. */

@@ -249,7 +249,6 @@ import {
 	BashTool,
 	BUILTIN_TOOLS,
 	createTools,
-	createVibeTools,
 	createXdevState,
 	type DeferredDiagnosticsEntry,
 	defaultLoadModeForToolName,
@@ -298,7 +297,6 @@ import { normalizeProviderContextImagesForModel } from "./utils/image-loading";
 import { formatLocalCalendarDate } from "@oh-my-pi/pi-tui/chrome/local-date";
 import { normalizePromptPath } from "./utils/prompt-path";
 import { buildNamedToolChoice } from "./utils/tool-choice";
-import { VibeSessionRegistry } from "./vibe/runtime";
 import { registerLocalInferenceApi } from "./tiny/local-inference-api";
 import { shutdownTinyTitleClient } from "./tiny/title-client";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
@@ -4592,10 +4590,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 						return tools.filter((tool): tool is AgentTool => tool !== null);
 					},
 			createThinkTool: async () => (await HIDDEN_TOOLS.think(toolSession)) ?? null,
-			createVibeTools:
-				(options.taskDepth ?? 0) === 0 && !options.parentTaskPrefix
-					? () => createVibeTools(toolSession)
-					: undefined,
 			builtInToolNames: builtInRegistryToolNames,
 			mcpManagerToolNames: initialMcpManagerToolNames,
 			transformContext,
@@ -4973,17 +4967,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 						// adopted subagent sessions, revivers. Tear it down while shared
 						// resources (kernels, MCP, LSP) are still live. Subagent disposal
 						// must NOT touch the global lifecycle.
-						const vibeRegistry = VibeSessionRegistry.global();
-						const vibeParentSession = {
-							getAgentId: () => resolvedAgentId,
-							getSessionId: () => sessionManager.getSessionId(),
-							getSessionFile: () => sessionManager.getSessionFile() ?? null,
-							sessionManager,
-							asyncJobManager: scopedAsyncJobManager,
-							settings,
-							getActiveModelString,
-						};
-						await vibeRegistry.suspendScope(vibeRegistry.ownerScope(vibeParentSession), scopedAsyncJobManager);
 						await AgentLifecycleManager.global().dispose();
 					}
 					await originalDispose();

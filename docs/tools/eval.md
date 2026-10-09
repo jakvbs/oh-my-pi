@@ -263,4 +263,4 @@ With `eval.tools.enabled` (default on), a cell can turn a function into a tool o
 - State is isolated by language; resetting Python does not reset JS.
 - Current schema tokens are only `py` and `js`; long language names are renderer/approval formatting aliases, not wire values.
 - The former multi-cell `cells` payload, `*** Cell` parser, sniffing fallback, and constrained `eval.lark` grammar are removed.
-- Every agent session, including `task`, `agent()`, workpool, and vibe subagents, owns a private eval executor id; subagents never inherit their parent's kernels or VM state.
+- Every agent session, including `task`, `agent()`, and workpool subagents, owns a private eval executor id; subagents never inherit their parent's kernels or VM state.

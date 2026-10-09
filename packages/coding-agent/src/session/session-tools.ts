@@ -107,7 +107,6 @@ export interface SettingsGatedToolDelta {
 interface SessionToolsOptions {
 	autoApprove?: boolean;
 	toolRegistry?: Map<string, AgentTool>;
-	createVibeTools?: () => AgentTool[];
 	/** Creates the private `think` scratchpad tool for runtime setting changes. */
 	createThinkTool?: () => Promise<AgentTool | null>;
 	builtInToolNames?: Iterable<string>;
@@ -305,9 +304,7 @@ export class SessionTools {
 	readonly #host: SessionToolsHost;
 	#autoApprove: boolean;
 	#toolRegistry: Map<string, AgentTool>;
-	#createVibeTools: (() => AgentTool[]) | undefined;
 	#createThinkTool: SessionToolsOptions["createThinkTool"];
-	#installedVibeToolNames = new Set<string>();
 	#builtInToolNames: Set<string>;
 	#rpcHostToolNames = new Set<string>();
 	#mcpManagerToolNames = new Set<string>();
@@ -441,7 +438,6 @@ export class SessionTools {
 		this.#host = host;
 		this.#autoApprove = options.autoApprove === true;
 		this.#toolRegistry = options.toolRegistry ?? new Map();
-		this.#createVibeTools = options.createVibeTools;
 		this.#createThinkTool = options.createThinkTool;
 		this.#builtInToolNames = new Set(options.builtInToolNames ?? []);
 		this.#mcpManagerToolNames = new Set(options.mcpManagerToolNames ?? []);
@@ -799,57 +795,6 @@ export class SessionTools {
 		const wrapped = wrapToolWithMetaNotice(tool);
 		const extensionRunner = this.#host.extensionRunner();
 		return extensionRunner ? new ExtensionToolWrapper(wrapped, extensionRunner) : wrapped;
-	}
-
-	/** Installs and activates the ephemeral vibe tool set. */
-	activateVibeTools(baseToolNames: string[]): Promise<void> {
-		return this.runToolRegistryMutation(async () => {
-			const createVibeTools = this.#createVibeTools;
-			if (!createVibeTools) {
-				throw new Error("Vibe tools are unavailable in this session.");
-			}
-
-			const tools = createVibeTools();
-			const vibeToolNames = tools.map(tool => tool.name);
-			if (new Set(vibeToolNames).size !== vibeToolNames.length) {
-				throw new Error("Vibe tool names must be unique.");
-			}
-
-			for (const tool of tools) {
-				if (this.#toolRegistry.has(tool.name)) continue;
-				this.#toolRegistry.set(tool.name, this.#wrapRuntimeTool(tool));
-				this.#builtInToolNames.add(tool.name);
-				this.#installedVibeToolNames.add(tool.name);
-			}
-
-			await this.#applyActiveToolsByName([...new Set([...baseToolNames, ...vibeToolNames])]);
-		});
-	}
-
-	/** Uninstalls vibe tools and activates the replacement set. */
-	deactivateVibeTools(nextToolNames: string[]): Promise<void> {
-		return this.runToolRegistryMutation(async () => {
-			this.#uninstallVibeTools();
-			await this.#applyActiveToolsByName(nextToolNames);
-		});
-	}
-
-	/** Removes vibe tools without restoring a source-session snapshot. */
-	removeVibeToolsPreservingActive(): Promise<void> {
-		return this.runToolRegistryMutation(async () => {
-			const removed = new Set(this.#installedVibeToolNames);
-			this.#uninstallVibeTools();
-			const nextEnabled = this.getEnabledToolNames().filter(name => !removed.has(name));
-			await this.#applyActiveToolsByName(nextEnabled);
-		});
-	}
-
-	#uninstallVibeTools(): void {
-		for (const name of this.#installedVibeToolNames) {
-			this.#toolRegistry.delete(name);
-			this.#builtInToolNames.delete(name);
-		}
-		this.#installedVibeToolNames.clear();
 	}
 
 	#getEditModeSession() {

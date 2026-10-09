@@ -197,7 +197,6 @@ import sideChannelNoToolsReminder from "../prompts/system/side-channel-no-tools.
 import titleCardPrompt from "../prompts/system/title-card.md" with { type: "text" };
 import titleForkPrompt from "../prompts/system/title-fork.md" with { type: "text" };
 import skillfulNoticePrompt from "../prompts/system/skillful-notice.md" with { type: "text" };
-import vibeModeActivePrompt from "../prompts/system/vibe-mode-active.md" with { type: "text" };
 import {
 	deobfuscateAssistantContent,
 	deobfuscateSessionContext,
@@ -262,7 +261,6 @@ import {
 } from "../utils/title-card";
 import { generateSessionTitle, nerdGlyphsActive } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
-import type { VibeModeState } from "../vibe/state";
 import type { AgentSessionEvent, AgentSessionEventListener } from "./agent-session-events";
 import type {
 	AgentSessionConfig,
@@ -376,7 +374,6 @@ import {
 	SKILL_PROMPT_MESSAGE_TYPE,
 	sanitizeAssistantForReparentedHistory,
 	USER_INTERRUPT_LABEL,
-	VIBE_MODE_CONTEXT_MESSAGE_TYPE,
 } from "./messages";
 import { ModelControls, type ModelControlsHost } from "./model-controls";
 import {
@@ -807,7 +804,6 @@ export class AgentSession implements SettingsScope {
 	/** A single model-only notebook reminder queued for the current prompt generation. */
 	#experimentalContextNotesReminder: { prompt: string; generation: number } | undefined;
 	#planModeState: PlanModeState | undefined;
-	#vibeModeState: VibeModeState | undefined;
 	#goalModeState: GoalModeState | undefined;
 	#goalRuntime: GoalRuntime;
 	readonly #advisors: SessionAdvisors;
@@ -1995,7 +1991,6 @@ export class AgentSession implements SettingsScope {
 		this.#tools = new SessionTools(sessionToolsHost, {
 			autoApprove: config.autoApprove,
 			toolRegistry: config.toolRegistry,
-			createVibeTools: config.createVibeTools,
 			createThinkTool: config.createThinkTool,
 			builtInToolNames: config.builtInToolNames,
 			mcpManagerToolNames: config.mcpManagerToolNames,
@@ -2696,12 +2691,10 @@ export class AgentSession implements SettingsScope {
 	/**
 	 * Re-anchor mode state to the session a branch or `/new` just minted. Both
 	 * mint a new session id/file, so without this the interactive-mode reconciler
-	 * keeps the previous session's transient mode: a stale vibe owner scope trips
-	 * the guard in `VibeRuntime.#persistModeExit` after a branch (issue #10468),
-	 * and plan/goal mode keeps running in a new session that records no mode
-	 * (issue #14653). Mirrors the reconcile step `switchSession` runs for the same
-	 * reason. Best-effort: a reconcile failure must not roll back an
-	 * otherwise-successful transition.
+	 * keeps the previous session's transient mode: plan/goal mode keeps running
+	 * in a new session that records no mode (issue #14653). Mirrors the
+	 * reconcile step `switchSession` runs for the same reason. Best-effort: a
+	 * reconcile failure must not roll back an otherwise-successful transition.
 	 */
 	async #reconcileModeAfterTransition(): Promise<void> {
 		try {
@@ -3593,8 +3586,8 @@ export class AgentSession implements SettingsScope {
 		}
 		if (message.role === "hookMessage" || message.role === "custom") {
 			// One-run instructions must not return from persisted history: prewalk
-			// nudges are consumed once, and Vibe context is rebuilt only while active.
-			if (!isPrewalkPlanNudge(message) && message.customType !== VIBE_MODE_CONTEXT_MESSAGE_TYPE) {
+			// nudges are consumed once.
+			if (!isPrewalkPlanNudge(message)) {
 				this.sessionManager.appendCustomMessageEntry(
 					message.customType,
 					message.content,
@@ -6253,21 +6246,6 @@ export class AgentSession implements SettingsScope {
 		return this.#tools.getAllToolInfos();
 	}
 
-	/** Installs and activates the ephemeral vibe tool set. */
-	activateVibeTools(baseToolNames: string[]): Promise<void> {
-		return this.#tools.activateVibeTools(baseToolNames);
-	}
-
-	/** Uninstalls vibe tools and activates the replacement set. */
-	deactivateVibeTools(nextToolNames: string[]): Promise<void> {
-		return this.#tools.deactivateVibeTools(nextToolNames);
-	}
-
-	/** Removes vibe tools without restoring a source-session snapshot. */
-	removeVibeToolsPreservingActive(): Promise<void> {
-		return this.#tools.removeVibeToolsPreservingActive();
-	}
-
 	#resolveActiveEditMode(): EditMode {
 		return this.#tools.resolveActiveEditMode();
 	}
@@ -6649,42 +6627,6 @@ export class AgentSession implements SettingsScope {
 		this.#goalModeState = state;
 	}
 
-	getVibeModeState(): VibeModeState | undefined {
-		return this.#vibeModeState;
-	}
-
-	setVibeModeState(state: VibeModeState | undefined): void {
-		this.#vibeModeState = state;
-		if (state?.enabled) return;
-
-		const isVibeContext = (message: AgentMessage): boolean =>
-			message.role === "custom" && message.customType === VIBE_MODE_CONTEXT_MESSAGE_TYPE;
-		const messages = this.agent.state.messages;
-		const filtered = messages.filter(message => !isVibeContext(message));
-		const historyChanged = filtered.length !== messages.length;
-		if (historyChanged) this.agent.replaceMessages(filtered);
-
-		const steering = this.agent.peekSteeringQueue();
-		const followUp = this.agent.peekFollowUpQueue();
-		const filteredSteering = steering.filter(message => !isVibeContext(message));
-		const filteredFollowUp = followUp.filter(message => !isVibeContext(message));
-		if (filteredSteering.length !== steering.length || filteredFollowUp.length !== followUp.length) {
-			this.agent.replaceQueues(filteredSteering, filteredFollowUp);
-			this.#reconcileQueuedMessageDrain();
-		}
-		this.#pendingNextTurnMessages = this.#pendingNextTurnMessages.filter(message => !isVibeContext(message));
-
-		if (!historyChanged) return;
-		this.#advisors.resetAllRuntimes("vibe-mode-exit");
-		this.#closeCodexProviderSessionsForHistoryRewrite();
-	}
-
-	#assertVibeSessionTransitionAllowed(action: string): void {
-		if (this.#vibeModeState?.enabled) {
-			throw new Error(`Cannot ${action} while vibe mode is active. Exit vibe mode first.`);
-		}
-	}
-
 	/**
 	 * True while a turn, user bash/eval, compaction, handoff, or retry could still write
 	 * into the transcript, so a snapshot of it would miss or split that work.
@@ -6842,21 +6784,6 @@ export class AgentSession implements SettingsScope {
 		);
 	}
 
-	async sendVibeModeContext(options?: { deliverAs?: "steer" | "followUp" | "nextTurn" | "aside" }): Promise<void> {
-		const message = this.#buildVibeModeMessage();
-		if (!message) return;
-		await this.sendCustomMessage(
-			{
-				customType: message.customType,
-				content: message.content,
-				display: message.display,
-				details: message.details,
-				attribution: message.attribution,
-			},
-			options ? { deliverAs: options.deliverAs } : undefined,
-		);
-	}
-
 	resolveRoleModel(role: string): Model | undefined {
 		return this.#models.resolveRoleModel(role);
 	}
@@ -6993,20 +6920,6 @@ export class AgentSession implements SettingsScope {
 			role: "custom",
 			customType: "goal-mode-context",
 			content: prompt.render(goalModeContextPrompt, { goalContext: content, todoContext }),
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-	}
-
-	#buildVibeModeMessage(): CustomMessage | null {
-		if (!this.#vibeModeState?.enabled) return null;
-		return {
-			role: "custom",
-			customType: VIBE_MODE_CONTEXT_MESSAGE_TYPE,
-			content: prompt.render(vibeModeActivePrompt, {
-				todoAvailable: this.getActiveToolNames().includes("todo"),
-			}),
 			display: false,
 			attribution: "agent",
 			timestamp: Date.now(),
@@ -7786,10 +7699,6 @@ export class AgentSession implements SettingsScope {
 			const goalModeMessage = this.#buildGoalModeMessage();
 			if (goalModeMessage) {
 				messages.push(goalModeMessage);
-			}
-			const vibeModeMessage = this.#buildVibeModeMessage();
-			if (vibeModeMessage) {
-				messages.push(vibeModeMessage);
 			}
 			if (options?.prependMessages) {
 				messages.push(...options.prependMessages);
@@ -9679,7 +9588,6 @@ export class AgentSession implements SettingsScope {
 	 */
 	async newSession(options?: NewSessionOptions): Promise<boolean> {
 		using _transition = this.#beginSessionTransition();
-		this.#assertVibeSessionTransitionAllowed("start a new session");
 		const previousSessionFile = this.sessionFile;
 
 		// Emit session_before_switch event with reason "new" (can be cancelled)
@@ -9832,7 +9740,6 @@ export class AgentSession implements SettingsScope {
 	 */
 	async fork(entryId?: string, options?: { requireIdle?: boolean }): Promise<boolean> {
 		using _transition = this.#beginSessionTransition();
-		this.#assertVibeSessionTransitionAllowed("fork the session");
 		const requireIdleFor = entryId !== undefined || options?.requireIdle ? "fork the session" : undefined;
 		if (entryId !== undefined) {
 			if (this.sessionManager.getEntry(entryId)?.type !== "message") {
@@ -9965,9 +9872,8 @@ export class AgentSession implements SettingsScope {
 		return leafId;
 	}
 
-	/** Move the active session and artifacts after enforcing mode transition invariants. */
+	/** Move the active session and its artifacts. */
 	async moveSession(newCwd: string, targetSessionDir?: string): Promise<void> {
-		this.#assertVibeSessionTransitionAllowed("move the session");
 		await this.sessionManager.moveTo(newCwd, targetSessionDir);
 	}
 

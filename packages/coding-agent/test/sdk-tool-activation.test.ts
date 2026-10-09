@@ -27,7 +27,6 @@ import {
 } from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { VIBE_TOOL_NAMES } from "@oh-my-pi/pi-coding-agent/tools/vibe";
 import { resetYieldTurnState } from "@oh-my-pi/pi-coding-agent/tools/yield";
 import { logger, removeSyncWithRetries, Snowflake, untilAborted } from "@oh-my-pi/pi-utils";
 
@@ -1887,47 +1886,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			await session.dispose();
 		}
 	});
-	it("registers vibe tools only during explicit vibe activation and exposes parent Todo bookkeeping", async () => {
-		const tempDir = makeTempDir();
-		const { session } = await createAgentSession(baseOptions(tempDir));
-		const previousActiveToolNames = session.getActiveToolNames();
-
-		try {
-			for (const name of VIBE_TOOL_NAMES) {
-				expect(session.getToolByName(name)).toBeUndefined();
-			}
-
-			await session.activateVibeTools(["read", "todo"]);
-			const todo = session.getToolByName("todo");
-			if (!todo) throw new Error("Expected real Todo tool");
-			expect(session.getActiveToolNames()).toContain("todo");
-			for (const name of VIBE_TOOL_NAMES) {
-				expect(session.getToolByName(name)).toBeDefined();
-				expect(session.getActiveToolNames()).toContain(name);
-			}
-
-			await todo.execute("vibe-todo-init", {
-				op: "init",
-				list: [{ phase: "Work", items: ["Worker change"] }],
-			});
-			await todo.execute("vibe-todo-done", { op: "done", task: "Worker change" });
-			expect(session.getTodoPhases()).toMatchObject([
-				{
-					name: "Work",
-					tasks: [{ content: "Worker change", status: "completed" }],
-				},
-			]);
-
-			await session.deactivateVibeTools(previousActiveToolNames);
-			for (const name of VIBE_TOOL_NAMES) {
-				expect(session.getToolByName(name)).toBeUndefined();
-			}
-			expect(session.getActiveToolNames()).toEqual(previousActiveToolNames);
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	it("rehydrates completed parent Todo work from persisted session history", async () => {
 		const tempDir = makeTempDir();
 		const sessionManager = SessionManager.create(tempDir, tempDir);
@@ -1937,17 +1895,16 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		});
 
 		try {
-			await session.activateVibeTools(["read", "todo"]);
 			const todo = session.getToolByName("todo");
 			if (!todo) throw new Error("Expected real Todo tool");
-			const init = await todo.execute("vibe-todo-init", {
+			const init = await todo.execute("todo-init", {
 				op: "init",
 				list: [{ phase: "Worker flow", items: ["Reconcile worker result"] }],
 			});
-			const done = await todo.execute("vibe-todo-done", { op: "done", task: "Reconcile worker result" });
+			const done = await todo.execute("todo-done", { op: "done", task: "Reconcile worker result" });
 			for (const [toolCallId, result] of [
-				["vibe-todo-init", init],
-				["vibe-todo-done", done],
+				["todo-init", init],
+				["todo-done", done],
 			] as const) {
 				sessionManager.appendMessage({
 					role: "toolResult",

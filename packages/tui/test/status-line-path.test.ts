@@ -48,7 +48,6 @@ function createPathContext(): SegmentContext {
 		loopMode: null,
 		prewalk: null,
 		goalMode: null,
-		vibeMode: null,
 		vim: null,
 		collab: null,
 		stream: null,

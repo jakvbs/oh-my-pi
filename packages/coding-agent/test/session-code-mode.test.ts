@@ -475,16 +475,6 @@ describe("Code Mode session reconciliation", () => {
 		expect(session.getActiveToolNames()).toEqual(["eval"]);
 	});
 
-	test("Vibe teardown preserves bridge-enabled Code Mode tools", async () => {
-		const { session } = createSession(Settings.isolated({ "providers.openai-codex.codeMode": "auto" }));
-		await session.setActiveToolsByName(["eval", "read"]);
-
-		await session.removeVibeToolsPreservingActive();
-
-		expect(session.getEnabledToolNames()).toEqual(["eval", "read"]);
-		expect(session.getToolForEvalBridge("read")?.name).toBe("read");
-	});
-
 	test("bridge-enabled task retains eager delegation", async () => {
 		const settings = Settings.isolated({
 			"providers.openai-codex.codeMode": "auto",

@@ -3236,7 +3236,7 @@ async function executeToolCalls(
 	// backgrounds itself so the message injects promptly — but it never kills
 	// anything; ignoring it is always safe.
 	const steeringSoftController = new AbortController();
-	// Interruptible tools (pure waits: wait, vibe) observe steering +
+	// Interruptible tools (pure waits, e.g. wait) observe steering +
 	// external + IRC aborts. Every other tool sees ONLY the external signal:
 	// neither queued steering nor a peer IRC ever hard-kills a partially
 	// side-effecting foreground tool (e.g. `bash`) — those get the cooperative

@@ -24,7 +24,6 @@ import { resolveRenderer } from "./resolve";
 import { taskToolRenderer } from "./task";
 import { thinkToolRenderer } from "./think";
 import { todoToolRenderer } from "./todo";
-import { createVibeToolRenderer } from "./vibe";
 import { webSearchToolRenderer } from "./web-search";
 import { writeToolRenderer } from "./write";
 import { setXdevRendererLookup } from "./xdev";
@@ -61,11 +60,6 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	github: githubToolRenderer,
 	goal: goalToolRenderer,
 	web_search: webSearchToolRenderer,
-	vibe_spawn: createVibeToolRenderer("spawn"),
-	vibe_send: createVibeToolRenderer("send"),
-	vibe_wait: createVibeToolRenderer("wait"),
-	vibe_kill: createVibeToolRenderer("kill"),
-	vibe_list: createVibeToolRenderer("list"),
 	write: writeToolRenderer,
 };
 

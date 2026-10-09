@@ -1008,11 +1008,7 @@ export class InputController {
 				hasInputImages = (inputImages?.length ?? 0) > 0;
 			}
 			const submittedMode = parseSlashCommand(text)?.name;
-			const draftDetached =
-				submittedMode === "plan" ||
-				submittedMode === "vibe" ||
-				submittedMode === "goal" ||
-				submittedMode === "guided-goal";
+			const draftDetached = submittedMode === "plan" || submittedMode === "goal" || submittedMode === "guided-goal";
 			if (
 				draftDetached &&
 				submittedImages?.length &&
@@ -1058,7 +1054,7 @@ export class InputController {
 				try {
 					slashResult = await executeBuiltinSlashCommand(text, { ctx: this.ctx, input, draftDetached });
 				} catch (error) {
-					// Detached mode commands (plan/vibe/goal/guided-goal) rethrow so
+					// Detached mode commands (plan/goal/guided-goal) rethrow so
 					// this caller — the one that took the draft's images out of the
 					// editor before dispatch — restores the submission and reports
 					// the error, mirroring `handleFollowUp`'s Ctrl+Enter path.

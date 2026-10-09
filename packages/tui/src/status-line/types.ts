@@ -109,9 +109,6 @@ export interface SegmentContext {
 		enabled: boolean;
 		paused: boolean;
 	} | null;
-	vibeMode: {
-		enabled: boolean;
-	} | null;
 	/** Modal editing state, or null when `tui.vimMode` is off. */
 	vim: {
 		mode: "insert" | "normal" | "visual" | "visual-line";

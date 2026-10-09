@@ -1,6 +1,6 @@
 /**
  * Contract: once plan mode is toggled off into the *paused* state, the guards
- * that block goal/vibe entry must say the plan session is paused (and how to
+ * that block goal entry must say the plan session is paused (and how to
  * fully exit) rather than the stale "Exit plan mode first." — which reads as
  * self-contradictory right after the user just exited plan mode (#11692).
  *
@@ -66,7 +66,7 @@ describe("InteractiveMode paused-plan guard message", () => {
 		tempDir.removeSync();
 	});
 
-	it("warns that plan mode is paused (not 'Exit plan mode first.') when a paused session blocks vibe/goal", async () => {
+	it("warns that plan mode is paused (not 'Exit plan mode first.') when a paused session blocks goal", async () => {
 		// Enter plan mode, then toggle off — no draft content, so this pauses.
 		await mode.handlePlanModeCommand();
 		expect(mode.planModeEnabled).toBe(true);
@@ -76,13 +76,12 @@ describe("InteractiveMode paused-plan guard message", () => {
 
 		const warn = vi.spyOn(mode, "showWarning");
 
-		await mode.handleVibeModeCommand();
 		await mode.handleGoalModeCommand();
 
-		// Both the /vibe and /goal guards fired; a paused blocker must name the
-		// paused state and point at /plan recovery — not the active-mode exit copy.
+		// A paused blocker must name the paused state and point at /plan
+		// recovery — not the active-mode exit copy.
 		const messages = warn.mock.calls.map(call => String(call[0]));
-		expect(messages).toHaveLength(2);
+		expect(messages).toHaveLength(1);
 		for (const message of messages) {
 			expect(message.toLowerCase()).toContain("paused");
 			expect(message).toContain("/plan");
@@ -95,7 +94,7 @@ describe("InteractiveMode paused-plan guard message", () => {
 
 		const warn = vi.spyOn(mode, "showWarning");
 
-		await mode.handleVibeModeCommand();
+		await mode.handleGoalModeCommand();
 
 		// Active session: instruct exit, without the paused wording.
 		const messages = warn.mock.calls.map(call => String(call[0]));
