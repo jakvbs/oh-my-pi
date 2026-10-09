@@ -1042,9 +1042,17 @@ class DaemonBroker {
 	}
 
 	#notifyCompletion(completion: DaemonCompletionNotification): void {
+		this.#queueCompletion(completion);
+		this.#deliverCompletion(completion);
+	}
+
+	#queueCompletion(completion: DaemonCompletionNotification): void {
 		const pending = this.#pendingCompletions.get(completion.owner) ?? new Map<string, DaemonCompletionNotification>();
 		pending.set(completion.completionId, completion);
 		this.#pendingCompletions.set(completion.owner, pending);
+	}
+
+	#deliverCompletion(completion: DaemonCompletionNotification): void {
 		const registration = this.#ownerSockets.get(completion.owner);
 		if (!registration || registration.socket.destroyed) return;
 		registration.socket.write(`${JSON.stringify(completion)}\n`);
@@ -1107,7 +1115,13 @@ class DaemonBroker {
 						daemon: { ...record.snapshot },
 					} satisfies DaemonCompletionNotification)
 				: undefined;
-		if (completion) record.pendingCompletions.push(completion);
+		if (completion) {
+			record.pendingCompletions.push(completion);
+			// Queue in the same tick as the terminal state: an exit wait can answer during the
+			// awaits below, and a replay requested after it must already see this completion.
+			// Clients dedupe by completionId, so a replay plus the delivery below is safe.
+			this.#queueCompletion(completion);
+		}
 		this.#persist(record);
 		await record.log?.close();
 		record.log = undefined;
@@ -1117,7 +1131,7 @@ class DaemonBroker {
 			this.#completionSubscriptions.has(completion.owner) &&
 			record.pendingCompletions.some(pending => pending.completionId === completion.completionId)
 		) {
-			this.#notifyCompletion(completion);
+			this.#deliverCompletion(completion);
 		}
 		// Terminal settlement can free the last live persistent daemon. The idle
 		// timer that fired while that daemon was alive returned without rearming
