@@ -46,7 +46,7 @@ export interface PsCommandArgs {
 		plain: boolean;
 		/** Target another project directory instead of the current one. */
 		dir?: string;
-		/** Target a machine-global service scope (e.g. browser-relay). */
+		/** Target a machine-global service scope. */
 		global?: string;
 		/** logs: keep streaming new output. */
 		follow: boolean;

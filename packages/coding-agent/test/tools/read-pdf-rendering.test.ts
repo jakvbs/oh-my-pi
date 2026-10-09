@@ -53,9 +53,6 @@ describe("read PDF page screenshots", () => {
 		const render = vi.spyOn(pdfRead, "renderPdfPageScreenshot").mockResolvedValue({
 			dest: screenshotPath,
 			mimeType: "image/png",
-			bytes: ONE_PX_PNG.byteLength,
-			width: 1,
-			height: 1,
 		});
 		const tool = new ReadTool(makeSession(testDir));
 

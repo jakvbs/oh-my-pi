@@ -55,11 +55,6 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.benchHelp,
 	},
 	{
-		name: "browser-relay",
-		load: () => import("./commands/browser-relay").then(m => m.default),
-		help: commandHelp.browserRelayHelp,
-	},
-	{
 		name: "commit",
 		load: () => import("./commands/commit").then(m => m.default),
 		help: commandHelp.commitHelp,

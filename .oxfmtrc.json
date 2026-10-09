@@ -12,7 +12,6 @@
 	"bracketSpacing": true,
 	"ignorePatterns": [
 		"packages/natives/native/**/*",
-		"packages/browser-relay/extension/**/*",
 		"packages/snapcompact/research/**/*",
 		"**/vendor/**/*",
 		"**/node_modules/**/*",

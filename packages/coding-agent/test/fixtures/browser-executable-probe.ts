@@ -1,4 +1,4 @@
-import { ensureChromiumExecutable } from "@oh-my-pi/pi-coding-agent/tools/browser/launch";
+import { ensureChromiumExecutable } from "@oh-my-pi/pi-coding-agent/chromium/launch";
 
 const platform = process.env.OMP_BROWSER_PROBE_PLATFORM;
 if (platform) Object.defineProperty(process, "platform", { value: platform });

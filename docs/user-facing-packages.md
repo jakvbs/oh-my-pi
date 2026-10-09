@@ -33,22 +33,6 @@ Sources: [`packages/omptype/README.md`](../packages/omptype/README.md), [`packag
 - Runtime behavior: schema calls return the validated value or `type.errors`; `.assert()` returns the value or throws; `.allows()` performs a boolean check.
 - Limits: this is an intentionally focused compatibility surface rather than a complete implementation of every ArkType, TypeBox, or Zod API.
 
-### `packages/browser-relay` — drive existing Chrome tabs
-
-Sources: [`packages/browser-relay/README.md`](../packages/browser-relay/README.md), [`packages/browser-relay/package.json`](../packages/browser-relay/package.json), [`packages/coding-agent/src/tools/browser/relay/`](../packages/coding-agent/src/tools/browser/relay/).
-
-- Package: private `@oh-my-pi/browser-relay`; user command: `omp browser-relay`.
-- Setup: run `omp browser-relay install`, load the unpacked extension from
-  `~/.omp/browser-relay/extension`, then opt in per call with `app.relay: true` — or set
-  `browser.relay`, which makes the relay the profile-wide default across projects (scope
-  details in the package README).
-- Behavior: the relay auto-starts through the profile-independent global daemon broker; consumers
-  across projects hold leases, and the relay stops after the last lease is released. `app.target`
-  selects a tab by URL/title substring, otherwise the visible tab is adopted. Supplying a URL
-  navigates that adopted tab. `omp browser-relay --no-group` disables automatic tab grouping.
-- Security/limits: it binds loopback; use `--token` when local processes are untrusted. Chrome
-  internal pages, DevTools, Web Store, extension pages, and tabs with DevTools open cannot attach.
-
 ### `packages/snapcompact` — bitmap context-compression API
 
 Sources: [`packages/snapcompact/README.md`](../packages/snapcompact/README.md), [`packages/snapcompact/package.json`](../packages/snapcompact/package.json), [`packages/snapcompact/src/index.ts`](../packages/snapcompact/src/index.ts).

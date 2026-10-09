@@ -6,8 +6,8 @@ import type { OAuthBrowserSessionRequest } from "@oh-my-pi/pi-ai/oauth/types";
 import { logger, withTimeout } from "@oh-my-pi/pi-utils";
 import { untilAborted } from "@oh-my-pi/pi-utils/abortable";
 import type { Browser } from "puppeteer-core";
-import { gracefulKillTreeOnce } from "../tools/browser/attach";
-import { ensureChromiumExecutable, loadPuppeteer, removeUserDataDir } from "../tools/browser/launch";
+import { gracefulKillTreeOnce } from "../chromium/attach";
+import { ensureChromiumExecutable, loadPuppeteer, removeUserDataDir } from "../chromium/launch";
 
 const LOGIN_TIMEOUT_MS = 5 * 60_000;
 

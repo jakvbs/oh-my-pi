@@ -31,13 +31,6 @@ darwin_helper(
     src = "src/oauth_callback/darwin-helper.m",
 )
 
-darwin_helper(
-    name = "capture_darwin_helper",
-    src = "src/desktop/macos/capture/helper.m",
-    frameworks = ["AppKit", "ScreenCaptureKit", "CoreGraphics"],
-    minimum_macos = "14.0",
-)
-
 # Apple Foundation Models bridge (src/applefm/build-bridge.sh): a bridge.swift
 # dylib built with the //bazel/toolchains/swift toolchain (host Xcode on mac
 # exec hosts, pinned swift.org Swift + @macos_sdk on linux ones), else an empty
@@ -94,13 +87,11 @@ rust_shared_library(
         "src/fonts/*",
         "data/*.bin.zst",
         "src/utok/claude/testdata/*.json",
-        "src/desktop/linux/wayland/testdata/*.xkb",
         "fixtures/*.json",
     ]) + select({
         "@platforms//os:macos": [
             ":applefm_bridge",
             ":oauth_callback_darwin_helper",
-            ":capture_darwin_helper",
         ],
         "//conditions:default": [":oauth_callback_relay"],
     }),
@@ -112,7 +103,6 @@ rust_shared_library(
             "OMP_APPLEFM_BRIDGE": "$(execpath :applefm_bridge)",
             "OMP_OAUTH_DARWIN_HELPER": "$(execpath :oauth_callback_darwin_helper)",
             "OMP_SYNTAX_SET": "$(execpath :syntax_set)",
-            "OMP_CAPTURE_DARWIN_HELPER": "$(execpath :capture_darwin_helper)",
         },
         "//conditions:default": {
             "OMP_OAUTH_RELAY_BINARY": "$(execpath :oauth_callback_relay)",
@@ -184,10 +174,5 @@ rust_test(
     crate = ":pi_natives",
     edition = "2024",
     proc_macro_deps = all_crate_deps(proc_macro_dev = True),
-    deps = all_crate_deps(normal_dev = True) + [
-        # dev-dependency on every platform (desktop_x11's pure keysym helpers
-        # compile under cfg(test) everywhere), but cargo-bazel folds it into
-        # the linux-only normal dep entry; restore it for the test build.
-        "@crates//:xkeysym",
-    ],
+    deps = all_crate_deps(normal_dev = True),
 )

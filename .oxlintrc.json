@@ -44,7 +44,6 @@
 		"crates/**",
 		"docs/**",
 		"types/**",
-		"packages/browser-relay/extension/**",
 		"packages/natives/native/**",
 		"packages/collab-web/test/**",
 		"packages/stats/test/**",

@@ -59,7 +59,6 @@ import {
 	cfgGrepContextAfter,
 	cfgGrepContextBefore,
 	cfgTodoEager,
-	cfgComputerEnabled,
 	cfgImagesQuestionTimeoutMs,
 } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import {
@@ -2245,17 +2244,6 @@ describe("Settings", () => {
 			cfgDisplayShowTokenUsage.set(settings, true);
 			await settings.flush();
 			expect((await readSettings()).exa).toBeUndefined();
-		});
-
-		it("removes the retired computer backend setting", async () => {
-			await writeSettings({ computer: { backend: "auto", enabled: true }, "computer.backend": "native" });
-
-			const settings = await Settings.init({ cwd: projectDir, agentDir });
-
-			expect(cfgComputerEnabled.get(settings)).toBe(true);
-			cfgDisplayShowTokenUsage.set(settings, true);
-			await settings.flush();
-			expect((await readSettings()).computer).toEqual({ enabled: true });
 		});
 
 		it("normalizes retired local tiny title models before role migration", async () => {

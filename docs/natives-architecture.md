@@ -10,11 +10,9 @@
 - `packages/natives/package.json`
 - `packages/natives/native/index.js` and `index.d.ts`
 - `packages/natives/native/loader-state.js` and `loader-state.d.ts`
-- `packages/natives/native/desktop.js` and `desktop.d.ts`
 - `packages/natives/native/clipboard.js` and `clipboard.d.ts`
 - `packages/natives/native/path.js` and `path.d.ts`
 - `packages/natives/native/vcs.js` and `vcs.d.ts`
-- `packages/natives/native/desktop-adapter.js`
 - `packages/natives/native/version-sentinel.js`
 - `packages/natives/native/embedded-addon.js`
 - `packages/natives/scripts/build-bindings.ts`
@@ -26,23 +24,22 @@
 
 ## Package entrypoints
 
-The package exports five entrypoints:
+The package exports four entrypoints:
 
 | Import                           | Runtime               | Types                   | Load behavior                                                                           |
 | -------------------------------- | --------------------- | ----------------------- | --------------------------------------------------------------------------------------- |
 | `@oh-my-pi/pi-natives`           | `native/index.js`     | `native/index.d.ts`     | Loads the addon immediately, then binds every generated class/function and enum object. |
-| `@oh-my-pi/pi-natives/desktop`   | `native/desktop.js`   | `native/desktop.d.ts`   | Exposes `createDesktopSession(options)` and defers addon loading until it is called.    |
 | `@oh-my-pi/pi-natives/clipboard` | `native/clipboard.js` | `native/clipboard.d.ts` | Exposes lazy `copyToClipboard` and `readImageFromClipboard` wrappers.                   |
 
 The other lazy entrypoints are `@oh-my-pi/pi-natives/path` (`native/path.js` / `path.d.ts`) and `@oh-my-pi/pi-natives/vcs` (`native/vcs.js` / `vcs.d.ts`). The path wrapper loads only for Windows path operations and returns its input unchanged elsewhere. The VCS wrapper memoizes bindings on its first native-backed operation; its error predicates and watch helper can be imported without loading the addon.
 
-There is no `packages/natives/src` wrapper layer. Most root exports bind N-API values directly; `DesktopSession` passes through `desktop-adapter.js`, which adapts older capture/execute/close addons and leaves current classes unchanged. The lazy subpaths defer loading until native functionality is needed.
+There is no `packages/natives/src` wrapper layer. Root exports bind N-API values directly. The lazy subpaths defer loading until native functionality is needed.
 
 Current root capabilities include:
 
 - search, globbing, workspace scans, AST matching/editing, code summaries, syntax highlighting, text layout, token counting, and structured diffs;
 - shell, PTY, process, file-lock, isolation, and work-profile primitives;
-- desktop capture/input/accessibility, clipboard, audio capture/playback, live WebRTC, device-check, SIXEL, snapcompact rendering, and vector ranking;
+- clipboard, audio capture/playback, live WebRTC, device-check, SIXEL, snapcompact rendering, and vector ranking;
 - PDF inspection/Markdown conversion, SVG rasterization, Mermaid terminal rendering, macOS spelling services, word prediction, and in-process Git/Jujutsu operations;
 - streaming edit sessions and shared edit state, native OAuth callback registration, and an Apple Foundation Models bridge.
 
@@ -89,7 +86,7 @@ Set `PI_DEBUG_STARTUP` to emit synchronous `[startup]` markers to stderr around 
 
 `crates/pi-natives/src/lib.rs` registers the current modules:
 
-- platform/runtime: `appearance`, `clipboard`, `crash_handler`, `desktop`, `devicecheck`, `file_lock`, `iofs`, `oauth_callback`, `power`, `prof`, `ps`, `pty`, `shell`, `spelling`, `tty_writer`, `vcs`;
+- platform/runtime: `appearance`, `clipboard`, `crash_handler`, `devicecheck`, `file_lock`, `iofs`, `oauth_callback`, `power`, `prof`, `ps`, `pty`, `shell`, `spelling`, `tty_writer`, `vcs`;
 - media/live/model: `applefm`, `audio`, `live`, `predict`, `sixel`, `snapcompact`, `svg`;
 - code/data: `ast`, `block`, `diff`, `edit`, `fd`, `glob`, `glob_util`, `grep`, `highlight`, `html`, `keys`, `mermaid`, `pdf`, `summary`, `text`, `tokens`, `utok`, `vectors`, `workspace`;
 - isolation/task support: `iso`, `task`, plus N-API boundary/conversion helpers (`js`, crate-private `utils`, test-only `testing`);
@@ -99,7 +96,7 @@ Rust `#[napi]` functions, classes, objects, and enums generate the declaration s
 
 ## Ownership boundaries
 
-- **Package/scripts** own binary selection, CPU variants, optional leaf resolution, embedded extraction, Windows staging, desktop ABI adaptation, declarations, and explicit ESM exports.
+- **Package/scripts** own binary selection, CPU variants, optional leaf resolution, embedded extraction, Windows staging, declarations, and explicit ESM exports.
 - **`pi-natives` and supporting crates** own algorithms, native resources, platform behavior, cancellation, and N-API conversion.
 - **Consumers** own higher-level tool policy, rendering, artifacts, and user-facing fallbacks not encoded in a primitive.
 

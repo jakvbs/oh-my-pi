@@ -28,76 +28,6 @@ export declare class AudioPlayback {
   stop(): void
 }
 
-/** Persistent, serialized native desktop capture/input/accessibility session. */
-export declare class DesktopSession {
-  constructor(options?: DesktopSessionOptions | undefined | null)
-  /**
-   * Asks the worker when it is idle, so permissions are read live. While
-   * another operation holds the worker, answers from the snapshot of the
-   * latest capabilities read or capture instead of blocking the JS thread
-   * behind it.
-   */
-  get capabilities(): DesktopCapabilities
-  listDisplays(): Promise<Array<DesktopDisplay>>
-  listWindows(): Promise<Array<DesktopWindow>>
-  listApplications(options?: ApplicationQuery | undefined | null): Promise<Array<Application>>
-  openApplication(id: string, options?: ApplicationOpenOptions | undefined | null): Promise<Application>
-  /**
-   * Capture and accessibility share one serialized request. Neither a failed
-   * snapshot nor an abandoned reply replaces the last delivered input frame.
-   */
-  observe(target: string, caps?: CaptureCaps | undefined | null, axOptions?: AxSnapshotOptions | undefined | null): Promise<DesktopObservation>
-  menuItems(target: string, path?: Array<string> | undefined | null): Promise<Array<DesktopMenuItem>>
-  menuSelect(target: string, path: Array<string>): Promise<undefined>
-  bringToCurrentSpace(windowId: string): Promise<undefined>
-  holdKeys(target: string, keys: Array<string>, options: HoldOptions): Promise<undefined>
-  holdMouse(target: string, x: number, y: number, options: HoldOptions): Promise<undefined>
-  /**
-   * Native ownership only. Human approval is required by the host before
-   * calling this method.
-   */
-  acquireControl(): Promise<DesktopControlState>
-  releaseControl(): void
-  controlState(): DesktopControlState
-  /** Retire queued work from a completed helper without revoking task control. */
-  retire(): void
-  capture(target: string, caps?: CaptureCaps | undefined | null): Promise<DesktopCapture>
-  /**
-   * Capture a fresh native-detail region without replacing the full input
-   * coordinate frame.
-   */
-  captureRegion(target: string, region: CaptureRegion, caps?: CaptureCaps | undefined | null): Promise<DesktopCapture>
-  click(target: string, x: number, y: number, opts?: PointerOptions | undefined | null): Promise<undefined>
-  moveMouse(target: string, x: number, y: number, opts?: PointerOptions | undefined | null): Promise<undefined>
-  drag(target: string, path: Array<DesktopPoint>, opts?: PointerOptions | undefined | null): Promise<undefined>
-  scroll(target: string, x: number, y: number, dx: number, dy: number, opts?: PointerOptions | undefined | null): Promise<undefined>
-  typeText(target: string, text: string, opts?: PointerOptions | undefined | null): Promise<undefined>
-  keyChord(target: string, keys: Array<string>, opts?: PointerOptions | undefined | null): Promise<undefined>
-  raiseWindow(windowId: string): Promise<undefined>
-  axSnapshot(target: string, opts?: AxSnapshotOptions | undefined | null): Promise<AxSnapshot>
-  axQuery(target: string, query: AxQuery): Promise<Array<AxNode>>
-  /**
-   * Accessibility hit-test at global logical desktop coordinates; needs no
-   * prior capture.
-   */
-  axElementAt(target: string, x: number, y: number): Promise<AxNode | undefined | null>
-  axFocused(): Promise<AxNode | undefined | null>
-  axNode(reference: string): Promise<AxNode>
-  axAttributes(reference: string): Promise<Array<[string, string]>>
-  axChildren(reference: string): Promise<Array<AxNode>>
-  axParent(reference: string): Promise<AxNode | undefined | null>
-  axPerform(reference: string, action: string): Promise<undefined>
-  axSetValue(reference: string, value: string): Promise<undefined>
-  axFocus(reference: string): Promise<undefined>
-  axClick(reference: string, opts?: PointerOptions | undefined | null): Promise<undefined>
-  /**
-   * Immediately cancel operations submitted before this call. Later
-   * operations may proceed.
-   */
-  cancel(): void
-  close(): Promise<undefined>
-}
-
 /**
  * Incrementally ingests old/new text and computes an exact line diff on a
  * worker thread once both sides finish.
@@ -767,29 +697,6 @@ export declare function appleFmCancel(handle: number): void
 export declare function appleFmGenerate(request: string, onEvent: (err: null | Error, event: string) => void): number
 
 /**
- * Installed application identity with currently observable process
- * information.
- */
-export interface Application {
-  id: string
-  name: string
-  path: string
-  running: boolean
-  pid?: number
-}
-
-/** Controls whether launching an application deliberately activates it. */
-export interface ApplicationOpenOptions {
-  activate?: boolean
-}
-
-/** Filters the native application inventory without requiring screen access. */
-export interface ApplicationQuery {
-  query?: string
-  runningOnly?: boolean
-}
-
-/**
  * Apply ast-grep rewrite rules to matching files; honors `dryRun` and returns
  * a promise.
  */
@@ -1054,42 +961,6 @@ export interface AstReplaceResult {
   missingGrammars?: Array<string>
 }
 
-export interface AxNode {
-  ref: string
-  role: string
-  nativeRole: string
-  title?: string
-  value?: string
-  description?: string
-  enabled: boolean
-  focused: boolean
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  actions?: Array<string>
-  childCount: number
-}
-
-export interface AxQuery {
-  role?: string
-  title?: string
-  value?: string
-  limit?: number
-}
-
-export interface AxSnapshot {
-  text: string
-  nodeCount: number
-  truncated: boolean
-}
-
-export interface AxSnapshotOptions {
-  maxDepth?: number
-  maxNodes?: number
-  all?: boolean
-}
-
 export interface BlockParseOptions {
   /** Source code to parse. */
   code: string
@@ -1124,19 +995,6 @@ export interface BlockRangeOptions {
   path?: string
   /** 1-indexed source line the block must begin on. */
   line: number
-}
-
-export interface CaptureCaps {
-  maxWidth?: number
-  maxHeight?: number
-}
-
-/** Rectangle in pixels of the most recent full screenshot of the same target. */
-export interface CaptureRegion {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 /** Clipboard image payload encoded as PNG bytes. */
@@ -1208,131 +1066,6 @@ export declare function decodeSixelToPng(bytes: Uint8Array): Uint8Array
  * blocking pool instead of the JS thread.
  */
 export declare function decodeSixelToPngAsync(bytes: Uint8Array): Promise<Uint8Array>
-
-export interface DesktopCapabilities {
-  backend: string
-  displayServer?: string
-  capture: boolean
-  input: boolean
-  ax: boolean
-  backgroundWindowInput: boolean
-  /**
-   * Whether window input accepts `takeover: true` (briefly activate the
-   * target and post real input).
-   */
-  takeover: boolean
-  applications: boolean
-  menus: boolean
-  heldInput: boolean
-  spaces: boolean
-  /**
-   * Native global Escape cancellation while input/control ownership is held.
-   * Wayland requires the host interrupt action instead.
-   */
-  globalEscape: boolean
-  capturePermission: string
-  inputPermission: string
-  axPermission: string
-  displayCount: number
-}
-
-export interface DesktopCapture {
-  data: Uint8Array
-  width: number
-  height: number
-  /** Pre-scaling capture width in native pixels; equals `width` when unscaled. */
-  sourceWidth: number
-  /**
-   * Pre-scaling capture height in native pixels; equals `height` when
-   * unscaled.
-   */
-  sourceHeight: number
-  /** Dimensions of the full screenshot coordinate frame used by pointer input. */
-  coordinateWidth: number
-  coordinateHeight: number
-  /**
-   * Region in the full screenshot's coordinates; zoom pixels are not input
-   * coordinates.
-   */
-  region?: CaptureRegion
-  target: string
-  displays: Array<DesktopDisplay>
-  backend: string
-  displayServer?: string
-}
-
-export interface DesktopControlState {
-  active: boolean
-}
-
-/**
- * Monitor geometry in both global logical desktop coordinates and composite
- * screenshot pixels.
- */
-export interface DesktopDisplay {
-  id: string
-  name: string
-  x: number
-  y: number
-  width: number
-  height: number
-  scale: number
-  pixelX: number
-  pixelY: number
-  pixelWidth: number
-  pixelHeight: number
-  isPrimary: boolean
-}
-
-/**
- * One immediate child of a native application menu. Paths contain the actual
- * native labels, including ellipses; selection accepts normalized labels.
- */
-export interface DesktopMenuItem {
-  title: string
-  path: Array<string>
-  enabled: boolean
-  checked: boolean
-  hasSubmenu: boolean
-  shortcut?: string
-}
-
-export interface DesktopObservation {
-  capture: DesktopCapture
-  accessibility: AxSnapshot
-}
-
-export interface DesktopPoint {
-  x: number
-  y: number
-}
-
-export interface DesktopSessionOptions {
-  display?: string
-}
-
-/** One capturable top-level window in global logical desktop coordinates. */
-export interface DesktopWindow {
-  /**
-   * Backend-defined opaque window id, valid as a capture target while the
-   * window lives. Numeric on X11/Win32/macOS; a composite AT-SPI string on
-   * Wayland (e.g. `atspi::1.31:/org/a11y/atspi/accessible/1`). Never parse
-   * it.
-   */
-  id: string
-  /** Window title; may be empty for untitled windows. */
-  title: string
-  /** Owning application name. */
-  app: string
-  /** Owning process id when the platform exposes it. */
-  pid?: number
-  x: number
-  y: number
-  width: number
-  height: number
-  /** Whether the window currently holds input focus. */
-  focused: boolean
-}
 
 /**
  * Detect macOS system appearance via CoreFoundation.
@@ -2107,14 +1840,6 @@ export interface HighlightColors {
   deleted?: string
 }
 
-export interface HoldOptions {
-  /** Duration in seconds, from zero through 100. */
-  duration: number
-  button?: string
-  keys?: Array<string>
-  takeover?: boolean
-}
-
 /**
  * Convert HTML source to Markdown with optional preprocessing.
  *
@@ -2613,19 +2338,6 @@ export interface PdfMarkdownResult {
  * be parsed or converted.
  */
 export declare function pdfToMarkdown(input: Uint8Array): Promise<PdfMarkdownResult>
-
-export interface PointerOptions {
-  button?: string
-  count?: number
-  modifiers?: Array<string>
-  /** Arbitrary keys held for the duration of a drag. */
-  keys?: Array<string>
-  /**
-   * Briefly activate the target window and post real input instead of the
-   * default background delivery.
-   */
-  takeover?: boolean
-}
 
 /**
  * Options for starting a power assertion.

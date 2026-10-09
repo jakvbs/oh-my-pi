@@ -5,7 +5,7 @@ This page documents `packages/natives/native/loader-state.js`, the runtime betwe
 ## Entrypoints and eager/lazy loading
 
 - `native/index.js` calls `loadNative()` at module evaluation and exposes the generated root API.
-- `native/desktop.js`, `native/clipboard.js`, `native/path.js`, and `native/vcs.js` defer native loading. Desktop, path, and VCS wrappers cache their selected class/bindings; clipboard calls `loadNative()` on each invocation. Path helpers return their input unchanged without loading on non-Windows platforms.
+- `native/clipboard.js`, `native/path.js`, and `native/vcs.js` defer native loading. Path and VCS wrappers cache their selected class/bindings; clipboard calls `loadNative()` on each invocation. Path helpers return their input unchanged without loading on non-Windows platforms.
 - Pure loader helpers are exported for focused tests and do not perform detection or filesystem probing until `loadNative()` or `initLoaderContext()` is called.
 
 A successful call is not memoized by JS. Repeated calls rely on the runtime's `require(...)` module cache, while post-load setup is idempotent or best-effort.
