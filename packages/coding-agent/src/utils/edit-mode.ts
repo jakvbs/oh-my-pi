@@ -23,7 +23,8 @@ export function resolveEditMode(session: EditModeSessionLike): EditMode {
 	if (modelVariant) return modelVariant;
 
 	const mode = cfgEditMode.get(session.settings);
-	// `PI_EDIT_VARIANT` pins the mode exactly; only settings-derived hashline adapts to the model.
+	// `PI_EDIT_VARIANT` skips the model-family fallback below; only settings-derived hashline adapts to the model.
+	// A matching `edit.modelVariants` entry (above) still wins over it.
 	if (cfgEditMode.provenance(session.settings) === "env") return mode;
 	if (mode === "hashline" && !$flag("PI_STRICT_EDIT_MODE") && activeModel) {
 		const identity = classifyModel("", activeModel, { lenient: true });

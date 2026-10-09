@@ -22,7 +22,7 @@
 3. `edit.mode`;
 4. default `hashline`.
 
-Supported modes are `hashline`, `apply_patch`, `patch`, `replace`, and `sloppy`. `edit.modelVariants` uses the first case-insensitive substring match against the active model string. `PI_EDIT_VARIANT` pins the mode exactly; for settings-derived `hashline`, `PI_STRICT_EDIT_MODE` disables the model-family fallback to `replace` (Kimi, MiMo, MiniMax, DeepSeek, StepFun, Codex Spark, and GLM 5.3 Flash).
+Supported modes are `hashline`, `apply_patch`, `patch`, `replace`, and `sloppy`. `edit.modelVariants` uses the first case-insensitive substring match against the active model string. `PI_EDIT_VARIANT` overrides `edit.mode` and skips the model-family fallback, but a matching `edit.modelVariants` entry still wins over it; for settings-derived `hashline`, `PI_STRICT_EDIT_MODE` disables the model-family fallback to `replace` (Kimi, MiMo, MiniMax, DeepSeek, StepFun, Codex Spark, and GLM 5.3 Flash).
 
 This page primarily documents hashline. The schema, prompt, examples, renderer, and optional Lark format switch with the mode. Models with `editPromptVariant: "compact"` receive the compact hashline prompt. In `apply_patch` custom-tool mode the wire name is `apply_patch`; dispatch still reaches the same internal tool. The tool is strict, essential, and uses exclusive concurrency.
 
