@@ -155,7 +155,6 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		name: agent.name,
 		description: agent.description,
 		readOnly: isReadOnlyAgent(agent),
-		blocking: agent.blocking === true,
 	}));
 	return prompt.render(taskDescriptionTemplate, {
 		agents: renderedAgents,
@@ -165,7 +164,6 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		effortEnabled: options.effortEnabled,
 		evalToolsEnabled: options.evalToolsEnabled,
 		asyncEnabled: options.asyncEnabled,
-		hasBlockingAgents: renderedAgents.some(agent => agent.blocking),
 		hasModelMentions: options.sessionAgents.length > 0,
 		ircEnabled: options.ircEnabled,
 	});
@@ -321,14 +319,13 @@ function planSpawns(rawParams: unknown, batchEnabled: boolean): SpawnPlan | stri
 }
 
 /**
- * One sync-executed spawn: its item, position in the original call, (for mixed
- * calls) a pre-claimed agent id, and a run already started speculatively.
+ * One sync-executed spawn: its item, position in the original call, and a run
+ * already started speculatively.
  */
 interface SyncSpawnRef {
 	item: TaskItem;
 	index: number;
 	run?: SpawnRun;
-	preAllocatedId?: string;
 }
 
 /** Merged view of a sync spawn set's payloads: joined text plus flattened results/usage/paths. */
@@ -675,14 +672,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		signal: AbortSignal,
 	): Promise<SpawnRun | undefined> {
 		if (spawn.tools?.length && this.session.getPlanModeState?.()?.enabled === true) return undefined;
-		let blocking: boolean;
 		try {
-			blocking = (await this.#resolveSpawnPreflight(spawn)).effectiveAgent.blocking === true;
+			await this.#resolveSpawnPreflight(spawn);
 		} catch {
 			return undefined;
 		}
-		const detached =
-			cfgAsyncEnabled.get(this.session.settings) && this.session.asyncJobManager !== undefined && !blocking;
+		const detached = cfgAsyncEnabled.get(this.session.settings) && this.session.asyncJobManager !== undefined;
 		const agentId = await this.#outputManager().allocate(spawn.name?.trim() || generateTaskName());
 		if (signal.aborted) return undefined;
 		return this.#launch({ toolCallId, params: spawn, index, agentId, detached });
@@ -804,30 +799,24 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			);
 		}
 		const policies = preflights.map(preflight => preflight.policy!);
-		const itemBlocking = policies.map(policy => policy.effectiveAgent.blocking === true);
 
-		// Execution mode is per item: an item whose agent type declares
-		// `blocking: true` runs inline on this turn (the parent waits on its
-		// result); every other item becomes a background job when async
-		// execution is available.
+		// Every item becomes a background job when async execution is available.
 		const asyncEnabled = cfgAsyncEnabled.get(this.session.settings);
 		const manager = asyncEnabled ? this.session.asyncJobManager : undefined;
-		const asyncItems = manager ? spawnItems.filter((_, index) => !itemBlocking[index]) : [];
 		// Runs started while the call streamed. An item runs detached iff it
 		// becomes a background job here; a run launched under the other mode
 		// (settings flipped mid-stream) cannot be re-homed and starts over.
 		const adopted = launchSession ? await launchSession.adopt(normalizedSpawnParams) : new Map<number, SpawnRun>();
 		for (const [index, run] of adopted) {
-			if (run.identity.detached === (manager !== undefined && !itemBlocking[index])) continue;
+			if (run.identity.detached === (manager !== undefined)) continue;
 			run.discard("task execution mode changed after speculative launch");
 			adopted.delete(index);
 		}
 		const ircEnabled = true;
 
-		if (!manager || asyncItems.length === 0) {
-			// Sync fallback: async execution disabled, orphaned host that never
-			// wired a job manager, or every item's agent type declares
-			// `blocking: true`.
+		if (!manager) {
+			// Sync fallback: async execution disabled, or orphaned host that never
+			// wired a job manager.
 			if (asyncEnabled && !this.session.asyncJobManager) {
 				logger.warn("task: no AsyncJobManager registered; falling back to sync execution");
 			}
@@ -840,10 +829,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			);
 		}
 
-		// Coordination only makes sense for spawns that keep running after this
-		// call returns (the async subset). Blocking items have already completed
-		// by then, so a "coordinate while they run" hint would misfire.
-		const advisory = this.session.suppressSpawnAdvisory ? undefined : buildCoordinationAdvisory(asyncItems);
+		const advisory = this.session.suppressSpawnAdvisory ? undefined : buildCoordinationAdvisory(spawnItems);
 		// Returns a fresh result (copied content array, copied text part) rather
 		// than mutating the caller's — task results are short-lived here, but an
 		// in-place edit on a shared/cached AgentToolResult would be a hidden trap.
@@ -866,7 +852,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			agentId: string;
 			item: TaskItem;
 			index: number;
-			blocking: boolean;
 			run: SpawnRun | undefined;
 			progress: AgentProgress;
 		}> = [];
@@ -882,7 +867,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				agentId,
 				item,
 				index,
-				blocking: itemBlocking[index],
 				run,
 				progress: {
 					index,
@@ -903,33 +887,21 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				},
 			});
 		}
-		const asyncSpawns = spawns.filter(spawn => !spawn.blocking);
-		const syncSpawns = spawns.filter(spawn => spawn.blocking);
-		const agentLabel = [...new Set(asyncSpawns.map(spawn => spawn.progress.agent))].join(", ");
+		const agentLabel = [...new Set(spawns.map(spawn => spawn.progress.agent))].join(", ");
 
-		// Aggregate state for the one tool call. Async spawns report into the
-		// shared progress snapshot through their jobs: the async half stays
-		// "running" until every job settles, then turns "failed" if any spawn
-		// failed. Blocking spawns run inline below and land in `results` before
-		// the call returns, so post-return job updates never drop them.
+		// Aggregate state for the one tool call: every spawn reports into the
+		// shared progress snapshot through its job; the call stays "running"
+		// until every job settles, then turns "failed" if any spawn failed.
 		let settledCount = 0;
 		let failedCount = 0;
-		let primaryJobId = asyncSpawns[0].agentId;
-		const syncResults: SingleResult[] = [];
-		// oxlint-disable-next-line prefer-const -- read by buildAsyncDetails before assignment
-		let syncUsage: Usage | undefined;
-		// oxlint-disable-next-line prefer-const -- read by buildAsyncDetails before assignment
-		let syncOutputPaths: string[] | undefined;
-		let syncProjectAgentsDir: string | null = null;
+		let primaryJobId = spawns[0].agentId;
 		const buildAsyncDetails = (): TaskToolDetails => ({
-			projectAgentsDir: syncProjectAgentsDir,
-			results: [...syncResults],
+			projectAgentsDir: null,
+			results: [],
 			totalDurationMs: Date.now() - callStartedAt,
-			usage: syncUsage,
-			outputPaths: syncOutputPaths,
 			progress: spawns.map(spawn => ({ ...spawn.progress })),
 			async: {
-				state: settledCount < asyncSpawns.length ? "running" : failedCount > 0 ? "failed" : "completed",
+				state: settledCount < spawns.length ? "running" : failedCount > 0 ? "failed" : "completed",
 				jobId: primaryJobId,
 				type: "task",
 			},
@@ -937,7 +909,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		const started: Array<{ agentId: string; jobId: string }> = [];
 		const failedSchedules: string[] = [];
-		for (const spawn of asyncSpawns) {
+		for (const spawn of spawns) {
 			try {
 				const jobId = this.#registerSpawnJob({
 					manager,
@@ -967,7 +939,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			}
 		}
 
-		if (started.length === 0 && syncSpawns.length === 0) {
+		if (started.length === 0) {
 			return {
 				content: [
 					{
@@ -986,13 +958,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const guidance = prompt
 			.render(taskAsyncContractTemplate, { ircEnabled, waitTool: hasWaitTool(this.session) })
 			.trim();
-		const renderSpawnFeedback = (mixed: boolean): string =>
+		const spawnFeedback = (): string =>
 			prompt
 				.render(taskSpawnFeedbackTemplate, {
-					mixed,
 					singular: started.length === 1,
 					singleCall: spawns.length === 1,
-					showListing: mixed || spawns.length > 1,
+					showListing: spawns.length > 1,
 					count: started.length,
 					agentId: started[0]?.agentId,
 					jobId: started[0]?.jobId,
@@ -1003,104 +974,20 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				})
 				.trim();
 
-		if (syncSpawns.length === 0) {
-			if (spawns.length === 1) {
-				const { agentId } = started[0];
-				onUpdate?.({
-					content: [{ type: "text", text: `Spawned agent \`${agentId}\`...` }],
-					details: buildAsyncDetails(),
-				});
-				return withAdvisory({
-					content: [
-						{
-							type: "text",
-							text: renderSpawnFeedback(false),
-						},
-					],
-					details: buildAsyncDetails(),
-				});
-			}
+		if (spawns.length === 1) {
+			const { agentId } = started[0];
+			onUpdate?.({
+				content: [{ type: "text", text: `Spawned agent \`${agentId}\`...` }],
+				details: buildAsyncDetails(),
+			});
+		} else {
 			onUpdate?.({
 				content: [{ type: "text", text: `Spawned ${started.length} agents...` }],
 				details: buildAsyncDetails(),
 			});
-			return withAdvisory({
-				content: [
-					{
-						type: "text",
-						text: renderSpawnFeedback(false),
-					},
-				],
-				details: buildAsyncDetails(),
-			});
 		}
-
-		// Mixed call: the async jobs above already run detached; the blocking
-		// subset runs inline and gates the call's return — exactly what each
-		// agent type declares (`blocking: true` = the parent waits on it).
-		const syncLabel = syncSpawns.map(spawn => `\`${spawn.agentId}\``).join(", ");
-		onUpdate?.({
-			content: [
-				{
-					type: "text",
-					text: `Running ${syncLabel} inline; ${started.length} background agent${started.length === 1 ? "" : "s"} spawned...`,
-				},
-			],
-			details: buildAsyncDetails(),
-		});
-		const payloads = await this.#runSyncSpawns({
-			toolCallId,
-			params,
-			signal,
-			spawns: syncSpawns.map(spawn => ({
-				item: spawn.item,
-				index: spawn.index,
-				preAllocatedId: spawn.agentId,
-				run: spawn.run,
-			})),
-			onItemProgress: onUpdate
-				? (index, progress) => {
-						const spawn = spawns.find(candidate => candidate.index === index);
-						if (spawn) spawn.progress = { ...progress, index };
-						onUpdate({
-							content: [{ type: "text", text: `Running ${syncLabel} inline...` }],
-							details: buildAsyncDetails(),
-						});
-					}
-				: undefined,
-		});
-		const merged = mergeSyncPayloads(
-			syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index })),
-			payloads,
-		);
-		syncResults.push(...merged.results);
-		syncUsage = merged.usage;
-		syncOutputPaths = merged.outputPaths;
-		syncProjectAgentsDir = merged.projectAgentsDir;
-		// Settle the inline spawns' progress rows from their merged results so
-		// post-return job updates carry final statuses, not the last snapshot.
-		for (let position = 0; position < syncSpawns.length; position++) {
-			const spawn = syncSpawns[position];
-			const result = merged.results.find(r => r.id === spawn.agentId);
-			if (result) {
-				spawn.progress.status = result.aborted
-					? "aborted"
-					: result.exitCode === 0 && !result.error
-						? "completed"
-						: "failed";
-				spawn.progress.durationMs = result.durationMs;
-			} else {
-				spawn.progress.status = payloads[position] ? "failed" : "aborted";
-			}
-		}
-
-		const spawnedSummary = started.length > 0 ? renderSpawnFeedback(true) : scheduleFailureSummary.trim();
-		const text = [merged.contentParts.join("\n\n"), spawnedSummary]
-			.filter(section => section.trim().length > 0)
-			.join("\n\n");
 		return withAdvisory({
-			content: [{ type: "text", text: text.length > 0 ? text : "No results." }],
-			...(merged.isError ? { isError: true } : {}),
+			content: [{ type: "text", text: spawnFeedback() }],
 			details: buildAsyncDetails(),
 		});
 	}
@@ -1314,8 +1201,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	}
 
 	/**
-	 * Sync fan-out (async unavailable, or every item's agent type is
-	 * `blocking: true`): run every spawn to completion inline and merge the
+	 * Sync fan-out (async unavailable): run every spawn to completion inline and merge the
 	 * per-spawn payloads into a single tool result, an error when any spawn's
 	 * payload is. The session-scoped semaphore still bounds concurrency across
 	 * parallel task calls.
@@ -1335,7 +1221,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					toolCallId,
 					params: spawnParamsFor(params, spawn.item),
 					index: spawn.index,
-					agentId: spawn.preAllocatedId,
 					detached: false,
 				});
 			run.attach({ signal, onUpdate });
@@ -1387,8 +1272,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	/**
 	 * Run a set of spawns to completion inline, bounded by the session spawn
-	 * semaphore. `preAllocatedId` reuses an id claimed up front (mixed calls);
-	 * `index` is each item's position in the original call so progress rows and
+	 * semaphore. `index` is each item's position in the original call so progress rows and
 	 * merged results keep stable ordering. Per-item progress snapshots flow
 	 * through `onItemProgress`. Returns per-spawn payloads in input order;
 	 * `undefined` marks a spawn cancelled before it started.
@@ -1411,7 +1295,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						toolCallId,
 						params: spawnParamsFor(params, spawn.item),
 						index: spawn.index,
-						agentId: spawn.preAllocatedId,
 						detached: false,
 					});
 				run.attach({

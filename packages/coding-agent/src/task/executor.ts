@@ -47,7 +47,7 @@ import { type OverlayLayers, Settings } from "../config/settings";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import type { PreparedExtension } from "../extensibility/extensions/types";
-import { buildSkillPromptMessage, type Skill } from "../extensibility/skills";
+import type { Skill } from "../extensibility/skills";
 import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { IrcBus } from "../irc/bus";
@@ -76,7 +76,6 @@ import {
 import { type ArtifactManager, writeArtifact } from "../session/artifacts";
 import { ASYNC_RESULT_MESSAGE_TYPE } from "../session/async-job-delivery";
 import type { AuthStorage } from "../session/auth-storage";
-import { SKILL_PROMPT_MESSAGE_TYPE } from "../session/messages";
 import { hasConversationalHistory, SessionManager } from "../session/session-manager";
 import { truncateTail } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import {
@@ -536,8 +535,6 @@ export interface ExecutorOptions {
 	 * transition explicitly.
 	 */
 	parentTelemetry?: AgentTelemetryConfig;
-	/** Skills to autoload via sendCustomMessage before the first prompt */
-	autoloadSkills?: Skill[];
 	/**
 	 * Registry id of the spawning agent, recorded as this subagent's parent.
 	 * Forwarded verbatim to the SDK; the executor never derives it (the spawner
@@ -1130,7 +1127,7 @@ export function createSubagentSettings(
 		// to preserve unattended subagent execution. User `tools.approval` policies still apply.
 		"tools.approvalMode": "yolo",
 		// Subagents run unadvised by default; runSubprocess opts a spawn back in
-		// per agent (frontmatter `advisor` / `task.agentAdvisor`) via overrides.
+		// per agent (`task.agentAdvisor`) via overrides.
 		"advisor.enabled": false,
 		// A subagent assignment is one turn: its tool loop ends only when the run
 		// yields, so post-turn `checkCompaction` (driven from `agent_end`) fires
@@ -3909,9 +3906,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	}
 
 	const settings = options.settings ?? Settings.isolated();
-	// Per-agent advisor: the agent definition's `advisor` frontmatter or the
-	// `task.agentAdvisor` settings override (agent name → "on"/"off"/model
-	// pattern) pairs the spawned session with an advisor. Subagents default to
+	// Per-agent advisor: the `task.agentAdvisor` setting (agent name →
+	// "on"/"off"/model pattern) pairs the spawned session with an advisor. Subagents default to
 	// no advisor (createSubagentSettings forces `advisor.enabled` off); an
 	// explicit model pattern is expanded against this owner's roles (a nested
 	// spawn's owner is its parent subagent) and lands on the child's
@@ -3919,7 +3915,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// contract persists, so cold revival under root settings reuses it.
 	const advisorSelection = resolveAgentAdvisorSelection({
 		settingsOverride: cfgTaskAgentAdvisor.get(settings)[agent.name],
-		agentAdvisor: agent.advisor,
 	});
 	const advisorRolePattern = advisorSelection?.model
 		? resolveAgentAdvisorRolePattern(advisorSelection.model, settings)
@@ -3928,7 +3923,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		settings,
 		{
 			...compactionThresholdSettings(options.compactionThresholdOverride),
-			...(agent.readSummarize === false ? { "read.summarize.enabled": false } : undefined),
 			// Isolated runs must not expose roots outside the worktree.
 			...(worktree !== undefined ? { "workspace.additionalDirectories": [] } : undefined),
 			...(advisorSelection ? { "advisor.enabled": true } : undefined),
@@ -4192,14 +4186,12 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// Setup below can fail before this promise's consumption boundary.
 			// Observe rejection immediately while preserving it for the later await.
 			sessionManagerPromise.catch(() => {});
-			// Per-agent prewalk: the agent definition's `prewalk` frontmatter or the
-			// `task.agentPrewalk` settings override hands the subagent off to a
+			// Per-agent prewalk: the `task.agentPrewalk` setting hands the subagent off to a
 			// fast/cheap target at its first edit/write — the same mechanism as the
 			// session-level --prewalk. Resolution failures skip prewalk instead of failing the spawn.
 			let prewalk: Prewalk | undefined;
 			const prewalkPattern = resolveAgentPrewalkPattern({
 				settingsOverride: cfgTaskAgentPrewalk.get(settings)[agent.name],
-				agentPrewalk: agent.prewalk,
 			});
 			if (prewalkPattern) {
 				await awaitAbortable(modelRegistry.awaitBackgroundRefresh());
@@ -4478,7 +4470,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				// so read it back from the settings both install paths write.
 				retryFallback: getRetryFallbackRole(subagentSettings, subagentRetryFallbackRole(id)),
 				readOnly: isReadOnlyAgent(agent),
-				readSummarize: agent.readSummarize,
 				mcp: agent.mcp,
 				advisor: advisorSelection ? (advisorRolePattern ?? "on") : undefined,
 				compactionThreshold: options.compactionThresholdOverride,
@@ -4527,22 +4518,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			unsubscribe = monitor.attach(session);
 
 			checkAbort();
-			// Autoload skills via sendCustomMessage (same mechanic as /skill:<name>)
-			if (options.autoloadSkills?.length) {
-				for (const skill of options.autoloadSkills) {
-					const { message } = await buildSkillPromptMessage(skill, { args: "" }, "autoload");
-					await session.sendCustomMessage(
-						{
-							customType: SKILL_PROMPT_MESSAGE_TYPE,
-							content: message,
-							display: false,
-							details: { name: skill.name, path: skill.filePath },
-						},
-						{ triggerTurn: false },
-					);
-				}
-			}
-
 			readyAt = performance.now();
 			const outcome = await driveSessionToYield(session, monitor, task, { solutionSpace: options.solutionSpace });
 			// Acceptance boundary (#11079): the run's final result is settled, so

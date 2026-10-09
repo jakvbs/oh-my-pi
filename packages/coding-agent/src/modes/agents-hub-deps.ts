@@ -5,7 +5,6 @@ import type { Model, ServiceTier } from "@oh-my-pi/pi-ai";
 import type { AgentsHubDeps } from "@oh-my-pi/pi-tui/overlays/agents-hub";
 import { shortenPath } from "@oh-my-pi/pi-tui/render/render-utils";
 import { isEnoent, prompt } from "@oh-my-pi/pi-utils";
-import { YAML } from "bun";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import { getConfigDirs } from "../config";
 import type { ModelRegistry } from "../config/model-registry";
@@ -103,12 +102,10 @@ export function createAgentsHubDeps(
 		effectivePrewalkPattern: agent =>
 			resolveAgentPrewalkPattern({
 				settingsOverride: agent.prewalkOverride,
-				agentPrewalk: agent.prewalk,
 			}),
 		effectiveAdvisorPattern: agent => {
 			const selection = resolveAgentAdvisorSelection({
 				settingsOverride: agent.advisorOverride,
-				agentAdvisor: agent.advisor,
 			});
 			return selection ? (selection.model ?? "@advisor") : undefined;
 		},
@@ -188,15 +185,19 @@ export function createAgentsHubDeps(
 			const dirs = getConfigDirs("agents", { user: scope === "user", project: scope === "project", cwd });
 			const targetDir = dirs[0]?.path;
 			if (!targetDir) throw new Error(`Cannot resolve ${scope} agents directory.`);
-			const filePath = path.join(targetDir, `${spec.identifier}.md`);
+			const filePath = path.join(targetDir, `${spec.identifier}.ts`);
 			try {
 				await fs.stat(filePath);
 				throw new Error(`Agent file already exists: ${shortenPath(filePath)}`);
 			} catch (error) {
 				if (!isEnoent(error)) throw error;
 			}
-			const frontmatter = YAML.stringify({ name: spec.identifier, description: spec.whenToUse }, null, 2).trimEnd();
-			await Bun.write(filePath, `---\n${frontmatter}\n---\n\n${spec.systemPrompt.trim()}\n`);
+			const definition = {
+				name: spec.identifier,
+				description: spec.whenToUse,
+				systemPrompt: spec.systemPrompt.trim(),
+			};
+			await Bun.write(filePath, `export default ${JSON.stringify(definition, null, "\t")};\n`);
 			await refreshAgentDiscovery(cwd, extensionRoots());
 			return filePath;
 		},

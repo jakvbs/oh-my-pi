@@ -68,7 +68,7 @@ export async function buildSkillCommandPrompt(
 	const skill = ctx.skillCommands.get(getSkillSlashCommandName({ name: parsed.name }));
 	if (!skill) return undefined;
 
-	const built = await buildSkillPromptMessage(skill, parsed, "user");
+	const built = await buildSkillPromptMessage(skill, parsed);
 	const textBlock: TextContent = { type: "text", text: built.message };
 	const promptContent = images && images.length > 0 ? [textBlock, ...images] : built.message;
 

@@ -201,14 +201,13 @@ takes the live entry for its agent name. A custom SDK `getApiKey` resolver bypas
 Runtime output schema precedence is:
 
 1. the task item's explicit `outputSchema`
-2. agent frontmatter `output`
-3. parent session `outputSchema`
+2. parent session `outputSchema`
 
 The task item's optional `schemaMode` overrides the parent session mode; the default is `permissive`.
 
-Explicit caller schemas are validated during preflight in both modes. Agent/session schemas are preflight-validated when the effective mode is `strict`. Invalid schemas fail before child execution.
+Explicit caller schemas are validated during preflight in both modes. Session schemas are preflight-validated when the effective mode is `strict`. Invalid schemas fail before child execution.
 
-The model-facing prompt (`src/prompts/tools/task.md`) tags read-only and blocking agents.
+The model-facing prompt (`src/prompts/tools/task.md`) tags read-only agents.
 
 ## Command discovery interaction
 

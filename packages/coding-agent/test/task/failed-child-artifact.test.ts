@@ -31,14 +31,6 @@ const AGENT: AgentDefinition = {
 	source: "bundled",
 };
 
-const BLOCKING_AGENT: AgentDefinition = {
-	name: "reviewer",
-	description: "Test reviewer the parent waits on",
-	systemPrompt: "Review the work.",
-	source: "bundled",
-	blocking: true,
-};
-
 async function initRepo(dir: string): Promise<void> {
 	const git = (...args: string[]) => Bun.spawnSync(["git", ...args], { cwd: dir, stdout: "ignore" });
 	git("init", "-q");
@@ -183,33 +175,5 @@ describe("failed child evidence", () => {
 		// Only the child whose merge threw carries an error; the sibling's row stays clean.
 		expect(result.details?.results.map(row => row.error !== undefined)).toEqual([isolated, false]);
 		expect(result.isError === true).toBe(isolated);
-	});
-
-	it("marks a mixed call an error when its blocking child's merge throws", async () => {
-		using tempDir = TempDir.createSync("@omp-failed-child-");
-		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
-			agents: [AGENT, BLOCKING_AGENT],
-			projectAgentsDir: null,
-		});
-		await finishChildrenThenBreakMerge(tempDir.path());
-		const manager = new AsyncJobManager({ onJobComplete: () => {} });
-
-		try {
-			const tool = await TaskTool.create(createSession(tempDir.path(), { "async.enabled": true }, manager));
-			const result = await tool.execute("tc-mixed", {
-				context: "Shared context.",
-				tasks: [
-					{ name: "Reviewer", agent: "reviewer", task: "Review the change.", isolated: true },
-					{ name: "Builder", agent: "worker", task: "Build the change." },
-				],
-			});
-			await manager.getJob("Builder")?.promise;
-
-			// The blocking child ran inline and the other became a background job.
-			expect(result.details?.results.map(row => row.id)).toEqual(["Reviewer"]);
-			expect(result.isError).toBe(true);
-		} finally {
-			await manager.dispose({ timeoutMs: 1000 });
-		}
 	});
 });

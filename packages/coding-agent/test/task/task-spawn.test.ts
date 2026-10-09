@@ -307,8 +307,7 @@ describe("task spawn routing", () => {
 	]) {
 		it(`${label} in detached job snapshots`, async () => {
 			vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
-				// Configuration alone must not claim an attached runtime.
-				agents: [{ ...taskAgent, advisor: true }],
+				agents: [taskAgent],
 				projectAgentsDir: null,
 			});
 			const gate = deferred();
@@ -344,7 +343,8 @@ describe("task spawn routing", () => {
 			});
 
 			const manager = createManager();
-			const session = createSession({ manager });
+			// Configuration alone must not claim an attached runtime.
+			const session = createSession({ manager, settings: { "task.agentAdvisor": { task: "on" } } });
 			const tool = await TaskTool.create(session);
 			const result = await tool.execute("tc-advisor", {
 				agent: "task",

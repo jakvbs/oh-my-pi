@@ -1921,11 +1921,11 @@ describe("ACP agent", () => {
 	it("refreshes task agent descriptions on ACP /reload-plugins", async () => {
 		const harness = await createHarness();
 		const agentDir = path.join(harness.cwdA, ".omp", "agents");
-		const agentFile = path.join(agentDir, "acp-reload-agent.md");
+		const agentFile = path.join(agentDir, "acp-reload-agent.ts");
 		await fs.promises.mkdir(agentDir, { recursive: true });
 		await fs.promises.writeFile(
 			agentFile,
-			"---\nname: acp-reload-agent\ndescription: VERSION_ONE\n---\nACP reload agent.\n",
+			'export default { name: "acp-reload-agent", description: "VERSION_ONE", systemPrompt: "ACP reload agent." };\n',
 		);
 		const taskTool = await TaskTool.create(createTaskSession(harness.cwdA));
 		expect(taskTool.description).toContain("VERSION_ONE");
@@ -1933,7 +1933,7 @@ describe("ACP agent", () => {
 
 		await fs.promises.writeFile(
 			agentFile,
-			"---\nname: acp-reload-agent\ndescription: VERSION_TWO\n---\nACP reload agent.\n",
+			'export default { name: "acp-reload-agent", description: "VERSION_TWO", systemPrompt: "ACP reload agent." };\n',
 		);
 		await harness.agent.prompt({
 			sessionId: created.sessionId,

@@ -384,13 +384,15 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		const appendSessionInit = vi.spyOn(session.sessionManager, "appendSessionInit");
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 		// A nested spawn's owner is a parent subagent whose advisor role overrides the root's.
-		const parentSettings = Settings.isolated({ modelRoles: { advisor: "anthropic/claude-sonnet-4-5" } });
+		const parentSettings = Settings.isolated({
+			modelRoles: { advisor: "anthropic/claude-sonnet-4-5" },
+			"task.agentAdvisor": { task: "@advisor:high" },
+		});
 
 		const result = await runSubprocess({
 			...baseOptions,
 			id: "nested-advised-child",
 			settings: parentSettings,
-			agent: { ...baseAgent, advisor: "@advisor:high" },
 		});
 
 		expect(result.exitCode).toBe(0);

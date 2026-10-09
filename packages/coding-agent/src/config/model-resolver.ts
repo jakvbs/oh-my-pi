@@ -1332,37 +1332,26 @@ export const DEFAULT_PREWALK_TARGET = "@smol";
 export interface AgentPrewalkResolutionOptions {
 	/** `task.agentPrewalk` settings value for this agent: `"on"`, `"off"`, or a model pattern. */
 	settingsOverride?: string;
-	/** Agent definition `prewalk` frontmatter: `true` = default target, string = custom target pattern. */
-	agentPrewalk?: boolean | string;
 }
 
 /**
  * Effective prewalk target pattern for a subagent, or `undefined` when prewalk
- * is disabled. The settings override decides enablement first ("off" wins,
- * "on" enables with the agent's own target or {@link DEFAULT_PREWALK_TARGET},
- * any other value is a custom target pattern); otherwise the agent
- * definition's `prewalk` field applies. Role aliases in the returned pattern
- * are expanded later by {@link resolveModelOverride}.
+ * is disabled: "on" selects {@link DEFAULT_PREWALK_TARGET}, any other non-off
+ * value is a custom target pattern. Role aliases in the returned pattern are
+ * expanded later by {@link resolveModelOverride}.
  */
 export function resolveAgentPrewalkPattern(options: AgentPrewalkResolutionOptions): string | undefined {
-	const agentPattern =
-		typeof options.agentPrewalk === "string" && options.agentPrewalk.trim() ? options.agentPrewalk.trim() : undefined;
 	const override = options.settingsOverride?.trim();
-	if (override) {
-		const lowered = override.toLowerCase();
-		if (lowered === "off" || lowered === "false") return undefined;
-		if (lowered === "on" || lowered === "true") return agentPattern ?? DEFAULT_PREWALK_TARGET;
-		return override;
-	}
-	if (options.agentPrewalk === true) return DEFAULT_PREWALK_TARGET;
-	return agentPattern;
+	if (!override) return undefined;
+	const lowered = override.toLowerCase();
+	if (lowered === "off" || lowered === "false") return undefined;
+	if (lowered === "on" || lowered === "true") return DEFAULT_PREWALK_TARGET;
+	return override;
 }
 
 export interface AgentAdvisorResolutionOptions {
 	/** `task.agentAdvisor` settings value for this agent: `"on"`, `"off"`, or a model pattern. */
 	settingsOverride?: string;
-	/** Agent definition `advisor` frontmatter: `true` = default advisor-role model, string = custom model pattern. */
-	agentAdvisor?: boolean | string;
 }
 
 /** Effective advisor for one spawned agent: absent `model` resolves through the `advisor` role. */
@@ -1372,27 +1361,20 @@ export interface AgentAdvisorSelection {
 
 /**
  * Effective advisor selection for a subagent, or `undefined` when the agent
- * runs unadvised. The settings override decides enablement first ("off" wins,
- * "on" enables with the agent's own model pattern or the `advisor` role, any
- * other value is a custom model pattern); otherwise the agent definition's
- * `advisor` field applies. Callers expand a returned pattern against the
- * owner's roles (`resolveAgentAdvisorRolePattern`) before it lands on the
- * spawned session's `modelRoles.advisor`, so `@advisor` cannot point at itself.
+ * runs unadvised: "on" uses the `advisor` role, any other non-off value is a
+ * custom model pattern. Callers expand a returned pattern against the owner's
+ * roles (`resolveAgentAdvisorRolePattern`) before it lands on the spawned
+ * session's `modelRoles.advisor`, so `@advisor` cannot point at itself.
  */
 export function resolveAgentAdvisorSelection(
 	options: AgentAdvisorResolutionOptions,
 ): AgentAdvisorSelection | undefined {
-	const agentPattern =
-		typeof options.agentAdvisor === "string" && options.agentAdvisor.trim() ? options.agentAdvisor.trim() : undefined;
 	const override = options.settingsOverride?.trim();
-	if (override) {
-		const lowered = override.toLowerCase();
-		if (lowered === "off" || lowered === "false") return undefined;
-		if (lowered === "on" || lowered === "true") return { model: agentPattern };
-		return { model: override };
-	}
-	if (options.agentAdvisor === true) return {};
-	return agentPattern ? { model: agentPattern } : undefined;
+	if (!override) return undefined;
+	const lowered = override.toLowerCase();
+	if (lowered === "off" || lowered === "false") return undefined;
+	if (lowered === "on" || lowered === "true") return {};
+	return { model: override };
 }
 
 /**
