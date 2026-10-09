@@ -673,7 +673,7 @@ read:
 
 | Key                       | Type    | Default    | Notes                                             |
 | ------------------------- | ------- | ---------- | ------------------------------------------------- |
-| `edit.mode`               | enum    | `hashline` | `apply_patch`, `hashline`, `patch`, `replace`, `sloppy`. `PI_EDIT_VARIANT` pins the mode. |
+| `edit.mode`               | enum    | `hashline` | `apply_patch`, `hashline`, `patch`, `replace`, `sloppy`. `PI_EDIT_VARIANT` overrides it unless an `edit.modelVariants` entry matches. |
 | `edit.modelVariants` | record | `{}` | Ordered, case-insensitive model-selector substring → edit mode; the first matching entry wins. |
 | `edit.fuzzyMatch`         | boolean | `true`     | Allow fuzzy anchor matching.                      |
 | `edit.fuzzyThreshold`     | number  | `0.95`     | Similarity threshold for fuzzy matching.          |

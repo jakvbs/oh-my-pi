@@ -146,6 +146,15 @@ describe("resolveEditMode", () => {
 		);
 	});
 
+	test("a matching edit.modelVariants entry wins over PI_EDIT_VARIANT", () => {
+		Bun.env.PI_EDIT_VARIANT = "replace";
+
+		expect(
+			resolveEditMode(createSession({ activeModel: "openai-codex/gpt-6.1-sol", modelVariant: "apply_patch" })),
+		).toBe("apply_patch");
+		expect(resolveEditMode(createSession({ activeModel: "openai-codex/gpt-6.1-sol" }))).toBe("replace");
+	});
+
 	test("only falls back when the resolved mode is hashline", () => {
 		delete Bun.env.PI_EDIT_VARIANT;
 
