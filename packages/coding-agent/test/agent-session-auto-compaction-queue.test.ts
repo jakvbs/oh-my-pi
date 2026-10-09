@@ -398,8 +398,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 
 	it("resumes the turn a manual compaction interrupted", async () => {
 		// /compact mid-turn aborts the live tool loop. Left alone the agent sits idle
-		// on a half-finished loop until the user types "continue" — an autoresearch
-		// run dies this way. The compaction must resume the interrupted turn once the
+		// on a half-finished loop until the user types "continue". The compaction must resume the interrupted turn once the
 		// summary is committed, the same way context-full compaction does.
 		cfgCompactionKeepRecentTokens.set(session.settings, 1);
 		cfgCompactionAutoContinue.override(session.settings, true);
