@@ -5,7 +5,6 @@ import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
 import { BtwController } from "@oh-my-pi/pi-coding-agent/modes/controllers/btw-controller";
-import { CleanseCommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/cleanse-command-controller";
 import { CommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/command-controller";
 import { OmfgController } from "@oh-my-pi/pi-coding-agent/modes/controllers/omfg-controller";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
@@ -57,13 +56,11 @@ describe("InteractiveMode fork placement bridge", () => {
 	] as const)("%s the current session's side controllers", async (_label, placement, disposals) => {
 		const btwDispose = vi.spyOn(BtwController.prototype, "dispose");
 		const omfgDispose = vi.spyOn(OmfgController.prototype, "dispose");
-		const cleanseDispose = vi.spyOn(CleanseCommandController.prototype, "dispose");
 		vi.spyOn(CommandController.prototype, "handleForkCommand").mockResolvedValue();
 
 		await mode.handleForkCommand(placement);
 
 		expect(btwDispose).toHaveBeenCalledTimes(disposals);
 		expect(omfgDispose).toHaveBeenCalledTimes(disposals);
-		expect(cleanseDispose).toHaveBeenCalledTimes(disposals);
 	});
 });
