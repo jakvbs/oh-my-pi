@@ -79,6 +79,7 @@
 		"test:rs": "bun scripts/run-rs-task.ts test:rs",
 		"check": "bun run --parallel check:ts check:rs",
 		"check:scope": "bun scripts/check-scope.ts",
+		"diff:stats": "bun scripts/diff-stats.ts",
 		"check:ts": "bun run check:tools && bun run --filter './packages/*' --sequential --if-present check:types",
 		"check:tools": "bun scripts/check-package-exports.ts && bun scripts/check-fork-removed.ts && oxlint . && oxfmt --check 'packages/*/src/**/*.{ts,tsx}' 'packages/*/{test,bench,examples,scripts}/**/*.ts' 'packages/*/*.ts' 'scripts/**/*.ts'",
 		"check:rs": "bun scripts/run-rs-task.ts check:rs",
