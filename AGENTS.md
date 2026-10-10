@@ -13,6 +13,7 @@ Upstream is integrated by merge, never by rebase: `bun run sync:upstream` (`scri
 | Lockfiles are never merged by hand | `.gitattributes` `merge=upstream-lock` + regeneration in `sync:upstream` |
 | Fork changelog bullets stay under `[Unreleased]` | `sync:upstream` fails on bullets outside `[Unreleased]` that upstream does not have |
 | Same conflict is resolved once | `rerere.enabled` set by `sync:upstream` |
+| CI runs the Bun version developers run | `packageManager` in `package.json` is an exact pin (`bun@1.4.2`); `.github/actions/bun-install` installs exactly that. A floor (`>=`) installs the latest release, and Bun 1.4.3 broke two upstream tests the day it shipped. Bump the pin in its own commit together with the fixes it needs. |
 
 The global `omp` command uses this checkout's existing `packages/coding-agent/scripts/omp` dev launcher; retain the previous compiled binary for rollback. Updates go through the OMP phase in `~/research/.agents/skills/sync/SKILL.md` (merge upstream, conditionally refresh dependencies/native bindings, verify, publish), not `omp update` or a published npm/binary installer. The launcher reads the live checkout; do not start new sessions or workers during a sync. This fork policy supersedes the upstream "never commit unless asked" rule below for completed fork work; pushing still requires an authorized delivery or dotsync request.
 
