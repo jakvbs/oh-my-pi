@@ -9,7 +9,6 @@ import { astGrepRenderer } from "./tools/ast-grep";
 import { bashRenderer } from "./tools/bash";
 import { editRenderer } from "./tools/edit";
 import { fetchRenderer } from "./tools/fetch";
-import { generateImageRenderer } from "./tools/generate-image";
 import { githubRenderer } from "./tools/github";
 import { globRenderer } from "./tools/glob";
 import { goalRenderer } from "./tools/goal";
@@ -36,7 +35,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	fetch: fetchRenderer,
 	glob: globRenderer,
 	find: globRenderer,
-	generate_image: generateImageRenderer,
 	github: githubRenderer,
 	goal: goalRenderer,
 	wait: waitRenderer,

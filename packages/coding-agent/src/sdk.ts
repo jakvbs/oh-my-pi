@@ -264,7 +264,6 @@ import {
 import { resolveYieldReportText } from "./tools/yield";
 import { isMCPToolName, normalizeToolNames } from "./tools/builtin-names";
 import { ToolContextStore } from "./tools/context";
-import { imageGenTool } from "./tools/image-gen";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
 import { isFilesystemSourcePath } from "./tools/path-utils";
 import { isAutoQaEnabled } from "./tools/report-tool-issue";
@@ -282,7 +281,6 @@ import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
 import {
 	cfgAsyncMaxJobs,
-	cfgGenerateImageEnabled,
 	cfgToolsAbortOnFabricatedResult,
 	cfgToolsIntentTracing,
 	cfgToolsMaxTimeout,
@@ -3198,7 +3196,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// re-registers a built-in (e.g. wrapping `write`) can delegate to the original — reaching the
 		// unwrapped native execute, which inherits the caller's already-granted approval rather than
 		// re-running the gate. Seeded from the xdev registry when present (it retains discoverable
-		// built-ins like `generate_image` that xdev partitioning removes from the active tool array), else
+		// built-ins that xdev partitioning removes from the active tool array), else
 		// from the built-in registry; captured before the ExtensionToolWrapper pass so the natives
 		// stay unwrapped. The extension runner exposes it to re-registered tools via createContext.
 		const nativeToolsByName = new Map<string, Tool>(toolSession.xdev?.tools ?? undefined);
@@ -3228,8 +3226,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			}),
 		];
 		// `wrapToolWithMetaNotice` runs the centralized large-output → artifact spill.
-		// Built-in tools get it in `createTools`; extension, SDK-custom, image-gen,
-		// TTS, and startup (non-deferred) MCP tools all funnel through here, so apply
+		// Built-in tools get it in `createTools`; extension, SDK-custom, and startup
+		// (non-deferred) MCP tools all funnel through here, so apply
 		// it once at this adapter boundary (idempotent — a no-op if already wrapped).
 		const wrappedExtensionTools: Tool[] = deduplicateMCPToolsByName(
 			wrapRegisteredTools(allCustomTools, extensionRunner).map(wrapToolWithMetaNotice),
@@ -3288,48 +3286,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		for (const tool of toolRegistry.values()) {
 			toolRegistry.set(tool.name, new ExtensionToolWrapper(tool, extensionRunner));
 		}
-		// Image generation is an optional custom tool gated by live settings.
-		// They install here, not through the custom-tools extension, so the settings
-		// reconcile can add and remove exactly the entries it owns and never a
-		// same-named extension tool, which keeps precedence over them.
-		const settingsGatedCustomEntries = new Map<string, Tool>();
-		const reconcileSettingsGatedCustomTools = async (): Promise<{ added: Tool[]; removed: string[] }> => {
-			const added: Tool[] = [];
-			const removed: string[] = [];
-			if (restrictToolNames) return { added, removed };
-			const wanted: CustomTool[] = [];
-			// Image generation also honors an explicit tool whitelist: custom tools are
-			// force-activated, so `--no-tools` or a list without `generate_image` must
-			// keep it out (issue #5305).
-			const imageGenRequested = !options.toolNames || options.toolNames.includes("generate_image");
-			if (cfgGenerateImageEnabled.get(settings) && imageGenRequested) {
-				wanted.push(imageGenTool as unknown as CustomTool);
-			}
-			const wantedNames = new Set(wanted.map(tool => tool.name));
-			for (const [name, entry] of settingsGatedCustomEntries) {
-				if (wantedNames.has(name)) continue;
-				settingsGatedCustomEntries.delete(name);
-				// A later same-named registration superseded this entry; it stays.
-				if (toolRegistry.get(name) !== entry) continue;
-				toolRegistry.delete(name);
-				removed.push(name);
-			}
-			for (const tool of wanted) {
-				if (toolRegistry.has(tool.name)) continue;
-				const definition = customToolToDefinition(tool);
-				const [adapted] = wrapRegisteredTools(
-					[{ definition, extensionPath: "<sdk>", sourceInfo: extensionToolSourceInfo(definition, "<sdk>") }],
-					extensionRunner,
-				);
-				if (!adapted) continue;
-				const entry = new ExtensionToolWrapper(wrapToolWithMetaNotice(adapted), extensionRunner) as Tool;
-				toolRegistry.set(tool.name, entry);
-				settingsGatedCustomEntries.set(tool.name, entry);
-				added.push(entry);
-			}
-			return { added, removed };
-		};
-		await reconcileSettingsGatedCustomTools();
 		// Hashline `edit` stays in the registry so Cursor can call it as MCP.
 		// Native StrReplace arrives as `editToolCall` and materializes through
 		// exec `readArgs`/`writeArgs`; `pi_edit` still needs a `replace`-mode
@@ -3456,11 +3412,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 						name === "rewind"
 					: native.hidden !== true;
 				added.push({ name, builtIn: true, activate });
-			}
-			const custom = await reconcileSettingsGatedCustomTools();
-			removed.push(...custom.removed);
-			for (const entry of custom.added) {
-				added.push({ name: entry.name, builtIn: false, activate: entry.hidden !== true });
 			}
 			syncXdevState();
 			return { added, removed, xdev: toolSession.xdev };
@@ -3860,7 +3811,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			: [
 					...sdkCustomTools.map(t => t.name),
 					...registeredTools.map(t => t.definition.name),
-					...settingsGatedCustomEntries.keys(),
 				].filter(name => !defaultInactiveToolNames.has(name));
 		for (const name of alwaysInclude) {
 			if (toolRegistry.has(name) && !initialToolNames.includes(name)) {

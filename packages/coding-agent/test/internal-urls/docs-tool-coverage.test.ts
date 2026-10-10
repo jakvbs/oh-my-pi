@@ -14,11 +14,6 @@ const expectedDocPaths = (name: string): string[] => [
 	path.join(docsToolsDir, `${name.replace(/_/g, "-")}.md`),
 ];
 
-// Custom tools injected by the SDK (`packages/coding-agent/src/sdk.ts`) when
-// their settings are enabled. Built-in tool factories live in BUILTIN_TOOLS but
-// these custom tools are not present there, so the coverage list is explicit.
-const CUSTOM_TOOL_NAMES = ["generate_image"] as const;
-
 describe("omp:// root docs coverage", () => {
 	it.each([...BUILTIN_TOOL_NAMES])("documents builtin tool %s", name => {
 		const candidates = expectedDocPaths(name);
@@ -27,11 +22,5 @@ describe("omp:// root docs coverage", () => {
 			present,
 			`Missing docs/tools/<name>.md for built-in tool "${name}". Tried: ${candidates.join(", ")}.`,
 		).toBeDefined();
-	});
-
-	it.each([...CUSTOM_TOOL_NAMES])("documents injected custom tool %s", name => {
-		const candidates = expectedDocPaths(name);
-		const present = candidates.find(candidate => fs.existsSync(candidate));
-		expect(present, `Missing docs/tools/<name>.md for injected custom tool "${name}".`).toBeDefined();
 	});
 });

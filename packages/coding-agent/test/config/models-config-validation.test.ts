@@ -128,7 +128,7 @@ describe("model kind must match its api", () => {
 		expect(validate({ models: [{ id: "img", api: "openai-images", kind: "image" }] })).not.toThrow();
 	});
 
-	test("chat transports serve chat and tiny, plus image where generate_image runs them", () => {
+	test("chat transports serve chat, tiny and image kinds", () => {
 		expect(validate({ models: [{ id: "gpt-image-2", api: "openai-responses", kind: "image" }] })).not.toThrow();
 		expect(
 			validate({ models: [{ id: "gemini-3-pro-image", api: "google-generative-ai", kind: "image" }] }),

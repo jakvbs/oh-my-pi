@@ -1817,9 +1817,8 @@ export interface XaiOAuthModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-// xAI /v1/models returns chat, image, voice, and STT entries. Tool surfaces
-// route through dedicated tools (generate_image, tts) with their own model
-// strings; the chat picker MUST exclude these prefixes or selecting them 400s.
+// xAI /v1/models returns chat, image, voice, and STT entries. The chat picker
+// MUST exclude the non-chat prefixes or selecting them 400s.
 function withXaiOAuthCompatDefaults(model: ModelSpec<"openai-responses">): ModelSpec<"openai-responses"> {
 	const compat = {
 		...model.compat,

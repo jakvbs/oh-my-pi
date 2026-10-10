@@ -190,7 +190,7 @@ describe("apply_patch rendering", () => {
 			{
 				content: [{ type: "text", text: "" }],
 				details: {
-					path: "packages/coding-agent/src/tools/image-gen.ts",
+					path: "packages/coding-agent/src/tools/read-pdf.ts",
 					op: "update",
 					diff: [
 						" 10|}",

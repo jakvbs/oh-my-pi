@@ -618,7 +618,7 @@ export class ToolExecutionComponent extends Container {
 
 	/**
 	 * Get all image blocks from result content and details.
-	 * Some tools (like generate_image) store images in details to avoid bloating
+	 * Some tools store images in details to avoid bloating
 	 * model context. Xdev-dispatched tools preserve those details under
 	 * details.xdev.inner.
 	 */

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ToolView } from "../src/tool-render/ToolView";
 
 describe("ToolView xd:// dispatches", () => {
-	it("renders successful execute-mode xdev writes as the inner generate_image tool", () => {
+	it("renders successful execute-mode xdev writes as the inner ask tool", () => {
 		const html = renderToStaticMarkup(
 			<ToolView
 				name="write"
@@ -12,11 +12,12 @@ describe("ToolView xd:// dispatches", () => {
 					content: [],
 					details: {
 						xdev: {
-							tool: "generate_image",
+							tool: "ask",
 							mode: "execute",
-							args: { subject: "alpine lake" },
+							args: { questions: [{ question: "Which lake?", options: [{ label: "alpine lake" }] }] },
 							inner: {
-								images: [{ data: "aW1hZ2U=", mimeType: "image/png" }],
+								question: "Which lake?",
+								selectedOptions: [{ label: "alpine lake" }],
 							},
 						},
 					},
@@ -24,9 +25,9 @@ describe("ToolView xd:// dispatches", () => {
 			/>,
 		);
 
-		expect(html).toContain("xd://generate_image");
+		expect(html).toContain("xd://ask");
+		expect(html).toContain("Which lake?");
 		expect(html).toContain("alpine lake");
-		expect(html).toContain('src="data:image/png;base64,aW1hZ2U="');
 	});
 
 	it("renders xd://resolve apply cards from unwrapped inner details", () => {

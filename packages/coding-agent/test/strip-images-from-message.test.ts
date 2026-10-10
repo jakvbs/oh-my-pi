@@ -60,7 +60,7 @@ describe("stripImagesFromMessage", () => {
 		const message: AgentMessage = {
 			role: "toolResult",
 			toolCallId: "tc1",
-			toolName: "generate_image",
+			toolName: "image_tool",
 			content: [text("generated"), png("inline")],
 			details: { images: [png("hidden-1"), png("hidden-2")], imageCount: 2 },
 			isError: false,

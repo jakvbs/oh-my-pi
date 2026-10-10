@@ -24,7 +24,7 @@
 
 The most capable agent surface that ships. Continuously tuned by real-world use — complete out of the box, open all the way down.
 
-**60+** providers · **30** built-in tools · **14** lsp ops · **~80k** lines of Rust core.
+**60+** providers · **29** built-in tools · **14** lsp ops · **~80k** lines of Rust core.
 
 > [!NOTE]
 > Pull requests are **temporarily open to everyone** as a trial. We previously
@@ -255,7 +255,6 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 
 - `web_search` — one query across configured providers, returning answer plus citations.
 - `github` — GitHub CLI ops — repo, PR, issues, code search, Actions run-watch.
-- `generate_image` — generate or edit raster images via Gemini, GPT, or xAI Grok image models.
 
 **Context & skills**
 
@@ -263,7 +262,7 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 - `rewind` — prune exploratory context, keep a concise report.
 - `manage_skill` — create, update, or delete an isolated managed skill.
 
-Setting-gated, off by default: `github`, `generate_image`, `checkpoint`, and `rewind`.
+Setting-gated, off by default: `github`, `checkpoint`, and `rewind`.
 
 [Full reference →](https://omp.sh/docs/tools)
 

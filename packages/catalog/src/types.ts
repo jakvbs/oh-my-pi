@@ -82,7 +82,7 @@ export function runnerApiKind(api: Api): ModelKind | undefined {
 	return RUNNER_API_KIND_BY_API.get(api);
 }
 
-/** Catalog APIs `generate_image` runs through a pi-ai image client; the hosted Responses pair needs a carrier model. */
+/** Catalog APIs image generation runs through a pi-ai image client; the hosted Responses pair needs a carrier model. */
 export const IMAGE_GENERATION_APIS = [
 	"openai-images",
 	"openrouter-images",
@@ -98,7 +98,7 @@ const IMAGE_CHAT_TRANSPORT_KINDS: readonly ModelKind[] = ["chat", "tiny", "image
 
 /**
  * Kinds a model on `api` may declare: a runner api serves its own kind; a chat
- * transport serves `chat` and `tiny`, plus `image` when `generate_image` runs it
+ * transport serves `chat` and `tiny`, plus `image` when image generation runs it
  * (hosted Responses image tool, Gemini image models). `undefined` for
  * `local-inference`, which hosts several kinds chosen by the model itself.
  */

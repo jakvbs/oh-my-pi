@@ -367,7 +367,7 @@ describe("ACP event mapper", () => {
 			{
 				type: "tool_execution_update",
 				toolCallId: "tc-image-update",
-				toolName: "generate_image",
+				toolName: "image_tool",
 				args: {},
 				partialResult: {
 					content: [{ type: "image", data: blobRef, mimeType: "image/webp" }],
@@ -377,7 +377,7 @@ describe("ACP event mapper", () => {
 			{
 				type: "tool_execution_end",
 				toolCallId: "tc-image-end",
-				toolName: "generate_image",
+				toolName: "image_tool",
 				isError: false,
 				result: {
 					content: [{ type: "text", text: "Generated image saved." }],

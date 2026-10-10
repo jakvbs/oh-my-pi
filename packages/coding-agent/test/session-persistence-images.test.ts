@@ -47,7 +47,7 @@ describe("session image persistence", () => {
 		const original = messageEntry({
 			role: "toolResult",
 			toolCallId: "tc1",
-			toolName: "generate_image",
+			toolName: "image_tool",
 			content: [text("generated"), png(contentImageData)],
 			details: {
 				images: [payload(generatedImageData), png(typedDetailImageData)],
