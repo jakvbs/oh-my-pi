@@ -63,5 +63,48 @@ test("scope CLI rejects an empty or invalid scope and normalizes in-repo parent 
 	await expect(scopeChecks(["--package", "../coding-agent"])).rejects.toThrow("Invalid package");
 	await expect(scopeChecks(["--all", "--file", "package.json"])).rejects.toThrow("not both");
 	const checks = await scopeChecks(["--file", "packages/coding-agent/../../scripts/check-scope.ts"]);
-	expect(checks[0]?.command).toContain("scripts/check-scope.ts");
+	expect(checks.at(-1)?.command).toContain("scripts/check-scope.ts");
 });
+
+test("a script type error fails the local file check and the CI tools typecheck", async () => {
+	const dir = await fs.mkdtemp(path.join(root, "scripts", "scope-regression-"));
+	const file = path.join(dir, "fixture.ts");
+	const relative = path.relative(root, file);
+	const cli = path.join(import.meta.dir, "check-scope.ts");
+	try {
+		await Bun.write(file, 'export const count: number = "not a number";\n');
+		const scopedTypes = await $`${process.execPath} ${cli} --file ${relative}`.cwd(root).quiet().nothrow();
+		const ciTypes = await $`${process.execPath} run check:types:tools`.cwd(root).quiet().nothrow();
+		expect(scopedTypes.exitCode).not.toBe(0);
+		expect(ciTypes.exitCode).not.toBe(0);
+		expect(scopedTypes.stderr.toString()).toContain("TS2322");
+		expect(`${ciTypes.stdout}${ciTypes.stderr}`).toContain("TS2322");
+		expect(scopedTypes.stdout.toString()).not.toContain("PASS scoped lint");
+	} finally {
+		await fs.rm(dir, { recursive: true, force: true });
+	}
+}, 30_000);
+
+test("local and CI lint share configured warning and error severities", async () => {
+	const dir = await fs.mkdtemp(path.join(root, "scripts", "scope-regression-"));
+	const file = path.join(dir, "fixture.ts");
+	const relative = path.relative(root, file);
+	const cli = path.join(import.meta.dir, "check-scope.ts");
+	try {
+		await Bun.write(file, "const unused = 1;\n");
+		const scopedWarning = await $`${process.execPath} ${cli} --file ${relative}`.cwd(root).quiet().nothrow();
+		const ciWarning = await $`${process.execPath} run lint:tools -- ${relative}`.cwd(root).quiet().nothrow();
+		expect(scopedWarning.exitCode).toBe(0);
+		expect(ciWarning.exitCode).toBe(0);
+		expect(`${ciWarning.stdout}${ciWarning.stderr}`).toContain("no-unused-vars");
+
+		await Bun.write(file, "let value = 1;\nconsole.log(value);\n");
+		const scopedError = await $`${process.execPath} ${cli} --file ${relative}`.cwd(root).quiet().nothrow();
+		const ciError = await $`${process.execPath} run lint:tools -- ${relative}`.cwd(root).quiet().nothrow();
+		expect(scopedError.exitCode).not.toBe(0);
+		expect(ciError.exitCode).not.toBe(0);
+		expect(`${ciError.stdout}${ciError.stderr}`).toContain("prefer-const");
+	} finally {
+		await fs.rm(dir, { recursive: true, force: true });
+	}
+}, 30_000);

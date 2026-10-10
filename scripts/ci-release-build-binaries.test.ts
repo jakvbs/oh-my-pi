@@ -7,6 +7,15 @@ import { compileCodingAgent } from "../packages/coding-agent/scripts/compile-bin
 
 const repoRoot = path.join(import.meta.dir, "..");
 
+it("uses Bun's baseline-musl target for the Linux musl x64 asset", async () => {
+	const result = await $`${process.execPath} scripts/ci-release-build-binaries.ts --dry-run --targets linux-musl-x64`
+		.cwd(repoRoot)
+		.quiet();
+	expect(result.text()).toContain(
+		"DRY RUN Bun.build target=bun-linux-x64-baseline-musl outfile=packages/coding-agent/binaries/omp-linux-musl-x64",
+	);
+});
+
 describe("Windows release binary target", () => {
 	it("builds both Windows architecture release assets with their native runtimes", async () => {
 		const result = await $`bun scripts/ci-release-build-binaries.ts --dry-run --targets win32-x64,win32-arm64`

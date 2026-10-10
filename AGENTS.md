@@ -10,7 +10,7 @@ Upstream is integrated by merge, never by rebase: `bun run sync:upstream` (`scri
 | --- | --- |
 | Removed features stay removed after an upstream merge | `scripts/check-fork-removed.ts` in `check:tools`; `sync:upstream` deletes re-added files |
 | `exports` never point at deleted files | `scripts/check-package-exports.ts` in `check:tools` |
-| Scoped checks preserve checker failures, including startup errors | `bun run check:scope --package NAME --file PATH`; `scripts/check-scope.test.ts`; CI uses `--all` without reducing coverage |
+| Scoped and CI checks preserve failures and use the same typecheck and lint policy | `check:scope` selects the owning TypeScript project for `--file`; `--tools` and CI use `check:types:tools`; all lint scopes use `lint:tools` and `.oxlintrc.json`; CLI regressions in `scripts/check-scope.test.ts` |
 | Native declarations and generated exports match the source and built addon | `bun run --cwd packages/natives build:bindings --check` in CI; `test/bindings-contract.test.ts` rejects removed exports |
 | Line-count reports identify both endpoint commits and distinguish removals from net change | `bun run diff:stats BASE HEAD`; `scripts/diff-stats.test.ts` checks +15/-4232 = -4217 and excludes intermediate churn |
 | Lockfiles are never merged by hand | `.gitattributes` `merge=upstream-lock` + regeneration in `sync:upstream` |

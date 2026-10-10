@@ -42,19 +42,41 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 		args,
 		options: {
 			all: { type: "boolean" },
+			tools: { type: "boolean" },
 			package: { type: "string", multiple: true },
 			file: { type: "string", multiple: true },
 		},
 	});
-	const packages = [...new Set(values.package ?? [])];
+	const packages = new Set(values.package ?? []);
 	const files = [...new Set(values.file ?? [])];
 	if (values.all) {
-		if (packages.length || files.length) throw new Error("Use --all or an explicit scope, not both.");
+		if (values.tools || packages.size || files.length) throw new Error("Use --all or an explicit scope, not both.");
 		return [{ label: "workspace TypeScript checks", command: [process.execPath, "run", "check:ts"], cwd: root }];
 	}
-	if (!packages.length && !files.length) throw new Error("Select --package NAME, --file PATH, or --all (CI).");
+	if (!values.tools && !packages.size && !files.length) {
+		throw new Error("Select --package NAME, --file PATH, --tools, or --all (CI).");
+	}
 	const checks: CheckCommand[] = [];
 	const lintPaths: string[] = [];
+	let tools = values.tools ?? false;
+	for (const file of files) {
+		const relative = path.relative(root, path.resolve(root, file));
+		if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+			throw new Error(`File must be inside the repository: ${file}`);
+		}
+		if (!(await fs.stat(path.join(root, relative))).isFile()) throw new Error(`Not a file: ${file}`);
+		if (/\.[cm]?tsx?$/.test(relative)) {
+			const [directory, name] = relative.split(path.sep);
+			if (directory === "scripts") tools = true;
+			else if (directory === "packages" && name) packages.add(name);
+			else throw new Error(`No TypeScript project owns ${relative}. Add it to a checked project first.`);
+		}
+		lintPaths.push(relative);
+	}
+	if (tools) {
+		checks.push({ label: "tools types", command: [process.execPath, "run", "check:types:tools"], cwd: root });
+		if (values.tools) lintPaths.push("scripts");
+	}
 	for (const name of packages) {
 		if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error(`Invalid package directory: ${name}`);
 		const cwd = path.join(root, "packages", name);
@@ -63,19 +85,11 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 			throw new Error(`packages/${name} has no check:types script.`);
 		}
 		checks.push({ label: `${name} types`, command: [process.execPath, "run", "check:types"], cwd });
-		lintPaths.push(`packages/${name}`);
-	}
-	for (const file of files) {
-		const relative = path.relative(root, path.resolve(root, file));
-		if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-			throw new Error(`File must be inside the repository: ${file}`);
-		}
-		if (!(await fs.stat(path.join(root, relative))).isFile()) throw new Error(`Not a file: ${file}`);
-		lintPaths.push(relative);
+		if (values.package?.includes(name)) lintPaths.push(`packages/${name}`);
 	}
 	checks.push({
 		label: "scoped lint",
-		command: [path.join(root, "node_modules", ".bin", "oxlint"), "--deny-warnings", "--", ...lintPaths],
+		command: [process.execPath, "run", "lint:tools", "--", ...lintPaths],
 		cwd: root,
 	});
 	return checks;
@@ -84,7 +98,7 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 if (import.meta.main) {
 	if (process.argv.slice(2).includes("--help")) {
 		console.log(
-			"Usage: bun run check:scope [--package NAME]... [--file PATH]... | --all\nPackages run check:types and lint. Files run lint only. --all retains the full CI TypeScript gate.",
+			"Usage: bun run check:scope [--package NAME]... [--file PATH]... [--tools] | --all\nTypeScript files select their owning project's typecheck. Lint policy comes from lint:tools and .oxlintrc.json for every scope. --all runs the full CI TypeScript gate.",
 		);
 	} else {
 		try {
