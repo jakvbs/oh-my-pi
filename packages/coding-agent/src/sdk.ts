@@ -755,7 +755,10 @@ export interface CreateAgentSessionOptions {
 	 * "main" for a top-level session / "sub" for a subagent.
 	 */
 	agentName?: string;
-	/** Optional shared agent registry for IRC routing. Default: AgentRegistry.global(). */
+	/**
+	 * Optional shared agent registry for IRC routing. Default: AgentRegistry.global(), or a
+	 * private registry for a top-level session with `bindProcessState: false`.
+	 */
 	agentRegistry?: AgentRegistry;
 	/**
 	 * Registry generation authorized for this creation. `null` requires the id
@@ -2121,7 +2124,11 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 
 	const scopedAsyncJobManager = asyncJobManager ?? (options.parentTaskPrefix ? AsyncJobManager.instance() : undefined);
 
-	const agentRegistry = options.agentRegistry ?? AgentRegistry.global();
+	// A helper session does not own the process, so it must not claim the host's id
+	// ("Main") in the process-global registry: that would replace the host's ref, and
+	// concurrent helpers would replace each other mid-construction.
+	const agentRegistry =
+		options.agentRegistry ?? (bindsProcessState || isSubagentSession ? AgentRegistry.global() : new AgentRegistry());
 	const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
 	const resolvedAgentDisplayName = options.agentDisplayName ?? agentKind;
 	let registeredAgentRef: AgentRef | undefined;
@@ -2229,10 +2236,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getToolByName: name => session?.getToolByName(name),
 			agentRegistry,
 			// The global lifecycle releases through AgentRegistry.global(); wiring it
-			// onto a caller-supplied registry would report a cancel while releasing an
+			// onto any other registry would report a cancel while releasing an
 			// unrelated global ref. With no lifecycle, explicit cancellation falls back to
 			// dispose + unregister on the session's own registry.
-			agentLifecycle: options.agentRegistry ? undefined : () => AgentLifecycleManager.global(),
+			agentLifecycle: agentRegistry === AgentRegistry.global() ? () => AgentLifecycleManager.global() : undefined,
 			getSessionAgents: () => session?.getSessionAgents() ?? [],
 			advertisedSessionAgents: () => session?.getAdvertisedSessionAgents() ?? [],
 			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),

@@ -237,6 +237,47 @@ describe("createAgentSession session storage isolation", () => {
 		expect(replacement).toMatchObject({ status: "idle", session: null });
 	});
 
+	it("keeps helper sessions out of the process-global registry so they neither replace the host nor each other", async () => {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-helper-registry-${Snowflake.next()}-`));
+		tempDirs.push(tempDir);
+		const cwd = path.join(tempDir, "project");
+		fs.mkdirSync(cwd, { recursive: true });
+		AgentRegistry.resetGlobalForTests();
+		const host = AgentRegistry.global().register({
+			id: "Main",
+			displayName: "main",
+			kind: "main",
+			session: null,
+			status: "running",
+		});
+		const startHelper = () =>
+			createAgentSession({
+				cwd,
+				agentDir: path.join(tempDir, "agent"),
+				modelRegistry: sharedModelRegistry,
+				settings: Settings.isolated(),
+				sessionManager: SessionManager.inMemory(cwd),
+				disableExtensionDiscovery: true,
+				skills: [],
+				contextFiles: [],
+				promptTemplates: [],
+				slashCommands: [],
+				toolNames: [],
+				enableMCP: false,
+				enableLsp: false,
+				bindProcessState: false,
+			});
+
+		try {
+			const helpers = await Promise.all([startHelper(), startHelper()]);
+			expect(AgentRegistry.global().get("Main")).toBe(host);
+			for (const { session } of helpers) await session.dispose();
+			expect(AgentRegistry.global().get("Main")).toBe(host);
+		} finally {
+			AgentRegistry.resetGlobalForTests();
+		}
+	});
+
 	it("reclaims an unrevivable parked generation before a fresh same-id spawn", async () => {
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-generation-corpse-${Snowflake.next()}-`));
 		tempDirs.push(tempDir);
