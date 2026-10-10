@@ -17,9 +17,10 @@ import * as fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { $ } from "bun";
+import { verifyHostAddonLoads } from "../../../scripts/bazel-natives";
 import { detectHostAvx2Support, resolveLocalHostAddon } from "../../../scripts/host-detect";
 import { stampNativeVersion } from "../../../scripts/stamp-native-version";
-import { generateEnumExports } from "./gen-enums";
+import { checkGeneratedBindings, generateEnumExports, nativeExportNames } from "./gen-enums";
 
 // pcre2-sys prefers a system libpcre2 when pkg-config finds one. Keep the
 // static build so the local addon never retains host Homebrew paths.
@@ -62,6 +63,7 @@ const repoRoot = path.join(import.meta.dir, "../../..");
 const rustDir = path.join(repoRoot, "crates/pi-natives");
 const nativeDir = path.join(import.meta.dir, "../native");
 const packageJsonPath = path.join(import.meta.dir, "../package.json");
+const checkOnly = process.argv.includes("--check");
 
 const localAddon = resolveLocalHostAddon({
 	platform: process.platform,
@@ -270,16 +272,24 @@ try {
 	// under its canonical name, so a version bump never recompiles the crate.
 	const { version } = (await Bun.file(packageJsonPath).json()) as { version: string };
 	await stampNativeVersion(builtAddonPath, version);
-	if (builtAddonPath !== canonicalAddonPath) {
-		console.log(`Normalizing native addon filename: ${path.basename(builtAddonPath)} → ${canonicalAddonFilename}`);
-		await installBinary(builtAddonPath, canonicalAddonPath);
+	await fs.copyFile(path.join(nativeDir, "index.js"), path.join(buildOutputDir, "index.js"));
+	await generateEnumExports(buildOutputDir);
+	const declarations = await Bun.file(path.join(buildOutputDir, "index.d.ts")).text();
+	await verifyHostAddonLoads(builtAddonPath, undefined, version, nativeExportNames(declarations));
+	if (checkOnly) {
+		await checkGeneratedBindings(buildOutputDir);
+		console.log("Bindings match the source and the freshly built addon.");
+	} else {
+		if (builtAddonPath !== canonicalAddonPath) {
+			console.log(`Normalizing native addon filename: ${path.basename(builtAddonPath)} → ${canonicalAddonFilename}`);
+			await installBinary(builtAddonPath, canonicalAddonPath);
+		}
+
+		await installGeneratedBindings(buildOutputDir);
+		await fs.copyFile(path.join(buildOutputDir, "index.js"), path.join(nativeDir, "index.js"));
+
+		console.log("Bindings build complete.");
 	}
-
-	await installGeneratedBindings(buildOutputDir);
-
-	await generateEnumExports();
-
-	console.log("Bindings build complete.");
 } finally {
 	await fs.rm(buildOutputDir, { recursive: true, force: true });
 }

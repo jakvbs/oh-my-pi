@@ -159,7 +159,36 @@ jobs:
       runs-on: ${{ (github.event_name == 'pull_request' || github.repository != 'can1357/oh-my-pi') && 'ubuntu-22.04' || 'omp-kata' }}
       steps:
          - uses: actions/checkout@v4
+           with:
+              fetch-depth: 0
          - uses: ./.github/actions/bun-install
+         - name: Detect native binding changes
+           id: bindings
+           env:
+              BEFORE: ${{ github.event.before }}
+              PR_BASE: ${{ github.event.pull_request.base.sha }}
+           run: |
+              base="${PR_BASE:-$BEFORE}"
+              if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+                echo "changed=true" >> "$GITHUB_OUTPUT"
+              elif git diff --quiet "$base" HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml .cargo bun.lock package.json packages/natives scripts/bazel-natives.ts scripts/host-detect.ts scripts/stamp-native-version.ts .github/workflows/ci.yml; then
+                echo "changed=false" >> "$GITHUB_OUTPUT"
+              else
+                echo "changed=true" >> "$GITHUB_OUTPUT"
+              fi
+         - name: Cache binding build
+           if: steps.bindings.outputs.changed == 'true'
+           uses: actions/cache@v4
+           with:
+              path: |
+                 ~/.cargo/registry
+                 ~/.cargo/git
+                 target
+              key: bindings-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Cargo.toml', 'crates/**', '.cargo/**') }}
+              restore-keys: bindings-${{ runner.os }}-${{ runner.arch }}-
+         - name: Check generated bindings against a fresh host addon
+           if: steps.bindings.outputs.changed == 'true'
+           run: bun run --cwd packages/natives build:bindings --check
          - name: Verify Rust license compliance (cargo-deny 0.20.2)
            run: |
               # Prebuilt release binary checked against digests pinned here:

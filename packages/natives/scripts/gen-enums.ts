@@ -17,8 +17,6 @@
 import * as path from "node:path";
 
 const nativeDir = path.resolve(import.meta.dir, "../native");
-const dtsPath = path.join(nativeDir, "index.d.ts");
-const jsPath = path.join(nativeDir, "index.js");
 
 const MARKER_START = "// --- generated native exports (do not edit) ---";
 const MARKER_END = "// --- end generated native exports ---";
@@ -121,7 +119,25 @@ function buildGeneratedBlock(dts: string): string {
 	return `${MARKER_START}\n${lines.join("\n")}\n${MARKER_END}`;
 }
 
-export async function generateEnumExports(): Promise<void> {
+export function nativeExportNames(dts: string): string[] {
+	return [...collectMatches(dts, CLASS_RE), ...collectMatches(dts, FUNCTION_RE)];
+}
+
+export async function checkGeneratedBindings(outputDir: string, committedDir = nativeDir): Promise<void> {
+	for (const name of ["index.d.ts", "index.js"]) {
+		const generated = await Bun.file(path.join(outputDir, name)).text();
+		const committed = await Bun.file(path.join(committedDir, name)).text();
+		if (generated !== committed) {
+			throw new Error(
+				`${name} differs from generated bindings. Run bun run --cwd packages/natives build:bindings and commit the result.`,
+			);
+		}
+	}
+}
+
+export async function generateEnumExports(outputDir = nativeDir): Promise<void> {
+	const dtsPath = path.join(outputDir, "index.d.ts");
+	const jsPath = path.join(outputDir, "index.js");
 	const dts = await Bun.file(dtsPath).text();
 	const existing = await Bun.file(jsPath).text();
 	const generatedBlock = buildGeneratedBlock(dts);

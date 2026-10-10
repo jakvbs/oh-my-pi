@@ -11,6 +11,7 @@ Upstream is integrated by merge, never by rebase: `bun run sync:upstream` (`scri
 | Removed features stay removed after an upstream merge | `scripts/check-fork-removed.ts` in `check:tools`; `sync:upstream` deletes re-added files |
 | `exports` never point at deleted files | `scripts/check-package-exports.ts` in `check:tools` |
 | Scoped checks preserve checker failures, including startup errors | `bun run check:scope --package NAME --file PATH`; `scripts/check-scope.test.ts`; CI uses `--all` without reducing coverage |
+| Native declarations and generated exports match the source and built addon | `bun run --cwd packages/natives build:bindings --check` in CI; `test/bindings-contract.test.ts` rejects removed exports |
 | Lockfiles are never merged by hand | `.gitattributes` `merge=upstream-lock` + regeneration in `sync:upstream` |
 | Fork changelog bullets stay under `[Unreleased]` | `sync:upstream` fails on bullets outside `[Unreleased]` that upstream does not have |
 | Same conflict is resolved once | `rerere.enabled` set by `sync:upstream` |

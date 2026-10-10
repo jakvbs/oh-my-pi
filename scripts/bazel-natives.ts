@@ -309,6 +309,7 @@ export async function verifyHostAddonLoads(
 	destPath: string,
 	timeoutMs: number = ADDON_LOAD_PROBE_TIMEOUT_MS,
 	expectedVersion?: string,
+	expectedExports: string[] = [],
 ): Promise<void> {
 	// With `expectedVersion`, the loaded addon must also report it through
 	// `__piNativesBuildVersion()`: proof the Rust stamp slot and the stamp tool
@@ -321,7 +322,9 @@ export async function verifyHostAddonLoads(
 	const probe =
 		`const m = { exports: {} }; try { process.dlopen(m, ${JSON.stringify(destPath)}); } ` +
 		"catch (error) { console.error(error && error.message ? error.message : String(error)); process.exit(1); } " +
-		versionCheck;
+		versionCheck +
+		`const missing = ${JSON.stringify(expectedExports)}.filter(name => typeof m.exports[name] !== "function"); ` +
+		'if (missing.length) { console.error("Native addon lacks exports: " + missing.join(", ") + ". Run bun run build:bindings."); process.exit(1); }';
 	const proc = Bun.spawn([process.execPath, "-e", probe], { stdout: "ignore", stderr: "pipe" });
 	let timedOut = false;
 	const timer = setTimeout(() => {
