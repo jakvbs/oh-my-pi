@@ -417,20 +417,7 @@ Small typed decisions the app makes about its own state (the `auto` thinking-lev
 
 ---
 
-## 4) Python runtime (IDA integration)
-
-| Variable       | Default / behavior                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| `VIRTUAL_ENV`  | Highest-priority venv path for Python runtime resolution                                   |
-| `CONDA_PREFIX` | Python environment fallback after `VIRTUAL_ENV`, before local `.venv` / `venv` directories |
-
-Python subprocess filtering denies common API keys and allows safe base variables plus `LC_`, `XDG_`, and `PI_` prefixes.
-
-Shell subprocess filtering is separate (`packages/utils/src/env.ts`): it strips project-dotenv values rather than applying Python's key allowlist.
-
----
-
-## 5) Agent/runtime behavior toggles
+## 4) Agent/runtime behavior toggles
 
 | Variable                     | Default / behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -486,7 +473,7 @@ Shell subprocess filtering is separate (`packages/utils/src/env.ts`): it strips 
 
 ---
 
-## 6) Storage and config root paths
+## 5) Storage and config root paths
 
 These affect where coding-agent stores data and which process-local settings overlays it loads.
 
@@ -508,7 +495,7 @@ These affect where coding-agent stores data and which process-local settings ove
 
 ---
 
-## 7) Shell/tool execution environment
+## 6) Shell/tool execution environment
 
 (From `packages/utils/src/procmgr.ts` and coding-agent bash tool integration.)
 
@@ -527,7 +514,7 @@ These affect where coding-agent stores data and which process-local settings ove
 
 ---
 
-## 8) UI/theme/session detection (auto-detected env)
+## 7) UI/theme/session detection (auto-detected env)
 
 These are read as runtime signals; they are usually set by the terminal/OS rather than manually configured.
 
@@ -545,7 +532,7 @@ These are read as runtime signals; they are usually set by the terminal/OS rathe
 
 ---
 
-## 9) TUI runtime flags (shared package, affects coding-agent UX)
+## 8) TUI runtime flags (shared package, affects coding-agent UX)
 
 | Variable                       | Behavior                                                                                                                                                                                                                                           |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -577,7 +564,7 @@ These are read as runtime signals; they are usually set by the terminal/OS rathe
 
 ---
 
-## 10) OpenTelemetry export
+## 9) OpenTelemetry export
 
 OMP initializes OTLP export only when at least one signal has an endpoint. Set `telemetry.otlpExportEnabled: false` (`/settings` → Providers → Privacy) to skip export even when endpoints are configured. `OTEL_SDK_DISABLED=true` also disables initialization.
 
@@ -611,4 +598,3 @@ Treat these as secrets; do not log or commit them:
 - Foundry mTLS material (`CLAUDE_CODE_CLIENT_CERT`, `CLAUDE_CODE_CLIENT_KEY`, `NODE_EXTRA_CA_CERTS` when it points to private CA bundles)
 - OTLP exporter headers (`OTEL_EXPORTER_OTLP_HEADERS` and the per-signal `..._{TRACES,LOGS,METRICS}_HEADERS` variants) — they carry ingest bearer tokens/project keys
 
-Python runtime also explicitly strips many common key vars before spawning subprocesses (`packages/coding-agent/src/ida/python-runtime.ts`).

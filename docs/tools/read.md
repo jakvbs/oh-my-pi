@@ -9,7 +9,7 @@
 - Key collaborators:
    - `packages/coding-agent/src/tools/path-utils.ts` — prefer literal filenames; normalize local paths and recover accidental delimited path lists.
    - `packages/tui/src/tools/read.ts` / `line-ranges.ts` — split trailing selectors and parse line ranges; `packages/coding-agent/src/tools/read-selector.ts` resolves raw, range, and tail selectors.
-   - `packages/coding-agent/src/tools/read-archive.ts`, `read-sqlite.ts`, `read-binary.ts`, `read-pdf.ts`, and `read-format.ts` — specialized readers and shared formatting/pagination.
+   - `packages/coding-agent/src/tools/read-archive.ts`, `read-sqlite.ts`, `read-pdf.ts`, and `read-format.ts` — specialized readers and shared formatting/pagination.
    - `packages/utils/src/ar` (`@oh-my-pi/pi-utils/ar`) — unified archive registry: detect `archive.ext:inner/path`, index archives, list/read entries.
    - `packages/coding-agent/src/tools/sqlite-reader.ts` — detect SQLite targets, parse selectors, render tables.
    - `packages/coding-agent/src/tools/fetch.ts` — URL parsing, fetch/render pipeline, URL cache/artifacts.
@@ -24,7 +24,7 @@
 ## Registration / Visibility
 
 - Metadata: `strict = true`, `loadMode = "essential"`. Approval normally uses the internal scheme's read tier; PDF page screenshots require `"exec"`.
-- The model-facing prompt renders hashline guidance from the live display mode and executable-view guidance only when IDA is available.
+- The model-facing prompt renders hashline guidance from the live display mode.
 
 ## Inputs
 
@@ -96,7 +96,7 @@ Literal filesystem paths take precedence over selector interpretation, so an exi
    - On success, `readArchive()` either lists a directory or decodes an entry as UTF-8 text.
 6. It tries SQLite resolution with `resolveSqliteReadPath()` in `read-sqlite.ts`.
    - `parseSqlitePathCandidates()` scans for `.sqlite`, `.sqlite3`, `.db`, `.db3` before any `:table`, `:key`, or `?query` suffix.
-   - `readSqlite()` dispatches on `parseSqliteSelector()`. Executable/IDA database view targets are then handled by `resolveBinaryViewPath()` and `readBinary()`.
+   - `readSqlite()` dispatches on `parseSqliteSelector()`.
 7. Otherwise it treats the input as a local filesystem path.
    - `resolveReadPath()` expands `~`, resolves relative to session cwd, treats bare `/` as session cwd, and retries macOS screenshot/NFD/curly-quote variants.
    - If the path does not exist, `findUniqueWorkspaceSuffix()` attempts a workspace-wide unique suffix match (skipped for remote mounts). A cwd-root filename matching the active `local://` plan basename may recover that plan. As a final guarded recovery, a mistakenly delimited list of existing paths is read part by part; callers should still issue one `read` per path.
@@ -153,13 +153,6 @@ Literal filesystem paths take precedence over selector interpretation, so an exi
 - Directory listing default limit is `500` entries in `readArchiveDirectory()`.
 - File entries are UTF-8 decoded. Non-UTF-8 entries return `[Cannot read binary archive entry '...' (...)]` instead of bytes.
 - Text archive entries reuse the normal in-memory pagination/anchoring path.
-
-### Executables and IDA databases
-
-- When IDA is available, ELF/PE/Mach-O binaries (including extensionless files) and IDA database files open an IDA-backed overview and function list instead of a binary-file notice.
-- Views: `:<func|0xaddr>` for pseudocode, `:<func>:asm`, `:imports`, `:exports`, `:strings`, and `:xrefs:<func|0xaddr>`. Append line selectors to page the rendered view (`bin:main:10-40`).
-- Universal Mach-O reads use the host-architecture slice by default; `bin:@x86_64:main` selects another slice.
-- Views are immutable generated text and do not seed hashline edits. First use may open or create an IDA database; `:raw` bypasses the view path.
 
 ### Video
 
@@ -312,7 +305,7 @@ Notes: ...
    - Uses Bun SQLite for `.db`/`.sqlite*`.
    - Reads archives through the unified `@oh-my-pi/pi-utils/ar` registry; ZIP is framed in `packages/utils/src/ar/zip.ts` over the `node:zlib` DEFLATE codec.
    - URL HTML rendering can delegate into site handlers and HTML-to-text backends from `packages/coding-agent/src/tools/fetch.ts`.
-   - Video invokes `ffmpeg`/`ffprobe`; PDF page screenshots use headless Chromium; executable views may create/open an IDA database and request rendered views.
+   - Video invokes `ffmpeg`/`ffprobe`; PDF page screenshots use headless Chromium.
 - Session state
    - Records local text snapshots and seen lines in the session's native `EditStore` for later stale-anchor recovery.
    - Passes session `cwd`, `settings`, and `localProtocolOptions` into the process-global `InternalUrlRouter.instance().resolve()` for internal URLs.
@@ -363,7 +356,7 @@ Notes: ...
 - Missing local/archive/sqlite paths first attempt unique suffix resolution; if no unique match or guarded recovery exists they error.
 - Targets that are neither regular files nor directories (character or block device, FIFO, socket) throw a `ToolError` naming the file kind; SQLite detection skips them rather than sniffing their header.
 - Out-of-bounds line reads do not throw. They return explanatory text with a suggestion such as `Use :1 ...` or `Use :<last line> ...`.
-- Probable binary local files return a notice unless `:raw` was requested or an available IDA-backed executable/database view handles them.
+- Probable binary local files return a notice unless `:raw` was requested.
 - Binary archive entries do not throw; they return a text notice.
 - Document conversion failure returns a text notice.
 - Image oversize/unsupported/invalid cases throw.

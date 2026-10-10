@@ -13,6 +13,7 @@ packages/coding-agent/src/collab
 packages/coding-agent/src/commit/agentic
 packages/coding-agent/src/eval
 packages/coding-agent/src/hindsight
+packages/coding-agent/src/ida
 packages/coding-agent/src/if-bench
 packages/coding-agent/src/live
 packages/coding-agent/src/memories
@@ -34,6 +35,7 @@ packages/coding-agent/test/collab
 packages/coding-agent/test/eval
 packages/coding-agent/test/fixtures/security
 packages/coding-agent/test/hindsight
+packages/coding-agent/test/ida
 packages/coding-agent/test/live
 packages/coding-agent/test/memories
 packages/coding-agent/test/plan-mode
