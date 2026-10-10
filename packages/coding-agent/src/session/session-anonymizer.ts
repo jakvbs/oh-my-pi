@@ -4,8 +4,8 @@
  * Every field is exported by an explicit rule in {@link FIELD_RULES}: usage, timing, models, ids,
  * tool names, and other metadata omp writes are kept; turn contents become size-annotated markers;
  * paths become mock paths; shell commands keep program names and flags. A field without a rule —
- * and every payload omp does not define (extension/MCP data, non-built-in tool details or args,
- * `eval` display output) — becomes an opaque marker under a tokenized key. Nothing is kept because
+ * and every payload omp does not define (extension/MCP data, non-built-in tool details or args)
+ * — becomes an opaque marker under a tokenized key. Nothing is kept because
  * of how a value looks.
  *
  * One instance carries a single token table, so equal originals map to equal tokens across every
@@ -599,7 +599,6 @@ const ARG_SCHEMAS: Record<string, ArgSchema> = {
 	grep: argSchema("pattern path case gitignore skip# limit# hidden glob context#"),
 	glob: argSchema("path pattern hidden gitignore limit# skip#"),
 	find: argSchema("query path grep_keywords limit# hidden"),
-	eval: argSchema("code language title timeout# reset"),
 	task: argSchema("op context tasks name task agent solutionSpace tools isolated schemaMode"),
 	todo: argSchema("op items task phase list reason tasks content status phase_note"),
 	wait: argSchema("ids timeout#"),
@@ -614,10 +613,6 @@ const ARG_SCHEMAS: Record<string, ArgSchema> = {
 	rewind: argSchema("goal report"),
 	context_notes: argSchema("text"),
 	new_context: argSchema("text"),
-	memory_edit: argSchema("op id content importance# replacement_id"),
-	retain: argSchema("items content context scope"),
-	recall: argSchema("query"),
-	reflect: argSchema("query context"),
 };
 
 /** Tool-call argument keys holding search text: always a placeholder, never path-mapped. */
