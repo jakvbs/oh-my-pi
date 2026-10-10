@@ -217,7 +217,9 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		});
 
 		try {
-			expect(session.getActiveToolNames()).toEqual(expect.arrayContaining(["read", "deferrable_custom_tool", "write"]));
+			expect(session.getActiveToolNames()).toEqual(
+				expect.arrayContaining(["read", "deferrable_custom_tool", "write"]),
+			);
 			expect(session.getMountedXdevToolNames()).toEqual([]);
 			const write = session.getToolByName("write");
 			expect(write).toBeDefined();
@@ -1968,9 +1970,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 
 		try {
 			const activeToolNames = normal.getActiveToolNames();
-			expect(activeToolNames).toEqual(
-				expect.arrayContaining(["read", "yield", "manage_skill", "write"]),
-			);
+			expect(activeToolNames).toEqual(expect.arrayContaining(["read", "yield", "manage_skill", "write"]));
 			// Explicit and force-included tools stay top-level. Ambient custom and
 			// extension capabilities mount through the device-only write transport.
 			const mountedNames = normal.getXdevToolEntries().map(entry => entry.name);

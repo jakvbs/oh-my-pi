@@ -185,5 +185,4 @@ export const editFixtures: Record<string, GalleryFixture> = {
 			},
 		},
 	},
-
 };

@@ -83,5 +83,4 @@ describe("resolveToolSearchScope locates large artifacts", () => {
 		InternalUrlRouter.resetForTests();
 		await fs.rm(testDir, { recursive: true, force: true });
 	});
-
 });

@@ -51,13 +51,7 @@ import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, TOOL_TIMEOUTS } from "./tool-timeouts";
 
-import {
-	cfgAsyncEnabled,
-	cfgGlobEnabled,
-	cfgGrepEnabled,
-	cfgLaunchEnabled,
-	cfgToolsMaxTimeout,
-} from "./settings";
+import { cfgAsyncEnabled, cfgGlobEnabled, cfgGrepEnabled, cfgLaunchEnabled, cfgToolsMaxTimeout } from "./settings";
 import {
 	cfgBashAllowCompoundCommands,
 	cfgBashAutoBackgroundEnabled,

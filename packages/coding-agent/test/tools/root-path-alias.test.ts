@@ -126,5 +126,4 @@ describe("tool path root alias", () => {
 		expect(text).toContain("search.txt");
 		expect(text).toContain("sample.ts");
 	});
-
 });

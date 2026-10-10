@@ -74,5 +74,4 @@ export const searchFixtures: Record<string, GalleryFixture> = {
 			},
 		},
 	},
-
 };

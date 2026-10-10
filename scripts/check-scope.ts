@@ -58,6 +58,7 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 	}
 	const checks: CheckCommand[] = [];
 	const lintPaths: string[] = [];
+	const formatPaths: string[] = [];
 	let tools = values.tools ?? false;
 	for (const file of files) {
 		const relative = path.relative(root, path.resolve(root, file));
@@ -72,10 +73,14 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 			else throw new Error(`No TypeScript project owns ${relative}. Add it to a checked project first.`);
 		}
 		lintPaths.push(relative);
+		formatPaths.push(relative);
 	}
 	if (tools) {
 		checks.push({ label: "tools types", command: [process.execPath, "run", "check:types:tools"], cwd: root });
-		if (values.tools) lintPaths.push("scripts");
+		if (values.tools) {
+			lintPaths.push("scripts");
+			formatPaths.push("scripts/**/*.ts");
+		}
 	}
 	for (const name of packages) {
 		if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error(`Invalid package directory: ${name}`);
@@ -85,11 +90,23 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 			throw new Error(`packages/${name} has no check:types script.`);
 		}
 		checks.push({ label: `${name} types`, command: [process.execPath, "run", "check:types"], cwd });
-		if (values.package?.includes(name)) lintPaths.push(`packages/${name}`);
+		if (values.package?.includes(name)) {
+			lintPaths.push(`packages/${name}`);
+			formatPaths.push(
+				`packages/${name}/src/**/*.{ts,tsx}`,
+				`packages/${name}/{test,bench,examples,scripts}/**/*.ts`,
+				`packages/${name}/*.ts`,
+			);
+		}
 	}
 	checks.push({
 		label: "scoped lint",
 		command: [process.execPath, "run", "lint:tools", "--", ...lintPaths],
+		cwd: root,
+	});
+	checks.unshift({
+		label: "scoped format",
+		command: [process.execPath, "x", "--no-install", "oxfmt", "--check", ...formatPaths],
 		cwd: root,
 	});
 	return checks;
@@ -98,7 +115,7 @@ export async function scopeChecks(args: string[]): Promise<CheckCommand[]> {
 if (import.meta.main) {
 	if (process.argv.slice(2).includes("--help")) {
 		console.log(
-			"Usage: bun run check:scope [--package NAME]... [--file PATH]... [--tools] | --all\nTypeScript files select their owning project's typecheck. Lint policy comes from lint:tools and .oxlintrc.json for every scope. --all runs the full CI TypeScript gate.",
+			"Usage: bun run check:scope [--package NAME]... [--file PATH]... [--tools] | --all\nChecks formatting first. TypeScript files select their owning project's typecheck. Lint policy comes from lint:tools and .oxlintrc.json for every scope. --all runs the full CI TypeScript gate.",
 		);
 	} else {
 		try {

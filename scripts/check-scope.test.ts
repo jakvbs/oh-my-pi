@@ -7,6 +7,25 @@ import { runChecks, scopeChecks } from "./check-scope";
 
 const root = path.resolve(import.meta.dir, "..");
 
+test("unformatted files fail before typechecking and corrected files pass the scope CLI", async () => {
+	const dir = await fs.mkdtemp(path.join(root, "scripts", "scope-regression-"));
+	const file = path.join(dir, "fixture.ts");
+	const cli = path.join(import.meta.dir, "check-scope.ts");
+	try {
+		await Bun.write(file, "export const count:number=1;\n");
+		const failed = await $`${process.execPath} ${cli} --file ${file}`.cwd(root).quiet().nothrow();
+		expect(failed.exitCode).not.toBe(0);
+		expect(failed.stdout.toString()).toContain("FAIL scoped format");
+		expect(failed.stdout.toString()).not.toContain("tools types");
+		await Bun.write(file, "export const count: number = 1;\n");
+		const passed = await $`${process.execPath} ${cli} --file ${file}`.cwd(root).quiet().nothrow();
+		expect(passed.exitCode).toBe(0);
+		expect(passed.stdout.toString()).toContain("PASS scoped format");
+	} finally {
+		await fs.rm(dir, { recursive: true, force: true });
+	}
+}, 30_000);
+
 test("a checker failure without diagnostics blocks later checks and keeps its complete log", async () => {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scope-test-"));
 	try {
