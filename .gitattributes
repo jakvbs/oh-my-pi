@@ -35,9 +35,11 @@
 
 # Lock files are binary (machine-generated, should not be manually edited)
 *.lock -text
-Cargo.lock -text
+# Fork: on an upstream merge take upstream's lockfile and regenerate (scripts/sync-upstream.ts).
+Cargo.lock -text merge=upstream-lock
+MODULE.bazel.lock merge=upstream-lock
 package-lock.json -text
-bun.lock -text
+bun.lock -text merge=upstream-lock
 bun.lockb -text
 yarn.lock -text
 pnpm-lock.yaml -text
