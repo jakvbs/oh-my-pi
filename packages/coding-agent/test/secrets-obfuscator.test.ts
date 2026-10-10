@@ -126,6 +126,20 @@ describe("builtinCredentialSecretEntries", () => {
 		}
 	});
 
+	it("hides a Cloudflare account token shown bare in a browser snapshot", () => {
+		const obfuscator = new SecretObfuscator(builtinCredentialSecretEntries());
+		const token = `cfat_${"R8s".repeat(16)}`;
+		const snapshot = `- textbox "Your API Token" [ref=e3]: ${token}\n- button "Copy" [ref=e4]`;
+
+		const providerView = obfuscator.obfuscate(snapshot);
+
+		expect(providerView).not.toContain(token);
+		const args = deobfuscateToolArguments(obfuscator, {
+			command: `printf %s ${providerView.split(": ")[1]!.split("\n")[0]}`,
+		});
+		expect(args.command).toBe(`printf %s ${token}`);
+	});
+
 	it("replaces only the token after a Bearer prefix", () => {
 		const obfuscator = new SecretObfuscator(builtinCredentialSecretEntries());
 		const token = `${"Q7w".repeat(13)}Z`;

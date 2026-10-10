@@ -37,6 +37,7 @@ const TOKENS: Record<string, string[]> = {
 	StripeKey: ["sk_live_", "sk_test_", "rk_live_", "rk_test_"].map(prefix => `${prefix}${"f".repeat(20)}`),
 	StripeWebhookSecret: [`whsec_${"g".repeat(20)}`],
 	HuggingFaceToken: [`hf_${"h".repeat(30)}`],
+	CloudflareToken: [`cfat_${"q".repeat(48)}`],
 	SendGridKey: [`SG.${"i".repeat(22)}.${"j".repeat(43)}`],
 	JWT: [`eyJ${"k".repeat(10)}.eyJ${"l".repeat(10)}.${"m".repeat(10)}`],
 	BearerToken: [`Bearer ${"n".repeat(24)}`, `BEARER ${"o".repeat(24)}`, `bearer ${"p".repeat(24)}`],

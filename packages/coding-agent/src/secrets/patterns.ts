@@ -48,6 +48,7 @@ export const CREDENTIAL_PREFIX_RULES: readonly CredentialPrefixRule[] = [
 	{ source: "AIza", mode: "token" },
 	{ source: "npm_", mode: "token" },
 	{ source: "hf_", mode: "token" },
+	{ source: "cfat_", mode: "token" },
 	{ source: "whsec_", mode: "token" },
 	{ source: "rk_live_", mode: "token" },
 	{ source: "sk_live_", mode: "token" },
@@ -80,6 +81,8 @@ export const CREDENTIAL_PATTERNS: readonly CredentialPattern[] = [
 	},
 	{ name: "StripeWebhookSecret", source: `${B}whsec_[A-Za-z0-9]{20,}${E}`, literalPrefixes: ["whsec_"] },
 	{ name: "HuggingFaceToken", source: `${B}hf_[A-Za-z0-9]{30,}${E}`, literalPrefixes: ["hf_"] },
+	// Cloudflare account-owned API tokens (`cfat_` + 48 alphanumerics as issued in 2026).
+	{ name: "CloudflareToken", source: `${B}cfat_[A-Za-z0-9]{40,}${E}`, literalPrefixes: ["cfat_"] },
 	{ name: "SendGridKey", source: `${B}SG\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}${E}`, literalPrefixes: ["SG."] },
 	{
 		name: "JWT",
