@@ -2,8 +2,6 @@ export const BUILTIN_TOOL_NAMES = [
 	"read",
 	"bash",
 	"edit",
-	"ast_grep",
-	"ast_edit",
 	"ask",
 	"github",
 	"glob",

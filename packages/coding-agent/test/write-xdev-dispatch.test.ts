@@ -6,7 +6,6 @@ import { type } from "@oh-my-pi/omptype";
 import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import * as themeModule from "@oh-my-pi/pi-tui/theme";
-import { ToolChoiceQueue } from "@oh-my-pi/pi-coding-agent/session/tool-choice-queue";
 import { createTools, type Tool, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { requiresApproval, resolveApproval } from "@oh-my-pi/pi-coding-agent/tools/approval";
 import { Text } from "@oh-my-pi/pi-tui";
@@ -40,8 +39,8 @@ function mountedRenderContext(xdev: XdevState): WriteRenderContext {
 	return { resolveXdevMounted: xdev.resolve };
 }
 
-// xdev mounting is default-on: discoverable tools like ast_edit unmount into
-// xd://, and a plain `write xd://ast_edit` dispatches them. These guard the
+// xdev mounting is default-on: discoverable tools like grep unmount into
+// xd://, and a plain `write xd://grep` dispatches them. These guard the
 // resolution-device symbols write.ts pulls from ./resolve — a missing import
 // threw `ReferenceError: isResolutionDeviceName is not defined` on *every*
 // xd:// write, in both the executor (approval + execute) and the streaming
@@ -72,67 +71,6 @@ function createTestXdevState(
 }
 
 describe("read and write route xd:// device URLs", () => {
-	it("lists, documents, and dispatches an ast_edit device", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "write-xdev-"));
-		try {
-			const filePath = path.join(tempDir, "legacy.ts");
-			await Bun.write(filePath, "legacyWrap(x, value)\n");
-			const queue = new ToolChoiceQueue();
-
-			const tools = await createTools(
-				xdevSession(tempDir, {
-					getToolChoiceQueue: () => queue,
-					buildToolChoice: () => ({ type: "tool" as const, name: "resolve" }),
-					steer: () => {},
-				}),
-			);
-			// xdev on: ast_edit is unmounted into xd://; write stays in the toolset.
-			const write = tools.find(entry => entry.name === "write");
-			const read = tools.find(entry => entry.name === "read");
-			expect(read).toBeDefined();
-			expect(write).toBeDefined();
-			expect(tools.some(entry => entry.name === "ast_edit")).toBe(false);
-
-			const listing = await read!.execute("read-xd-list", { path: "xd://" });
-			expect(listing.content.find(entry => entry.type === "text")?.text).toContain("xd://ast_edit");
-			const docs = await read!.execute("read-xd-docs", { path: "xd://ast_edit" });
-			expect(docs.content.find(entry => entry.type === "text")?.text).toContain("# ast_edit");
-
-			const content = JSON.stringify({
-				ops: [{ pat: "legacyWrap($A, $B)", out: "modernWrap($A, $B)" }],
-				paths: [filePath],
-			});
-
-			// The write gate decodes the device payload and evaluates the mounted
-			// tool's own approval. ast_edit is write-tier for a filesystem path.
-			const approval = write!.approval;
-			expect(typeof approval).toBe("function");
-			if (typeof approval === "function") {
-				expect(approval({ path: "xd://ast_edit", content })).toEqual({ tier: "write", policyKey: "ast_edit" });
-			}
-
-			// Execute dispatches through the xdev registry to the mounted ast_edit,
-			// staging a preview (not a direct apply).
-			const previewResult = await write!.execute("write-xdev-preview", { path: "xd://ast_edit", content });
-			expect(previewResult.isError).toBeUndefined();
-			expect(previewResult.details?.xdev?.tool).toBe("ast_edit");
-			expect(previewResult.details?.xdev?.mode).toBe("execute");
-			// The dispatch records the wrapped tool's approval tier so prewalk can
-			// tell a mutation from a read-only device call (issue #7312).
-			expect(previewResult.details?.xdev?.tier).toBe("write");
-			const previewText = previewResult.content.find(entry => entry.type === "text")?.text ?? "";
-			expect(previewText).toContain("modernWrap");
-
-			// The staged preview applies through the resolve queue and rewrites disk.
-			const invoker = queue.peekPendingInvoker();
-			expect(invoker).toBeDefined();
-			await invoker!({ action: "apply", reason: "apply xdev ast edit" });
-			expect(await Bun.file(filePath).text()).toContain("modernWrap(x, value)");
-		} finally {
-			await removeWithRetries(tempDir);
-		}
-	});
-
 	it("records a read tier on the dispatch of a read-only device", async () => {
 		const readDevice: AgentTool = {
 			name: "peek",
@@ -280,30 +218,19 @@ describe("read and write route xd:// device URLs", () => {
 			if (typeof approval !== "function") throw new Error("expected a function approval");
 			const tier = (path: string, content: string) => approval({ path, content });
 
-			// ast_edit on a filesystem path → write; on read-tier sandbox URLs only → read.
-			const astFsPath = JSON.stringify({
-				ops: [{ pat: "legacyWrap($A, $B)", out: "modernWrap($A, $B)" }],
-				paths: [filePath],
-			});
-			const astInternalPath = JSON.stringify({
-				ops: [{ pat: "a", out: "b" }],
-				paths: ["local://notes.ts"],
-			});
-			expect(tier("xd://ast_edit", astFsPath)).toEqual({ tier: "write", policyKey: "ast_edit" });
-			expect(tier("xd://ast_edit", astInternalPath)).toEqual({ tier: "read", policyKey: "ast_edit" });
+			// grep on a filesystem path or a read-tier sandbox URL → read.
+			const grepFsPath = JSON.stringify({ pattern: "legacyWrap", path: filePath });
+			const grepInternalPath = JSON.stringify({ pattern: "a", path: "local://notes.ts" });
+			expect(tier("xd://grep", grepFsPath)).toEqual({ tier: "read", policyKey: "grep" });
+			expect(tier("xd://grep", grepInternalPath)).toEqual({ tier: "read", policyKey: "grep" });
 
 			// Fail closed: malformed JSON, non-object or schema-invalid payloads,
 			// missing content, and unknown devices all stay exec so the gate never
 			// under-prompts.
-			expect(tier("xd://ast_edit", "{ not json")).toBe("exec");
-			expect(tier("xd://ast_edit", "[1,2,3]")).toBe("exec");
-			expect(tier("xd://ast_edit", '"a string"')).toBe("exec");
-			// ast_edit's own approval fails a malformed path entry closed at exec.
-			expect(tier("xd://ast_edit", JSON.stringify({ paths: [null] }))).toEqual({
-				tier: "exec",
-				policyKey: "ast_edit",
-			});
-			expect(approval({ path: "xd://ast_edit" })).toBe("exec");
+			expect(tier("xd://grep", "{ not json")).toBe("exec");
+			expect(tier("xd://grep", "[1,2,3]")).toBe("exec");
+			expect(tier("xd://grep", '"a string"')).toBe("exec");
+			expect(approval({ path: "xd://grep" })).toBe("exec");
 			expect(tier("xd://no_such_device", "{}")).toBe("exec");
 		} finally {
 			await removeWithRetries(tempDir);
@@ -316,27 +243,24 @@ describe("read and write route xd:// device URLs", () => {
 		if (!uiTheme) throw new Error("expected an initialized theme");
 		const options = { expanded: false, isPartial: true };
 
-		const content = JSON.stringify({
-			ops: [{ pat: "legacyWrap($A, $B)", out: "modernWrap($A, $B)" }],
-			paths: ["/tmp/legacy.ts"],
-		});
+		const content = JSON.stringify({ pattern: "legacyWrap", path: "/tmp/legacy.ts" });
 
 		// Path still streaming (no content field yet): render nothing so the user
-		// never sees a half-typed "xd://ast_" frame.
-		expect(writeToolRenderer.renderCall({ path: "xd://ast_e" }, options, uiTheme)).toBeUndefined();
+		// never sees a half-typed "xd://gr" frame.
+		expect(writeToolRenderer.renderCall({ path: "xd://gr" }, options, uiTheme)).toBeUndefined();
 
 		// Path settled + content streaming, but the write has not executed yet:
 		// show a queued card instead of the inner tool's in-flight renderer.
-		const queued = writeToolRenderer.renderCall({ path: "xd://ast_edit", content }, options, uiTheme);
+		const queued = writeToolRenderer.renderCall({ path: "xd://grep", content }, options, uiTheme);
 		expect(queued).toBeDefined();
 		const queuedText = Bun.stripANSI(queued!.render(80).join("\n"));
 		expect(queuedText).toContain("queued");
-		expect(queuedText).toContain("ast_edit");
+		expect(queuedText).toContain("grep");
 
 		// Args can be final at message_end while an earlier exclusive write still
 		// runs — keep the queued card until this call's tool_execution_start.
 		const argsCompleteOnly = writeToolRenderer.renderCall(
-			{ path: "xd://ast_edit", content },
+			{ path: "xd://grep", content },
 			{ ...options, argsComplete: true },
 			uiTheme,
 		);
@@ -345,7 +269,7 @@ describe("read and write route xd:// device URLs", () => {
 		// Same payload after tool_execution_start: delegate to the inner renderer
 		// instead of throwing ReferenceError inside a generic Write frame.
 		const executing = writeToolRenderer.renderCall(
-			{ path: "xd://ast_edit", content },
+			{ path: "xd://grep", content },
 			{ ...options, argsComplete: true, executionStarted: true },
 			uiTheme,
 		);

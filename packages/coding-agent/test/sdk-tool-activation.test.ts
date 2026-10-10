@@ -64,6 +64,18 @@ const sdkCustomTool = {
 	},
 } satisfies CustomTool;
 
+/** Stages a preview like a codemod tool would, so `write` must stay reachable for xd://resolve. */
+const deferrableCustomTool = {
+	name: "deferrable_custom_tool",
+	label: "Deferrable Custom Tool",
+	description: "SDK-provided deferrable tool used to verify the write transport.",
+	parameters: type({}),
+	deferrable: true,
+	async execute() {
+		return { content: [{ type: "text", text: "staged" }] };
+	},
+} satisfies CustomTool;
+
 describe("createAgentSession defaultInactive tool activation", () => {
 	const tempDirs: string[] = [];
 
@@ -200,11 +212,12 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		const tempDir = makeTempDir();
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
-			toolNames: ["read", "ast_edit"],
+			customTools: [deferrableCustomTool],
+			toolNames: ["read", "deferrable_custom_tool"],
 		});
 
 		try {
-			expect(session.getActiveToolNames()).toEqual(expect.arrayContaining(["read", "ast_edit", "write"]));
+			expect(session.getActiveToolNames()).toEqual(expect.arrayContaining(["read", "deferrable_custom_tool", "write"]));
 			expect(session.getMountedXdevToolNames()).toEqual([]);
 			const write = session.getToolByName("write");
 			expect(write).toBeDefined();
@@ -1552,7 +1565,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	it("forwards built-in and external xd:// devices to Cursor provider contexts", async () => {
+	it("forwards external xd:// devices to Cursor provider contexts", async () => {
 		const tempDir = makeTempDir();
 		const cursorModel = getBundledModel("cursor", "composer-1.5");
 		if (!cursorModel) throw new Error("expected bundled Cursor model");
@@ -1576,12 +1589,12 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		try {
 			await session.refreshMCPTools([externalMcpTool]);
 			const deviceNames = session.getXdevToolEntries().map(entry => entry.name);
-			expect(deviceNames).toEqual(expect.arrayContaining(["ast_edit", "mcp__fixture_report"]));
+			expect(deviceNames).toEqual(["mcp__fixture_report"]);
 			expect(session.getActiveToolNames()).not.toContain("mcp__fixture_report");
 
 			const context = await session.agent.buildSideRequestContext([]);
 			const providerToolNames = context.tools?.map(tool => tool.name);
-			expect(providerToolNames).toEqual(expect.arrayContaining(["ast_edit", "mcp__fixture_report"]));
+			expect(providerToolNames).toContain("mcp__fixture_report");
 		} finally {
 			await session.dispose();
 		}

@@ -27,6 +27,8 @@ packages/coding-agent/src/ratchet
 packages/coding-agent/src/security
 packages/coding-agent/src/sharpshooter
 packages/coding-agent/src/stt
+packages/coding-agent/src/tools/ast-edit.ts
+packages/coding-agent/src/tools/ast-grep.ts
 packages/coding-agent/src/tools/browser
 packages/coding-agent/src/tools/computer
 packages/coding-agent/src/tools/puppeteer

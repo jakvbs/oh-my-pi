@@ -9,8 +9,6 @@ import {
 	resetRegisteredArtifactDirsForTests,
 } from "@oh-my-pi/pi-coding-agent/internal-urls/registry-helpers";
 import { InternalUrlRouter } from "@oh-my-pi/pi-coding-agent/internal-urls/router";
-import { InternalUrlFilesystem } from "@oh-my-pi/pi-coding-agent/internal-urls/url-filesystem";
-import { resolveToolSearchScope } from "@oh-my-pi/pi-coding-agent/tools/path-utils";
 
 /**
  * Path consumers (search/grep, the bash shell filesystem) only need the artifact's
@@ -86,16 +84,4 @@ describe("resolveToolSearchScope locates large artifacts", () => {
 		await fs.rm(testDir, { recursive: true, force: true });
 	});
 
-	it("resolves ast_grep/ast_edit search scope for large artifacts without the inline-content cap", async () => {
-		// The URL stays the search root; its stat must reach the backing file, not
-		// InternalUrlRouter's capped content resolution.
-		const scope = await resolveToolSearchScope({
-			rawPaths: ["artifact://0"],
-			cwd: testDir,
-			internalUrlAction: "search",
-			filesystem: new InternalUrlFilesystem({ context: {}, tier: "read" }),
-		});
-		expect(scope.searchPath).toBe("artifact://0");
-		expect(scope.isDirectory).toBe(false);
-	});
 });

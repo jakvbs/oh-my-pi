@@ -604,8 +604,6 @@ const ARG_SCHEMAS: Record<string, ArgSchema> = {
 	wait: argSchema("ids timeout#"),
 	web_search: argSchema("query limit# recency num_search_results# max_tokens# temperature#"),
 	ask: argSchema("questions id question options label description recommended# header preview multi"),
-	ast_grep: argSchema("pat path lang skip# limit#"),
-	ast_edit: argSchema("pat out ops paths path lang"),
 	github: argSchema(
 		"op repo branch path pr# force forceWithLease title body base head draft fill reviewer assignee label query since until dateField limit# run tail#",
 	),

@@ -27,6 +27,6 @@ Pattern-addressed bulk changes: bash more efficient:
 |Regex replace|`sed -E -i 's/pattern/replacement/g' file`|
 |Same replace in several files|`sed -E -i 's/pattern/replacement/g' a.ts b.ts`|
 
-Use Replace when content identifies location; `ast_edit` for structure-aware codemods.
+Use Replace when content identifies location.
 For in-place edits prefer Replace or `write` — diff preview and fuzzy matching.
 </bash-alternatives>

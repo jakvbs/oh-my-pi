@@ -96,25 +96,6 @@ const TOOLS: Record<string, ToolConfig> = {
 			return null;
 		},
 	},
-	sg: {
-		name: "ast-grep",
-		repo: "ast-grep/ast-grep",
-		binaryName: "sg",
-		tagPrefix: "",
-		getAssetName: (_version, plat, architecture) => {
-			if (plat === "darwin") {
-				const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-				return `ast-grep-${archStr}-apple-darwin.zip`;
-			} else if (plat === "linux") {
-				const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-				return `ast-grep-${archStr}-unknown-linux-gnu.zip`;
-			} else if (plat === "win32") {
-				const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-				return `ast-grep-${archStr}-pc-windows-msvc.zip`;
-			}
-			return null;
-		},
-	},
 	"yt-dlp": {
 		name: "yt-dlp",
 		repo: "yt-dlp/yt-dlp",
@@ -149,7 +130,7 @@ const PYTHON_TOOLS: Record<string, PythonPackageToolConfig> = {
 	},
 };
 
-export type ToolName = "sd" | "sg" | "yt-dlp" | "trafilatura";
+export type ToolName = "sd" | "yt-dlp" | "trafilatura";
 
 // Get the path to a tool (system-wide or in our tools dir)
 export function getToolPath(tool: ToolName): string | null {
@@ -297,14 +278,8 @@ async function downloadTool(
 		}
 
 		// Find the binary in extracted files
-		// ast-grep releases the binary directly in the zip, not in a subdirectory
-		let extractedBinary: string;
-		if (tool === "sg") {
-			extractedBinary = path.join(tmp.path(), config.binaryName + binaryExt);
-		} else {
-			const extractedDir = path.join(tmp.path(), assetName.replace(/\.(tar\.gz|zip)$/, ""));
-			extractedBinary = path.join(extractedDir, config.binaryName + binaryExt);
-		}
+		const extractedDir = path.join(tmp.path(), assetName.replace(/\.(tar\.gz|zip)$/, ""));
+		const extractedBinary = path.join(extractedDir, config.binaryName + binaryExt);
 
 		if (fs.existsSync(extractedBinary)) {
 			await fs.promises.rename(extractedBinary, binaryPath);
@@ -364,7 +339,6 @@ async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<
 // Termux package names for tools
 const TERMUX_PACKAGES: Partial<Record<ToolName, string>> = {
 	sd: "sd",
-	sg: "ast-grep",
 };
 
 // Ensure a tool is available, downloading if necessary

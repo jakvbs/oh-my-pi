@@ -38,8 +38,6 @@ import type { EventBus } from "../utils/event-bus";
 import { WebSearchTool } from "../web/search";
 import type { WorkspaceTree } from "../workspace-tree";
 import { AskTool } from "./ask";
-import { AstEditTool } from "./ast-edit";
-import { AstGrepTool } from "./ast-grep";
 import { BashTool } from "./bash";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames } from "./builtin-names";
 import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
@@ -61,8 +59,6 @@ import { YieldTool } from "./yield";
 
 import {
 	cfgAskEnabled,
-	cfgAstEditEnabled,
-	cfgAstGrepEnabled,
 	cfgAsyncEnabled,
 	cfgCheckpointEnabled,
 	cfgGithubEnabled,
@@ -87,8 +83,6 @@ export * from "@oh-my-pi/pi-tui/tools/streaming-output";
 export * from "../task";
 export * from "../web/search";
 export * from "./ask";
-export * from "./ast-edit";
-export * from "./ast-grep";
 export * from "./bash";
 export type {
 	BashToolDetails,
@@ -485,8 +479,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	read: s => new ReadTool(s),
 	bash: s => new BashTool(s),
 	edit: s => new EditTool(s),
-	ast_grep: s => new AstGrepTool(s),
-	ast_edit: s => new AstEditTool(s),
 	ask: AskTool.createIf,
 	github: GithubTool.createIf,
 	glob: s => new GlobTool(s, { rootPathAlias: true }),
@@ -552,7 +544,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 	// Checkpoint and rewind are a pair: listing one without the other strands
 	// the agent (it can checkpoint but not rewind, or vice versa). Auto-include
 	// the sister tool so a one-sided frontmatter `tools:` entry still works.
-	// Unlike the AST/auto-learn convenience auto-includes below, this is a
+	// Unlike the convenience auto-includes below, this is a
 	// safety pairing — it applies to restricted sessions too.
 	if (requestedTools && cfgCheckpointEnabled.get(session.settings)) {
 		if (requestedTools.includes("checkpoint") && !requestedTools.includes("rewind")) {
@@ -561,8 +553,8 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 			requestedTools.push("checkpoint");
 		}
 	}
-	// Auto-include AST counterparts when their text-based sibling is present.
-	// Restricted callers own the active list and must not have it widened.
+	// Convenience auto-includes. Restricted callers own the active list and
+	// must not have it widened.
 	if (requestedTools && !restrictToolNames) {
 		if (
 			cfgCompactionExperimentalContextManagement.get(session.settings) &&
@@ -574,20 +566,6 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		if (goalModeActive && !requestedTools.includes("goal")) {
 			requestedTools.push("goal");
-		}
-		if (
-			requestedTools.includes("grep") &&
-			!requestedTools.includes("ast_grep") &&
-			cfgAstGrepEnabled.get(session.settings)
-		) {
-			requestedTools.push("ast_grep");
-		}
-		if (
-			requestedTools.includes("edit") &&
-			!requestedTools.includes("ast_edit") &&
-			cfgAstEditEnabled.get(session.settings)
-		) {
-			requestedTools.push("ast_edit");
 		}
 		if (externalThinkingActive && !requestedTools.includes("think")) {
 			requestedTools.push("think");
@@ -625,8 +603,6 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "grep") return cfgGrepEnabled.get(session.settings);
 		if (name === "find") return isFindEnabled(session);
 		if (name === "github") return cfgGithubEnabled.get(session.settings);
-		if (name === "ast_grep") return cfgAstGrepEnabled.get(session.settings);
-		if (name === "ast_edit") return cfgAstEditEnabled.get(session.settings);
 		if (name === "web_search") return cfgWebSearchEnabled.get(session.settings);
 		if (name === "think") return externalThinkingActive;
 		if (name === "ask") return cfgAskEnabled.get(session.settings);
@@ -763,7 +739,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		session.xdev = createXdevState(session, toolRegistry, builtInNames, mountedNames);
 		tools = kept;
 	}
-	// Staged previews from deferrable tools (e.g. ast_edit) resolve through a
+	// Staged previews from deferrable tools resolve through a
 	// `write` to xd://resolve/reject, so retain write whenever one can stage.
 	const xdevMounted = (session.xdev?.mountedNames.size ?? 0) > 0;
 	if (

@@ -4,8 +4,6 @@
  */
 import { genericRenderer } from "./generic";
 import { askRenderer } from "./tools/ask";
-import { astEditRenderer } from "./tools/ast-edit";
-import { astGrepRenderer } from "./tools/ast-grep";
 import { bashRenderer } from "./tools/bash";
 import { editRenderer } from "./tools/edit";
 import { fetchRenderer } from "./tools/fetch";
@@ -27,8 +25,6 @@ import type { ToolRenderer } from "./types";
 
 const RENDERERS: Record<string, ToolRenderer> = {
 	ask: askRenderer,
-	ast_edit: astEditRenderer,
-	ast_grep: astGrepRenderer,
 	bash: bashRenderer,
 	edit: editRenderer,
 	apply_patch: editRenderer,

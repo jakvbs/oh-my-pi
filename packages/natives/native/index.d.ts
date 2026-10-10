@@ -644,12 +644,6 @@ export declare function appleFmCancel(handle: number): void
  */
 export declare function appleFmGenerate(request: string, onEvent: (err: null | Error, event: string) => void): number
 
-/**
- * Apply ast-grep rewrite rules to matching files; honors `dryRun` and returns
- * a promise.
- */
-export declare function astEdit(options: AstReplaceOptions): Promise<AstReplaceResult>
-
 /** One ast-grep match with source range and optional meta-variables. */
 export interface AstFindMatch {
   /** Display path of the matching file. */
@@ -672,80 +666,11 @@ export interface AstFindMatch {
   metaVariables?: Record<string, string>
 }
 
-/** Options for `astGrep`: patterns, scan scope, and match limits. */
-export interface AstFindOptions {
-  /** ast-grep patterns to search for (OR across patterns). */
-  patterns?: Array<string>
-  /** Language override; otherwise inferred from file extension per candidate. */
-  lang?: string
-  /**
-   * Single file or directory to scan (combined with `glob` when set): a
-   * host path or an absolute `scheme://` URL.
-   */
-  path?: string
-  /** Optional glob filter relative to the search root. */
-  glob?: string
-  /** Rule selector for multi-rule ast-grep configurations. */
-  selector?: string
-  /** Pattern strictness; defaults to smart matching when omitted. */
-  strictness?: AstMatchStrictness
-  /** Maximum matches to return after `offset` (default applies when omitted). */
-  limit?: number
-  /** Number of leading matches to skip before applying `limit`. */
-  offset?: number
-  /** When true, include meta-variable bindings per match. */
-  includeMeta?: boolean
-  /**
-   * Reserved for contextual snippets; not used by the current native find
-   * path.
-   */
-  context?: number
-  /** Optional cancellation handle (library-specific). */
-  signal?: unknown
-  /** Wall-clock timeout for the worker task in milliseconds. */
-  timeoutMs?: number
-  /**
-   * Filesystem candidates are resolved, walked, and read through (native
-   * when absent).
-   */
-  filesystem?: ShellFilesystem
-}
-
-/** Aggregated search statistics and any parse or compile diagnostics. */
-export interface AstFindResult {
-  /** Page of matches after sort, offset, and limit. */
-  matches: Array<AstFindMatch>
-  /** Total matches found before paging (can exceed `matches.length`). */
-  totalMatches: number
-  /** Distinct files that contained at least one match. */
-  filesWithMatches: number
-  /** Files examined for the query. */
-  filesSearched: number
-  /** True when results were truncated by `limit`. */
-  limitReached: boolean
-  /** Non-fatal parse or pattern errors collected during the run. */
-  parseErrors?: Array<string>
-  /**
-   * Languages whose on-demand grammar is not installed; their files were
-   * skipped (see `wasmGrammarFor`).
-   */
-  missingGrammars?: Array<string>
-}
-
-/**
- * Search source files with ast-grep patterns; returns a promise resolved on a
- * worker thread.
- */
-export declare function astGrep(options: AstFindOptions): Promise<AstFindResult>
-
 /**
  * Match ast-grep patterns against an in-memory source string; returns a
  * promise resolved on a worker thread.
  *
- * This is the file-free counterpart to [`ast_grep`]: callers that already hold
- * the source (streaming buffers, generated code, editor contents) avoid a
- * temp-file round trip. `lang` is required since there is no path to infer it
- * from.
+ * `lang` is required since there is no file path to infer it from.
  */
 export declare function astMatch(options: AstMatchOptions): Promise<AstMatchResult>
 
@@ -802,111 +727,6 @@ export declare enum AstMatchStrictness {
   Signature = 'signature',
   /** Template-style pattern matching. */
   Template = 'template'
-}
-
-/**
- * One textual replacement applied to a file (before/after slice and
- * coordinates).
- */
-export interface AstReplaceChange {
-  /** File path for this change. */
-  path: string
-  /** Original matched text. */
-  before: string
-  /** Replacement text. */
-  after: string
-  /** Start byte offset of the replaced span. */
-  byteStart: number
-  /** End byte offset of the replaced span (exclusive). */
-  byteEnd: number
-  /**
-   * Length of deleted text in bytes (may differ from `byteEnd - byteStart`
-   * for edge cases).
-   */
-  deletedLength: number
-  /** 1-based start line of the match. */
-  startLine: number
-  /** 1-based start column. */
-  startColumn: number
-  /** 1-based end line. */
-  endLine: number
-  /** 1-based end column. */
-  endColumn: number
-}
-
-/** Per-file replacement count after an `astEdit` run. */
-export interface AstReplaceFileChange {
-  /** File that had replacements. */
-  path: string
-  /** Number of replacements in that file. */
-  count: number
-}
-
-/**
- * Options for `astEdit`: rewrite rules, scan scope, safety limits, and
- * dry-run.
- */
-export interface AstReplaceOptions {
-  /** Map of pattern string to replacement template. */
-  rewrites?: Record<string, string>
-  /**
-   * Language override applied to every file; otherwise inferred per file, so
-   * mixed-language paths rewrite each file in its own language.
-   */
-  lang?: string
-  /**
-   * Single file or directory to rewrite: a host path or an absolute
-   * `scheme://` URL.
-   */
-  path?: string
-  /** Optional glob filter within the search root. */
-  glob?: string
-  /** Rule selector for multi-rule configurations. */
-  selector?: string
-  /** Pattern strictness for rewrites. */
-  strictness?: AstMatchStrictness
-  /** When true (default), compute changes without writing files. */
-  dryRun?: boolean
-  /** Cap on replacement applications across all files. */
-  maxReplacements?: number
-  /** Cap on distinct files that may be modified. */
-  maxFiles?: number
-  /** Fail the operation when a file cannot be parsed for rewriting. */
-  failOnParseError?: boolean
-  /** Optional cancellation handle. */
-  signal?: unknown
-  /** Wall-clock timeout for the worker task in milliseconds. */
-  timeoutMs?: number
-  /**
-   * Filesystem candidates are resolved, walked, read, and written through
-   * (native when absent).
-   */
-  filesystem?: ShellFilesystem
-}
-
-/** Summary of an ast-grep rewrite pass, including whether disk writes occurred. */
-export interface AstReplaceResult {
-  /** Individual replacement records (may be large). */
-  changes: Array<AstReplaceChange>
-  /** Replacement counts grouped by file. */
-  fileChanges: Array<AstReplaceFileChange>
-  /** Total replacements applied or previewed. */
-  totalReplacements: number
-  /** Files that had at least one replacement. */
-  filesTouched: number
-  /** Files considered for rewriting. */
-  filesSearched: number
-  /** False when `dryRun` prevented writing. */
-  applied: boolean
-  /** True when limits stopped further replacements. */
-  limitReached: boolean
-  /** Parse or pattern errors when not failing the whole operation. */
-  parseErrors?: Array<string>
-  /**
-   * Languages whose on-demand grammar is not installed; their files were
-   * skipped (see `wasmGrammarFor`).
-   */
-  missingGrammars?: Array<string>
 }
 
 export interface BlockParseOptions {

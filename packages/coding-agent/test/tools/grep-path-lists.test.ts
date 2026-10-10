@@ -13,7 +13,6 @@ import type { ObservableSession, SessionObserverRegistry } from "@oh-my-pi/pi-tu
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import type { SessionEntry, SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { ToolChoiceQueue } from "@oh-my-pi/pi-coding-agent/session/tool-choice-queue";
 import { createTools, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
@@ -22,7 +21,7 @@ function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): T
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		settings: Settings.isolated({ "astGrep.enabled": true, "astEdit.enabled": true, "tools.xdev": false }),
+		settings: Settings.isolated({ "tools.xdev": false }),
 		...overrides,
 	};
 }
@@ -565,115 +564,6 @@ describe("tool path arrays", () => {
 		]);
 		// Alignment contract: an unreadable part gets a null link, the readable peer keeps its resolved fs path (#11732).
 		expect(details?.displayReadTargetLinks).toEqual([null, path.join(tempDir, "packages", "grep.txt")]);
-	});
-
-	it("ast_grep accepts quoted path and glob filters", async () => {
-		const tools = await createTools(createTestSession(tempDir));
-		const tool = tools.find(entry => entry.name === "ast_grep");
-		expect(tool).toBeDefined();
-		if (!tool) throw new Error("Missing ast_grep tool");
-
-		const result = await tool.execute("ast-grep-quoted-path", {
-			pat: "providerOptions",
-			path: '"packages/**/*.ts"',
-		});
-		const text = getText(result);
-		const details = result.details as { fileCount?: number; scopePath?: string } | undefined;
-
-		expect(text).toContain("ast.ts");
-		expect(text).not.toContain("other");
-		expect(details?.fileCount).toBe(1);
-		expect(details?.scopePath).toBe("packages");
-	});
-
-	it("ast_grep accepts a semicolon-delimited path list", async () => {
-		const tools = await createTools(createTestSession(tempDir));
-		const tool = tools.find(entry => entry.name === "ast_grep");
-		expect(tool).toBeDefined();
-		if (!tool) throw new Error("Missing ast_grep tool");
-
-		const result = await tool.execute("ast-grep-path-array", {
-			pat: "providerOptions",
-			path: "apps/**/*.ts; packages/**/*.ts; phases/**/*.ts",
-		});
-		const text = getText(result);
-		const details = result.details as { fileCount?: number; scopePath?: string } | undefined;
-
-		expect(text).toMatch(/^# apps\/\n## ast\.ts#[0-9A-F]{4}/m);
-		expect(text).toMatch(/^# packages\/\n## ast\.ts#[0-9A-F]{4}/m);
-		expect(text).toMatch(/^# phases\/\n## ast\.ts#[0-9A-F]{4}/m);
-		expect(text).not.toContain("# other");
-		expect(details?.fileCount).toBe(3);
-		expect(details?.scopePath).toBe("apps/**/*.ts, packages/**/*.ts, phases/**/*.ts");
-	});
-
-	it("ast_grep expands delimited path entries", async () => {
-		const tools = await createTools(createTestSession(tempDir));
-		const tool = tools.find(entry => entry.name === "ast_grep");
-		expect(tool).toBeDefined();
-		if (!tool) throw new Error("Missing ast_grep tool");
-
-		for (const [name, entry] of [
-			["comma", "apps/**/*.ts, packages/**/*.ts"],
-			["semicolon", "apps/**/*.ts;packages/**/*.ts"],
-			["space", "apps/**/*.ts packages/**/*.ts"],
-		] as const) {
-			const result = await tool.execute(`ast-grep-delimited-${name}`, {
-				pat: "providerOptions",
-				path: entry,
-			});
-			const text = getText(result);
-			const details = result.details as { fileCount?: number; scopePath?: string } | undefined;
-
-			expect(text).toMatch(/^# apps\/\n## ast\.ts#[0-9A-F]{4}/m);
-			expect(text).toMatch(/^# packages\/\n## ast\.ts#[0-9A-F]{4}/m);
-			expect(text).not.toContain("# phases");
-			expect(text).not.toContain("# other");
-			expect(details?.fileCount).toBe(2);
-			expect(details?.scopePath).toBe("apps/**/*.ts, packages/**/*.ts");
-		}
-	});
-
-	it("ast_edit applies across an explicit path array", async () => {
-		const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "search-path-lists-"));
-		await createSearchFixture(tmp);
-		const queue = new ToolChoiceQueue();
-		const tools = await createTools(
-			createTestSession(tmp, {
-				getToolChoiceQueue: () => queue,
-				buildToolChoice: () => ({ type: "tool" as const, name: "resolve" }),
-				steer: () => {},
-			}),
-		);
-		const tool = tools.find(entry => entry.name === "ast_edit");
-		expect(tool).toBeDefined();
-		if (!tool) throw new Error("Missing ast_edit tool");
-
-		const preview = await tool.execute("ast-edit-path-array", {
-			ops: [{ pat: "legacyWrap($A, $B)", out: "modernWrap($A, $B)" }],
-			paths: ["apps/**/*.ts", "packages/**/*.ts", "phases/**/*.ts"],
-		});
-		const text = getText(preview);
-		const details = preview.details as { totalReplacements?: number; scopePath?: string } | undefined;
-
-		expect(text).toMatch(/^# apps\/\n## ast\.ts#[0-9A-F]{4} \(\d+ replacement/m);
-		expect(text).toMatch(/^# packages\/\n## ast\.ts#[0-9A-F]{4} \(\d+ replacement/m);
-		expect(text).toMatch(/^# phases\/\n## ast\.ts#[0-9A-F]{4} \(\d+ replacement/m);
-		expect(text).not.toContain("# other");
-		expect(details?.totalReplacements).toBe(3);
-		expect(details?.scopePath).toBe("apps/**/*.ts, packages/**/*.ts, phases/**/*.ts");
-
-		const invoker = queue.peekPendingInvoker();
-		if (!invoker) throw new Error("Expected pending resolve invoker");
-		await invoker({ action: "apply", reason: "apply multi-path ast edit" });
-
-		expect(await Bun.file(path.join(tmp, "apps", "ast.ts")).text()).toContain("modernWrap(appsValue, appsArg)");
-		expect(await Bun.file(path.join(tmp, "packages", "ast.ts")).text()).toContain(
-			"modernWrap(packagesValue, packagesArg)",
-		);
-		expect(await Bun.file(path.join(tmp, "phases", "ast.ts")).text()).toContain("modernWrap(phasesValue, phasesArg)");
-		expect(await Bun.file(path.join(tmp, "other", "ast.ts")).text()).toContain("legacyWrap(otherValue, otherArg)");
-		await removeWithRetries(tmp);
 	});
 
 	it("find accepts a semicolon-delimited path list", async () => {

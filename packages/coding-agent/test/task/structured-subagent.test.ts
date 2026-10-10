@@ -39,7 +39,7 @@ const AGENT: AgentDefinition = {
 	description: "Test worker",
 	systemPrompt: "Do the assigned work.",
 	source: "bundled",
-	tools: ["read", "write", "ast_grep"],
+	tools: ["read", "write", "grep"],
 };
 
 const OUTPUT_SCHEMA = { type: "object", properties: { agent: { type: "boolean" } } };

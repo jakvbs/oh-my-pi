@@ -12,9 +12,9 @@ const tool = (name: string, parameters: TSchema = { type: "object", properties: 
 
 describe("cursor buildMcpToolDefinitions", () => {
 	it("forwards the write transport alongside preview-staging devices so xd:// resolution stays reachable", () => {
-		// A Cursor session with xdev on: ast_edit is a mounted device, write is the
-		// xd:// transport carried top-level. ast_edit always stages a preview whose
-		// resolution rides `write xd://resolve` / `write xd://reject`.
+		// A Cursor session with xdev on: a preview-staging device is mounted, write
+		// is the xd:// transport carried top-level. The device's preview resolves
+		// via `write xd://resolve` / `write xd://reject`.
 		const defs = buildMcpToolDefinitions([
 			tool("read"),
 			tool("write"),

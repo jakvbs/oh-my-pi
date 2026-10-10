@@ -17,7 +17,7 @@ import { createInMemoryAuthStorage } from "./helpers/agent-session-setup";
  * gentle MODEL-ONLY hint — deliberately separate from the user-visible
  * stop-time reminder ladder. The contract this defends:
  *
- *   1. Only SUCCESSFUL MUTATING tool results (bash/eval/edit/write/ast_edit)
+ *   1. Only SUCCESSFUL MUTATING tool results (bash/eval/edit/write)
  *      tick the counter. Read-only exploration (grep/read/glob/lsp) and
  *      errored results never do.
  *   2. At {@link MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD} mutations without a

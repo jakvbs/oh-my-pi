@@ -37,9 +37,7 @@ Terminology follows `docs/natives-architecture.md`:
 | `fuzzyFind(options)`                                                            | `fuzzy_find`                                     | `fd.rs`        |
 | `glob(options, onMatch?)`                                                       | `glob`                                           | `glob.rs`      |
 | `invalidateFsScanCache(path?)`                                                  | `invalidate_fs_scan_cache`                       | `iofs.rs`      |
-| `astGrep(options)`                                                              | `ast_grep`                                       | `ast.rs`       |
 | `astMatch(options)`                                                             | `ast_match`                                      | `ast.rs`       |
-| `astEdit(options)`                                                              | `ast_edit`                                       | `ast.rs`       |
 | `wrapTextWithAnsi(text, width, tabWidth)`                                       | `wrap_text_with_ansi`                            | `text.rs`      |
 | `truncateToWidth(text, maxWidth, ellipsis, pad, tabWidth)`                      | `truncate_to_width`                              | `text.rs`      |
 | `sliceWithWidth(line, startCol, length, strict, tabWidth)`                      | `slice_with_width`                               | `text.rs`      |
@@ -166,16 +164,12 @@ The native bridge bounds in-flight delivery to eight batches and checks cancella
 - auto-prefixes simple recursive patterns with `**/` when `recursive=true`,
 - auto-closes unbalanced `{...` alternation groups before compile.
 
-## 3) AST search/match/edit (`astGrep`, `astMatch`, `astEdit`)
+## 3) AST match (`astMatch`)
 
-`ast.rs` exposes syntax-aware code search and rewrite operations.
+`ast.rs` exposes in-memory syntax-aware pattern matching (used by TTSR rules).
 
-- `astGrep(options)` returns matches with byte/line/column coordinates and optional metavariable bindings.
-- `astMatch(options)` runs the same patterns against an in-memory `source` string instead of files; `lang` is required (there is no path to infer it from), and the result keeps matches, `totalMatches`, `limitReached`, and parse errors but omits the file-count fields.
-- `astEdit(options)` returns replacement changes, per-file counts, searched/touched file counts, parse errors, and whether edits were applied.
-- `dryRun` defaults to `true` in the implementation. Exact duplicate edits are coalesced. When applying (`dryRun=false`), rewritten files are staged before writes and overlapping edits reject through `pi-ast`'s edit application; dry-run previews do not perform that apply-time validation. File writes are sequential, not a multi-file transaction.
-- Options include language override, path/glob/selector, strictness, limits, parse-error policy, `signal`, and `timeoutMs`. `astGrep`/`astEdit` also accept `filesystem`; `astMatch` is in-memory. Find limits default to 50 (and are clamped to at least one); strictness defaults to `"smart"`. Find `context` is reserved and currently unused.
-- For `astGrep` and `astEdit`, a directory `path` requests shared caching with configured stale-empty rechecking on native filesystems; injected providers bypass that cache. A direct file returns that candidate without traversal or cache access. `astMatch` remains in-memory.
+- `astMatch(options)` runs ast-grep patterns against an in-memory `source` string; `lang` is required (there is no path to infer it from), and the result keeps matches, `totalMatches`, `limitReached`, and parse errors but omits the file-count fields.
+- Options include `patterns`, `selector`, `strictness`, `limit`/`offset`, `includeMeta`, `signal`, and `timeoutMs`. Limits default to 50 (and are clamped to at least one); strictness defaults to `"smart"`.
 
 These exports are direct native APIs used by tooling; they are not mediated by a TS wrapper in `packages/natives`.
 
@@ -207,8 +201,6 @@ Configuration is read from environment once:
    - `invalidateFsScanCache(path)` removes every entry whose cached root is a prefix of the target (canonicalization with parent fallback supports create/delete/rename invalidation). The binding lives in `iofs.rs` and forwards to `pi_walker::invalidate_path_string` / `pi_walker::invalidate_all`.
 
 Cache favors low-latency repeated scans over immediate consistency. Explicit invalidation is the correctness hook after writes, edits, renames, or deletes.
-
-Direct native `astEdit` writes do not invalidate the shared walker cache. Callers applying edits on the native filesystem must invalidate affected paths explicitly; provider-backed discovery already bypasses that cache.
 
 ## 5) ANSI text utilities (`text`)
 
@@ -280,7 +272,6 @@ The palette requires nine core semantic colors (`comment`, `keyword`, `function`
 | `highlight` module functions | No                | No           | syntax + ANSI coloring only                                  |
 | `countTokens`                | No                | No           | tokenization only                                            |
 | `astMatch`                   | No                | No           | in-memory syntax-aware match (no disk)                       |
-| `astGrep` / `astEdit`        | Yes               | Native-only  | directory discovery requests caching; direct files/providers bypass it |
 | `glob`                       | Yes               | Optional     | directory scans + glob filtering (`cache` opt-in)            |
 | `fuzzyFind`                  | Yes               | Optional     | directory scans + fuzzy scoring (`cache` opt-in)             |
 | `grep` (file/dir path)       | Yes               | Never        | streaming uncached walk feeding searchers                    |

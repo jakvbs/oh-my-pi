@@ -31,7 +31,7 @@ Dispatch selects the in-flight queue invoker first, then the pending-preview hea
 
 Because previews ride `write`, normal session assembly retains the transport:
 
-- `createTools(...)` auto-appends `write` when a deferrable tool such as `ast_edit` is active and `restrictToolNames` is not set.
+- `createTools(...)` auto-appends `write` when a deferrable (preview-staging) tool is active and `restrictToolNames` is not set.
 - `createAgentSession(...)` ensures registration for deferrable tools or deferred MCP discovery, subject to the same restriction.
 - Active-tool reconciliation retains `write` while mounted devices or deferrable tools need it. This may be a device-only transport, not a general filesystem-write grant.
 

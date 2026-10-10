@@ -23,8 +23,6 @@ function makeSession(): ToolSession {
 			"bash.autoBackground.enabled": false,
 			"bash.autoBackground.thresholdMs": 60_000,
 			"bashInterceptor.enabled": false,
-			"astGrep.enabled": false,
-			"astEdit.enabled": false,
 			"grep.enabled": false,
 			"glob.enabled": false,
 		}),

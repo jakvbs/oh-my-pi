@@ -7,7 +7,6 @@ import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-ag
 import { editToolRenderer } from "@oh-my-pi/pi-tui/tools/edit";
 import { getThemeByName, initTheme } from "@oh-my-pi/pi-tui/theme";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { astGrepToolRenderer } from "@oh-my-pi/pi-tui/tools/ast-grep";
 import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
 import { readToolRenderer } from "@oh-my-pi/pi-tui/tools/read";
 import { WriteTool } from "@oh-my-pi/pi-coding-agent/tools/write";
@@ -139,35 +138,6 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;
 		const uris = extractLinkUris(rendered);
 		expect(uris.filter(uri => uri === interactiveModeUri)).toHaveLength(2);
-		expect(uris.some(uri => uri.includes("/src/src/"))).toBe(false);
-	});
-
-	it("resolves scoped ast-grep links against cwd, not the (sub)scope path", async () => {
-		cfgTuiHyperlinks.override(settings, "always");
-		const theme = (await getThemeByName("dark"))!;
-		const projectRoot = path.resolve("/tmp/omp-project");
-		const srcRoot = path.join(projectRoot, "src");
-		const interactiveModePath = path.join(srcRoot, "interactive-mode.ts");
-		const result = {
-			content: [{ type: "text", text: "" }],
-			details: {
-				matchCount: 1,
-				fileCount: 1,
-				filesSearched: 1,
-				limitReached: false,
-				cwd: projectRoot,
-				searchPath: srcRoot,
-				scopePath: "src",
-				displayContent: ["# src/", "## interactive-mode.ts", "  *12│const needle = true;"].join("\n"),
-			},
-		};
-		const rendered = astGrepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { pat: "needle" })
-			.render(240)
-			.join("\n");
-		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;
-		const uris = extractLinkUris(rendered);
-		expect(uris).toContain(interactiveModeUri);
 		expect(uris.some(uri => uri.includes("/src/src/"))).toBe(false);
 	});
 

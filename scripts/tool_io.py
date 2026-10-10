@@ -19,9 +19,9 @@ DEFAULT_SESSIONS_DIR = Path.home() / ".omp" / "agent" / "sessions"
 
 
 TOOL_GROUPS: dict[str, tuple[str, ...]] = {
-    "edits": ("edit", "ast_edit"),
-    "reads": ("read", "grep", "find", "ast_grep", "lsp"),
-    "writes": ("edit", "ast_edit", "write"),
+    "edits": ("edit",),
+    "reads": ("read", "grep", "find", "lsp"),
+    "writes": ("edit", "write"),
 }
 
 

@@ -22,10 +22,9 @@ const PREWALK_ACTION_TOOLS: Record<string, true> = {
 /**
  * Whether a completed tool result is the first workspace-mutating action that
  * arms the prewalk hand-off. A direct `edit`/`write` call always counts; a
- * `write` that dispatched an `xd://` device (e.g. `lsp`, `ast_edit`, `debug`)
- * counts only when the wrapped tool resolved to a `write`/`exec` approval tier.
- * Read-only device calls — LSP navigation, `debug` inspection, `ast_edit` on
- * internal URLs, help lookups — leave the tier `read` (or absent) and must not
+ * `write` that dispatched an `xd://` device (e.g. `lsp`) counts only when the
+ * wrapped tool resolved to a `write`/`exec` approval tier. Read-only device
+ * calls — LSP navigation, help lookups — leave the tier `read` (or absent) and must not
  * switch the model mid-investigation (issue #7312).
  */
 function isPrewalkImplementationAction(result: ToolResultMessage): boolean {

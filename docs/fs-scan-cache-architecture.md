@@ -10,13 +10,12 @@ Current native consumers:
 
 - `crates/pi-natives/src/glob.rs` — opt-in with `GlobOptions.cache`
 - `crates/pi-natives/src/fd.rs` (`fuzzyFind`) — opt-in with `FuzzyFindOptions.cache`
-- `crates/pi-natives/src/ast.rs` (`astGrep` / `astEdit` discovery) — requests caching for directory operands on the native filesystem
 
 `crates/pi-natives/src/grep.rs` uses `WalkRequest` for candidate discovery but explicitly sets `.cache(false)`; the current public `GrepOptions` has no cache field.
 
 The N-API DTO layer and native/provider search-root resolution live in `crates/pi-natives/src/iofs.rs`; `pi-walker` owns traversal and cache policy. The public invalidation binding is `invalidateFsScanCache(path?)`, declared in `iofs.rs` (forwarding to `pi_walker::invalidate_path_string` / `pi_walker::invalidate_all`) and exported in `packages/natives/native/index.d.ts` / `index.js`. Coding-agent mutation helpers live in `packages/coding-agent/src/tools/fs-cache-invalidation.ts`.
 
-`glob`, `grep`, `astGrep`, and `astEdit` accept a host-injected `ShellFilesystem`. Any filesystem with a provider bypasses the shared cache, even if the provider redirects the root to a native host path: ignore files, repository markers, and symlink targets outside the root can still differ. `fuzzyFind` remains native-filesystem-only.
+`glob` and `grep` accept a host-injected `ShellFilesystem`. Any filesystem with a provider bypasses the shared cache, even if the provider redirects the root to a native host path: ignore files, repository markers, and symlink targets outside the root can still differ. `fuzzyFind` remains native-filesystem-only.
 
 ## Cache key partitioning
 
@@ -82,7 +81,6 @@ Current effects:
 
 - `glob`: `hidden=false`, `gitignore=true`, `cache=false`; skips `.git`; `includeNodeModules` explicitly controls node-module inclusion, defaulting to whether the pattern mentions it; never follows symlinks; uses path order and pattern-bounded depth; uses full detail for mtime sorting.
 - `fuzzyFind`: `hidden=false`, `gitignore=true`, `cache=false`; skips `.git` and `node_modules`; follows symlinks always; uses minimal detail and path order.
-- `astGrep` / `astEdit` directory discovery: `hidden=true`, `gitignore=true`, cache requested (native-only); skips `.git`; excludes `node_modules` unless the supplied glob mentions it; never follows symlinks; uses minimal detail and path order.
 - `grep`: candidate walks skip `.git`, never follow symlinks, and are uncached. They start with minimal detail and request size hints when cheap, promoting native walks to full detail where supported.
 
 The TUI `@`-mention autocomplete opts into cached `fuzzyFind`. Coding-agent's grep tool does not populate this cache.
@@ -105,8 +103,6 @@ Coding-agent helpers:
 - `invalidateFsScanAfterRename(oldPath, newPath)` — invalidates both sides when different
 
 Current write, edit, auto-repair, conflict-resolution, and ACP-bridge mutation paths call these helpers after successful changes. Any new native-filesystem mutation path must do the same.
-
-Direct native `astEdit` applications do not call these JavaScript helpers or invalidate the walker cache themselves. Their host must invalidate successfully written native paths; provider-backed AST discovery is uncached.
 
 ## Adding a cache consumer
 

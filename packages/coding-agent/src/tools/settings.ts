@@ -490,30 +490,6 @@ export const cfgGrepContextAfter = register({
 	},
 });
 
-export const cfgAstGrepEnabled = register({
-	id: "astGrep.enabled",
-	type: "boolean",
-	default: false,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "AST Grep",
-		description: "Enable the ast_grep tool for structural AST search",
-	},
-});
-
-export const cfgAstEditEnabled = register({
-	id: "astEdit.enabled",
-	type: "boolean",
-	default: true,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "AST Edit",
-		description: "Enable the ast_edit tool for structural AST rewrites",
-	},
-});
-
 export const cfgFindEnabled = register({
 	id: "find.enabled",
 	type: "enum",
@@ -888,8 +864,6 @@ export const cfgDevAutoqaConsent = register({
 /** Settings read by `resolveBuiltinToolPlan` (`tools/index.ts`); a live session reconciles its built-ins when any changes. */
 export const cfgBuiltinToolGates = combine({
 	ask: cfgAskEnabled,
-	astEdit: cfgAstEditEnabled,
-	astGrep: cfgAstGrepEnabled,
 	async: cfgAsyncEnabled,
 	autolearn: cfgAutolearnEnabled,
 	bash: cfgBashEnabled,

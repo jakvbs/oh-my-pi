@@ -19,7 +19,7 @@ function createTestToolSession(cwd: string): ToolSession {
 	};
 }
 
-// `glob`, `ast_grep`, and `ast_edit` resolve internal URLs through a filesystem
+// `glob` and `grep` resolve internal URLs through a filesystem
 // bounded by their read/write tier and do NOT share the exec-tier approval
 // `read`/`grep`/`write` got for ssh://, so they must reject it BEFORE
 // `InternalUrlRouter.resolve` — which is the point that opens the outbound SSH
@@ -34,7 +34,7 @@ describe("ssh:// is rejected before any connection in read/write-tier tools", ()
 		vi.restoreAllMocks();
 	});
 
-	it("resolveToolSearchScope (ast_grep + ast_edit) throws on ssh:// without resolving", async () => {
+	it("resolveToolSearchScope throws on ssh:// without resolving", async () => {
 		// Reject if resolve is ever reached, so a guard regression fails loudly
 		// instead of attempting a real connection.
 		const spy = vi

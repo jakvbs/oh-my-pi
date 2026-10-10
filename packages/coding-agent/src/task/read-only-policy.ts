@@ -11,7 +11,6 @@ export const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set([
 	"glob",
 	"find",
 	"web_search",
-	"ast_grep",
 	"yield",
 	"ask",
 	"todo",

@@ -3,7 +3,6 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ToolChoiceQueue } from "@oh-my-pi/pi-coding-agent/session/tool-choice-queue";
 import { createTools, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { resolveToCwd } from "@oh-my-pi/pi-coding-agent/tools/path-utils";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
@@ -13,7 +12,7 @@ function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): T
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
-		settings: Settings.isolated({ "astGrep.enabled": true, "astEdit.enabled": true, "tools.xdev": false }),
+		settings: Settings.isolated({ "tools.xdev": false }),
 		...overrides,
 	};
 }
@@ -128,51 +127,4 @@ describe("tool path root alias", () => {
 		expect(text).toContain("sample.ts");
 	});
 
-	it("ast_grep searches cwd when path is slash", async () => {
-		const tools = await createTools(createTestSession(tempDir));
-		const tool = tools.find(entry => entry.name === "ast_grep");
-		expect(tool).toBeDefined();
-		if (!tool) throw new Error("Missing ast_grep tool");
-
-		const result = await tool.execute("ast-grep-root-alias", {
-			pat: "rootAliasSymbol",
-			path: "/**/*.ts",
-		});
-		const details = result.details as { scopePath?: string } | undefined;
-
-		expect(getText(result)).toContain("sample.ts");
-		expect(details?.scopePath).toBe(".");
-	});
-
-	it("ast_edit rewrites within cwd when path is slash", async () => {
-		const queue = new ToolChoiceQueue();
-		const tools = await createTools(
-			createTestSession(tempDir, {
-				getToolChoiceQueue: () => queue,
-				buildToolChoice: () => ({ type: "tool" as const, name: "resolve" }),
-				steer: () => {},
-			}),
-		);
-		const tool = tools.find(entry => entry.name === "ast_edit");
-		expect(tool).toBeDefined();
-		if (!tool) throw new Error("Missing ast_edit tool");
-
-		const preview = await tool.execute("ast-edit-root-alias", {
-			ops: [{ pat: "legacyWrap($A, $B)", out: "modernWrap($A, $B)" }],
-			paths: ["/**/*.ts"],
-		});
-		const details = preview.details as { scopePath?: string; totalReplacements?: number } | undefined;
-
-		expect(getText(preview)).toContain("sample.ts");
-		expect(details?.scopePath).toBe(".");
-		expect(details?.totalReplacements).toBe(1);
-
-		const invoker = queue.peekPendingInvoker()!;
-		expect(invoker).toBeDefined();
-		await invoker({ action: "apply", reason: "apply root alias rewrite" });
-
-		expect(await Bun.file(path.join(tempDir, "sample.ts")).text()).toContain(
-			"modernWrap(rootAliasSymbol, anotherValue)",
-		);
-	});
 });
