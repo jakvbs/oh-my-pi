@@ -2,11 +2,21 @@
 
 ## Maintained fork
 
-This checkout maintains `jakvbs/oh-my-pi`, not an upstream contribution branch. Implement and commit fork changes directly on `main`; do not open upstream PRs unless explicitly requested. `origin` is `git@github.com:jakvbs/oh-my-pi.git`; `upstream` is `git@github.com:can1357/oh-my-pi.git`. Preserve fork commits when rebasing on `upstream/main`, integrate remote fork changes first, and never push to upstream.
+This checkout maintains `jakvbs/oh-my-pi`, not an upstream contribution branch. Implement and commit fork changes directly on `main`; do not open upstream PRs unless explicitly requested. `origin` is `git@github.com:jakvbs/oh-my-pi.git`; `upstream` is `git@github.com:can1357/oh-my-pi.git`. Never push to upstream.
 
-The global `omp` command uses this checkout's existing `packages/coding-agent/scripts/omp` dev launcher; retain the previous compiled binary for rollback. Updates go through the OMP phase in `~/research/.agents/skills/sync/SKILL.md` (sync fork, rebase upstream, conditionally refresh dependencies/native bindings, verify), not `omp update` or a published npm/binary installer. The launcher reads the live checkout; do not start new sessions or workers during rebase. This fork policy supersedes the upstream "never commit unless asked" rule below for completed fork work; pushing still requires an authorized delivery or dotsync request.
+Upstream is integrated by merge, never by rebase: `bun run sync:upstream` (`scripts/sync-upstream.ts`) merges `upstream/main`, keeps files the fork deleted deleted, removes files upstream re-added under `scripts/fork-removed-paths.txt`, takes upstream's lockfiles and regenerates them, and fails on fork changelog bullets that a union merge left inside a released section. Fork commit SHAs therefore stay stable across machines, pushes to `origin` are fast-forwards, and each upstream conflict is resolved once (`rerere` records it). Removing a feature means deleting its code, adding its directories to `scripts/fork-removed-paths.txt` and dropping its `exports`; `bun run check:tools` fails while a removed path exists again or an export points at a deleted file.
 
-The fork has no `omp-kata` runners. `.github/workflows/ci.yml` routes every job outside `can1357/oh-my-pi` to the GitHub-hosted `ubuntu-22.04` path (sharded like PRs) and skips the kata-only `rust_validate` and `native_addons_cross` jobs; keep that `github.repository` guard when resolving rebase conflicts in `runs-on`/`if` lines.
+| Rule | Enforced by |
+| --- | --- |
+| Removed features stay removed after an upstream merge | `scripts/check-fork-removed.ts` in `check:tools`; `sync:upstream` deletes re-added files |
+| `exports` never point at deleted files | `scripts/check-package-exports.ts` in `check:tools` |
+| Lockfiles are never merged by hand | `.gitattributes` `merge=upstream-lock` + regeneration in `sync:upstream` |
+| Fork changelog bullets stay under `[Unreleased]` | `sync:upstream` fails on bullets outside `[Unreleased]` that upstream does not have |
+| Same conflict is resolved once | `rerere.enabled` set by `sync:upstream` |
+
+The global `omp` command uses this checkout's existing `packages/coding-agent/scripts/omp` dev launcher; retain the previous compiled binary for rollback. Updates go through the OMP phase in `~/research/.agents/skills/sync/SKILL.md` (merge upstream, conditionally refresh dependencies/native bindings, verify, publish), not `omp update` or a published npm/binary installer. The launcher reads the live checkout; do not start new sessions or workers during a sync. This fork policy supersedes the upstream "never commit unless asked" rule below for completed fork work; pushing still requires an authorized delivery or dotsync request.
+
+The fork has no `omp-kata` runners. `.github/workflows/ci.yml` routes every job outside `can1357/oh-my-pi` to the GitHub-hosted `ubuntu-22.04` path (sharded like PRs) and skips the kata-only `rust_validate` and `native_addons_cross` jobs; keep that `github.repository` guard when resolving merge conflicts in `runs-on`/`if` lines.
 
 ## Default Context
 
