@@ -3,6 +3,7 @@ import type { EditStore } from "@oh-my-pi/pi-natives";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@oh-my-pi/pi-ai";
 import { logger } from "@oh-my-pi/pi-utils";
 import type { AsyncJobManager } from "../async/job-manager";
+import type { SecretObfuscator } from "../secrets/obfuscator";
 import type { Rule } from "../capability/rule";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -387,6 +388,8 @@ export interface ToolSession {
 	recordEvalSubagentUsage?: (output: number) => void;
 	/** Bridge to the connected client (e.g. ACP editor host). Tools should route fs/terminal/permission requests through this when available. */
 	getClientBridge?: () => ClientBridge | undefined;
+	/** Live session secret obfuscator; absent when Hide Secrets never turned on. */
+	getObfuscator?: () => SecretObfuscator | undefined;
 	/** Get cached todo phases for this session. */
 	getTodoPhases?: () => TodoPhase[];
 	/** Replace cached todo phases for this session. */

@@ -63,6 +63,7 @@ import {
 	cfgBashInterceptorPatterns,
 	cfgBashPatterns,
 } from "../exec/settings";
+import { registerFnoxSecrets } from "../secrets/fnox";
 import { cfgSkillful } from "../session/settings";
 import { cfgWorktreeClone } from "../task/settings";
 
@@ -1054,6 +1055,15 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			}
 			if (!cwdStat.isDirectory()) {
 				throw new ToolError(`Working directory is not a directory: ${commandCwd}`);
+			}
+			const obfuscator = this.session.getObfuscator?.();
+			if (obfuscator?.obfuscates()) {
+				await registerFnoxSecrets({
+					obfuscator,
+					command,
+					cwd: commandCwd,
+					inheritedProfile: process.env.FNOX_PROFILE,
+				});
 			}
 		}
 

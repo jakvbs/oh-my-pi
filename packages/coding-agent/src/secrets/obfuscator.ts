@@ -439,6 +439,37 @@ export class SecretObfuscator {
 		return false;
 	}
 
+	/**
+	 * Register obfuscate-mode plain secrets resolved after construction (fnox
+	 * profiles a command is about to inject). Values already known keep their
+	 * placeholder; short values are skipped like at construction. Returns how
+	 * many values were added.
+	 */
+	addPlainSecrets(entries: readonly SecretEntry[]): number {
+		const fresh = entries.filter(
+			entry =>
+				entry.type === "plain" &&
+				(entry.mode ?? "obfuscate") === "obfuscate" &&
+				entry.content.length >= MIN_OBFUSCATE_SECRET_LEN &&
+				this.#findObfuscateIndex(entry.content) === undefined &&
+				!this.#replaceMappings.has(entry.content),
+		);
+		// Same ordering as the constructor: every new literal is known before any
+		// placeholder is minted, so no label can embed a sibling's raw value.
+		for (const entry of fresh) this.#configuredSecretValues.add(entry.content);
+		let added = 0;
+		for (const entry of fresh) {
+			if (this.#findObfuscateIndex(entry.content) !== undefined) continue;
+			const index = this.#nextIndex++;
+			const placeholder = this.#createPlaceholder(entry.content, entry.friendlyName);
+			this.#plainMappings.set(entry.content, index);
+			this.#registerObfuscateMapping(index, entry.content, placeholder);
+			added++;
+		}
+		if (added > 0) this.#hasAny = true;
+		return added;
+	}
+
 	hasSecrets(): boolean {
 		return this.#hasAny;
 	}
