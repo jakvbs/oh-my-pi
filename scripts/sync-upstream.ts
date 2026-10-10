@@ -92,6 +92,10 @@ async function dropReaddedRemovedPaths(): Promise<string[]> {
 }
 
 async function regenerateLockfiles(): Promise<string[]> {
+	// Generators parse manifests (package.json, Cargo.toml) that may still hold
+	// conflict markers; `--continue` regenerates once every conflict is resolved.
+	const conflicts = await lines($`git diff --name-only --diff-filter=U`.quiet());
+	if (conflicts.some(file => !LOCKFILES.includes(file))) return [];
 	const changed = await lines($`git diff --name-only HEAD -- ${LOCKFILES}`.quiet());
 	const unmerged = await lines($`git diff --name-only --diff-filter=U -- ${LOCKFILES}`.quiet());
 	const touched = new Set([...changed, ...unmerged]);
