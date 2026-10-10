@@ -11,6 +11,7 @@ packages/coding-agent/src/autoresearch
 packages/coding-agent/src/cleanse
 packages/coding-agent/src/collab
 packages/coding-agent/src/commit/agentic
+packages/coding-agent/src/dap
 packages/coding-agent/src/eval
 packages/coding-agent/src/hindsight
 packages/coding-agent/src/ida

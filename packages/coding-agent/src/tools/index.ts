@@ -44,7 +44,6 @@ import { BashTool } from "./bash";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames } from "./builtin-names";
 import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
 import { ContextNotesTool, NewContextTool } from "./context-notes";
-import { DebugTool } from "./debug";
 import { GithubTool } from "./gh";
 import { GlobTool } from "./glob";
 import { GrepTool } from "./grep";
@@ -66,7 +65,6 @@ import {
 	cfgAstGrepEnabled,
 	cfgAsyncEnabled,
 	cfgCheckpointEnabled,
-	cfgDebugEnabled,
 	cfgGithubEnabled,
 	cfgGlobEnabled,
 	cfgGrepEnabled,
@@ -100,7 +98,6 @@ export type {
 } from "@oh-my-pi/pi-tui/tools/bash";
 export * from "./checkpoint";
 export * from "./context-notes";
-export * from "./debug";
 export * from "./essential-tools";
 export * from "./file-write-fallback";
 export * from "./gh";
@@ -492,7 +489,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	ast_grep: s => new AstGrepTool(s),
 	ast_edit: s => new AstEditTool(s),
 	ask: AskTool.createIf,
-	debug: DebugTool.createIf,
 	github: GithubTool.createIf,
 	glob: s => new GlobTool(s, { rootPathAlias: true }),
 	grep: s => new GrepTool(s),
@@ -624,7 +620,6 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		if (name === "lsp") return enableLsp && cfgLspEnabled.get(session.settings);
 		if (name === "bash") return cfgBashEnabled.get(session.settings);
-		if (name === "debug") return cfgDebugEnabled.get(session.settings);
 		if (name === "todo")
 			return (!includeYield || session.prewalkArmed === true) && cfgTodoEnabled.get(session.settings);
 		if (name === "glob") return cfgGlobEnabled.get(session.settings);

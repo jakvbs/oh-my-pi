@@ -292,16 +292,6 @@ describe("read and write route xd:// device URLs", () => {
 			expect(tier("xd://ast_edit", astFsPath)).toEqual({ tier: "write", policyKey: "ast_edit" });
 			expect(tier("xd://ast_edit", astInternalPath)).toEqual({ tier: "read", policyKey: "ast_edit" });
 
-			// debug: inspection action → read; a real launch → exec (control).
-			expect(tier("xd://debug", JSON.stringify({ action: "sessions" }))).toEqual({
-				tier: "read",
-				policyKey: "debug",
-			});
-			expect(tier("xd://debug", JSON.stringify({ action: "launch", program: "./app" }))).toEqual({
-				tier: "exec",
-				policyKey: "debug",
-			});
-
 			// Fail closed: malformed JSON, non-object or schema-invalid payloads,
 			// missing content, and unknown devices all stay exec so the gate never
 			// under-prompts.

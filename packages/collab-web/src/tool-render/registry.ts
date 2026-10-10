@@ -7,7 +7,6 @@ import { askRenderer } from "./tools/ask";
 import { astEditRenderer } from "./tools/ast-edit";
 import { astGrepRenderer } from "./tools/ast-grep";
 import { bashRenderer } from "./tools/bash";
-import { debugRenderer } from "./tools/debug";
 import { editRenderer } from "./tools/edit";
 import { fetchRenderer } from "./tools/fetch";
 import { generateImageRenderer } from "./tools/generate-image";
@@ -32,7 +31,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	ast_edit: astEditRenderer,
 	ast_grep: astGrepRenderer,
 	bash: bashRenderer,
-	debug: debugRenderer,
 	edit: editRenderer,
 	apply_patch: editRenderer,
 	fetch: fetchRenderer,

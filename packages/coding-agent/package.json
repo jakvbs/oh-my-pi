@@ -139,14 +139,6 @@
 			"types": "./src/config/*.ts",
 			"import": "./src/config/*.ts"
 		},
-		"./dap": {
-			"types": "./src/dap/index.ts",
-			"import": "./src/dap/index.ts"
-		},
-		"./dap/*": {
-			"types": "./src/dap/*.ts",
-			"import": "./src/dap/*.ts"
-		},
 		"./debug": {
 			"types": "./src/debug/index.ts",
 			"import": "./src/debug/index.ts"

@@ -539,18 +539,6 @@ export const cfgFindEnabled = register({
 
 // Optional tools
 
-export const cfgDebugEnabled = register({
-	id: "debug.enabled",
-	type: "boolean",
-	default: true,
-	ui: {
-		tab: "tools",
-		group: "Available Tools",
-		label: "Debug",
-		description: "Enable the debug tool for DAP-based debugging",
-	},
-});
-
 export const cfgLaunchEnabled = register({
 	id: "launch.enabled",
 	type: "boolean",
@@ -920,7 +908,6 @@ export const cfgBuiltinToolGates = combine({
 	bash: cfgBashEnabled,
 	checkpoint: cfgCheckpointEnabled,
 	contextManagement: cfgCompactionExperimentalContextManagement,
-	debug: cfgDebugEnabled,
 	find: cfgFindEnabled,
 	github: cfgGithubEnabled,
 	glob: cfgGlobEnabled,
