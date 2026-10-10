@@ -429,7 +429,7 @@ export interface InteractiveModeContext {
 	handleFreshCommand(): Promise<void>;
 	handleResetContextCommand(): Promise<void>;
 	handleDeleteCommand(): Promise<void>;
-	handleForkCommand(): Promise<void>;
+	handleForkCommand(placement?: "pane" | "window"): Promise<void>;
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
 	handleMCPCommand(text: string): Promise<void>;
 	handleSSHCommand(text: string): Promise<void>;

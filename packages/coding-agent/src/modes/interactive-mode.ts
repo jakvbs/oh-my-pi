@@ -5873,10 +5873,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.#commandController.handleDeleteCommand();
 	}
 
-	async handleForkCommand(): Promise<void> {
-		await this.#btwController.dispose();
-		this.#omfgController.dispose();
-		await this.#commandController.handleForkCommand();
+	async handleForkCommand(placement?: "pane" | "window"): Promise<void> {
+		if (!placement) {
+			await this.#btwController.dispose();
+			this.#omfgController.dispose();
+		}
+		await this.#commandController.handleForkCommand(placement);
 	}
 
 	async handleMoveCommand(targetPath?: string): Promise<void> {
