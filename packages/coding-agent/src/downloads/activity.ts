@@ -20,7 +20,7 @@ export interface DownloadActivity {
 	id: number;
 	/** What is being fetched, e.g. `SmolLM2-135M` or `yt-dlp`. */
 	label: string;
-	/** Current step or file, e.g. `model.safetensors` or `installing mlx-lm`. */
+	/** Current step or file, e.g. `model.safetensors` or `installing onnxruntime-node@x`. */
 	detail?: string;
 	/** Bytes received so far, when known. */
 	loaded?: number;

@@ -2,7 +2,7 @@ import * as net from "node:net";
 
 /**
  * Newline-delimited JSON framing over `node:net` sockets, shared by the tiny
- * worker daemon (both halves) and the MLX daemon client.
+ * worker daemon (both halves).
  */
 
 /** Feed socket chunks and invoke `onLine` per complete, non-blank line. */

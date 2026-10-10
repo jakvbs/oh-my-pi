@@ -27,7 +27,7 @@ interface ModelLoad {
 	startedAt: number;
 	/** Per-file bytes, summed for the overall bar. */
 	files: Map<string, { loaded: number; total: number }>;
-	/** Overall bytes from producers that report only a running total (MLX). */
+	/** Overall bytes from producers that report only a running total. */
 	aggregate?: { loaded: number; total: number };
 	/** Latest file to start; concurrent files would otherwise flip the label every chunk. */
 	detail?: string;
@@ -76,8 +76,8 @@ export class ModelDownloadActivity {
 			this.#settled.delete(modelKey);
 		}
 		if (event.file === undefined && event.name !== undefined && status !== "progress_total") {
-			// Side-runtime installs (`pkg@version`) and the MLX repo download are
-			// announced only when they actually fetch, so they show immediately.
+			// Side-runtime installs (`pkg@version`) are announced only when they
+			// actually fetch, so they show immediately.
 			if (status === "done") return;
 			this.#report(modelKey, load, {
 				detail: event.name.includes("@") ? `installing ${event.name}` : "downloading",

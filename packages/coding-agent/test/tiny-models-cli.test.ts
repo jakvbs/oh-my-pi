@@ -15,7 +15,7 @@ describe("tiny-models download model resolution", () => {
 		// Guard: keep this regression meaningful — at least one registry entry must be load-blocked.
 		expect(unsupported.length).toBeGreaterThan(0);
 
-		const all = resolveModels("all", false);
+		const all = resolveModels("all");
 		for (const key of unsupported) expect(all).not.toContain(key);
 
 		const usable = TINY_LOCAL_MODELS.filter(
@@ -24,15 +24,11 @@ describe("tiny-models download model resolution", () => {
 		for (const key of usable) expect(all).toContain(key);
 	});
 
-	it("includes ONNX-blocked models in `all` when the MLX backend is active", () => {
-		expect(resolveModels("all", true)).toEqual(TINY_LOCAL_MODELS.map(spec => spec.key));
-	});
-
 	it("still resolves an explicitly requested unsupported model (only `all` is filtered)", () => {
 		const blocked = TINY_LOCAL_MODELS.find(spec => "onnxUnsupportedReason" in spec && spec.onnxUnsupportedReason);
 		expect(blocked).toBeDefined();
 		if (!blocked) return;
-		expect(resolveModels(blocked.key, false)).toEqual([blocked.key]);
+		expect(resolveModels(blocked.key)).toEqual([blocked.key]);
 	});
 
 	it("includes worker error details in JSON failures", async () => {

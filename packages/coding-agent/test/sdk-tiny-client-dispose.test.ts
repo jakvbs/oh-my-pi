@@ -124,7 +124,6 @@ describe("tiny-model client shutdown on session dispose", () => {
 		using tempDir = TempDir.createSync("@pi-tiny-client-dispose-");
 		const { start, close } = await starter(tempDir);
 		const worker = new FakeTinyWorker();
-		vi.spyOn(titleClient, "tinyWorkerUsesMlx").mockReturnValue(false);
 		vi.spyOn(titleClient, "connectTinyWorker").mockResolvedValue(worker);
 		const client = titleClient.tinyTitleClient;
 		try {

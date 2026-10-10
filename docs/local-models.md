@@ -31,29 +31,26 @@ The tiny-model CLI and source registry retain **title** and **memory** groupings
   colon-separated directories holding those libraries; omp appends it to `LD_LIBRARY_PATH` for the
   inference worker subprocesses only (never for shell/eval/daemon children). The Nix package
   (`nix/package.nix`) sets this by default.
-- **One text worker per model/backend, keep-alive not persistent**: each tiny text model/backend
-  pair is served by one machine-wide worker owning
-  `~/.omp/run/tiny/<model>-<backend>.sock` (Windows: a named pipe).
-  ONNX and MLX workers for the same model can coexist. The first omp process that needs
-  the pair spawns it detached (log next to the socket, `<model>-<backend>.log`);
+- **One text worker per model, keep-alive not persistent**: each tiny text model
+  is served by one machine-wide ONNX worker owning
+  `~/.omp/run/tiny/<model>-onnx.sock` (Windows: a named pipe).
+  The first omp process that needs the model spawns it detached (log next to the socket, `<model>-<backend>.log`);
   other omp processes connect, so weights are not duplicated per omp instance.
   Nothing supervises it: the worker exits on its own
   after 15 minutes without a request (`OMP_TINY_WORKER_IDLE_MS` overrides the window for tests),
   unlinks its socket, and the next request from any omp process spawns a fresh one. Concurrent
   spawns race on a `.bind.lock` file lock: the loser sees a live socket and exits while its parent
-  adopts the winner. `ping` returns a launch tag (`<omp version>|onnx|<device>|<dtype>` or
-  `mlx|<mlx-lm version>|<script crc>`), so an omp upgrade or a changed
-  `providers.tinyModelDevice`/`providers.tinyModelDtype` replaces a stale ONNX worker;
-  MLX replacement follows its runtime version/script tag. Concurrent ONNX clients with
+  adopts the winner. `ping` returns a launch tag (`<omp version>|onnx|<device>|<dtype>`),
+  so an omp upgrade or a changed `providers.tinyModelDevice`/`providers.tinyModelDtype`
+  replaces a stale worker. Concurrent clients with
   conflicting device/dtype settings can replace each other's worker, so agree on those settings.
   The protocol is message-level (`load`, `chat` with messages / prefill /
-  stop / max tokens); prompt construction and title extraction live in the client so both worker
-  kinds are interchangeable.
+  stop / max tokens); prompt construction and title extraction live in the client.
 - **Device policy**: local tiny models default to CPU-only inference and retry once on CPU if an
   explicit accelerated provider cannot initialize.
   - Pick a provider persistently with the `providers.tinyModelDevice` setting (`default` keeps CPU),
     or per-run with the `PI_TINY_DEVICE` env var (which overrides the setting).
-  - Accepted values are `cpu`, `gpu`, `mlx`/`metal`, `webgpu`, `auto`, `cuda`, `dml`, `coreml`,
+  - Accepted values are `cpu`, `gpu`, `webgpu`, `auto`, `cuda`, `dml`, `coreml`,
     `wasm`, `webnn`, `webnn-gpu`, `webnn-cpu`, and `webnn-npu`.
   - Direct `coreml` remains opt-in via `PI_TINY_DEVICE=coreml`; it is not part of the default because
     cached decoder-LLM ONNX loads can fail during session initialization.
@@ -62,19 +59,6 @@ The tiny-model CLI and source registry retain **title** and **memory** groupings
     hard-crashes on worker teardown after WebGPU inference.
   - Use `providers.tinyModelDevice` or `PI_TINY_DEVICE` only when explicitly opting out of the CPU
     default.
-- **MLX backend (Apple silicon)**: `PI_TINY_DEVICE=mlx` (or `metal`) swaps the worker itself, not
-  the ONNX provider: the per-model worker is `mlx-server.py` running from a pinned `mlx-lm` venv
-  that omp installs under `~/.omp/agent/cache/tiny-mlx-runtime/` on first use (via `uv`, else
-  `python3 -m venv` with Python ≥ 3.10). It downloads the model's pre-quantized 4-bit MLX export
-  (`mlxRepo` in the registry) into `~/.omp/agent/cache/tiny-models/mlx/` with per-byte progress,
-  loads it with `mlx_lm.load`, and speaks the exact protocol the ONNX worker speaks, so titles,
-  memory completions, and local typed judgments use the same backend. Inference runs in the
-  Python worker. `PI_TINY_DTYPE` is ignored by MLX. If the venv bootstrap fails (no Python,
-  install error, non-Apple host) omp logs a warning and uses the ONNX CPU worker for the rest of
-  the process. Measured on an M4 Max: cold venv install + LFM2.5-230M download + load 15.7s; a
-  second omp instance attaches to a running worker in well under a second; titles 15–60ms after
-  warmup; Qwen3-1.7B (blocked on onnxruntime-node) downloads 984MB and answers a memory
-  extraction in ~200ms.
 - **Quantization: q4 is the sweet spot** — smaller on disk, faster to load, and fast at inference.
   q8/int8 loads slower _and_ infers slower on CPU. Every shipped model defaults to `q4`; override the
   precision persistently with the `providers.tinyModelDtype` setting (`default` keeps `q4`, e.g. `fp16`

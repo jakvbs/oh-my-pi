@@ -938,7 +938,7 @@ export const cfgProvidersTinyModelDevice = register({
 		group: "Tiny Model",
 		label: "Tiny Model Device",
 		description:
-			"Inference backend for local tiny models (titles + memory): an ONNX execution provider, or `mlx` to download MLX weights and run them through mlx-lm on Apple silicon. Default uses CPU-only ONNX. The PI_TINY_DEVICE env var overrides this.",
+			"ONNX execution provider for local tiny models (titles + memory). Default uses CPU-only ONNX. The PI_TINY_DEVICE env var overrides this.",
 		options: TINY_MODEL_DEVICE_SETTING_OPTIONS,
 	},
 });

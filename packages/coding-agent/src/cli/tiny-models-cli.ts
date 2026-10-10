@@ -14,7 +14,7 @@ import {
 	SMOLLM_TOTAL_BYTES,
 	smolLmWeightsReady,
 } from "../predict/smollm-weights";
-import { shutdownTinyTitleClient, tinyTitleClient, tinyWorkerUsesMlx } from "../tiny/title-client";
+import { shutdownTinyTitleClient, tinyTitleClient } from "../tiny/title-client";
 
 /** CLI key for the word-completion model (`spelling.autocomplete` `auto`/`smollm`). */
 const SMOLLM_KEY = "smollm";
@@ -69,14 +69,14 @@ function downloadErrorSummary(error: string | undefined): string | undefined {
 	return [first, ...details].join("\n");
 }
 
-export function resolveModels(model: string | undefined, mlx = tinyWorkerUsesMlx()): TinyLocalModelKey[] {
+export function resolveModels(model: string | undefined): TinyLocalModelKey[] {
 	if (!model) return [DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY];
-	// `all` is a prefetch convenience: skip models the active backend refuses before
+	// `all` is a prefetch convenience: skip models the backend refuses before
 	// load, so the bulk download stays green when every *usable* model succeeds.
 	if (model === "all")
-		return TINY_LOCAL_MODELS.filter(
-			spec => mlx || !("onnxUnsupportedReason" in spec) || !spec.onnxUnsupportedReason,
-		).map(spec => spec.key);
+		return TINY_LOCAL_MODELS.filter(spec => !("onnxUnsupportedReason" in spec) || !spec.onnxUnsupportedReason).map(
+			spec => spec.key,
+		);
 	if (!isTinyLocalModelKey(model)) {
 		const values = TINY_LOCAL_MODELS.map(spec => spec.key).join(", ");
 		throw new Error(`Unknown tiny local model: ${model}. Expected one of: ${values}, ${SMOLLM_KEY}, all`);

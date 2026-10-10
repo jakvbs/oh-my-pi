@@ -31,7 +31,7 @@ export interface JsonLineServerOptions<Req, Res> {
 }
 
 /**
- * Socket-owning newline-JSON request loop (`mlx-server.py` mirrors it in Python).
+ * Socket-owning newline-JSON request loop.
  * Owns one endpoint: clears a stale socket file under a file lock (a crashed
  * predecessor) but defers to a live one (a concurrent spawn that won), feeds
  * every connection's request lines to `onRequest`, and exits the process once idle.

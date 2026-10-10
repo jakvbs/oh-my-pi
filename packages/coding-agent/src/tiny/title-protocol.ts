@@ -5,11 +5,11 @@ import type { TinyLocalModelKey } from "./models";
  * Wire protocol between `TinyTitleClient` and a tiny-model worker.
  *
  * One worker per local model: the ONNX worker (`worker.ts`, the omp binary
- * re-entered with {@link TINY_WORKER_ARG}) or the MLX worker (`mlx-server.py`)
- * owns a Unix socket / named pipe named after the model, serves every omp
- * process on the machine over newline-delimited JSON, and exits on its own
- * once idle. Requests are message-level so both workers render the chat
- * template with their own tokenizer; the client owns prompt construction and
+ * re-entered with {@link TINY_WORKER_ARG}) owns a Unix socket / named pipe
+ * named after the model, serves every omp process on the machine over
+ * newline-delimited JSON, and exits on its own once idle. Requests are
+ * message-level so the worker renders the chat template with its own
+ * tokenizer; the client owns prompt construction and
  * title extraction.
  */
 
@@ -29,8 +29,8 @@ export const TINY_WORKER_IDLE_MS_ENV = "OMP_TINY_WORKER_IDLE_MS";
 /** Idle window (nothing in flight, no request received) after which a worker exits to free model memory. */
 export const TINY_WORKER_IDLE_MS = 15 * 60 * 1_000;
 
-/** Inference engine a worker runs; part of the socket name so ONNX and MLX workers for one model coexist. */
-export type TinyWorkerBackend = "onnx" | "mlx";
+/** Inference engine a worker runs; part of the socket name. */
+export type TinyWorkerBackend = "onnx";
 
 const workerName = (modelKey: TinyLocalModelKey, backend: TinyWorkerBackend): string =>
 	`${modelKey}-${backend}`.replace(/[^A-Za-z0-9._-]/g, "_");

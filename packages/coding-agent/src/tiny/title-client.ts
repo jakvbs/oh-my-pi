@@ -1,23 +1,21 @@
 /**
  * Client for the per-model tiny-model workers.
  *
- * Each local model is served by one worker process on the machine — the ONNX
- * worker (`worker.ts`) or, with `PI_TINY_DEVICE=mlx`, the MLX worker
- * (`mlx-server.py`) — that owns a socket named after the model. This client
- * connects to it, spawning it detached when it is not running, and lets it
- * die on its own once idle. Prompt construction and title extraction live
- * here so both workers only ever see message-level `chat` requests.
+ * Each local model is served by one ONNX worker process (`worker.ts`) on the
+ * machine that owns a socket named after the model. This client connects to
+ * it, spawning it detached when it is not running, and lets it die on its own
+ * once idle. Prompt construction and title extraction live here so the worker
+ * only ever sees message-level `chat` requests.
  */
 import * as fs from "node:fs";
 import type * as net from "node:net";
 import * as path from "node:path";
 import type { Subprocess } from "bun";
-import { $env, getTinyWorkerRuntimeDir, logger, prompt } from "@oh-my-pi/pi-utils";
+import { getTinyWorkerRuntimeDir, logger, prompt } from "@oh-my-pi/pi-utils";
 import packageJson from "../../package.json" with { type: "json" };
 import type { Setting } from "../config/registry";
 import { isSettingsInitialized, settings } from "../config/settings";
 
-import { stageRunnerScript } from "../utils/runner-cache";
 import { ModelDownloadActivity } from "../downloads/model-downloads";
 import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
 import {
@@ -26,17 +24,14 @@ import {
 	resolveWorkerSpawnCmd,
 	SMOKE_TEST_TIMEOUT_MS,
 } from "../subprocess/worker-client";
-import { MLX_DEVICE, resolveTinyModelDevicePreference, tinyMlxSupported, tinyModelDeviceSettingToEnv } from "./device";
+import { tinyModelDeviceSettingToEnv } from "./device";
 import { tinyModelDtypeSettingToEnv } from "./dtype";
 import { connectJsonlSocket, LineParser, writeJsonLine } from "./jsonl-socket";
 import { formatTitleUserMessage } from "./message-preproc";
-import { ensureTinyMlxRuntime, getTinyMlxModelDir, MLX_LM_VERSION } from "./mlx-runtime";
-import MLX_SERVER_SCRIPT from "./mlx-server.py" with { type: "text" };
 import { getTinyLocalModelSpec, isTinyLocalModelKey, type TinyLocalModelKey } from "./models";
 import { normalizeGeneratedTitle } from "./text";
 import {
 	TINY_WORKER_ARG,
-	TINY_WORKER_IDLE_MS_ENV,
 	TINY_WORKER_MODEL_ENV,
 	TINY_WORKER_SOCKET_ENV,
 	TINY_WORKER_TAG_ENV,
@@ -56,7 +51,6 @@ const TITLE_MAX_NEW_TOKENS = 20;
 const COMPLETION_DEFAULT_MAX_NEW_TOKENS = 256;
 const COMPLETION_MAX_NEW_TOKENS = 1024;
 const TINY_TITLE_SYSTEM_PROMPT = prompt.render(titleSystemPrompt);
-const MLX_IDLE_SECONDS = 15 * 60;
 
 const CONNECT_TIMEOUT_MS = 3_000;
 const PROBE_TIMEOUT_MS = 3_000;
@@ -159,18 +153,6 @@ export function tinyModelEnvKey(): string {
  */
 export function tinyWorkerEnv(): Record<string, string> {
 	return inferenceWorkerEnv(tinyModelEnv());
-}
-
-/** Set once the mlx-lm bootstrap fails in this process; later workers fall back to ONNX. */
-let mlxUnavailable = false;
-
-/** Whether a worker started now would run the MLX backend (device resolves to `mlx` on Apple silicon). */
-export function tinyWorkerUsesMlx(): boolean {
-	return (
-		!mlxUnavailable &&
-		tinyMlxSupported() &&
-		resolveTinyModelDevicePreference(tinyModelEnv().PI_TINY_DEVICE).device === MLX_DEVICE
-	);
 }
 
 // ── Worker socket handle ─────────────────────────────────────────────
@@ -394,48 +376,6 @@ export function onnxLaunch(modelKey: TinyLocalModelKey, modelEnv: Record<string,
 	};
 }
 
-function mlxLaunch(modelKey: TinyLocalModelKey, emitProgress: (event: TinyTitleProgressEvent) => void): WorkerLaunch {
-	const spec = getTinyLocalModelSpec(modelKey);
-	if (!spec) throw new Error(`Unknown tiny local model: ${modelKey}`);
-	const tag = `mlx|${MLX_LM_VERSION}|${Bun.hash.crc32(MLX_SERVER_SCRIPT).toString(16)}`;
-	return {
-		backend: "mlx",
-		tag,
-		async spawn(endpoint, logPath) {
-			const python = await ensureTinyMlxRuntime(phase =>
-				emitProgress({ modelKey, status: phase, name: `mlx-lm@${MLX_LM_VERSION}` }),
-			);
-			const script = await stageRunnerScript("omp-tiny-mlx", "py", MLX_SERVER_SCRIPT);
-			const env = inferenceWorkerEnv({
-				PYTHONUNBUFFERED: "1",
-				PYTHONIOENCODING: "utf-8",
-				TRANSFORMERS_VERBOSITY: "error",
-				HF_HUB_DISABLE_PROGRESS_BARS: "1",
-				TOKENIZERS_PARALLELISM: "false",
-			});
-			const idleSeconds = Number($env[TINY_WORKER_IDLE_MS_ENV]) / 1000 || MLX_IDLE_SECONDS;
-			const cmd = [
-				python,
-				"-u",
-				script,
-				"--socket",
-				endpoint,
-				"--tag",
-				tag,
-				"--model-key",
-				modelKey,
-				"--repo",
-				spec.mlxRepo,
-				"--dir",
-				getTinyMlxModelDir(spec.mlxRepo),
-				"--idle-seconds",
-				String(idleSeconds),
-			];
-			return spawnDetached(cmd, undefined, env, logPath);
-		},
-	};
-}
-
 async function waitForEndpointRelease(endpoint: string): Promise<void> {
 	const deadline = Date.now() + SHUTDOWN_WAIT_MS;
 	while (Date.now() < deadline) {
@@ -554,20 +494,6 @@ export class TinyTitleClient {
 	}
 
 	async #connectDefault(modelKey: TinyLocalModelKey): Promise<WorkerHandle> {
-		if (tinyWorkerUsesMlx()) {
-			try {
-				return await connectTinyWorker(
-					mlxLaunch(modelKey, event => this.#emitProgress(event)),
-					modelKey,
-				);
-			} catch (error) {
-				mlxUnavailable = true;
-				const message = error instanceof Error ? error.message : String(error);
-				logger.warn("tiny-title: MLX worker unavailable; falling back to ONNX CPU", { modelKey, error: message });
-				// Ends a visible `mlx-lm` install row; the ONNX fallback tracks its own load.
-				this.#downloads.observe({ modelKey, status: "error" }, `MLX unavailable: ${message}`);
-			}
-		}
 		return connectTinyWorker(onnxLaunch(modelKey, tinyModelEnv()), modelKey);
 	}
 
@@ -761,8 +687,7 @@ export class TinyTitleClient {
 			this.#emitProgress(message.event);
 			return;
 		}
-		// Any answer settles the model's load, even for an abandoned request;
-		// MLX `chat` loads send no `ready` of their own.
+		// Any answer settles the model's load, even for an abandoned request.
 		if (message.type === "error") this.#downloads.observe({ modelKey, status: "error" }, message.error);
 		else this.#downloads.observe({ modelKey, status: "ready" });
 		const pending = this.#pending.get(message.id);
