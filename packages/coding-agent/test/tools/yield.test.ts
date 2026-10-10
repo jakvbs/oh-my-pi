@@ -404,6 +404,22 @@ describe("YieldTool", () => {
 		});
 	});
 
+	it("never drops the schema in strict mode, however many attempts fail", async () => {
+		const tool = new YieldTool(
+			createSession({
+				outputSchema: { properties: { answer: { type: "string" } } },
+				outputSchemaMode: "strict",
+			}),
+		);
+		for (let attempt = 1; attempt <= 5; attempt++) {
+			await expect(tool.execute(`call-bad-${attempt}`, { data: { answer: attempt } })).rejects.toThrow(
+				"Output does not match schema",
+			);
+		}
+		const valid = await tool.execute("call-good", { data: { answer: "ok" } });
+		expect(valid.details).toMatchObject({ data: { answer: "ok" }, status: "success", schemaOverridden: undefined });
+	});
+
 	it("validates incremental items for array-typed labels against the element schema", async () => {
 		// Each `type: ["findings"]` yield is one finding; the per-call validator runs against the
 		// items schema (not the array schema), so a missing required field surfaces immediately

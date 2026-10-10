@@ -271,7 +271,7 @@ function buildYieldParameters(dataSchema: Record<string, unknown>): Record<strin
 
 /**
  * Max consecutive schema-validation failures before the yield tool overrides validation
- * and lets non-conforming data through. The override is a safety net for schemas the
+ * and lets non-conforming data through; never in `outputSchemaMode: "strict"`. The override is a safety net for schemas the
  * JTD→JSON-Schema converter cannot fully express; it should not be reached during normal
  * model retries. Three matches the existing "3 reminders" pattern elsewhere in the agent
  * runtime.
@@ -610,10 +610,14 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 			}
 			if (sectionFailure && !sectionFailure.success) {
 				this.#schemaValidationFailures++;
-				if (this.#schemaValidationFailures <= MAX_SCHEMA_RETRIES) {
+				// Strict mode promises callers schema-valid data; an SDK embedder has no
+				// executor finalizer to reject an overridden payload post-mortem.
+				const strict = this.#session.outputSchemaMode === "strict";
+				if (strict || this.#schemaValidationFailures <= MAX_SCHEMA_RETRIES) {
 					const remaining = MAX_SCHEMA_RETRIES - this.#schemaValidationFailures;
-					const retryHint =
-						remaining > 0
+					const retryHint = strict
+						? " Call yield again with the corrected shape; the schema stays enforced."
+						: remaining > 0
 							? ` Call yield again with the corrected shape — ${remaining} retry attempt(s) remain before the schema constraint is dropped.`
 							: " Call yield again with the corrected shape — this is the final retry before the schema constraint is dropped.";
 					const scope = isIncremental ? `Section ${formatYieldLabels(yieldType as string[])}` : "Output";
