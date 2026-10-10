@@ -21,7 +21,9 @@ function exportTargets(value: unknown): string[] {
 function targetExists(packageDir: string, target: string): boolean {
 	const relative = target.replace(/^\.\//, "");
 	if (!relative.includes("*")) return fs.existsSync(path.join(packageDir, relative));
-	for (const _ of new Bun.Glob(relative).scanSync({ cwd: packageDir, onlyFiles: true })) return true;
+	// An exports `*` substitutes any string, slashes included, so it can stand for nested paths.
+	const pattern = relative.replaceAll("*", "**/*");
+	for (const _ of new Bun.Glob(pattern).scanSync({ cwd: packageDir, onlyFiles: true })) return true;
 	return false;
 }
 
