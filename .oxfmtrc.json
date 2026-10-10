@@ -12,7 +12,6 @@
 	"bracketSpacing": true,
 	"ignorePatterns": [
 		"packages/natives/native/**/*",
-		"packages/snapcompact/research/**/*",
 		"**/vendor/**/*",
 		"**/node_modules/**/*",
 		"**/test-sessions.ts",

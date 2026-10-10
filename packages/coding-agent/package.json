@@ -275,14 +275,6 @@
 			"types": "./src/internal-urls/*.ts",
 			"import": "./src/internal-urls/*.ts"
 		},
-		"./if-bench": {
-			"types": "./src/if-bench/index.ts",
-			"import": "./src/if-bench/index.ts"
-		},
-		"./if-bench/*": {
-			"types": "./src/if-bench/*.ts",
-			"import": "./src/if-bench/*.ts"
-		},
 		"./lsp": {
 			"types": "./src/lsp/index.ts",
 			"import": "./src/lsp/index.ts"

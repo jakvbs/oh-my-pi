@@ -13,6 +13,7 @@ packages/coding-agent/src/collab
 packages/coding-agent/src/commit/agentic
 packages/coding-agent/src/eval
 packages/coding-agent/src/hindsight
+packages/coding-agent/src/if-bench
 packages/coding-agent/src/live
 packages/coding-agent/src/memories
 packages/coding-agent/src/memory-backend
@@ -48,9 +49,11 @@ packages/collab-web/src/lib
 packages/collab-web/src/styles
 packages/metaharness
 packages/mnemopi
+packages/snapcompact/research
 packages/tui/src/tools/eval-format
 packages/typescript-edit-benchmark
 python/robomp
+scripts/session-stats
 sdk/go/omp-rpc
 sdk/python/omp-rpc
 sdk/rust/omp-rpc

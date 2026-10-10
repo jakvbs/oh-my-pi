@@ -243,9 +243,8 @@ export const READ_CHUNK_SIZE = 8 * 1024;
 /**
  * Context lines added around an explicit range read. Anchor-stale failures
  * cluster on edits whose anchors land just outside the most recent read
- * window, but the data (`scripts/session-stats/analyze_selector_reads.py`)
- * shows most follow-up reads are disjoint hops, not adjacent extensions —
- * so symmetric padding rarely pays for itself.
+ * window, but session data shows most follow-up reads are disjoint hops,
+ * not adjacent extensions — so symmetric padding rarely pays for itself.
  *
  * Leading=1 catches accidental single-line reads where the anchor is the
  * line immediately above the requested start. Trailing=3 buffers the

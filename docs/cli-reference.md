@@ -250,7 +250,6 @@ Run `omp <command> --help` for each command's own flags and examples.
 | `gallery` | Preview tool, composer, and status-line renderers in a deterministic gallery. | |
 | `git` | Interactive fullscreen git UI: split diff viewer, staging sidebar, and commit composer. | |
 | `grievances` | View, clean, or push reported tool issues (auto-QA grievances). | |
-| `if-bench` | Benchmark instruction following and working memory: one cached thread of glyph array actions with a cat-sound directive that moves through the prompt. | |
 | `images`, `img` | Inspect, diagnose, probe, and purge image publication backends. | |
 | `install` | Install or link an extension package (alias of `plugin install` / `plugin link`). | [extensions](./extensions.md) |
 | `login` | Log in to a model provider from the terminal (counterpart of `/login`). | |

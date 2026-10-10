@@ -47,7 +47,6 @@
 		"packages/natives/native/**",
 		"packages/collab-web/test/**",
 		"packages/stats/test/**",
-		"packages/snapcompact/research/**",
 		"packages/coding-agent/src/export/html/**",
 		"**/*.js",
 		"**/*.mjs",
