@@ -178,10 +178,9 @@ describe("google-vertex model catalog", () => {
 		// Rows cached before the clamp must not resurrect the rejected 65536.
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-catalog-google-lite25-cap-"));
 		try {
-			const bundled = getBundledModels("google-vertex");
-			const lite = bundled.find(model => model.id === "gemini-2.5-flash-lite");
-			if (!lite) throw new Error("google-vertex Gemini 2.5 Flash Lite missing from bundled catalog");
-			const stale = { ...lite, maxTokens: 65_536 };
+			// The bundled snapshot no longer lists the retired 2.5 Lite on Vertex; seed it as a static row.
+			const bundled = [...getBundledModels("google-vertex"), vertexLite];
+			const stale = { ...vertexLite, maxTokens: 65_536 };
 			const cacheDbPath = path.join(tempDir, "google-vertex.db");
 			writeModelCache("google-vertex", Date.now(), [stale], true, "merge-v3:pre-lite25-cap", cacheDbPath);
 

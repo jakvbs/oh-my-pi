@@ -1911,7 +1911,7 @@ describe("AgentSession retry fallback", () => {
 		const mainModel = getBundledModel("openai", "gpt-4o-mini");
 		const advisorPrimary = getBundledModel("anthropic", "claude-sonnet-4-5");
 		const unrelatedFallback = getBundledModel("openai", "gpt-4o");
-		const advisorFallback = getBundledModel("google", "gemini-2.5-flash");
+		const advisorFallback = getBundledModel("google", "gemini-3.5-flash");
 		if (!mainModel || !advisorPrimary || !unrelatedFallback || !advisorFallback) {
 			throw new Error("Expected bundled advisor fallback models to exist");
 		}
@@ -2211,7 +2211,7 @@ describe("AgentSession retry fallback", () => {
 	it("switches an advisor off a dual-classified media-budget 413 with no token excess", async () => {
 		const mainModel = getBundledModel("openai", "gpt-4o-mini");
 		const advisorPrimary = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const advisorFallback = getBundledModel("google", "gemini-2.5-flash");
+		const advisorFallback = getBundledModel("google", "gemini-3.5-flash");
 		if (!mainModel || !advisorPrimary || !advisorFallback) {
 			throw new Error("Expected bundled advisor fallback models to exist");
 		}
@@ -2293,7 +2293,7 @@ describe("AgentSession retry fallback", () => {
 	it("keeps a usage-backed media-budget overflow from switching the advisor", async () => {
 		const mainModel = getBundledModel("openai", "gpt-4o-mini");
 		const advisorPrimary = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const advisorFallback = getBundledModel("google", "gemini-2.5-flash");
+		const advisorFallback = getBundledModel("google", "gemini-3.5-flash");
 		if (!mainModel || !advisorPrimary || !advisorFallback) {
 			throw new Error("Expected bundled advisor fallback models to exist");
 		}
@@ -2370,7 +2370,7 @@ describe("AgentSession retry fallback", () => {
 	it("retries an advisor's transient error on its own model under retry.fallbackOn usage-limit", async () => {
 		const mainModel = getBundledModel("openai", "gpt-4o-mini");
 		const advisorPrimary = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const advisorFallback = getBundledModel("google", "gemini-2.5-flash");
+		const advisorFallback = getBundledModel("google", "gemini-3.5-flash");
 		if (!mainModel || !advisorPrimary || !advisorFallback) {
 			throw new Error("Expected bundled advisor fallback models to exist");
 		}
@@ -2439,7 +2439,7 @@ describe("AgentSession retry fallback", () => {
 		vi.spyOn(modelRegistry.authStorage.limits, "markReached").mockResolvedValue({ switched: false });
 		const mainModel = getBundledModel("openai", "gpt-4o-mini");
 		const advisorPrimary = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const advisorFallback = getBundledModel("google", "gemini-2.5-flash");
+		const advisorFallback = getBundledModel("google", "gemini-3.5-flash");
 		if (!mainModel || !advisorPrimary || !advisorFallback) {
 			throw new Error("Expected bundled advisor fallback models to exist");
 		}
@@ -2510,7 +2510,7 @@ describe("AgentSession retry fallback", () => {
 	it("hops an advisor to the chain owned by the fallback it landed on", async () => {
 		const mainModel = getBundledModel("openai", "gpt-4o-mini");
 		const advisorPrimary = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const advisorFallback = getBundledModel("google", "gemini-2.5-flash");
+		const advisorFallback = getBundledModel("google", "gemini-3.5-flash");
 		const secondFallback = getBundledModel("openai", "gpt-4o");
 		if (!mainModel || !advisorPrimary || !advisorFallback || !secondFallback) {
 			throw new Error("Expected bundled advisor fallback models to exist");
@@ -3509,8 +3509,8 @@ describe("AgentSession retry fallback", () => {
 	});
 
 	it("substitutes the failing model id into provider-wildcard chain entries", async () => {
-		const primaryModel = getBundledModel("google", "gemini-2.5-flash");
-		const fallbackModel = getBundledModel("google-vertex", "gemini-2.5-flash");
+		const primaryModel = getBundledModel("google", "gemini-3.5-flash");
+		const fallbackModel = getBundledModel("google-vertex", "gemini-3.5-flash");
 		if (!primaryModel || !fallbackModel) {
 			throw new Error("Expected bundled test models to exist");
 		}
@@ -3520,7 +3520,7 @@ describe("AgentSession retry fallback", () => {
 		const agent = createFallbackAgent(primaryModel, requestedModels);
 
 		// `google-vertex/*` is not a fixed target: it must adopt the failing
-		// model's id (google/gemini-2.5-flash -> google-vertex/gemini-2.5-flash).
+		// model's id (google/gemini-3.5-flash -> google-vertex/gemini-3.5-flash).
 		const settings = Settings.isolated({
 			"compaction.enabled": false,
 			"retry.maxRetries": 1,
@@ -3563,8 +3563,8 @@ describe("AgentSession retry fallback", () => {
 	});
 
 	it("re-prefixes the failing model's bare id for id-prefixed wildcard chain entries", async () => {
-		const primaryModel = getBundledModel("google", "gemini-2.5-flash");
-		const fallbackModel = getBundledModel("openrouter", "google/gemini-2.5-flash");
+		const primaryModel = getBundledModel("google", "gemini-3.5-flash");
+		const fallbackModel = getBundledModel("openrouter", "google/gemini-3.5-flash");
 		if (!primaryModel || !fallbackModel) {
 			throw new Error("Expected bundled test models to exist");
 		}
@@ -3575,7 +3575,7 @@ describe("AgentSession retry fallback", () => {
 
 		// `openrouter/google/*` splits into provider `openrouter` + id prefix
 		// `google`: the failing bare id is re-prefixed into the aggregator's
-		// namespace (google/gemini-2.5-flash -> openrouter/google/gemini-2.5-flash).
+		// namespace (google/gemini-3.5-flash -> openrouter/google/gemini-3.5-flash).
 		const settings = Settings.isolated({
 			"compaction.enabled": false,
 			"retry.maxRetries": 1,
@@ -3618,8 +3618,8 @@ describe("AgentSession retry fallback", () => {
 	});
 
 	it("matches id-prefixed wildcard keys and strips the vendor prefix for direct-provider targets", async () => {
-		const primaryModel = getBundledModel("openrouter", "google/gemini-2.5-flash");
-		const fallbackModel = getBundledModel("google-vertex", "gemini-2.5-flash");
+		const primaryModel = getBundledModel("openrouter", "google/gemini-3.5-flash");
+		const fallbackModel = getBundledModel("google-vertex", "gemini-3.5-flash");
 		if (!primaryModel || !fallbackModel) {
 			throw new Error("Expected bundled test models to exist");
 		}
