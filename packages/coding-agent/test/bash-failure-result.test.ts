@@ -6,6 +6,8 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { Skill } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
+import { GrepTool } from "@oh-my-pi/pi-coding-agent/tools/grep";
+import { ArtifactManager } from "@oh-my-pi/pi-coding-agent/session/artifacts";
 import { Shell } from "@oh-my-pi/pi-natives";
 
 afterEach(() => {
@@ -92,6 +94,38 @@ describe("BashTool execution results", () => {
 		const text = result.content.find(c => c.type === "text")?.text ?? "";
 		expect(text).toContain("hi");
 		expect(text).not.toContain("Command exited with code");
+	});
+
+	it("lets a mismatched summary search be retried without rerunning a check or changing its status", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-search-"));
+		try {
+			const artifacts = new ArtifactManager(dir);
+			const session = makeSession();
+			session.getArtifactsDir = () => dir;
+			session.allocateOutputArtifact = toolType => artifacts.allocatePath(toolType);
+			const bash = new BashTool(session);
+			const grep = new GrepTool(session);
+			for (const exitCode of [0, 3]) {
+				const result = await bash.execute(`check-${exitCode}`, {
+					command: `printf 'ℹ pass 4\\nℹ fail ${exitCode}\\n'; exit ${exitCode}`,
+				});
+				const text = result.content.find(c => c.type === "text")?.text ?? "";
+				const uri = text.match(/Command result: (artifact:\/\/\d+)/u)?.[1];
+				expect(uri).toBeDefined();
+				const missed = await grep.execute("old-summary-format", { path: uri!, pattern: "^# (pass|fail)" });
+				expect(missed.isError).not.toBe(true);
+				expect(missed.content).toEqual([{ type: "text", text: "No matches found" }]);
+				const found = await grep.execute("actual-summary-format", { path: uri!, pattern: "^ℹ (pass|fail)" });
+				expect(found.content.find(c => c.type === "text")?.text).toContain(`ℹ fail ${exitCode}`);
+				expect(result.isError === true).toBe(exitCode !== 0);
+				expect(result.details?.exitCode).toBe(exitCode || undefined);
+				const saved = await Bun.file((await artifacts.getPath(uri!.slice("artifact://".length)))!).text();
+				expect(saved).toContain(`ℹ fail ${exitCode}`);
+				if (exitCode !== 0) expect(saved).toContain(`Command exited with code ${exitCode}`);
+			}
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps the raw diagnostics when a minimized failure cannot be persisted as an artifact", async () => {

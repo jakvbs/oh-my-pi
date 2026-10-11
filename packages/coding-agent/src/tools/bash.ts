@@ -66,6 +66,7 @@ import {
 import { registerFnoxSecrets } from "../secrets/fnox";
 import { cfgSkillful } from "../session/settings";
 import { cfgWorktreeClone } from "../task/settings";
+import { writeArtifact } from "../session/artifacts";
 
 const BASH_APPROVAL_SHELL_CONTROL_CHARS: Record<string, true> = {
 	"\n": true,
@@ -304,11 +305,15 @@ function findBashApprovalPatternRule(
 	return rules.find(rule => bashApprovalRuleMatches(command, rule));
 }
 
-async function saveBashOriginalArtifact(session: ToolSession, originalText: string): Promise<string | undefined> {
+async function saveBashArtifact(
+	session: ToolSession,
+	originalText: string,
+	toolType = "bash-original",
+): Promise<string | undefined> {
 	try {
-		const alloc = await session.allocateOutputArtifact?.("bash-original");
+		const alloc = await session.allocateOutputArtifact?.(toolType);
 		if (!alloc?.path || !alloc.id) return undefined;
-		await Bun.write(alloc.path, originalText);
+		await writeArtifact(alloc.path, originalText);
 		return alloc.id;
 	} catch {
 		return undefined;
@@ -730,7 +735,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			maxBytes: resolveInlineByteCapBudget(this.session.settings),
 			saveArtifact: result.artifactError
 				? undefined
-				: (full: string) => result.artifactId ?? saveBashOriginalArtifact(this.session, full),
+				: (full: string) => result.artifactId ?? saveBashArtifact(this.session, full),
 		};
 
 		if (isTimeout) {
@@ -753,8 +758,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// Non-timeout cancellations and missing exit status still propagate as thrown errors.
 		this.#throwIfUnfinished(result, timeoutSec, outputText);
 
-		// No-op for already-bounded output; see `inlineCap` above.
-		const cappedOutputText = await enforceInlineByteCap(outputText, inlineCap);
+		// Short results also need an address for post-execution searches. Save
+		// the completed result, including its status, not another lossy summary.
+		const resultArtifactId =
+			!result.truncated && !result.artifactId && !result.artifactError
+				? await saveBashArtifact(this.session, outputText, "bash-result")
+				: undefined;
+		const cappedOutputText = await enforceInlineByteCap(
+			resultArtifactId ? `${outputText}\n\n[Command result: artifact://${resultArtifactId}]` : outputText,
+			resultArtifactId ? { ...inlineCap, saveArtifact: async () => resultArtifactId } : inlineCap,
+		);
 
 		const resultBuilder = toolResult(details)
 			.content([{ type: "text", text: cappedOutputText }, ...(result.images ?? [])])
@@ -851,7 +864,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 								async: { state: "running", jobId, type: "bash" },
 							});
 						},
-						onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
+						onMinimizedSave: originalText => saveBashArtifact(this.session, originalText),
 						onStart: probe => {
 							pids = probe;
 						},
@@ -1545,7 +1558,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					artifactId,
 					// Stream the sink's own inline view rather than re-buffering chunks.
 					onPreview: onUpdate ? text => onUpdate({ content: [{ type: "text", text }], details: {} }) : undefined,
-					onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
+					onMinimizedSave: originalText => saveBashArtifact(this.session, originalText),
 				});
 		const wallTimeMs = performance.now() - wallTimeStart;
 		if (result.cancelled) {

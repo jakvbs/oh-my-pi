@@ -16,6 +16,7 @@
 
 ### Changed
 
+- Short completed `bash` results now include an `artifact://` link, so diagnostics can be searched after execution without piping checks through output filters or changing their exit status.
 - Maintained fork: `omp update` refuses to install upstream releases and the startup "update available" notice is disabled; `omp update --check` and `omp update --plugins` still work.
 - `bash` jobs started with `async: true` no longer inherit the 300s default deadline; they run until they finish or are cancelled unless `timeout` is set. The foreground default is unchanged.
 
