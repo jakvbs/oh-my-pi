@@ -59,7 +59,7 @@ describe("sumSubagentTreeCost", () => {
 		expect(cost).toBeCloseTo(0.123);
 	});
 
-	it("prefers live observer progress over persisted history", () => {
+	it("uses live observer progress cost when no direct cost is recorded", () => {
 		const observers = new SessionObserverRegistry();
 		const bus = new EventTarget();
 		observers.subscribeToEventBus(
@@ -84,7 +84,7 @@ describe("sumSubagentTreeCost", () => {
 			}),
 		);
 		const cost = sumSubagentTreeCost({
-			refs: [ref("A", { status: "running", cost: 0.1 })],
+			refs: [ref("A", { status: "running" })],
 			observers,
 			rootSessionFile: root,
 			sessionMetrics: new WeakMap(),
