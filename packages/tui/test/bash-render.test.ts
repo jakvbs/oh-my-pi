@@ -28,6 +28,27 @@ describe("bashToolRenderer", () => {
 		terminal.imageProtocol = originalProtocol;
 	});
 
+	it("uses execution metadata for status and incomplete capture without a text footer", () => {
+		const component = bashToolRenderer.renderResult(
+			{
+				content: [{ type: "text", text: "diagnostic" }],
+				details: {
+					execution: {
+						status: { kind: "exited", exitCode: 7 },
+						output: { kind: "partial", artifactId: "42", reason: "source-truncated" },
+					},
+				},
+			},
+			{ expanded: false, isPartial: false },
+			uiTheme,
+			{ command: "test" },
+		);
+		const rendered = sanitizeText(component.render(160).join("\n"));
+		expect(rendered).toContain("Exit: 7");
+		expect(rendered).toContain("Artifact: 42");
+		expect(rendered).toContain("Partial capture: source-truncated");
+	});
+
 	it("shows rendered env assignments in the command preview", async () => {
 		const component = bashToolRenderer.renderCall(
 			{ command: "printf '%s' \"$MERMAID\"", env: { MERMAID: 'line "one"\ntwo' } },

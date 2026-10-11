@@ -4,6 +4,7 @@ import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import * as bashExecutor from "@oh-my-pi/pi-coding-agent/exec/bash-executor";
+import { completeBashResult } from "@oh-my-pi/pi-coding-agent/exec/bash-result";
 import type { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
@@ -100,16 +101,18 @@ describe("AgentSession user shortcut hooks", () => {
 			hasHandlers: vi.fn((eventType: string) => eventType === "user_bash"),
 			emitUserBash: vi.fn().mockResolvedValue({}),
 		} as unknown as ExtensionRunner;
-		vi.spyOn(bashExecutor, "executeBash").mockResolvedValue({
-			output: "bash fallback",
-			exitCode: 0,
-			cancelled: false,
-			truncated: false,
-			totalLines: 1,
-			totalBytes: 13,
-			outputLines: 1,
-			outputBytes: 13,
-		});
+		vi.spyOn(bashExecutor, "executeBash").mockResolvedValue(
+			completeBashResult({
+				output: "bash fallback",
+				exitCode: 0,
+				cancelled: false,
+				truncated: false,
+				totalLines: 1,
+				totalBytes: 13,
+				outputLines: 1,
+				outputBytes: 13,
+			}),
+		);
 
 		createSession(extensionRunner);
 		const bashResult = await session.executeBash("pwd", undefined, { excludeFromContext: true });

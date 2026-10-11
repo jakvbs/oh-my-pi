@@ -12,6 +12,7 @@ import { createDaemonBrokerClient } from "../../src/launch/client";
 import * as daemonClient from "../../src/launch/client";
 import { DAEMON_IDLE_GRACE_ENV, DAEMON_PROJECT_DIR_ENV, DAEMON_RUNTIME_DIR_ENV } from "../../src/launch/protocol";
 import * as bashExecutor from "../../src/exec/bash-executor";
+import { completeBashResult } from "../../src/exec/bash-result";
 import { BashTool } from "../../src/tools/bash";
 import { WriteTool } from "../../src/tools/write";
 import type { ToolSession } from "../../src/tools";
@@ -537,7 +538,7 @@ describe("bash services via proc://", () => {
 		const commands: string[] = [];
 		const spy = vi.spyOn(bashExecutor, "executeBash").mockImplementation(async command => {
 			commands.push(command);
-			return {
+			return completeBashResult({
 				output: "PLAIN",
 				exitCode: 0,
 				cancelled: false,
@@ -547,7 +548,7 @@ describe("bash services via proc://", () => {
 				totalLines: 1,
 				outputBytes: 5,
 				outputLines: 1,
-			};
+			});
 		});
 		try {
 			// Argument shape produced by tool-call layers that materialize every

@@ -60,7 +60,7 @@ export interface OutputSummary {
 	columnTruncatedRange?: { first: number; last: number };
 	/** Configured per-line column cap in effect (UTF-8 bytes), when > 0. */
 	columnMax?: number;
-	/** Artifact ID for internal URL access (artifact://<id>) when truncated */
+	/** Artifact ID for internal URL access (artifact://<id>). */
 	artifactId?: string;
 	/**
 	 * Bytes the artifact cap dropped from the middle of the saved file. When
@@ -75,6 +75,8 @@ export interface OutputSummary {
 export interface OutputSinkOptions {
 	artifactPath?: string;
 	artifactId?: string;
+	/** Save even short or empty streams, independently of the inline preview. */
+	persist?: boolean;
 	/**
 	 * Total inline body budget (bytes). Default DEFAULT_MAX_BYTES. The head
 	 * window and rolling tail window share this budget, so a composed
@@ -930,6 +932,7 @@ export class OutputSink {
 
 	readonly #artifactPath?: string;
 	readonly #artifactId?: string;
+	readonly #persist: boolean;
 	readonly #spillThreshold: number;
 	readonly #headLimit: number;
 	readonly #onChunk?: (chunk: string) => void;
@@ -958,6 +961,7 @@ export class OutputSink {
 		const {
 			artifactPath,
 			artifactId,
+			persist = false,
 			spillThreshold = DEFAULT_MAX_BYTES,
 			headBytes = 0,
 			maxColumns = 0,
@@ -968,6 +972,7 @@ export class OutputSink {
 		} = options ?? {};
 		this.#artifactPath = artifactPath;
 		this.#artifactId = artifactId;
+		this.#persist = persist;
 		this.#spillThreshold = spillThreshold;
 		this.#headLimit = Math.max(0, Math.min(headBytes, Math.floor(spillThreshold / 2)));
 		this.#maxColumns = Math.max(0, maxColumns);
@@ -1077,7 +1082,7 @@ export class OutputSink {
 		// prior chunk already opened the artifact.
 		if (
 			this.#artifactPath &&
-			(this.#file != null || substituted || cappedThisChunk || this.#willOverflow(cappedBytes))
+			(this.#persist || this.#file != null || substituted || cappedThisChunk || this.#willOverflow(cappedBytes))
 		) {
 			this.#writeToFile(chunk);
 		}
@@ -1608,6 +1613,7 @@ export class OutputSink {
 		this.#flushPendingChunk();
 		const totalLines = this.#sawData ? this.#totalLines + 1 : 0;
 
+		if (this.#persist && this.#artifactPath && !this.#fileCreation && !this.#finalized) this.#writeToFile("");
 		await this.#finalizeFile();
 
 		const { body, outputBytes, outputLines, elidedBytes, elidedLines } = this.#composeBody();

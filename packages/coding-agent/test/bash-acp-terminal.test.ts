@@ -7,6 +7,7 @@ import type { ClientBridge, ClientBridgeTerminalHandle } from "@oh-my-pi/pi-codi
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
 import { encodeTerminalImage } from "@oh-my-pi/pi-coding-agent/utils/terminal-graphics";
+import { formatOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
 
 // `getShellConfig()` validates that `shellPath` exists, and `/bin/bash` does not
 // on Windows. The ACP route only forwards the path to the stubbed client
@@ -62,6 +63,60 @@ afterEach(() => {
 });
 
 describe("BashTool ACP terminal routing", () => {
+	it("captures terminal output and labels client-side truncation without changing the exit", async () => {
+		const dir = TempDir.createSync("@omp-acp-capture-");
+		try {
+			for (const truncated of [false, true]) {
+				const session = makeSession({
+					capabilities: { terminal: true },
+					createTerminal: async () => ({
+						terminalId: "capture",
+						waitForExit: async () => ({ exitCode: 7, signal: null }),
+						currentOutput: async () => ({ output: "żółw\n", truncated }),
+						kill: async () => {},
+						release: async () => {},
+					}),
+				});
+				const artifactPath = dir.join("capture.txt");
+				session.allocateOutputArtifact = async () => ({ id: "capture", path: artifactPath });
+				const result = await new BashTool(session).execute("capture", { command: "remote" });
+				expect(result.details?.execution).toEqual({
+					status: { kind: "exited", exitCode: 7 },
+					output: truncated
+						? { kind: "partial", artifactId: "capture", reason: "source-truncated" }
+						: { kind: "complete", artifactId: "capture" },
+				});
+				expect(result.isError).toBe(true);
+				expect(await Bun.file(artifactPath).text()).toBe("żółw\n");
+				if (truncated) expect(formatOutputNotice(result.details?.meta)).not.toContain("for full output");
+			}
+		} finally {
+			dir.removeSync();
+		}
+	});
+
+	it("preserves a successful exit when capture allocation fails", async () => {
+		const session = makeSession({
+			capabilities: { terminal: true },
+			createTerminal: async () => ({
+				terminalId: "allocation-failure",
+				waitForExit: async () => ({ exitCode: 0, signal: null }),
+				currentOutput: async () => ({ output: "done", truncated: false }),
+				kill: async () => {},
+				release: async () => {},
+			}),
+		});
+		session.allocateOutputArtifact = async () => {
+			throw new Error("disk unavailable");
+		};
+		const result = await new BashTool(session).execute("allocation-failure", { command: "remote" });
+		expect(result.details?.execution).toEqual({
+			status: { kind: "exited", exitCode: 0 },
+			output: { kind: "unavailable", reason: "allocation" },
+		});
+		expect(result.isError).not.toBe(true);
+	});
+
 	it("emits a live terminal update but releases it before the completed result", async () => {
 		const stubText = "hello from terminal\n";
 

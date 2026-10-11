@@ -15,7 +15,7 @@ import {
 import { $env } from "@oh-my-pi/pi-utils/env";
 import { isCmdShell, isExecutable, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
 import { Settings } from "../config/settings";
-import { type OutputArtifactError, OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
+import { OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import {
 	resolveOutputMaxColumns,
 	resolveOutputSinkArtifactMaxBytes,
@@ -26,6 +26,9 @@ import { getOrCreateSnapshot } from "../utils/shell-snapshot";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import { loadDirenvEnv } from "./direnv";
 import { buildNonInteractiveEnv } from "./non-interactive-env";
+import { completeBashResult, type BashResult, type CapturedBashResult } from "./bash-result";
+
+export type { BashResult } from "./bash-result";
 
 import {
 	cfgBashDirenv,
@@ -76,11 +79,9 @@ export interface BashExecutorOptions {
 	artifactPath?: string;
 	artifactId?: string;
 	/**
-	 * Invoked when the native minimizer rewrote the command's output, giving
-	 * the caller a chance to persist the lossless original capture (typically
-	 * via the session's `ArtifactManager`). The returned id is spliced into
-	 * the sink output as `artifact://<id>` so the agent can retrieve the raw
-	 * bytes. Return `undefined` to skip the footer.
+	 * Compatibility hook for callers without an artifactPath. Its returned
+	 * id identifies the original output in the result; undefined keeps the
+	 * raw preview. Managed tool calls persist through OutputSink instead.
 	 */
 	onMinimizedSave?: (
 		originalText: string,
@@ -94,26 +95,6 @@ export interface BashPtyOptions {
 	rows: number;
 	/** Receives raw PTY bytes (ANSI intact) for virtual-terminal rendering. */
 	onChunk: (chunk: string) => void;
-}
-
-export interface BashResult {
-	output: string;
-	exitCode: number | undefined;
-	cancelled: boolean;
-	/** True when the command was killed by its timeout deadline (not a user abort). */
-	timedOut?: boolean;
-	truncated: boolean;
-	totalLines: number;
-	totalBytes: number;
-	outputLines: number;
-	outputBytes: number;
-	artifactId?: string;
-	/** Bytes the artifact cap dropped from the saved file's middle (the artifact is a head/tail sample). */
-	artifactElidedBytes?: number;
-	artifactError?: OutputArtifactError;
-	workingDir?: string;
-	/** Terminal graphics extracted from raw stdout before sanitization or truncation. */
-	images?: ImageContent[];
 }
 
 /** POSIX-safe variable name — gates which direnv unsets we inject into the
@@ -520,7 +501,11 @@ async function executeUserShellPty(run: {
 	};
 }
 
-export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
+export async function executeBash(command: string, options?: BashExecutorOptions): Promise<CapturedBashResult> {
+	return completeBashResult(await runBash(command, options));
+}
+
+async function runBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
 	const settings = await Settings.init();
 	const baseShellConfig = settings.getShellConfig();
 	const shellConfig =
@@ -587,6 +572,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 				: undefined,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
+		persist: true,
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		artifactMaxBytes: resolveOutputSinkArtifactMaxBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
@@ -810,31 +796,35 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			};
 		}
 
-		// When the native minimizer rewrote the output, persist the original and
-		// swap the sink's accumulated raw stream for the minimized text with an
-		// `artifact://<id>` footer so the agent can retrieve the raw bytes
-		// losslessly. The minimized text is a lossy summary, so substitute it
-		// only once the original is addressable — a caller that returns no id
-		// (or an unavailable allocator) must keep the raw stream rather than
-		// silently dropping the diagnostics the summary elided.
+		const captured = await dump();
 		const minimized = winner.result.minimized;
 		if (minimized && minimized.text !== minimized.originalText) {
-			const artifactId = options?.onMinimizedSave
-				? await options.onMinimizedSave(minimized.originalText, {
-						filter: minimized.filter,
-						inputBytes: minimized.inputBytes,
-						outputBytes: minimized.outputBytes,
-					})
-				: undefined;
-			if (artifactId) {
+			// Legacy SDK callbacks remain supported when no capture destination
+			// was supplied. Managed sessions persist through the sink alone.
+			if (!options?.artifactPath && options?.onMinimizedSave) {
+				captured.artifactId = await options.onMinimizedSave(minimized.originalText, {
+					filter: minimized.filter,
+					inputBytes: minimized.inputBytes,
+					outputBytes: minimized.outputBytes,
+				});
+			}
+			if (captured.artifactId && !captured.artifactElidedBytes && !captured.artifactError) {
 				// The decoder above already owns image extraction from the streamed
 				// lossless output. Scrub any graphics frames repeated by the native
 				// minimizer without feeding them back into that decoder.
 				const minimizedGraphics = new TerminalGraphicsDecoder();
 				const minimizedText = minimizedGraphics.push(minimized.text) + minimizedGraphics.finish();
-				sink.replace(minimizedText);
-				const sep = minimizedText.endsWith("\n") ? "" : "\n";
-				sink.push(`${sep}[raw output: artifact://${artifactId}]\n`);
+				const preview = new OutputSink({
+					headBytes: resolveOutputSinkHeadBytes(settings),
+					maxColumns: resolveOutputMaxColumns(settings),
+				});
+				preview.push(minimizedText);
+				const view = await preview.dump();
+				captured.output = view.output;
+				captured.outputBytes = view.outputBytes;
+				captured.outputLines = view.outputLines;
+				captured.columnTruncatedRange = undefined;
+				captured.truncated = true;
 			}
 		}
 
@@ -843,7 +833,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			exitCode: winner.result.exitCode,
 			cancelled: false,
 			workingDir: winner.result.workingDir,
-			...(await dump()),
+			...captured,
 		};
 	} catch (err) {
 		resetSession = true;

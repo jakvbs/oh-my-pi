@@ -7,6 +7,7 @@ import { Settings } from "../config/settings";
 import { OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import { resolveOutputMaxColumns, resolveOutputSinkArtifactMaxBytes, resolveOutputSinkHeadBytes } from "./output-meta";
+import { completeBashResult, type CapturedBashResult } from "../exec/bash-result";
 
 export interface BashInteractiveResult extends OutputSummary {
 	exitCode: number | undefined;
@@ -27,7 +28,7 @@ export async function runInteractiveBashPty(
 		artifactPath?: string;
 		artifactId?: string;
 	},
-): Promise<BashInteractiveResult> {
+): Promise<CapturedBashResult> {
 	const settings = await Settings.init();
 	// Load the xterm Terminal ctor here (async boundary) — the ui.custom factory below is sync.
 	const XtermTerminal = await loadXtermTerminal();
@@ -43,6 +44,7 @@ export async function runInteractiveBashPty(
 	const sink = new OutputSink({
 		artifactPath: options.artifactPath,
 		artifactId: options.artifactId,
+		persist: true,
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		artifactMaxBytes: resolveOutputSinkArtifactMaxBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
@@ -134,7 +136,7 @@ export async function runInteractiveBashPty(
 			},
 			{ overlay: true },
 		);
-		return result;
+		return completeBashResult(result);
 	} finally {
 		await sink.dispose();
 	}

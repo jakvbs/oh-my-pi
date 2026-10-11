@@ -109,4 +109,20 @@ describe("runInteractiveBashPty", () => {
 			"term=direnv-term ci=direnv-ci no_color=direnv-no-color git_editor=direnv-git-editor gpg_tty=direnv-gpg-tty",
 		);
 	});
+
+	it.skipIf(ptyUnavailable)("captures short PTY output independently of the failed exit", async () => {
+		const artifactPath = tempDir.join("pty.txt");
+		const result = await runInteractiveBashPty(headlessUi(), {
+			command: "printf 'pty-output\\n'; exit 7",
+			cwd: tempDir.path(),
+			timeoutMs: 15_000,
+			artifactPath,
+			artifactId: "pty",
+		});
+		expect(result.execution).toEqual({
+			status: { kind: "exited", exitCode: 7 },
+			output: { kind: "complete", artifactId: "pty" },
+		});
+		expect(await Bun.file(artifactPath).text()).toBe("pty-output\n");
+	});
 });

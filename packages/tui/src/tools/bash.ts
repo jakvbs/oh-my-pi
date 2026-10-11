@@ -28,6 +28,7 @@ import type {
 import { INTENT_FIELD, type TspTone } from "@oh-my-pi/pi-wire";
 import { plainText } from "../native/spans";
 import { resultText, runBox, runFoot, runInput, runOutput, type RunState } from "./native-view";
+import type { BashExecution } from "./bash-result";
 
 /** Default collapsed shell output preview height. */
 export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
@@ -57,6 +58,8 @@ function isBackgroundNotice(line: string, jobId: string): boolean {
 
 /** Shell execution metadata used by transcript rendering. */
 export interface BashToolDetails {
+	/** Absent on live updates and transcripts written before unified capture. */
+	execution?: BashExecution;
 	meta?: OutputMeta;
 	timeoutSeconds?: number;
 	requestedTimeoutSeconds?: number;
@@ -79,6 +82,16 @@ export interface BashToolDetails {
 		state: "running" | "completed" | "failed";
 		jobId: string;
 		type: "bash";
+	};
+}
+
+function resolveExecutionDetails(details: BashToolDetails | undefined): BashToolDetails | undefined {
+	if (!details?.execution) return details;
+	const { status } = details.execution;
+	return {
+		...details,
+		exitCode: status.kind === "exited" ? status.exitCode : undefined,
+		timedOut: status.kind === "timedOut",
 	};
 }
 
@@ -321,7 +334,17 @@ function stripBashNotices(
 		details?.wallTimeMs === undefined
 			? withoutExit
 			: stripTrailingNotice(withoutExit, formatWallTimeNotice(details.wallTimeMs));
-	return stripRawOutputArtifactNotice(withoutWall);
+	const stripped = stripRawOutputArtifactNotice(withoutWall);
+	const capture = details?.execution?.output;
+	return {
+		text:
+			capture?.kind === "partial"
+				? stripTrailingNotice(stripped.text, `[Capture incomplete: ${capture.reason}]`)
+				: capture?.kind === "unavailable"
+					? stripTrailingNotice(stripped.text, `[Captured output unavailable: ${capture.reason}]`)
+					: stripped.text,
+		artifactId: capture ? (capture.kind === "unavailable" ? undefined : capture.artifactId) : stripped.artifactId,
+	};
 }
 /** `Wall: 1.20s`, `Timeout: 30s`, … metadata parts shown under bash output. */
 function bashStatsParts(
@@ -363,7 +386,16 @@ function bashStatsParts(
 	if (isError && typeof details?.exitCode === "number") {
 		statsParts.push(`Exit: ${details.exitCode}`);
 	}
+	const captureFact = bashCaptureFact(details);
+	if (captureFact) statsParts.push(captureFact);
 	return statsParts;
+}
+
+function bashCaptureFact(details: BashToolDetails | undefined): string | undefined {
+	const capture = details?.execution?.output;
+	if (capture?.kind === "partial") return `Partial capture: ${capture.reason}`;
+	if (capture?.kind === "unavailable") return `Capture unavailable: ${capture.reason}`;
+	return undefined;
 }
 
 /**
@@ -409,6 +441,8 @@ function shellFootParts(details: BashToolDetails | undefined, artifactId: string
 		if (service.pid !== undefined) parts.push(`PID ${service.pid}`);
 	}
 	if (artifactId) parts.push(`Artifact ${artifactId}`);
+	const captureFact = bashCaptureFact(details);
+	if (captureFact) parts.push(captureFact);
 	return parts;
 }
 
@@ -427,6 +461,18 @@ function shellRunState(
 ): RunState {
 	if (cancelled) return "cancelled";
 	if (isPartial) return "running";
+	if (details?.execution) {
+		switch (details.execution.status.kind) {
+			case "cancelled":
+				return "cancelled";
+			case "timedOut":
+				return "timed-out";
+			case "unknown":
+				return "failed";
+			case "exited":
+				return details.execution.status.exitCode === 0 ? "done" : "failed";
+		}
+	}
 	if (details?.timedOut === true) return "timed-out";
 	if (details?.async?.state === "running") return "background";
 	if (isError || (details?.exitCode !== undefined && details.exitCode !== 0)) return "failed";
@@ -484,10 +530,11 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 		): Component {
 			const renderArgs = toBashRenderArgs(args, config);
 			let cmdLines: string[] | undefined;
-			const isError = result.isError === true;
 			const isPartial = options.isPartial === true;
-			const success = !isPartial && !isError;
-			const details = result.details;
+			const details = resolveExecutionDetails(result.details);
+			const state = shellRunState(details, result.isError === true, isPartial, options.cancelled === true);
+			const isError = state === "failed" || state === "timed-out" || state === "cancelled";
+			const success = state === "done" || state === "background";
 			const isTimeout = details?.timedOut === true;
 			const header =
 				config.showHeader === false
@@ -665,7 +712,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 			options: RenderResultContextOptions & { renderContext?: BashRenderContext },
 			args?: TArgs,
 		): NativeToolView {
-			const details = result.details;
+			const details = resolveExecutionDetails(result.details);
 			const renderContext = options.renderContext;
 			const isError = result.isError === true;
 			const isPartial = options.isPartial === true;

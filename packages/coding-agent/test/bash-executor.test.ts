@@ -20,6 +20,7 @@ import * as piNatives from "@oh-my-pi/pi-natives";
 import { $which, removeSyncWithRetries } from "@oh-my-pi/pi-utils";
 
 import { cfgBashDirenvLoadTimeoutMs, cfgShellPath } from "@oh-my-pi/pi-coding-agent/exec/settings";
+import { cfgToolsArtifactMaxBytes } from "@oh-my-pi/pi-coding-agent/tools/settings";
 
 // Matches the schema default for `tools.artifactHeadBytes` (20 KB) used by
 // OutputSink when bash-executor pulls settings via resolveOutputSinkHeadBytes.
@@ -101,6 +102,99 @@ describe("executeBash", () => {
 		vi.restoreAllMocks();
 		if (fs.existsSync(tempDir)) {
 			removeSyncWithRetries(tempDir);
+		}
+	});
+
+	it("captures empty, short and truncated output under the same result contract", async () => {
+		for (const size of [0, 7, DEFAULT_MAX_BYTES * 2]) {
+			const text = size > DEFAULT_MAX_BYTES ? "x\n".repeat(size / 2) : "x".repeat(size);
+			const input = path.join(tempDir, "input.txt");
+			const artifactPath = path.join(tempDir, `capture-${size}.txt`);
+			await Bun.write(input, text);
+			const result = await executeBash(`cat ${shellQuote(input)}; exit 3`, {
+				cwd: tempDir,
+				artifactPath,
+				artifactId: "capture",
+			});
+			expect(result.execution).toEqual({
+				status: { kind: "exited", exitCode: 3 },
+				output: { kind: "complete", artifactId: "capture" },
+			});
+			expect(await Bun.file(artifactPath).text()).toBe(text);
+			expect(result.truncated).toBe(size > DEFAULT_MAX_BYTES);
+		}
+	});
+
+	it("keeps a successful command successful when its capture cannot be opened", async () => {
+		const result = await executeBash("printf 'diagnostic\\n'", {
+			cwd: tempDir,
+			artifactPath: tempDir,
+			artifactId: "unwritable",
+		});
+		expect(result.execution).toEqual({
+			status: { kind: "exited", exitCode: 0 },
+			output: { kind: "unavailable", reason: "open" },
+		});
+		expect(result.output).toBe("diagnostic\n");
+	});
+
+	it("marks a size-capped artifact as partial instead of claiming a full capture", async () => {
+		cfgToolsArtifactMaxBytes.set(Settings.instance, 0.0001);
+		const input = path.join(tempDir, "cap-input.txt");
+		const artifactPath = path.join(tempDir, "capped.txt");
+		await Bun.write(input, "line\n".repeat(100));
+		const result = await executeBash(`cat ${shellQuote(input)}`, { artifactPath, artifactId: "capped" });
+		expect(result.execution.status).toEqual({ kind: "exited", exitCode: 0 });
+		expect(result.execution.output).toEqual({
+			kind: "partial",
+			artifactId: "capped",
+			reason: "artifact-cap",
+			elidedBytes: result.artifactElidedBytes,
+		});
+		expect(result.artifactElidedBytes).toBeGreaterThan(0);
+		expect(await Bun.file(artifactPath).text()).toContain("ARTIFACT TRUNCATED");
+	});
+
+	it("keeps raw capture unchanged when a minimizer replaces the presentation", async () => {
+		vi.spyOn(piNatives.Shell.prototype, "run").mockImplementation(async (_options, onChunk) => {
+			onChunk?.(null, "important diagnostic\nsummary\n");
+			return {
+				exitCode: 7,
+				cancelled: false,
+				timedOut: false,
+				minimized: {
+					text: "summary\n",
+					originalText: "important diagnostic\nsummary\n",
+					filter: "test",
+					inputBytes: 29,
+					outputBytes: 8,
+				},
+			};
+		});
+		const artifactPath = path.join(tempDir, "minimized.txt");
+		const result = await executeBash("test-command", { artifactPath, artifactId: "raw" });
+		expect(result.output).toBe("summary\n");
+		expect(result.execution).toEqual({
+			status: { kind: "exited", exitCode: 7 },
+			output: { kind: "complete", artifactId: "raw" },
+		});
+		expect(await Bun.file(artifactPath).text()).toBe("important diagnostic\nsummary\n");
+	});
+
+	it("retains the capture reference when execution times out or is cancelled", async () => {
+		for (const timedOut of [false, true]) {
+			vi.spyOn(piNatives.Shell.prototype, "run").mockImplementation(async (_options, onChunk) => {
+				onChunk?.(null, "started\n");
+				return { exitCode: undefined, cancelled: true, timedOut };
+			});
+			const artifactPath = path.join(tempDir, `interrupted-${timedOut}.txt`);
+			const result = await executeBash("interrupted", { artifactPath, artifactId: "interrupted" });
+			expect(result.execution).toEqual({
+				status: { kind: timedOut ? "timedOut" : "cancelled" },
+				output: { kind: "partial", artifactId: "interrupted", reason: "interrupted" },
+			});
+			expect(await Bun.file(artifactPath).text()).toBe("started\n");
+			vi.restoreAllMocks();
 		}
 	});
 

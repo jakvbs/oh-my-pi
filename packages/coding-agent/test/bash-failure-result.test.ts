@@ -6,6 +6,7 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { Skill } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
+import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { GrepTool } from "@oh-my-pi/pi-coding-agent/tools/grep";
 import { ArtifactManager } from "@oh-my-pi/pi-coding-agent/session/artifacts";
 import { Shell } from "@oh-my-pi/pi-natives";
@@ -14,14 +15,14 @@ afterEach(() => {
 	mock.restore();
 });
 
-function makeSession(): ToolSession {
+function makeSession(asyncEnabled = false): ToolSession {
 	return {
 		cwd: "/tmp",
 		hasUI: false,
 		skills: [],
 		getSessionFile: () => null,
 		settings: Settings.isolated({
-			"async.enabled": false,
+			"async.enabled": asyncEnabled,
 			"bash.autoBackground.enabled": false,
 			"bash.autoBackground.thresholdMs": 60_000,
 			"bashInterceptor.enabled": false,
@@ -33,6 +34,33 @@ function makeSession(): ToolSession {
 }
 
 describe("BashTool execution results", () => {
+	it("delivers background exit and capture metadata from the same execution", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-background-capture-"));
+		const manager = new AsyncJobManager({});
+		try {
+			const artifacts = new ArtifactManager(dir);
+			const session = makeSession(true);
+			session.asyncJobManager = manager;
+			session.allocateOutputArtifact = toolType => artifacts.allocatePath(toolType);
+			const start = await new BashTool(session).execute("background-capture", {
+				command: "printf 'background diagnostic\\n'; exit 7",
+				async: true,
+			});
+			await manager.waitForAll();
+			const job = manager.getJob(start.details!.async!.jobId);
+			expect(job?.status).toBe("failed");
+			expect(job?.latestDetails?.execution).toEqual({
+				status: { kind: "exited", exitCode: 7 },
+				output: { kind: "complete", artifactId: "0" },
+			});
+			expect(await Bun.file((await artifacts.getPath("0"))!).text()).toBe("background diagnostic\n");
+			expect(job?.errorText).toContain("artifact://0");
+		} finally {
+			await manager.dispose({ timeoutMs: 1000 });
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("resolves with an error result carrying execution details instead of throwing", async () => {
 		const tool = new BashTool(makeSession());
 		const result = await tool.execute("call-fail", { command: "exit 3" });
@@ -110,7 +138,7 @@ describe("BashTool execution results", () => {
 					command: `printf 'ℹ pass 4\\nℹ fail ${exitCode}\\n'; exit ${exitCode}`,
 				});
 				const text = result.content.find(c => c.type === "text")?.text ?? "";
-				const uri = text.match(/Command result: (artifact:\/\/\d+)/u)?.[1];
+				const uri = text.match(/raw output: (artifact:\/\/\d+)/u)?.[1];
 				expect(uri).toBeDefined();
 				const missed = await grep.execute("old-summary-format", { path: uri!, pattern: "^# (pass|fail)" });
 				expect(missed.isError).not.toBe(true);
@@ -119,9 +147,12 @@ describe("BashTool execution results", () => {
 				expect(found.content.find(c => c.type === "text")?.text).toContain(`ℹ fail ${exitCode}`);
 				expect(result.isError === true).toBe(exitCode !== 0);
 				expect(result.details?.exitCode).toBe(exitCode || undefined);
+				expect(result.details?.execution).toEqual({
+					status: { kind: "exited", exitCode },
+					output: { kind: "complete", artifactId: uri!.slice("artifact://".length) },
+				});
 				const saved = await Bun.file((await artifacts.getPath(uri!.slice("artifact://".length)))!).text();
-				expect(saved).toContain(`ℹ fail ${exitCode}`);
-				if (exitCode !== 0) expect(saved).toContain(`Command exited with code ${exitCode}`);
+				expect(saved).toBe(`ℹ pass 4\nℹ fail ${exitCode}\n`);
 			}
 		} finally {
 			await fs.rm(dir, { recursive: true, force: true });
@@ -171,7 +202,10 @@ describe("BashTool execution results", () => {
 		]) {
 			const result = await tool.execute(`call-pipeline-${scenario.expected[0]}`, { command: scenario.command });
 			const text = result.content.find(c => c.type === "text")?.text ?? "";
-			const stdout = text.replace(/\n\nWall time: \d+\.\d{2} seconds$/, "").trimEnd();
+			const stdout = text
+				.replace(/\n\nWall time: \d+\.\d{2} seconds$/, "")
+				.replace(/\n\n\[Captured output unavailable: not-configured\]$/, "")
+				.trimEnd();
 
 			expect(result.isError).toBeUndefined();
 			expect(stdout).toBe(scenario.expected);

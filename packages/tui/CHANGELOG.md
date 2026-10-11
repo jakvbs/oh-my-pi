@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added `OutputSink.persist` for addressable short and empty captures, and structured bash execution metadata so renderers can display exit status and capture completeness without parsing output footers.
 - Added opt-in JSON editing for free-form array settings, with credential settings kept masked in rows and editors ([#15252](https://github.com/can1357/oh-my-pi/pull/15252) by [@Shadorain](https://github.com/Shadorain)).
 - Added `Editor.prediction`, a callback whose text the editor shows as ghost text while the buffer is empty or a prefix of it; Tab or Right at line end inserts the rest without submitting ([#15137](https://github.com/can1357/oh-my-pi/pull/15137) by [@wolfiesch](https://github.com/wolfiesch))
 - Added table-chart kinds `stacked` (parts a total is made of, or outcome mixes as 100% bars), `waterfall`, `timeline`, `dots`, and `range`; share bars now also take counts that split a total, and 2–4 status columns draw as a dot matrix beside bars

@@ -16,7 +16,7 @@
 
 ### Changed
 
-- Short completed `bash` results now include an `artifact://` link, so diagnostics can be searched after execution without piping checks through output filters or changing their exit status.
+- `bash` results now carry a common execution status and captured-output reference across foreground, background, PTY, and client-terminal execution. Empty, short, and long captures use the same storage path; minimization changes only presentation, and incomplete or unavailable captures are explicit without changing the command's exit status.
 - Maintained fork: `omp update` refuses to install upstream releases and the startup "update available" notice is disabled; `omp update --check` and `omp update --plugins` still work.
 - `bash` jobs started with `async: true` no longer inherit the 300s default deadline; they run until they finish or are cancelled unless `timeout` is set. The foreground default is unchanged.
 

@@ -67,6 +67,30 @@ function cx(kinds: readonly TspKind[]): DescribeContext {
 }
 
 describe("bash native run box", () => {
+	it("renders status and capture from execution metadata without parsing a footer", () => {
+		const view = bashToolRenderer.describeResult(
+			{
+				content: [{ type: "text", text: "diagnostic" }],
+				details: {
+					execution: {
+						status: { kind: "exited", exitCode: 7 },
+						output: { kind: "partial", artifactId: "42", reason: "source-truncated" },
+					},
+				},
+			},
+			done,
+			{ command: "test" },
+		);
+		expect(view.tool?.exit).toBe(7);
+		const box = nodes(view.body)[0];
+		expect(foot(box)?.state).toBe("exit 7");
+		const facts = foot(box)
+			?.facts?.map(span => span.t)
+			.join("");
+		expect(facts).toContain("Artifact 42");
+		expect(facts).toContain("Partial capture: source-truncated");
+	});
+
 	it("names the intent in the head and draws command, output and settled foot in one box", () => {
 		const view = bashToolRenderer.describeResult(
 			{

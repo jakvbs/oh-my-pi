@@ -29,7 +29,7 @@ import type {
 	ClientBridgeTerminalHandle,
 	ClientBridgeTerminalOutput,
 } from "../session/client-bridge";
-import { DEFAULT_MAX_BYTES, enforceInlineByteCap } from "@oh-my-pi/pi-tui/tools/streaming-output";
+import { DEFAULT_MAX_BYTES, enforceInlineByteCap, OutputSink } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { resolveCliEntryCmd } from "../subprocess/worker-client";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import type { ToolSession } from ".";
@@ -41,9 +41,13 @@ import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
 import { startService, type ServiceReady } from "../launch/services";
 import { isFindEnabled } from "./jfind";
-import { formatArtifactErrorNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
 import { formatOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
-import { resolveInlineByteCapBudget } from "./output-meta";
+import {
+	resolveInlineByteCapBudget,
+	resolveOutputMaxColumns,
+	resolveOutputSinkArtifactMaxBytes,
+	resolveOutputSinkHeadBytes,
+} from "./output-meta";
 import { resolveToCwd } from "./path-utils";
 import { extractLeadingCdTarget, extractLiteralAndChainSegments, tokenizeShellSegments } from "./shell-tokenize";
 import { ToolAbortError } from "./tool-errors";
@@ -66,7 +70,8 @@ import {
 import { registerFnoxSecrets } from "../secrets/fnox";
 import { cfgSkillful } from "../session/settings";
 import { cfgWorktreeClone } from "../task/settings";
-import { writeArtifact } from "../session/artifacts";
+import { formatBashCaptureNotice } from "@oh-my-pi/pi-tui/tools/bash-result";
+import { completeBashResult, type CapturedBashResult } from "../exec/bash-result";
 
 const BASH_APPROVAL_SHELL_CONTROL_CHARS: Record<string, true> = {
 	"\n": true,
@@ -303,21 +308,6 @@ function findBashApprovalPatternRule(
 	rules: readonly BashApprovalPatternRule[],
 ): BashApprovalPatternRule | undefined {
 	return rules.find(rule => bashApprovalRuleMatches(command, rule));
-}
-
-async function saveBashArtifact(
-	session: ToolSession,
-	originalText: string,
-	toolType = "bash-original",
-): Promise<string | undefined> {
-	try {
-		const alloc = await session.allocateOutputArtifact?.(toolType);
-		if (!alloc?.path || !alloc.id) return undefined;
-		await writeArtifact(alloc.path, originalText);
-		return alloc.id;
-	} catch {
-		return undefined;
-	}
 }
 
 const BASH_TIMEOUT_DESCRIPTION = `timeout in seconds; 0 disables the command deadline; nonzero values are clamped to ${TOOL_TIMEOUTS.bash.min}-${TOOL_TIMEOUTS.bash.max}`;
@@ -639,44 +629,42 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		return outputText || "(no output)";
 	}
 
-	/**
-	 * Throw for outcomes that are *not* a completed command: user aborts and a
-	 * missing exit status. Timeouts are handled separately by
-	 * #buildCompletedResult, which returns a non-throwing error result with
-	 * details.timedOut=true so the renderer can show a warning border. The
-	 * foreground and bridge callers plus the async job manager rely on these
-	 * throwing so cancellations surface as aborts and jobs are recorded as
-	 * failed. A definite non-zero exit is a completed command that failed;
-	 * #buildCompletedResult surfaces it as an error *result* (carrying
-	 * execution details) rather than a throw.
-	 */
-	#throwIfUnfinished(
-		result: BashResult | BashInteractiveResult,
-		timeoutSec: number | undefined,
-		outputText: string,
-	): void {
-		const captureNotice = result.artifactError ? `\n\n[${formatArtifactErrorNotice(result.artifactError)}]` : "";
-		if (result.cancelled) {
-			// Local executor output already carries a leading `[Command cancelled]`
-			// notice from the sink; PTY/bridge output does not, so annotate only
-			// the latter.
-			const out = normalizeResultOutput(result);
-			const annotated = out.startsWith("[Command cancelled]") ? out : out ? `${out}\n\n[Command aborted]` : out;
-			throw new ToolError(`${annotated || "Command aborted"}${captureNotice}`);
-		}
-		if (result.timedOut === true) {
-			const out = normalizeResultOutput(result);
-			const message =
-				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
-			throw new ToolError(`${out ? `${out}\n\n[${message}]` : message}${captureNotice}`);
-		}
-		if (result.exitCode === undefined) {
-			throw new ToolError(`${outputText}\n\nCommand failed: missing exit status${captureNotice}`);
+	async #captureTerminalResult(
+		result: Pick<BashResult, "output" | "exitCode" | "cancelled" | "timedOut" | "truncated" | "images">,
+		incomplete?: "source-truncated" | "snapshot-unavailable",
+	): Promise<CapturedBashResult> {
+		let allocationFailed = false;
+		const allocation =
+			!result.output && incomplete === "snapshot-unavailable"
+				? undefined
+				: await this.session.allocateOutputArtifact?.("bash").catch(() => {
+						allocationFailed = true;
+						return undefined;
+					});
+		const sink = new OutputSink({
+			artifactPath: allocation?.path,
+			artifactId: allocation?.id,
+			persist: true,
+			headBytes: resolveOutputSinkHeadBytes(this.session.settings),
+			artifactMaxBytes: resolveOutputSinkArtifactMaxBytes(this.session.settings),
+			maxColumns: resolveOutputMaxColumns(this.session.settings),
+		});
+		try {
+			sink.push(result.output);
+			const summary = await sink.dump();
+			const captured = completeBashResult(
+				{ ...result, ...summary, truncated: result.truncated || summary.truncated },
+				incomplete ?? (result.truncated ? "source-truncated" : undefined),
+			);
+			if (allocationFailed) captured.execution.output = { kind: "unavailable", reason: "allocation" };
+			return captured;
+		} finally {
+			await sink.dispose();
 		}
 	}
 
 	async #buildCompletedResult(
-		result: BashResult | BashInteractiveResult,
+		result: CapturedBashResult,
 		timeoutSec: number | undefined,
 		options: {
 			requestedTimeoutSec?: number;
@@ -684,10 +672,11 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			wallTimeMs?: number;
 		} = {},
 	): Promise<AgentToolResult<BashToolDetails>> {
-		const exitCode = result.exitCode;
+		const { status, output: capture } = result.execution;
+		const exitCode = status.kind === "exited" ? status.exitCode : undefined;
 		const failedExit = exitCode !== undefined && exitCode !== 0;
 
-		const outputLines = [this.#formatResultOutput(result)];
+		const outputLines = [this.#formatResultOutput(result), "", formatBashCaptureNotice(capture)];
 		const notices: string[] = [];
 		if (options.wallTimeMs !== undefined) {
 			notices.push(formatWallTimeNotice(options.wallTimeMs));
@@ -706,9 +695,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// uses a warning border instead of error red. Both interactive and
 		// non-interactive results carry an explicit `timedOut` field from the
 		// executor/PTY layer.
-		const isTimeout = result.timedOut === true;
+		const isTimeout = status.kind === "timedOut";
 
-		const details: BashToolDetails = {};
+		const details: BashToolDetails = { execution: result.execution };
 		if (timeoutSec === undefined) {
 			details.timeoutDisabled = true;
 		} else {
@@ -724,19 +713,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			details.exitCode = exitCode;
 		}
 
-		// Final-defense inline cap config, shared by the timeout and normal
-		// completion paths. The sink already bounds inline bodies to the spill
-		// threshold, so with the notice slack this only fires on paths that
-		// bypass the sink (client-bridge terminals, minimizer misses). When the
-		// sink spilled, its artifact already holds the full raw stream — reuse
-		// that id instead of saving a second (already-truncated) copy, so the
-		// `[raw output: artifact://N]` footer and the truncation notice agree.
 		const inlineCap = {
 			maxBytes: resolveInlineByteCapBudget(this.session.settings),
-			saveArtifact: result.artifactError
-				? undefined
-				: (full: string) => result.artifactId ?? saveBashArtifact(this.session, full),
+			saveArtifact: capture.kind === "unavailable" ? undefined : async () => capture.artifactId,
 		};
+		// Legacy truncation notices can describe a size-capped artifact, but not
+		// a remote snapshot or interrupted capture. Its reference lives in execution.
+		const summary =
+			capture.kind === "partial" && capture.reason !== "artifact-cap"
+				? { ...result, artifactId: undefined }
+				: result;
 
 		if (isTimeout) {
 			details.timedOut = true;
@@ -750,28 +736,24 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			const timeoutOutputText = await enforceInlineByteCap(outputLines.join("\n"), inlineCap);
 			return toolResult(details)
 				.content([{ type: "text", text: timeoutOutputText }, ...(result.images ?? [])])
-				.truncationFromSummary(result, { direction: "tail" })
+				.truncationFromSummary(summary, { direction: "tail" })
 				.error()
 				.done();
 		}
 
-		// Non-timeout cancellations and missing exit status still propagate as thrown errors.
-		this.#throwIfUnfinished(result, timeoutSec, outputText);
+		// Preserve abort/job-failure semantics without losing the captured output address.
+		if (status.kind === "cancelled") {
+			throw new ToolError(
+				result.output.startsWith("[Command cancelled]") ? outputText : `${outputText}\n\nCommand aborted`,
+			);
+		}
+		if (status.kind === "unknown") throw new ToolError(`${outputText}\n\nCommand failed: missing exit status`);
 
-		// Short results also need an address for post-execution searches. Save
-		// the completed result, including its status, not another lossy summary.
-		const resultArtifactId =
-			!result.truncated && !result.artifactId && !result.artifactError
-				? await saveBashArtifact(this.session, outputText, "bash-result")
-				: undefined;
-		const cappedOutputText = await enforceInlineByteCap(
-			resultArtifactId ? `${outputText}\n\n[Command result: artifact://${resultArtifactId}]` : outputText,
-			resultArtifactId ? { ...inlineCap, saveArtifact: async () => resultArtifactId } : inlineCap,
-		);
+		const cappedOutputText = await enforceInlineByteCap(outputText, inlineCap);
 
 		const resultBuilder = toolResult(details)
 			.content([{ type: "text", text: cappedOutputText }, ...(result.images ?? [])])
-			.truncationFromSummary(result, { direction: "tail" });
+			.truncationFromSummary(summary, { direction: "tail" });
 		if (failedExit) resultBuilder.error();
 		return resultBuilder.done();
 	}
@@ -864,14 +846,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 								async: { state: "running", jobId, type: "bash" },
 							});
 						},
-						onMinimizedSave: originalText => saveBashArtifact(this.session, originalText),
 						onStart: probe => {
 							pids = probe;
 						},
 					}).finally(() => {
 						pids = NO_PIDS;
 					});
-					if (result.artifactError) latestProgressDetails = { meta: { artifactError: result.artifactError } };
+					latestProgressDetails = {
+						execution: result.execution,
+						...(result.artifactError ? { meta: { artifactError: result.artifactError } } : {}),
+					};
 					const wallTimeMs = performance.now() - wallTimeStart;
 					const finalResult = await this.#buildCompletedResult(result, options.timeoutSec, {
 						requestedTimeoutSec: options.requestedTimeoutSec,
@@ -1337,17 +1321,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 				}
 				if (createRaced.kind === "timeout") {
 					cleanupLateCreate(createP);
-					const timedOutResult: BashInteractiveResult = {
-						output: "",
-						exitCode: undefined,
-						cancelled: false,
-						timedOut: true,
-						truncated: false,
-						totalLines: 0,
-						totalBytes: 0,
-						outputLines: 0,
-						outputBytes: 0,
-					};
+					const timedOutResult = await this.#captureTerminalResult(
+						{
+							output: "",
+							exitCode: undefined,
+							cancelled: false,
+							timedOut: true,
+							truncated: false,
+						},
+						"snapshot-unavailable",
+					);
 					return this.#buildCompletedResult(timedOutResult, timeoutSec, {
 						requestedTimeoutSec,
 						notices: pendingNotices,
@@ -1398,7 +1381,19 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 					if (outcome?.kind === "aborted" || signal?.aborted) {
 						await Promise.race([fireKill(), Bun.sleep(killGraceMs)]);
-						throw new ToolAbortError("Command aborted");
+						const decoded = await bridgeGraphics.finish(lastPolledOutput.output);
+						const captured = await this.#captureTerminalResult(
+							{
+								output: decoded.text,
+								exitCode: undefined,
+								cancelled: true,
+								truncated: lastPolledOutput.truncated,
+							},
+							"snapshot-unavailable",
+						);
+						throw new ToolAbortError(
+							`${captured.output}\n\nCommand aborted\n\n${formatBashCaptureNotice(captured.execution.output)}`,
+						);
 					}
 
 					if (outcome?.kind === "timeout") {
@@ -1408,11 +1403,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 						// buffered output is still readable.
 						await Promise.race([fireKill(), Bun.sleep(killGraceMs)]);
 						let current = lastPolledOutput;
+						let snapshotUnavailable = true;
 						try {
-							current = await Promise.race([
+							const snapshot = await Promise.race([
 								handle.currentOutput(),
-								Bun.sleep(outputSnapshotGraceMs).then(() => lastPolledOutput),
+								Bun.sleep(outputSnapshotGraceMs).then(() => undefined),
 							]);
+							if (snapshot) {
+								current = snapshot;
+								snapshotUnavailable = false;
+							}
 						} catch (error) {
 							logger.warn("ACP terminal final output read failed", {
 								terminalId: handle.terminalId,
@@ -1420,19 +1420,18 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 							});
 						}
 						const decoded = await bridgeGraphics.finish(current.output);
-						const timedOutResult: BashInteractiveResult = {
-							output: decoded.text,
-							exitCode: undefined,
-							cancelled: false,
-							timedOut: true,
-							truncated: current.truncated,
-							totalLines: decoded.text.length > 0 ? decoded.text.split("\n").length : 0,
-							totalBytes: decoded.text.length,
-							outputLines: decoded.text.length > 0 ? decoded.text.split("\n").length : 0,
-							outputBytes: decoded.text.length,
-							...(decoded.images.length > 0 ? { images: decoded.images } : {}),
-						};
-						return this.#buildCompletedResult(timedOutResult, timeoutSec, {
+						const captured = await this.#captureTerminalResult(
+							{
+								output: decoded.text,
+								exitCode: undefined,
+								cancelled: false,
+								timedOut: true,
+								truncated: current.truncated,
+								...(decoded.images.length > 0 ? { images: decoded.images } : {}),
+							},
+							snapshotUnavailable ? "snapshot-unavailable" : undefined,
+						);
+						return this.#buildCompletedResult(captured, timeoutSec, {
 							requestedTimeoutSec,
 							notices: pendingNotices,
 							wallTimeMs: performance.now() - bridgeWallTimeStart,
@@ -1464,11 +1463,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 				// Fetch final output; the terminal is released in the outer finally.
 				let finalOutput = lastPolledOutput;
+				let snapshotUnavailable = true;
 				try {
-					finalOutput = await Promise.race([
+					const snapshot = await Promise.race([
 						handle.currentOutput(),
-						Bun.sleep(outputSnapshotGraceMs).then(() => lastPolledOutput),
+						Bun.sleep(outputSnapshotGraceMs).then(() => undefined),
 					]);
+					if (snapshot) {
+						finalOutput = snapshot;
+						snapshotUnavailable = false;
+					}
 				} catch (error) {
 					logger.warn("ACP terminal final output read failed", {
 						terminalId: handle.terminalId,
@@ -1482,27 +1486,22 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					rawExitCode != null ? rawExitCode : exitStatus.signal ? 137 : undefined;
 
 				const decoded = await bridgeGraphics.finish(finalOutput.output);
-				const outputText = decoded.text;
-				const outputByteLen = outputText.length;
-				const outputLineCount = outputText.length > 0 ? outputText.split("\n").length : 0;
-
-				const bridgeResult: BashResult = {
-					output: outputText,
-					exitCode,
-					cancelled: false,
-					truncated: finalOutput.truncated,
-					totalLines: outputLineCount,
-					totalBytes: outputByteLen,
-					outputLines: outputLineCount,
-					outputBytes: outputByteLen,
-					...(decoded.images.length > 0 ? { images: decoded.images } : {}),
-				};
+				const captured = await this.#captureTerminalResult(
+					{
+						output: decoded.text,
+						exitCode,
+						cancelled: false,
+						truncated: finalOutput.truncated,
+						...(decoded.images.length > 0 ? { images: decoded.images } : {}),
+					},
+					snapshotUnavailable ? "snapshot-unavailable" : undefined,
+				);
 
 				const bridgeNotices: string[] = [];
 				if (finalOutput.truncated) bridgeNotices.push("(output truncated)");
 				for (const notice of pendingNotices) bridgeNotices.push(notice);
 
-				return this.#buildCompletedResult(bridgeResult, timeoutSec, {
+				return this.#buildCompletedResult(captured, timeoutSec, {
 					requestedTimeoutSec,
 					notices: bridgeNotices,
 					wallTimeMs: performance.now() - bridgeWallTimeStart,
@@ -1532,7 +1531,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			pendingNotices.push("pty requested but unavailable in this environment; ran without a terminal");
 		}
 		const wallTimeStart = performance.now();
-		const result: BashResult | BashInteractiveResult = interactiveUi
+		const result = interactiveUi
 			? await runInteractiveBashPty(interactiveUi, {
 					// PTY bypasses executeBash, so feed it the direnv-transformed
 					// command + direnv env (backendPreflight is defined whenever this
@@ -1558,32 +1557,13 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					artifactId,
 					// Stream the sink's own inline view rather than re-buffering chunks.
 					onPreview: onUpdate ? text => onUpdate({ content: [{ type: "text", text }], details: {} }) : undefined,
-					onMinimizedSave: originalText => saveBashArtifact(this.session, originalText),
 				});
 		const wallTimeMs = performance.now() - wallTimeStart;
-		if (result.cancelled) {
-			// A cancelled result is either a timeout (the command's deadline fired)
-			// or a user/system abort. Timeouts are handled by #buildCompletedResult
-			// which returns a non-throwing error result with details.timedOut=true
-			// so the renderer can show a warning border instead of error red.
-			// Both interactive and non-interactive results carry an explicit
-			// `timedOut` field from the executor/PTY layer.
-			const isTimeout = result.timedOut === true;
-			if (!isTimeout) {
-				const out = normalizeResultOutput(result);
-				// The local executor already prepends `[Command cancelled]`; PTY
-				// output does not, so preserve one cancellation notice in either case.
-				let message = out.startsWith("[Command cancelled]")
-					? out
-					: out
-						? `${out}\n\n[Command aborted]`
-						: "Command aborted";
-				if (result.artifactError) message += `\n\n[${formatArtifactErrorNotice(result.artifactError)}]`;
-				if (signal?.aborted) {
-					throw new ToolAbortError(message);
-				}
-				throw new ToolError(message);
-			}
+		if (result.execution.status.kind === "cancelled" && signal?.aborted) {
+			const notice = result.output.startsWith("[Command cancelled]") ? "" : "\n\nCommand aborted";
+			throw new ToolAbortError(
+				`${this.#formatResultOutput(result)}${notice}\n\n${formatBashCaptureNotice(result.execution.output)}`,
+			);
 		}
 		return this.#buildCompletedResult(result, timeoutSec, {
 			requestedTimeoutSec,

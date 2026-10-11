@@ -7,6 +7,7 @@ import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import * as bashExecutor from "@oh-my-pi/pi-coding-agent/exec/bash-executor";
+import { completeBashResult } from "@oh-my-pi/pi-coding-agent/exec/bash-result";
 import type { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { createBashTool } from "@oh-my-pi/pi-coding-agent/extensibility/legacy-pi-coding-agent-shim";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
@@ -17,7 +18,7 @@ import { createAssistantMessage, createInMemoryAuthStorage } from "./helpers/age
 
 import { cfgShellPath } from "@oh-my-pi/pi-coding-agent/exec/settings";
 
-const bashResult = {
+const bashResult = completeBashResult({
 	output: "old-output",
 	exitCode: 0,
 	cancelled: false,
@@ -26,7 +27,7 @@ const bashResult = {
 	totalBytes: 10,
 	outputLines: 1,
 	outputBytes: 10,
-};
+});
 
 describe("AgentSession bash session ownership", () => {
 	let tempDir: TempDir;
