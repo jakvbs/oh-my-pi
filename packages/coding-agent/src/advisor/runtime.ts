@@ -11,7 +11,7 @@ import {
 import type { SecretObfuscator } from "../secrets/obfuscator";
 import { SecretValueSet } from "../secrets/placeholder";
 import { formatExecutionSourcePreview, formatSessionHistoryMarkdown } from "../session/session-history-format";
-import { ADVISOR_RENDER_OPTIONS, renderAdvisorDeltaChunks } from "./delta-split";
+import { ADVISOR_RENDER_OPTIONS, advisorToolIOTransform, renderAdvisorDeltaChunks } from "./delta-split";
 import { fingerprintMessage } from "./message-fingerprint";
 
 /**
@@ -864,7 +864,7 @@ export class AdvisorRuntime {
 			md = formatSessionHistoryMarkdown(delta, {
 				...ADVISOR_RENDER_OPTIONS,
 				includeThinking,
-				transformExpandedToolIO: text => obfuscator.obfuscate(text, this.#advisorRegexSecretValues),
+				transformExpandedToolIO: advisorToolIOTransform(obfuscator, this.#advisorRegexSecretValues),
 			});
 			md = obfuscator.obfuscate(md, this.#advisorRegexSecretValues);
 		}
@@ -1552,7 +1552,7 @@ export class AdvisorRuntime {
 }
 
 /** Mirrors turn recovery's refusal classification without treating account eligibility as a model refusal. */
-function isClassifierRefusal(message: AssistantMessage): boolean {
+export function isClassifierRefusal(message: AssistantMessage): boolean {
 	if (message.stopReason !== "error") return false;
 	const id = AIError.classifyMessage(message);
 	if (AIError.is(id, AIError.Flag.AccountPolicy)) return false;
@@ -1683,12 +1683,18 @@ function obfuscateAdvisorMessage(
 		}
 		case "bashExecution": {
 			const msg = message as AgentMessage & { command: string };
-			const command = obfuscator.obfuscate(formatExecutionSourcePreview(msg.command), sharedRegexSecretValues);
+			const command = formatExecutionSourcePreview(
+				msg.command,
+				advisorToolIOTransform(obfuscator, sharedRegexSecretValues),
+			);
 			return command === msg.command ? message : ({ ...(message as object), command } as AgentMessage);
 		}
 		case "pythonExecution": {
 			const msg = message as AgentMessage & { code: string };
-			const code = obfuscator.obfuscate(formatExecutionSourcePreview(msg.code), sharedRegexSecretValues);
+			const code = formatExecutionSourcePreview(
+				msg.code,
+				advisorToolIOTransform(obfuscator, sharedRegexSecretValues),
+			);
 			return code === msg.code ? message : ({ ...(message as object), code } as AgentMessage);
 		}
 		case "branchSummary": {

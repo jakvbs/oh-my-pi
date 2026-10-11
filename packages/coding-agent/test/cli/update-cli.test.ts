@@ -1,32 +1,90 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { removeWithRetries } from "@oh-my-pi/pi-utils";
 import { fixedNpmRegistry } from "../../src/cli/npm-registry";
 import { getLatestRelease, runUpdateCommand } from "../../src/cli/update-cli";
+import { cfgUpdateChannel } from "../../src/modes/settings";
 
 const npmjs = fixedNpmRegistry();
 
 type FetchInput = string | URL | Request;
 type FetchInit = RequestInit | BunFetchRequestInit;
 
-describe("runUpdateCommand fetch cancellation", () => {
-	afterEach(() => {
+describe("runUpdateCommand version source", () => {
+	const previousPath = process.env.PATH;
+	const previousBuildUrl = process.env.PI_BUILD_URL;
+	const dirs: string[] = [];
+
+	afterEach(async () => {
 		vi.restoreAllMocks();
+		process.env.PATH = previousPath;
+		if (previousBuildUrl === undefined) delete process.env.PI_BUILD_URL;
+		else process.env.PI_BUILD_URL = previousBuildUrl;
+		await Promise.all(dirs.splice(0).map(dir => removeWithRetries(dir)));
 	});
 
-	it("checks release metadata with a timeout signal", async () => {
-		let requestSignal: AbortSignal | undefined;
-		vi.spyOn(console, "log").mockImplementation(() => {});
+	/**
+	 * Make PATH a fresh directory holding only what the test puts there, so no
+	 * brew, mise, bun, npm, or omp of the host takes part in target resolution.
+	 */
+	async function isolatePath(): Promise<string> {
+		const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "omp-update-path-")));
+		dirs.push(dir);
+		process.env.PATH = dir;
+		return dir;
+	}
+
+	/** Route global fetch through `respond`, recording each request. */
+	function stubFetch(respond: (url: string) => Response): Array<{ url: string; signal?: AbortSignal | null }> {
+		const requests: Array<{ url: string; signal?: AbortSignal | null }> = [];
 		const fetchStub = Object.assign(
-			async (_input: FetchInput, init?: FetchInit) => {
-				requestSignal = init?.signal ?? undefined;
-				return Response.json({ version: "999.0.0" });
+			async (input: FetchInput, init?: FetchInit) => {
+				requests.push({ url: String(input), signal: init?.signal });
+				return respond(String(input));
 			},
 			{ preconnect: globalThis.fetch.preconnect },
 		);
 		vi.spyOn(globalThis, "fetch").mockImplementation(fetchStub);
+		return requests;
+	}
+
+	function quiet(): { logs: string[] } {
+		const logs: string[] = [];
+		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.join(" "));
+		});
+		vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			logs.push(args.join(" "));
+		});
+		vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+			throw new Error(`process.exit(${code}): ${logs.join("\n")}`);
+		}) as typeof process.exit);
+		vi.spyOn(cfgUpdateChannel, "get").mockReturnValue("stable");
+		return { logs };
+	}
+
+	it("checks npm, with a timeout, when no standalone binary is on PATH", async () => {
+		await isolatePath();
+		process.env.PI_BUILD_URL = "https://build.test";
+		quiet();
+		const requests = stubFetch(() => Response.json({ version: "999.0.0" }));
 
 		await runUpdateCommand({ force: false, check: true });
 
-		expect(requestSignal).toBeInstanceOf(AbortSignal);
+		expect(requests.length).toBeGreaterThan(0);
+		expect(requests.some(request => request.url.startsWith("https://build.test/"))).toBe(false);
+		for (const request of requests) expect(request.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it("refuses to self-update the maintained fork", async () => {
+		await isolatePath();
+		quiet();
+		const requests = stubFetch(() => new Response(null, { status: 404 }));
+
+		await expect(runUpdateCommand({ force: false, check: false })).rejects.toThrow("process.exit(1)");
+		expect(requests).toEqual([]);
 	});
 });
 

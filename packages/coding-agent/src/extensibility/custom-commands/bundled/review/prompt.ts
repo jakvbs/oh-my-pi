@@ -1,6 +1,7 @@
 import { prompt } from "@oh-my-pi/pi-utils";
 import annotationsTemplate from "./prompts/annotations.md" with { type: "text" };
 import type { CodeReviewAnnotation } from "@oh-my-pi/pi-tui/overlays/annotation-types";
+import type { ResolvedReviewTarget } from "./target";
 
 export interface FormatCodeReviewAnnotationsOptions {
 	supplementalInstructions?: string;
@@ -50,4 +51,15 @@ export function formatCodeReviewAnnotations(
 		annotations: renderedAnnotations,
 		supplementalInstructions,
 	});
+}
+
+/** Pasteable notes for a frozen diff. The fork removed LLM review requests, so `review` is rejected. */
+export function buildCodeReviewFeedback(
+	_target: ResolvedReviewTarget,
+	annotations: readonly CodeReviewAnnotation[],
+	review: boolean,
+	focus: string | undefined,
+): string | undefined {
+	if (review) throw new Error("Review requests were removed from this build; submit annotations without `review`.");
+	return formatCodeReviewAnnotations(annotations, { supplementalInstructions: focus });
 }

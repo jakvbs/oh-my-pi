@@ -126,6 +126,7 @@ export type AnyUiMetadata = UiBase & {
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
 	secret?: boolean;
 	ordered?: boolean;
+	editor?: "json";
 };
 
 /** Structural schema entries supplied by the application host. */
@@ -276,9 +277,9 @@ function entryToSettingDef(entry: SettingsDisplayEntry): SettingDef | null {
 	}
 
 	if (schemaType === "array") {
-		// Arrays without declared options stay config-file only (free-form lists
-		// like extension paths have no finite choice set to toggle).
-		if (!options || options === "runtime") return null;
+		if (ui.editor === "json") return { ...base, type: "text", secret: entry.credential === true };
+		if (!options) return null;
+		if (options === "runtime") return null;
 		return { ...base, type: "multiselect", options, ordered: ui.ordered === true };
 	}
 

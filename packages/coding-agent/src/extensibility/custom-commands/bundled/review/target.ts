@@ -5,7 +5,8 @@ export type LocalReviewKind = "base-branch" | "uncommitted" | "commit";
 
 /** One frozen diff snapshot read by the annotation view. */
 export interface ResolvedReviewTarget {
-	kind: LocalReviewKind | "pr";
+	/** `patch` is a caller-supplied diff (annotations API); `pr` never maps to the local checkout. */
+	kind: LocalReviewKind | "pr" | "patch";
 	mode: string;
 	rawDiff: string;
 	snapshot: ReviewDiffSnapshot;
@@ -54,7 +55,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Read staged + unstaged (or jj working-copy) changes; throws when no repository is available. */
-async function readUncommittedReviewTarget(cwd: string): Promise<ResolvedReviewTarget> {
+export async function readUncommittedReviewTarget(cwd: string): Promise<ResolvedReviewTarget> {
 	const repository = vcs.require(cwd);
 	const diffText = await repository.uncommittedDiff([]);
 	const isJj = repository.kind() === "jj";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { Agent, type AgentMessage, type AgentTool, type StreamFn } from "@oh-my-pi/pi-agent-core";
+import { Agent, type AgentMessage, type AgentTool, type StreamFn, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import {
 	type Api,
 	type Context,
@@ -15,15 +15,15 @@ import {
 } from "@oh-my-pi/pi-ai";
 import { streamSimple } from "@oh-my-pi/pi-ai/stream";
 import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { Effort } from "@oh-my-pi/pi-catalog/effort";
+import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { ExtensionRuntime, loadExtensionFromFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
 import {
-	ExtensionRunner,
 	EXTENSION_HANDLER_TIMEOUT_MS,
+	ExtensionRunner,
 	testSetExtensionHandlerTimeoutMs,
 } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
 import { RegisteredToolAdapter } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/wrapper";
@@ -52,7 +52,10 @@ function createModelRegistryStub(key = "key") {
 	return {
 		getApiKey: vi.fn(async () => key),
 		resolver: vi.fn(() => async () => key),
-		authStorage: { usage: { ingestHeaders: vi.fn() }, oauth: { identity: vi.fn() } },
+		authStorage: {
+			usage: { ingestHeaders: vi.fn() },
+			oauth: { identity: vi.fn() },
+		},
 		hasLazyRuntimeMetadata: vi.fn(() => false),
 	};
 }
@@ -99,7 +102,11 @@ describe("AgentSession message pipeline", () => {
 	function sideSession(chunks: string[], finalFlush = false): AgentSession {
 		const session = new AgentSession({
 			agent: new Agent({
-				initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+				initialState: {
+					model: getBundledModel("openai", "gpt-4o-mini"),
+					systemPrompt: [],
+					tools: [],
+				},
 			}),
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ "compaction.enabled": false }),
@@ -108,7 +115,13 @@ describe("AgentSession message pipeline", () => {
 			sideStreamFn: () => {
 				const stream = new AssistantMessageEventStream();
 				const message = createAssistantMessage(chunks.join(""));
-				for (const delta of chunks) stream.push({ type: "text_delta", contentIndex: 0, delta, partial: message });
+				for (const delta of chunks)
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta,
+						partial: message,
+					});
 				stream.push({ type: "done", reason: "stop", message });
 				return stream;
 			},
@@ -176,7 +189,11 @@ describe("AgentSession message pipeline", () => {
 		let delivered = 0;
 		const session = new AgentSession({
 			agent: new Agent({
-				initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+				initialState: {
+					model: getBundledModel("openai", "gpt-4o-mini"),
+					systemPrompt: [],
+					tools: [],
+				},
 			}),
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ "compaction.enabled": false }),
@@ -185,7 +202,12 @@ describe("AgentSession message pipeline", () => {
 				providerSignal = options?.signal;
 				stream = new AssistantMessageEventStream();
 				// Mid-stream: no terminal event, so an unaborted transport keeps producing.
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "A", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "A",
+					partial: message,
+				});
 				return stream;
 			},
 		});
@@ -203,7 +225,12 @@ describe("AgentSession message pipeline", () => {
 		expect(providerSignal?.aborted).toBe(true);
 		expect(caller.signal.aborted).toBe(false);
 		// Further provider output is never consumed: the loop is gone with the request.
-		stream!.push({ type: "text_delta", contentIndex: 0, delta: "late", partial: message });
+		stream!.push({
+			type: "text_delta",
+			contentIndex: 0,
+			delta: "late",
+			partial: message,
+		});
 		expect(delivered).toBe(1);
 	});
 
@@ -211,7 +238,11 @@ describe("AgentSession message pipeline", () => {
 		const controller = new AbortController();
 		controller.abort();
 		const agent = new Agent({
-			initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+			initialState: {
+				model: getBundledModel("openai", "gpt-4o-mini"),
+				systemPrompt: [],
+				tools: [],
+			},
 		});
 		const contextSpy = vi.spyOn(agent, "buildSideRequestContext");
 		let calls = 0;
@@ -227,7 +258,12 @@ describe("AgentSession message pipeline", () => {
 		});
 		sessions.push(session);
 
-		await expect(session.runEphemeralTurn({ promptText: "Question?", signal: controller.signal })).rejects.toThrow();
+		await expect(
+			session.runEphemeralTurn({
+				promptText: "Question?",
+				signal: controller.signal,
+			}),
+		).rejects.toThrow();
 		expect(contextSpy).not.toHaveBeenCalled();
 		expect(calls).toBe(0);
 	});
@@ -237,7 +273,11 @@ describe("AgentSession message pipeline", () => {
 		const entered = Promise.withResolvers<void>();
 		const session = new AgentSession({
 			agent: new Agent({
-				initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+				initialState: {
+					model: getBundledModel("openai", "gpt-4o-mini"),
+					systemPrompt: [],
+					tools: [],
+				},
 			}),
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ "compaction.enabled": false }),
@@ -278,7 +318,10 @@ describe("AgentSession message pipeline", () => {
 		});
 		sessions.push(session);
 
-		const turn = session.runEphemeralTurn({ promptText: "Question?", signal: controller.signal });
+		const turn = session.runEphemeralTurn({
+			promptText: "Question?",
+			signal: controller.signal,
+		});
 		await entered.promise;
 		controller.abort(new Error("cancelled"));
 		await expect(turn).rejects.toThrow("cancelled");
@@ -286,7 +329,9 @@ describe("AgentSession message pipeline", () => {
 
 	it("rejects a side turn when its model instance changes during context preparation", async () => {
 		const initialModel = getBundledModel("openai", "gpt-4o-mini");
-		const agent = new Agent({ initialState: { model: initialModel, systemPrompt: [], tools: [] } });
+		const agent = new Agent({
+			initialState: { model: initialModel, systemPrompt: [], tools: [] },
+		});
 		const entered = Promise.withResolvers<void>();
 		const resume = Promise.withResolvers<void>();
 		vi.spyOn(agent, "buildSideRequestContext").mockImplementation(async messages => {
@@ -311,7 +356,10 @@ describe("AgentSession message pipeline", () => {
 		await entered.promise;
 		// Same provider/id, but a replacement request route. `modelsAreEqual`
 		// considers these equal, while the side context and stream must not mix them.
-		agent.setModel({ ...initialModel, baseUrl: "https://replacement.invalid/v1" });
+		agent.setModel({
+			...initialModel,
+			baseUrl: "https://replacement.invalid/v1",
+		});
 		resume.resolve();
 		await expect(turn).rejects.toThrow("Active model changed during ephemeral turn");
 		expect(calls).toBe(0);
@@ -319,7 +367,9 @@ describe("AgentSession message pipeline", () => {
 
 	it("rejects a side turn when its session changes during context preparation", async () => {
 		const model = getBundledModel("openai", "gpt-4o-mini");
-		const agent = new Agent({ initialState: { model, systemPrompt: [], tools: [] } });
+		const agent = new Agent({
+			initialState: { model, systemPrompt: [], tools: [] },
+		});
 		const entered = Promise.withResolvers<void>();
 		const resume = Promise.withResolvers<void>();
 		vi.spyOn(agent, "buildSideRequestContext").mockImplementation(async messages => {
@@ -387,7 +437,11 @@ describe("AgentSession message pipeline", () => {
 			const runner = new ExtensionRunner([extension], runtime, manager.getCwd(), manager, registry);
 			const session = new AgentSession({
 				agent: new Agent({
-					initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+					initialState: {
+						model: getBundledModel("openai", "gpt-4o-mini"),
+						systemPrompt: [],
+						tools: [],
+					},
 				}),
 				sessionManager: manager,
 				settings: Settings.isolated({ "compaction.enabled": false }),
@@ -412,7 +466,10 @@ describe("AgentSession message pipeline", () => {
 				},
 			});
 			sessions.push(session);
-			await initializeExtensions(session, { reportSendError: () => {}, reportRuntimeError: () => {} });
+			await initializeExtensions(session, {
+				reportSendError: () => {},
+				reportRuntimeError: () => {},
+			});
 			const tool = new RegisteredToolAdapter(extension.tools.get("consult")!, runner);
 			const execution = tool.execute("consult-1", {}, toolAbort.signal).catch(() => undefined);
 			try {
@@ -466,7 +523,11 @@ describe("AgentSession message pipeline", () => {
 			const runner = new ExtensionRunner([extension], runtime, manager.getCwd(), manager, registry);
 			const session = new AgentSession({
 				agent: new Agent({
-					initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+					initialState: {
+						model: getBundledModel("openai", "gpt-4o-mini"),
+						systemPrompt: [],
+						tools: [],
+					},
 				}),
 				sessionManager: manager,
 				settings: Settings.isolated({ "compaction.enabled": false }),
@@ -477,14 +538,24 @@ describe("AgentSession message pipeline", () => {
 					const stream = new AssistantMessageEventStream();
 					const message = createAssistantMessage("answer");
 					timer = setInterval(
-						() => stream.push({ type: "text_delta", contentIndex: 0, delta: "answer", partial: message }),
+						() =>
+							stream.push({
+								type: "text_delta",
+								contentIndex: 0,
+								delta: "answer",
+								partial: message,
+							}),
 						10,
 					);
 					providerSignal?.addEventListener(
 						"abort",
 						() => {
 							clearInterval(timer);
-							stream.push({ type: "error", reason: "aborted", error: { ...message, stopReason: "aborted" } });
+							stream.push({
+								type: "error",
+								reason: "aborted",
+								error: { ...message, stopReason: "aborted" },
+							});
 						},
 						{ once: true },
 					);
@@ -494,7 +565,10 @@ describe("AgentSession message pipeline", () => {
 			});
 			sessions.push(session);
 			// Bind runtime actions before emitting the handler under test.
-			await initializeExtensions(session, { reportSendError: () => {}, reportRuntimeError: () => {} });
+			await initializeExtensions(session, {
+				reportSendError: () => {},
+				reportRuntimeError: () => {},
+			});
 			const saved = runner.createContext();
 			testSetExtensionHandlerTimeoutMs(cancellation === "handler timeout" ? 100 : 1000);
 			try {
@@ -545,12 +619,20 @@ describe("AgentSession message pipeline", () => {
 			const runner = new ExtensionRunner([extension], runtime, manager.getCwd(), manager, registry);
 			const inference = vi.fn(() => {
 				const stream = new AssistantMessageEventStream();
-				stream.push({ type: "done", reason: "stop", message: createAssistantMessage("Answer") });
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: createAssistantMessage("Answer"),
+				});
 				return stream;
 			});
 			const session = new AgentSession({
 				agent: new Agent({
-					initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+					initialState: {
+						model: getBundledModel("openai", "gpt-4o-mini"),
+						systemPrompt: [],
+						tools: [],
+					},
 				}),
 				sessionManager: manager,
 				settings: Settings.isolated({ "compaction.enabled": false }),
@@ -559,7 +641,10 @@ describe("AgentSession message pipeline", () => {
 				sideStreamFn: inference,
 			});
 			sessions.push(session);
-			await initializeExtensions(session, { reportSendError: () => {}, reportRuntimeError: () => {} });
+			await initializeExtensions(session, {
+				reportSendError: () => {},
+				reportRuntimeError: () => {},
+			});
 			const saved = runner.createContext();
 			if (hook === "context") await runner.emitContext([]);
 			else if (hook === "before_provider_request") await runner.emitBeforeProviderRequest({});
@@ -595,7 +680,11 @@ describe("AgentSession message pipeline", () => {
 		let inferences = 0;
 		const session = new AgentSession({
 			agent: new Agent({
-				initialState: { model: getBundledModel("openai", "gpt-4o-mini"), systemPrompt: [], tools: [] },
+				initialState: {
+					model: getBundledModel("openai", "gpt-4o-mini"),
+					systemPrompt: [],
+					tools: [],
+				},
 			}),
 			sessionManager: manager,
 			settings: Settings.isolated({ "compaction.enabled": false }),
@@ -608,13 +697,21 @@ describe("AgentSession message pipeline", () => {
 				inferences++;
 				const stream = new AssistantMessageEventStream();
 				const message = createAssistantMessage("Answer");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Answer",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 				return stream;
 			},
 		});
 		sessions.push(session);
-		await initializeExtensions(session, { reportSendError: () => {}, reportRuntimeError: () => {} });
+		await initializeExtensions(session, {
+			reportSendError: () => {},
+			reportRuntimeError: () => {},
+		});
 		const ctx = runner.createContext();
 
 		expect((await ctx.runEphemeralTurn!({ promptText: "Question?" })).replyText).toBe("Answer");
@@ -701,8 +798,16 @@ describe("AgentSession message pipeline", () => {
 	});
 
 	it("resolves image attachments from submitted messages, not tool-result images", () => {
-		const userImage: ImageContent = { type: "image", data: "user-image", mimeType: "image/png" };
-		const toolImage: ImageContent = { type: "image", data: "tool-image", mimeType: "image/png" };
+		const userImage: ImageContent = {
+			type: "image",
+			data: "user-image",
+			mimeType: "image/png",
+		};
+		const toolImage: ImageContent = {
+			type: "image",
+			data: "tool-image",
+			mimeType: "image/png",
+		};
 		const session = new AgentSession({
 			agent: createAgent(),
 			sessionManager: SessionManager.inMemory(),
@@ -730,12 +835,27 @@ describe("AgentSession message pipeline", () => {
 		if (!sourcePath) {
 			throw new Error("Expected attachment sourcePath to be populated");
 		}
-		expect(attachments).toEqual([{ label: "Image #1", uri: "attachment://1", image: userImage, sourcePath }]);
+		expect(attachments).toEqual([
+			{
+				label: "Image #1",
+				uri: "attachment://1",
+				image: userImage,
+				sourcePath,
+			},
+		]);
 	});
 
 	it("resolves attachment://N to images pasted into a newer ask answer", () => {
-		const userImage: ImageContent = { type: "image", data: "user-image", mimeType: "image/png" };
-		const answerImage: ImageContent = { type: "image", data: "answer-image", mimeType: "image/png" };
+		const userImage: ImageContent = {
+			type: "image",
+			data: "user-image",
+			mimeType: "image/png",
+		};
+		const answerImage: ImageContent = {
+			type: "image",
+			data: "answer-image",
+			mimeType: "image/png",
+		};
 		const session = new AgentSession({
 			agent: createAgent(),
 			sessionManager: SessionManager.inMemory(),
@@ -753,7 +873,13 @@ describe("AgentSession message pipeline", () => {
 			role: "toolResult",
 			toolCallId: "ask-1",
 			toolName: "ask",
-			content: [{ type: "text", text: "User selected: A\nUser added note: see [Image #1]" }, answerImage],
+			content: [
+				{
+					type: "text",
+					text: "User selected: A\nUser added note: see [Image #1]",
+				},
+				answerImage,
+			],
 			timestamp: Date.now(),
 			isError: false,
 		});
@@ -772,7 +898,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("ok");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "ok", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "ok",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -862,7 +993,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("ok");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "ok", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "ok",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -918,9 +1054,15 @@ describe("AgentSession message pipeline", () => {
 			// WebP is replaced by the placeholder text.
 			expect(userMessage?.content).toEqual([
 				{ type: "text", text: expect.stringContaining("Today: ") },
-				{ type: "text", text: expect.stringContaining("Local time of this message: ") },
+				{
+					type: "text",
+					text: expect.stringContaining("Local time of this message: "),
+				},
 				{ type: "text", text: "inspect this" },
-				{ type: "text", text: "[image omitted: WebP could not be decoded for this model]" },
+				{
+					type: "text",
+					text: "[image omitted: WebP could not be decoded for this model]",
+				},
 			]);
 		} finally {
 			await session.dispose();
@@ -1015,7 +1157,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("Answer");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Answer",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -1050,18 +1197,30 @@ describe("AgentSession message pipeline", () => {
 				initialState: {
 					model,
 					systemPrompt: ["system prompt"],
-					messages: [{ role: "user", content: "The experiment codename is zephyr-42.", timestamp: 1 }],
+					messages: [
+						{
+							role: "user",
+							content: "The experiment codename is zephyr-42.",
+							timestamp: 1,
+						},
+					],
 					tools: [],
 				},
 			}),
 			sessionManager,
-			settings: Settings.isolated({ "compaction.enabled": false, "providers.openaiWebsockets": "on" }),
+			settings: Settings.isolated({
+				"compaction.enabled": false,
+				"providers.openaiWebsockets": "on",
+			}),
 			modelRegistry,
 		});
 		sessions.push(session);
 		const cacheSessionId = session.sessionId;
 
-		await initializeExtensions(session, { reportSendError: () => {}, reportRuntimeError: () => {} });
+		await initializeExtensions(session, {
+			reportSendError: () => {},
+			reportRuntimeError: () => {},
+		});
 		const context = runner.createContext();
 		if (!context.runEphemeralTurn) throw new Error("Host did not expose side turns");
 		const messagesBefore = structuredClone(session.agent.state.messages);
@@ -1102,12 +1261,20 @@ describe("AgentSession message pipeline", () => {
 		const contexts: Context[] = [];
 		const options: SimpleStreamOptions[] = [];
 		const sideStreamFn: StreamFn = (_model, context, streamOptions) => {
-			contexts.push({ ...context, messages: structuredClone(context.messages) });
+			contexts.push({
+				...context,
+				messages: structuredClone(context.messages),
+			});
 			options.push(streamOptions ?? {});
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("Side answer");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Side answer", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Side answer",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -1155,8 +1322,16 @@ describe("AgentSession message pipeline", () => {
 			first.assistantMessage,
 		];
 		const historySnapshot = structuredClone(history);
-		await session.runEphemeralTurn({ promptText: "Followup?", history, conversationKey: "topic-a" });
-		await session.runEphemeralTurn({ promptText: "Question?", history: [], conversationKey: "topic-b" });
+		await session.runEphemeralTurn({
+			promptText: "Followup?",
+			history,
+			conversationKey: "topic-a",
+		});
+		await session.runEphemeralTurn({
+			promptText: "Question?",
+			history: [],
+			conversationKey: "topic-b",
+		});
 
 		const [initial, followup, emptyHistory] = contexts;
 		expect(initial.messages.map(message => message.role)).toEqual(["user", "developer", "user"]);
@@ -1238,7 +1413,11 @@ describe("AgentSession message pipeline", () => {
 			});
 			sessions.push(session);
 			await expect(
-				session.runEphemeralTurn({ promptText: "Question?", maxTokens: 321, tools: false }),
+				session.runEphemeralTurn({
+					promptText: "Question?",
+					maxTokens: 321,
+					tools: false,
+				}),
 			).rejects.toThrow();
 			expect(bodies).toHaveLength(1);
 			expect(bodies[0].tools ?? []).toEqual([]);
@@ -1253,7 +1432,12 @@ describe("AgentSession message pipeline", () => {
 			api =>
 				[
 					api,
-					buildModel({ ...getBundledModel("openai", "gpt-4o"), api, provider: "custom", compat: undefined }),
+					buildModel({
+						...getBundledModel("openai", "gpt-4o"),
+						api,
+						provider: "custom",
+						compat: undefined,
+					}),
 				] as const,
 		),
 		[
@@ -1281,7 +1465,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("Uncapped answer");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Uncapped answer", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Uncapped answer",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -1338,7 +1527,14 @@ describe("AgentSession message pipeline", () => {
 	] as const)("preserves a capped %s side turn", async (_name, model, canDisableThinking) => {
 		let capturedOptions: SimpleStreamOptions | undefined;
 		const session = new AgentSession({
-			agent: new Agent({ initialState: { model, systemPrompt: ["system prompt"], messages: [], tools: [] } }),
+			agent: new Agent({
+				initialState: {
+					model,
+					systemPrompt: ["system prompt"],
+					messages: [],
+					tools: [],
+				},
+			}),
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ "compaction.enabled": false }),
 			modelRegistry: createModelRegistryStub() as never,
@@ -1347,7 +1543,12 @@ describe("AgentSession message pipeline", () => {
 				const stream = new AssistantMessageEventStream();
 				queueMicrotask(() => {
 					const message = createAssistantMessage("bounded answer");
-					stream.push({ type: "text_delta", contentIndex: 0, delta: "bounded answer", partial: message });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "bounded answer",
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "stop", message });
 				});
 				return stream;
@@ -1355,14 +1556,146 @@ describe("AgentSession message pipeline", () => {
 		});
 		sessions.push(session);
 
-		const turn = session.runEphemeralTurn({ promptText: "Question?", maxTokens: 32 });
+		const turn = session.runEphemeralTurn({
+			promptText: "Question?",
+			maxTokens: 32,
+		});
 		if (!canDisableThinking) {
 			await expect(turn).rejects.toThrow("requires budget thinking");
 			return;
 		}
 		await turn;
-		expect(capturedOptions).toMatchObject({ maxTokens: 32, disableReasoning: true });
+		expect(capturedOptions).toMatchObject({
+			maxTokens: 32,
+			disableReasoning: true,
+		});
 	});
+
+	it.each([
+		["adaptive thinking", "anthropic-adaptive", ThinkingLevel.Medium, true],
+		["budget thinking while thinking", "budget", ThinkingLevel.Medium, false],
+		["budget thinking while off", "budget", ThinkingLevel.Off, true],
+	] as const)(
+		"reports a side-turn cap on %s as request-preserving exactly when it leaves reasoning unchanged",
+		async (_label, mode, level, preserves) => {
+			const captured: (SimpleStreamOptions | undefined)[] = [];
+			const model = buildModel({
+				...getBundledModel("anthropic", "claude-haiku-4-5-20251001"),
+				thinking: { mode, efforts: [Effort.Medium] },
+			});
+			const session = new AgentSession({
+				agent: new Agent({
+					initialState: {
+						model,
+						systemPrompt: ["system prompt"],
+						messages: [],
+						tools: [],
+					},
+				}),
+				sessionManager: SessionManager.inMemory(),
+				settings: Settings.isolated({ "compaction.enabled": false }),
+				modelRegistry: createModelRegistryStub() as never,
+				sideStreamFn: (_model, _context, options) => {
+					captured.push(options);
+					const stream = new AssistantMessageEventStream();
+					queueMicrotask(() => {
+						const message = createAssistantMessage("answer");
+						stream.push({
+							type: "text_delta",
+							contentIndex: 0,
+							delta: "answer",
+							partial: message,
+						});
+						stream.push({ type: "done", reason: "stop", message });
+					});
+					return stream;
+				},
+			});
+			sessions.push(session);
+			session.setThinkingLevel(level);
+
+			expect(session.ephemeralMaxTokensPreservesRequest()).toBe(preserves);
+			await session.runEphemeralTurn({ promptText: "Question?" });
+			await session.runEphemeralTurn({ promptText: "Question?", maxTokens: 32 });
+			const [uncapped, capped] = captured;
+			expect(capped?.reasoning).toBe(uncapped?.reasoning);
+			expect(capped?.disableReasoning === uncapped?.disableReasoning).toBe(preserves);
+		},
+	);
+
+	it.each([
+		["a per-message-effort model with a recorded effort", "claude-sonnet-5-5", true, "low"],
+		["a per-message-effort model without a recorded effort", "claude-sonnet-5-5", false, undefined],
+		["a model without per-message effort", "claude-sonnet-4-6", false, undefined],
+	] as const)(
+		"minimizes side-turn effort on %s only where the cached prefix and top-level reasoning stay put",
+		async (_label, id, recorded, controlEffort) => {
+			const model = getBundledModel("anthropic", id);
+			const reply = {
+				...createAssistantMessage("Fixed."),
+				api: model.api,
+				provider: model.provider,
+				model: model.id,
+				...(recorded
+					? {
+							requestControls: {
+								messageIndex: 1,
+								effort: { topLevel: "high", tail: "high" },
+							},
+						}
+					: {}),
+			} as AgentMessage;
+			const bodies: Record<string, unknown>[] = [];
+			const session = new AgentSession({
+				agent: new Agent({
+					initialState: {
+						model,
+						systemPrompt: ["system prompt"],
+						messages: [{ role: "user", content: "fix it", timestamp: 1 }, reply],
+						tools: [],
+					},
+				}),
+				sessionManager: SessionManager.inMemory(),
+				settings: Settings.isolated({ "compaction.enabled": false }),
+				modelRegistry: createModelRegistryStub() as never,
+				sideStreamFn: (target, context, options) =>
+					streamSimple(target, context, {
+						...options,
+						apiKey: "test-key",
+						fetch: async (_url, init) => {
+							bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+							return new Response(JSON.stringify({ error: { message: "Request captured" } }), { status: 400 });
+						},
+					}),
+			});
+			sessions.push(session);
+			session.setThinkingLevel(ThinkingLevel.High);
+
+			await expect(session.runEphemeralTurn({ promptText: "Predict." })).rejects.toThrow();
+			await expect(
+				session.runEphemeralTurn({
+					promptText: "Predict.",
+					minimizeEffort: true,
+				}),
+			).rejects.toThrow();
+			const [plain, minimized] = bodies as [Record<string, unknown>, Record<string, unknown>];
+			const history = (body: Record<string, unknown>) =>
+				(body.messages as { role: string; content: unknown }[]).slice(0, 2).map(({ role, content }) => ({
+					role,
+					content: JSON.stringify(content).replaceAll(',"cache_control":{"type":"ephemeral"}', ""),
+				}));
+			// Cache keys: tools, system, thinking, top-level effort, and the history before the side prompt.
+			for (const key of ["tools", "system", "thinking", "output_config"]) expect(minimized[key]).toEqual(plain[key]);
+			expect(history(minimized)).toEqual(history(plain));
+			const controls = (
+				minimized.messages as {
+					role: string;
+					output_config?: { effort: string };
+				}[]
+			).filter(message => message.role === "system");
+			expect(controls.map(message => message.output_config?.effort)).toEqual(controlEffort ? [controlEffort] : []);
+		},
+	);
 
 	it("rejects a tool-free Bedrock side turn with historical tool blocks before inference", async () => {
 		const agent = new Agent({
@@ -1419,7 +1752,9 @@ describe("AgentSession message pipeline", () => {
 		const outbound = obfuscateProviderContext(obfuscator, context);
 		const plainBytes = Buffer.byteLength(JSON.stringify(context), "utf8");
 		const outboundBytes = Buffer.byteLength(JSON.stringify(outbound), "utf8");
-		const agent = new Agent({ initialState: { model: getBundledModel("openai", "gpt-4o-mini") } });
+		const agent = new Agent({
+			initialState: { model: getBundledModel("openai", "gpt-4o-mini") },
+		});
 		vi.spyOn(agent, "buildSideRequestContext").mockResolvedValue(context);
 		let capturedContext: Context | undefined;
 		const session = new AgentSession({
@@ -1433,7 +1768,12 @@ describe("AgentSession message pipeline", () => {
 				const stream = new AssistantMessageEventStream();
 				queueMicrotask(() => {
 					const message = createAssistantMessage("Answer");
-					stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "Answer",
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "stop", message });
 				});
 				return stream;
@@ -1444,13 +1784,21 @@ describe("AgentSession message pipeline", () => {
 		if (change === "expands") {
 			expect(outboundBytes).toBeGreaterThan(plainBytes);
 			await expect(
-				session.runEphemeralTurn({ promptText: "Question?", maxContextBytes: plainBytes }),
+				session.runEphemeralTurn({
+					promptText: "Question?",
+					maxContextBytes: plainBytes,
+				}),
 			).rejects.toThrow("context exceeds");
 			expect(capturedContext).toBeUndefined();
 		} else {
 			expect(outboundBytes).toBeLessThan(plainBytes);
 			expect(
-				(await session.runEphemeralTurn({ promptText: "Question?", maxContextBytes: outboundBytes })).replyText,
+				(
+					await session.runEphemeralTurn({
+						promptText: "Question?",
+						maxContextBytes: outboundBytes,
+					})
+				).replyText,
 			).toBe("Answer");
 			expect(capturedContext).toEqual(outbound);
 		}
@@ -1463,7 +1811,11 @@ describe("AgentSession message pipeline", () => {
 			let calls = 0;
 			const session = new AgentSession({
 				agent: new Agent({
-					initialState: { model: getBundledModel("openai", "gpt-4o-mini"), messages: [], tools: [] },
+					initialState: {
+						model: getBundledModel("openai", "gpt-4o-mini"),
+						messages: [],
+						tools: [],
+					},
 				}),
 				sessionManager: SessionManager.inMemory(),
 				settings: Settings.isolated({ "compaction.enabled": false }),
@@ -1523,7 +1875,12 @@ describe("AgentSession message pipeline", () => {
 			queueMicrotask(() => {
 				if (options?.apiKey === "next-key") {
 					const message = createAssistantMessage("Recovered");
-					stream.push({ type: "text_delta", contentIndex: 0, delta: "Recovered", partial: message });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "Recovered",
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "stop", message });
 					return;
 				}
@@ -1590,7 +1947,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("Answer");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Answer",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -1644,7 +2006,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage("Answer");
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Answer",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -1683,19 +2050,32 @@ describe("AgentSession message pipeline", () => {
 		});
 		sessions.push(session);
 
-		const questionBlock: TextContent = { type: "text", text: `previous question about ${secret}` };
-		const answerBlock: TextContent = { type: "text", text: `previous answer about ${secret}` };
+		const questionBlock: TextContent = {
+			type: "text",
+			text: `previous question about ${secret}`,
+		};
+		const answerBlock: TextContent = {
+			type: "text",
+			text: `previous answer about ${secret}`,
+		};
 		const history: Message[] = [
 			{ role: "user", content: [questionBlock], timestamp: 1 },
 			{ ...createAssistantMessage(""), content: [answerBlock] },
 		];
 		const originalHistory = structuredClone(history);
-		const pendingTurn = session.runEphemeralTurn({ promptText: `question about ${secret}`, history });
+		const pendingTurn = session.runEphemeralTurn({
+			promptText: `question about ${secret}`,
+			history,
+		});
 		await conversionStarted.promise;
 		expect(history).toEqual(originalHistory);
 		questionBlock.text = "caller replaced question";
 		answerBlock.text = "caller replaced answer";
-		history.push({ role: "user", content: "caller appended question", timestamp: 2 });
+		history.push({
+			role: "user",
+			content: "caller appended question",
+			timestamp: 2,
+		});
 		const mutatedHistory = structuredClone(history);
 		continueConversion.resolve();
 		const result = await pendingTurn;
@@ -1705,7 +2085,10 @@ describe("AgentSession message pipeline", () => {
 		expect(messages.map(message => message.role)).toEqual(["developer", "user", "assistant", "user"]);
 		expect(getConvertedUserText(messages[1])).toBe(obfuscator.obfuscate(`previous question about ${secret}`));
 		expect(messages[2].content).toEqual([
-			{ type: "text", text: obfuscator.obfuscate(`previous answer about ${secret}`) },
+			{
+				type: "text",
+				text: obfuscator.obfuscate(`previous answer about ${secret}`),
+			},
 		]);
 		expect(getConvertedUserText(messages[3])).toBe(obfuscator.obfuscate(`question about ${secret}`));
 		expect(JSON.stringify(capturedContext)).not.toContain(secret);
@@ -1729,7 +2112,12 @@ describe("AgentSession message pipeline", () => {
 				const stream = new AssistantMessageEventStream();
 				queueMicrotask(() => {
 					const message = createAssistantMessage("Answer");
-					stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "Answer",
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "stop", message });
 				});
 				return stream;
@@ -1755,7 +2143,10 @@ describe("AgentSession message pipeline", () => {
 				parameters: {
 					type: "object",
 					properties: {
-						value: { type: "string", description: `Schema description ${secret}` },
+						value: {
+							type: "string",
+							description: `Schema description ${secret}`,
+						},
 					},
 					required: ["value"],
 				},
@@ -1780,7 +2171,9 @@ describe("AgentSession message pipeline", () => {
 			sessions.push(session);
 
 			await agent.prompt("Main Question?");
-			await session.runEphemeralTurn({ promptText: `Side Question ${secret}?` });
+			await session.runEphemeralTurn({
+				promptText: `Side Question ${secret}?`,
+			});
 
 			// The static prefix (system prompt + tools) is left untouched, so it stays byte-identical
 			// between the main turn and the side turn and the prompt cache prefix survives.
@@ -1803,7 +2196,11 @@ describe("AgentSession message pipeline", () => {
 		sessions.push(session);
 
 		const prepared = session.prepareSimpleStreamOptions({});
-		prepared.onSseEvent?.({ event: "message", data: "{}", raw: ["event: message", "data: {}"] });
+		prepared.onSseEvent?.({
+			event: "message",
+			data: "{}",
+			raw: ["event: message", "data: {}"],
+		});
 
 		expect(session.rawSseDebugBuffer.snapshot().totalEvents).toBe(1);
 		expect(requestOnSseEvent).toHaveBeenCalledWith(
@@ -1889,7 +2286,12 @@ describe("AgentSession message pipeline", () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() => {
 				const message = createAssistantMessage(`ok-${contexts.length}`);
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "ok", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "ok",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -1918,7 +2320,10 @@ describe("AgentSession message pipeline", () => {
 				return {
 					messages: event.messages.map(message =>
 						message.role === "assistant"
-							? { ...message, content: [{ type: "text" as const, text: "rewritten assistant" }] }
+							? {
+									...message,
+									content: [{ type: "text" as const, text: "rewritten assistant" }],
+								}
 							: message,
 					),
 				};
@@ -1972,7 +2377,11 @@ describe("AgentSession message pipeline", () => {
 		registerCustomApi(api, () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() =>
-				stream.push({ type: "done", reason: "stop", message: createAssistantMessage("original") }),
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: createAssistantMessage("original"),
+				}),
 			);
 			return stream;
 		});
@@ -2038,7 +2447,11 @@ describe("AgentSession message pipeline", () => {
 		registerCustomApi(api, () => {
 			const stream = new AssistantMessageEventStream();
 			queueMicrotask(() =>
-				stream.push({ type: "done", reason: "stop", message: createAssistantMessage("original") }),
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: createAssistantMessage("original"),
+				}),
 			);
 			return stream;
 		});
@@ -2137,8 +2550,17 @@ describe("AgentSession message pipeline", () => {
 					} as const;
 					message.content = [toolCall];
 					message.stopReason = "toolUse";
-					stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
-					stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: toolCall as never, partial: message });
+					stream.push({
+						type: "toolcall_start",
+						contentIndex: 0,
+						partial: message,
+					});
+					stream.push({
+						type: "toolcall_end",
+						contentIndex: 0,
+						toolCall: toolCall as never,
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "toolUse", message });
 				} else {
 					const message = createAssistantMessage("done");
@@ -2236,8 +2658,17 @@ describe("AgentSession message pipeline", () => {
 					} as const;
 					message.content = [toolCall];
 					message.stopReason = "toolUse";
-					stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
-					stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: toolCall as never, partial: message });
+					stream.push({
+						type: "toolcall_start",
+						contentIndex: 0,
+						partial: message,
+					});
+					stream.push({
+						type: "toolcall_end",
+						contentIndex: 0,
+						toolCall: toolCall as never,
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "toolUse", message });
 				} else {
 					const message = createAssistantMessage("done");
@@ -2261,11 +2692,15 @@ describe("AgentSession message pipeline", () => {
 		const addToolContext: ExtensionFactory = pi => {
 			pi.on("tool_call", async event => {
 				if (event.toolName !== "bash") return undefined;
-				return { additionalContext: "Use the indexed result instead of searching again." };
+				return {
+					additionalContext: "Use the indexed result instead of searching again.",
+				};
 			});
 			pi.on("tool_result", async event => {
 				if (event.toolName !== "bash") return undefined;
-				return { additionalContext: "The command result is authoritative for this turn." };
+				return {
+					additionalContext: "The command result is authoritative for this turn.",
+				};
 			});
 		};
 		const authStorage = await AuthStorage.create(tempDir.join("auth.db"));
@@ -2335,8 +2770,17 @@ describe("AgentSession message pipeline", () => {
 					} as const;
 					message.content = [toolCall];
 					message.stopReason = "toolUse";
-					stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
-					stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: toolCall as never, partial: message });
+					stream.push({
+						type: "toolcall_start",
+						contentIndex: 0,
+						partial: message,
+					});
+					stream.push({
+						type: "toolcall_end",
+						contentIndex: 0,
+						toolCall: toolCall as never,
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "toolUse", message });
 				} else {
 					const message = createAssistantMessage("done");
@@ -2378,10 +2822,17 @@ describe("AgentSession message pipeline", () => {
 					invokeToolPresent = typeof ctx.invokeTool === "function";
 					addAdditionalContextPresent = typeof ctx.addAdditionalContext === "function";
 					ctx.addAdditionalContext?.("Use the delegated tool output before running another command.");
-					const native = await ctx.invokeTool?.({ command: "echo from-wrapper" });
+					const native = await ctx.invokeTool?.({
+						command: "echo from-wrapper",
+					});
 					const textBlock = native?.content.find(b => b.type === "text");
 					delegatedText = textBlock?.type === "text" ? textBlock.text : "";
-					return native ?? { content: [{ type: "text" as const, text: "no invokeTool" }], details: {} };
+					return (
+						native ?? {
+							content: [{ type: "text" as const, text: "no invokeTool" }],
+							details: {},
+						}
+					);
 				},
 			});
 		};
@@ -2418,7 +2869,10 @@ describe("AgentSession message pipeline", () => {
 			expect(contexts).toHaveLength(2);
 			const developer = contexts[1]?.messages.find(message => message.role === "developer");
 			expect(developer?.content).toEqual([
-				{ type: "text", text: "Use the delegated tool output before running another command." },
+				{
+					type: "text",
+					text: "Use the delegated tool output before running another command.",
+				},
 			]);
 			// The native bash actually ran the wrapper's command, not the model's.
 			expect(delegatedText).toContain("from-wrapper");
@@ -2447,8 +2901,17 @@ describe("AgentSession message pipeline", () => {
 					};
 					message.content = [toolCall];
 					message.stopReason = "toolUse";
-					stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
-					stream.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial: message });
+					stream.push({
+						type: "toolcall_start",
+						contentIndex: 0,
+						partial: message,
+					});
+					stream.push({
+						type: "toolcall_end",
+						contentIndex: 0,
+						toolCall,
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "toolUse", message });
 				} else {
 					const message = createAssistantMessage("done");
@@ -2547,7 +3010,12 @@ describe("AgentSession message pipeline", () => {
 				const stream = new AssistantMessageEventStream();
 				queueMicrotask(() => {
 					const message = createAssistantMessage("Answer");
-					stream.push({ type: "text_delta", contentIndex: 0, delta: "Answer", partial: message });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "Answer",
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "stop", message });
 				});
 				return stream;
@@ -2573,7 +3041,12 @@ describe("AgentSession message pipeline", () => {
 				const stream = new AssistantMessageEventStream();
 				queueMicrotask(() => {
 					const message = createAssistantMessage("Not using tools");
-					stream.push({ type: "text_delta", contentIndex: 0, delta: "Not using tools", partial: message });
+					stream.push({
+						type: "text_delta",
+						contentIndex: 0,
+						delta: "Not using tools",
+						partial: message,
+					});
 					stream.push({ type: "done", reason: "stop", message });
 				});
 				return stream;
@@ -2615,7 +3088,10 @@ describe("AgentSession message pipeline", () => {
 			});
 			sessions.push(session);
 
-			const result = await session.runEphemeralTurn({ promptText: "Side Question?", tools });
+			const result = await session.runEphemeralTurn({
+				promptText: "Side Question?",
+				tools,
+			});
 
 			expect(result.replyText).toBe("Not using tools");
 			expect(capturedContext).toBeDefined();
@@ -2658,7 +3134,12 @@ describe("AgentSession message pipeline", () => {
 					name: "side_tool",
 					arguments: {},
 				});
-				stream.push({ type: "text_delta", contentIndex: 0, delta: "Here is text", partial: message });
+				stream.push({
+					type: "text_delta",
+					contentIndex: 0,
+					delta: "Here is text",
+					partial: message,
+				});
 				stream.push({ type: "done", reason: "stop", message });
 			});
 			return stream;
@@ -2692,7 +3173,10 @@ describe("AgentSession message pipeline", () => {
 		});
 		sessions.push(session);
 
-		const result = await session.runEphemeralTurn({ promptText: "Side Question?", tools });
+		const result = await session.runEphemeralTurn({
+			promptText: "Side Question?",
+			tools,
+		});
 
 		expect(result.replyText).toBe("Here is text");
 		expect(result.assistantMessage.content.some(block => block.type === "toolCall")).toBe(false);

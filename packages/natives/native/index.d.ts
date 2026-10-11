@@ -644,6 +644,14 @@ export declare function appleFmCancel(handle: number): void
  */
 export declare function appleFmGenerate(request: string, onEvent: (err: null | Error, event: string) => void): number
 
+/**
+ * Applies an `HDiffPatch` single-stream patch (HDIFFSF20, zstd or
+ * uncompressed) to `oldPath`, writing the result to `outPath` (created or
+ * truncated). Resolves to the result's size in bytes. Rejects on I/O failure,
+ * a damaged or unsupported patch, or a patch made for other old data.
+ */
+export declare function applyBinaryPatch(oldPath: string, patchPath: string, outPath: string): Promise<number>
+
 /** One ast-grep match with source range and optional meta-variables. */
 export interface AstFindMatch {
   /** Display path of the matching file. */
@@ -1412,6 +1420,11 @@ export interface GrepMatch {
   contextAfter?: Array<ContextLine>
   /** Whether the line was truncated. */
   truncated?: boolean
+  /**
+   * 1-indexed character column where the first match on a truncated line
+   * starts; the truncated `line` shows a window around it.
+   */
+  column?: number
   /** Per-file match count (count mode only). */
   matchCount?: number
 }
@@ -1847,6 +1860,11 @@ export interface Match {
   contextAfter?: Array<ContextLine>
   /** Whether the line was truncated. */
   truncated?: boolean
+  /**
+   * 1-indexed character column where the first match on a truncated line
+   * starts; the truncated `line` shows a window around it.
+   */
+  column?: number
 }
 
 /**
@@ -2854,9 +2872,8 @@ export interface SummarySegment {
 }
 
 /**
- * Check if a language is supported for highlighting.
- * Returns true if the language has either direct support or a fallback
- * mapping.
+ * Check if a language resolves to a grammar (by name, extension or alias),
+ * i.e. whether `highlightCode` colors it rather than echoing it.
  */
 export declare function supportsLanguage(lang: string): boolean
 
