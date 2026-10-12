@@ -20,9 +20,9 @@ describe("ContextBudgetReminder", () => {
 			]),
 		).toEqual([
 			undefined,
-			"<system-reminder>\nContext: 40,000 of 160,000 tokens (25% of the auto-compaction threshold). Prefer targeted reads (line ranges, grep) over whole files.\n</system-reminder>",
+			"<system-reminder>\nContext: 40,000 of 160,000 tokens (25% of the auto-compaction threshold).\n</system-reminder>",
 			undefined,
-			"<system-reminder>\nContext: 140,000 of 160,000 tokens (87% of the auto-compaction threshold). Auto-compaction is close: write the current state and next steps to context notes now.\n</system-reminder>",
+			"<system-reminder>\nContext: 140,000 of 160,000 tokens (87% of the auto-compaction threshold).\n</system-reminder>",
 		]);
 	});
 
@@ -38,11 +38,7 @@ describe("ContextBudgetReminder", () => {
 	});
 
 	it("measures against the window when compaction is off and stays silent without a window", () => {
-		const [windowOnly, unknownWindow] = [
-			reminders([{ tokens: 100_000 }])[0],
-			reminders([{ tokens: 100_000, contextWindow: 0 }])[0],
-		];
-		expect(windowOnly).toContain("100,000 of 200,000 tokens (50% of the context window)");
-		expect(unknownWindow).toBeUndefined();
+		expect(reminders([{ tokens: 100_000 }])[0]).toContain("100,000 of 200,000 tokens (50% of the context window)");
+		expect(reminders([{ tokens: 100_000, contextWindow: 0 }])[0]).toBeUndefined();
 	});
 });

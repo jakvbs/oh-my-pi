@@ -19,7 +19,7 @@
 
 ### Added
 
-- Context budget reminders: the agent gets one hidden `<system-reminder>` with its token count, the limit and a suggested action when context first reaches 25, 50, 70 or 85% of the auto-compaction threshold (the model window when compaction is off). Disable with `compaction.budgetReminders: false`.
+- Context budget reminders: the agent gets one hidden `<system-reminder>` with its token count and the limit when context first reaches 25, 50, 70 or 85% of the auto-compaction threshold (the model window when compaction is off). Disable with `compaction.budgetReminders: false`.
 - `ContextUsage` (from `ctx.getContextUsage()`, session stats and RPC state) carries `compactionThreshold`, the token count at which auto-compaction triggers for the active model including `compaction.modelThresholds`; it is absent when compaction is off.
 - `pi.sendMessage(..., { deliverAs: "displayOnly" })` persists and paints a custom message in the transcript without ever adding it to the model context; `CustomMessageEntry.excludeFromContext` marks such entries on reload.
 - Every user turn now carries its local send time with UTC offset (`<system-reminder>Local time of this message: 2026-10-04 19:26 +02:00.</system-reminder>`), so the model can tell the current time, elapsed time between turns and convert UTC log timestamps; the bytes derive from the message's own timestamp, so the prompt cache is unaffected.
