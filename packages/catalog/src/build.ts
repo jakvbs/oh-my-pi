@@ -69,7 +69,7 @@ function isInputModalities(value: unknown): value is ("text" | "image")[] {
  * corrections (`cost-patch`, `limits-patch`, `long-context-cost`,
  * `context-window-floor`) overwrite upstream values; selection metadata
  * (`priority`, `apply-patch-tool-type`, `service-tier-cost`,
- * `requires-cursor-tool-schema-projection`, `requires-tool-result-image-hoisting`,
+ * `requires-tool-result-image-hoisting`,
  * `supports-assistant-prefill`) is rule-owned; `context-promotion-target` fills
  * only when the spec left it unset.
  */
@@ -135,12 +135,6 @@ function applyCatalogAssignments<TApi extends Api>(model: Model<TApi>, catalog: 
 		pricingStatus === "unknown"
 	) {
 		model.pricingStatus = pricingStatus;
-	}
-	const requiresCursorToolSchemaProjection = catalog.requiresCursorToolSchemaProjection;
-	if (requiresCursorToolSchemaProjection === true) {
-		model.requiresCursorToolSchemaProjection = true;
-	} else {
-		delete model.requiresCursorToolSchemaProjection;
 	}
 	const requiresToolResultImageHoisting = catalog.requiresToolResultImageHoisting;
 	if (requiresToolResultImageHoisting === true) {

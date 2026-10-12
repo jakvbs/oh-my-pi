@@ -899,26 +899,10 @@ export class EventController {
 		this.#lastTtsrNotification = undefined;
 		this.#streamingReveal.stop();
 		this.#toolArgsReveal.stop();
-		this.#seedHeldCompletionsFromPendingResults();
-	}
-
-	/** Restore display state without replaying completion notifications or persistence. */
-	#seedHeldCompletionsFromPendingResults(): void {
-		const pending = this.ctx.viewSession.agent.getPendingToolResults();
-		for (const result of pending) {
-			this.#orphanedToolCompletions.set(result.toolCallId, {
-				type: "tool_execution_end",
-				toolCallId: result.toolCallId,
-				toolName: result.toolName,
-				result: { content: result.content, details: result.details },
-				isError: result.isError,
-			});
-		}
 	}
 
 	/** Settle replay-created cards without waiting for another streaming update. */
 	restorePendingToolResults(): void {
-		this.#seedHeldCompletionsFromPendingResults();
 		for (const [toolCallId, component] of this.ctx.pendingTools) {
 			this.#toolTimelineComponents.set(toolCallId, component);
 			this.#settleHeldCompletionIfPresent(toolCallId, component);
@@ -1027,7 +1011,6 @@ export class EventController {
 		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();
 		this.#resetReadGroup();
-		this.#seedHeldCompletionsFromPendingResults();
 		this.#resolveDisplaceableTodo();
 		this.#lastAssistantComponent = undefined;
 		// Restore terminal errors in transcript history when their banner clears.

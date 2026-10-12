@@ -3,13 +3,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type } from "@oh-my-pi/omptype";
-import type { AgentTool, StreamFn } from "@oh-my-pi/pi-agent-core";
+import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Model, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { CursorExecHandlers } from "@oh-my-pi/pi-coding-agent/cursor";
 import {
 	EXTENSION_HANDLER_TIMEOUT_MS,
 	testSetExtensionHandlerTimeoutMs,
@@ -24,7 +23,6 @@ import {
 	discoverAuthStorage,
 	type ExtensionFactory,
 } from "@oh-my-pi/pi-coding-agent/sdk";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { resetYieldTurnState } from "@oh-my-pi/pi-coding-agent/tools/yield";
 import { logger, removeSyncWithRetries, Snowflake, untilAborted } from "@oh-my-pi/pi-utils";
@@ -1567,41 +1565,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	it("forwards external xd:// devices to Cursor provider contexts", async () => {
-		const tempDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-		const { session } = await createAgentSession({
-			...baseOptions(tempDir),
-			model: cursorModel,
-		});
-		const externalMcpTool: CustomTool = {
-			name: "mcp__fixture_report",
-			label: "fixture/report",
-			description: "Report a fixture result.",
-			parameters: type({}),
-			strict: true,
-			mcpServerName: "fixture",
-			mcpToolName: "report",
-			async execute() {
-				return { content: [{ type: "text", text: "reported" }] };
-			},
-		};
-
-		try {
-			await session.refreshMCPTools([externalMcpTool]);
-			const deviceNames = session.getXdevToolEntries().map(entry => entry.name);
-			expect(deviceNames).toEqual(["mcp__fixture_report"]);
-			expect(session.getActiveToolNames()).not.toContain("mcp__fixture_report");
-
-			const context = await session.agent.buildSideRequestContext([]);
-			const providerToolNames = context.tools?.map(tool => tool.name);
-			expect(providerToolNames).toContain("mcp__fixture_report");
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	it("excludes hidden custom tools from the parent active set unless listed", async () => {
 		const tempDir = makeTempDir();
 		const hiddenTool = {
@@ -2045,37 +2008,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	// Hashline `edit` stays in the registry on Cursor so the model can still
-	// call it as MCP. Native StrReplace arrives as `editToolCall` and is
-	// materialized via exec read/write; `pi_edit` still uses the replace-mode
-	// instance from `getEditReplaceTool`. The roster is built once at creation.
-	// These two cover both directions of that wiring: the granted session must
-	// still reach a replace-mode instance for `pi_edit` (whose `old_string` /
-	// `new_string` args do not validate against the default `hashline` schema),
-	// and the restricted one must still be refused.
-	//
-	// The handlers are internal to the session; `streamFn` is where they are
-	// handed to the provider, which is the externally observable seam.
-	const captureCursorExecHandlers = async (session: AgentSession, cursorModel: Model): Promise<CursorExecHandlers> => {
-		let handlers: CursorExecHandlers | undefined;
-		const streamFn: StreamFn = (_model, _context, options) => {
-			// The session installs the concrete class; the provider option is
-			// typed as the wire-level interface, whose `piEdit` answers a proto
-			// result rather than the tool result the class returns.
-			handlers = options?.cursorExecHandlers as CursorExecHandlers | undefined;
-			throw new Error("captured");
-		};
-		vi.spyOn(session.agent, "streamFn").mockImplementation(streamFn);
-
-		await session.setModel(cursorModel);
-		// Not wrapped in a catch: `prompt` resolves even when the turn fails (the
-		// loop records the stream error), so a rejection here is a genuine setup
-		// failure and must surface rather than be mistaken for the capture.
-		await session.prompt("hi");
-		if (!handlers) throw new Error("no exec handlers reached the provider");
-		return handlers;
-	};
-
 	// `setModel` and `prompt` both refuse a provider with no configured auth.
 	// Granted on the suite's isolated storage rather than through the provider's
 	// env var — an env mutation would outlive this file — and removed after,
@@ -2088,197 +2020,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			for (const provider of providers) modelRegistry.authStorage.keys.removeRuntime(provider);
 		}
 	};
-
-	it("answers a native pi_edit after a session switches onto Cursor", async () => {
-		const tempDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-		const target = path.join(tempDir, "sample.txt");
-		fs.writeFileSync(target, "alpha\nbeta\n");
-
-		await withProviderAuth(["cursor"], async () => {
-			const { session } = await createAgentSession(baseOptions(tempDir));
-			try {
-				const handlers = await captureCursorExecHandlers(session, cursorModel);
-				const result = await handlers.piEdit({
-					toolCallId: "sdk-switch-1",
-					args: { path: target, edits: [{ oldText: "beta", newText: "gamma" }] },
-				} as never);
-
-				expect(result.isError).toBeFalsy();
-				expect(fs.readFileSync(target, "utf8")).toBe("alpha\ngamma\n");
-			} finally {
-				await session.dispose();
-			}
-		});
-	});
-
-	it("keeps hashline edit advertised when the session starts on Cursor", async () => {
-		const tempDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-
-		await withProviderAuth(["cursor"], async () => {
-			const { session } = await createAgentSession({
-				...baseOptions(tempDir),
-				model: cursorModel,
-			});
-			try {
-				expect(session.getActiveToolNames()).toContain("edit");
-			} finally {
-				await session.dispose();
-			}
-		});
-	});
-
-	it("refuses a native pi_edit after a read-only session switches onto Cursor", async () => {
-		// The bridge instance is constructed, not looked up, so building it for
-		// a roster that was never granted `edit` would hand a read-only session
-		// a mutating tool the native frames reach regardless of the advertised
-		// catalog (issue #5680). Making the construction provider-independent
-		// must not widen it.
-		const tempDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-		const target = path.join(tempDir, "sample.txt");
-		fs.writeFileSync(target, "alpha\nbeta\n");
-
-		await withProviderAuth(["cursor"], async () => {
-			const { session } = await createAgentSession({ ...baseOptions(tempDir), toolNames: ["read"] });
-			try {
-				const handlers = await captureCursorExecHandlers(session, cursorModel);
-				const result = await handlers.piEdit({
-					toolCallId: "sdk-switch-2",
-					args: { path: target, edits: [{ oldText: "beta", newText: "gamma" }] },
-				} as never);
-
-				expect(result.isError).toBe(true);
-				expect(fs.readFileSync(target, "utf8")).toBe("alpha\nbeta\n");
-			} finally {
-				await session.dispose();
-			}
-		});
-	});
-
-	it("revokes native Cursor mutations when runtime write is deactivated", async () => {
-		const tempDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-		const allowedTarget = path.join(tempDir, "allowed.txt");
-		const revokedTarget = path.join(tempDir, "revoked.txt");
-		fs.writeFileSync(allowedTarget, "remove me");
-		fs.writeFileSync(revokedTarget, "keep me");
-
-		await withProviderAuth(["cursor"], async () => {
-			const { session } = await createAgentSession({ ...baseOptions(tempDir), toolNames: ["read"] });
-			try {
-				const handlers = await captureCursorExecHandlers(session, cursorModel);
-				await session.setActiveToolsByName(["read", "write"]);
-				expect(session.getToolByName("write")?.description).toBeDefined();
-
-				const allowed = await handlers.delete({
-					toolCallId: "sdk-write-active",
-					path: allowedTarget,
-				} as never);
-				expect(allowed.isError).toBe(false);
-				expect(fs.existsSync(allowedTarget)).toBe(false);
-
-				await session.setActiveToolsByName(["read"]);
-				expect(session.getActiveToolNames()).not.toContain("write");
-				const revoked = await handlers.delete({
-					toolCallId: "sdk-write-revoked",
-					path: revokedTarget,
-				} as never);
-				expect(revoked.isError).toBe(true);
-				expect(fs.existsSync(revokedTarget)).toBe(true);
-			} finally {
-				await session.dispose();
-			}
-		});
-	});
-
-	it("revokes native Cursor mutations before a removal rebuild commits", async () => {
-		const tempDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-		const target = path.join(tempDir, "revoked-during-rebuild.txt");
-		fs.writeFileSync(target, "keep me");
-		const rebuildStarted = Promise.withResolvers<void>();
-		const releaseRebuild = Promise.withResolvers<void>();
-
-		await withProviderAuth(["cursor"], async () => {
-			const { session } = await createAgentSession(baseOptions(tempDir));
-			let deactivation: Promise<void> | undefined;
-			try {
-				const handlers = await captureCursorExecHandlers(session, cursorModel);
-				const time = logger.time;
-				vi.spyOn(logger, "time").mockImplementation(((
-					op: string,
-					fn?: (...args: unknown[]) => unknown,
-					...args: unknown[]
-				) => {
-					if (op !== "resolveActiveRepoContext" || !fn)
-						return (time as (...a: unknown[]) => unknown)(op, fn, ...args);
-					rebuildStarted.resolve();
-					return releaseRebuild.promise.then(() => fn(...args));
-				}) as typeof logger.time);
-
-				deactivation = session.setActiveToolsByName(["read"]);
-				try {
-					await rebuildStarted.promise;
-					expect(session.getActiveToolNames()).toContain("write");
-					const revoked = await handlers.delete({
-						toolCallId: "sdk-write-revoked-during-rebuild",
-						path: target,
-					} as never);
-					expect(revoked.isError).toBe(true);
-					expect(fs.existsSync(target)).toBe(true);
-				} finally {
-					releaseRebuild.resolve();
-				}
-				await deactivation;
-				expect(session.getActiveToolNames()).not.toContain("write");
-			} finally {
-				releaseRebuild.resolve();
-				await deactivation?.catch(() => undefined);
-				await session.dispose();
-			}
-		});
-	});
-
-	it("resolves bridge frame paths through the session's live cwd", async () => {
-		// The bridge is built once, at session creation, while the session's cwd
-		// moves under it (`/cd`, resume, branch restore). The path-confining
-		// frames — the native `delete`, and a `download_path` resource read —
-		// resolve a relative path against whichever cwd the bridge was handed, so
-		// a startup snapshot means acting on the workspace the session has left
-		// while reporting success for the path the server named.
-		const tempDir = makeTempDir();
-		const movedDir = makeTempDir();
-		const cursorModel = getBundledModel("cursor", "composer-1.5");
-		if (!cursorModel) throw new Error("expected bundled Cursor model");
-		const staleTarget = path.join(tempDir, "obsolete.txt");
-		const liveTarget = path.join(movedDir, "obsolete.txt");
-		fs.writeFileSync(staleTarget, "preserve me");
-		fs.writeFileSync(liveTarget, "remove me");
-
-		await withProviderAuth(["cursor"], async () => {
-			const sessionManager = SessionManager.inMemory();
-			const { session } = await createAgentSession({ ...baseOptions(tempDir), sessionManager });
-			try {
-				const handlers = await captureCursorExecHandlers(session, cursorModel);
-				await sessionManager.moveTo(movedDir);
-
-				const result = await handlers.delete({ toolCallId: "sdk-cwd-1", path: "obsolete.txt" } as never);
-
-				expect(result.isError).toBe(false);
-				expect(fs.existsSync(liveTarget)).toBe(false);
-				expect(fs.existsSync(staleTarget)).toBe(true);
-			} finally {
-				await session.dispose();
-			}
-		});
-	});
 
 	it("does not execute an unadvertised edit call through the fallback resolver", async () => {
 		// One resolver serves two roles: the session's device resolver is passed
@@ -2407,8 +2148,8 @@ describe("createAgentSession defaultInactive tool activation", () => {
 
 	it("runs advisor tools through the approval gate", async () => {
 		// The advisor's tools are built straight from `BUILTIN_TOOLS`, outside
-		// the registry loop that wraps everything else. Its own loop and its
-		// Cursor exec bridge (`piWrite`/`piBash`) run those instances directly,
+		// the registry loop that wraps everything else. Its own loop runs those
+		// instances directly,
 		// so an unwrapped one executes whatever it is handed regardless of the
 		// user's `tools.approval.<tool>` policy — the gate lives in
 		// `ExtensionToolWrapper`, not in either caller.

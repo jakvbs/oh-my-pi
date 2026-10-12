@@ -38,23 +38,6 @@ behavior {
 		operation "generate_image"
 	}
 
-	// Cursor advertises OpenAI reasoning effort as sibling model ids. The
-	// family marker uses a `gpt-` prefix followed immediately by an ASCII
-	// version digit.
-	cursor-effort family-marker="gpt-" {
-		tier "minimal" "low" "medium" "high" "xhigh" "max"
-	}
-	// A bare composer-2.5 request defaults to the Fast lane server-side.
-	cursor-model-parameter model="composer-2.5" id="fast" value="false"
-
-	// Cursor's dashboard splits native Grok/Composer traffic from all other
-	// models. Substring fallbacks cover newly discovered family revisions.
-	quota-tiers provider="cursor" default="api" {
-		tier "auto" "composer-2.5"
-		fallback "auto" substring="grok"
-		fallback "auto" substring="composer"
-	}
-
 	// Exact quota bucket memberships reported by Google Gemini CLI.
 	quota-tiers provider="google-gemini-cli" {
 		tier "3-Flash" "gemini-3-flash-preview" "gemini-3-flash" "gemini-3.5-flash"

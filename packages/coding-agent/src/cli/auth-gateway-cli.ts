@@ -552,14 +552,8 @@ const STRUCTURED_API_KEY_PROVIDERS: ReadonlySet<string> = new Set([
  * Provider API types that strict-mode chat probes intentionally skip:
  * - `bedrock-converse-stream` resolves credentials from the AWS env/profile, not the broker bearer.
  * - `google-vertex` uses Application Default Credentials; the broker bearer is not the right key.
- * - `cursor-agent` and `pi-native` (gateway forwarding) have transport quirks
- *   that make a bearer-only "ping" a poor signal.
  */
-const STRICT_PROBE_SKIPPED_APIS: ReadonlySet<Api> = new Set<Api>([
-	"bedrock-converse-stream",
-	"google-vertex",
-	"cursor-agent",
-]);
+const STRICT_PROBE_SKIPPED_APIS: ReadonlySet<Api> = new Set<Api>(["bedrock-converse-stream", "google-vertex"]);
 
 /** Max chat models to try per credential before reporting failure. */
 const STRICT_PROBE_MAX_CANDIDATES = 4;

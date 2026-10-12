@@ -39,7 +39,6 @@ describe("CatalogMetricsIndex", () => {
 			50.2,
 		],
 		["mantle vendor prefix with dotted revision", "bedrock-mantle", "openai.gpt-5.5", 56.3],
-		["effort lane collapses to its base id", "cursor", "claude-fable-5-1-high", 65.7],
 		["namespaced gateway id", "openrouter", "openai/gpt-5.6-terra", 56.6],
 	])("resolves %s", (_label, provider, id, int) => {
 		expect(scored.resolve(model(provider, id))?.int).toBe(int);

@@ -256,19 +256,6 @@ export interface CompiledModelOperations {
 	operations: string[];
 }
 
-/** Cursor effort-suffix sibling vocabulary. */
-export interface CompiledCursorEffort {
-	familyMarker: string;
-	tiers: string[];
-}
-
-/** One fixed Cursor `requestedModel` parameter. */
-export interface CompiledCursorParameter {
-	model: string;
-	id: string;
-	value: string;
-}
-
 /** One provider quota-scope table. */
 export interface CompiledQuotaRule {
 	provider: string;
@@ -339,8 +326,6 @@ export interface CompiledRetryResetTimezone {
 export interface CompiledBehavior {
 	openaiResponsesHeuristic?: CompiledResponsesHeuristic;
 	modelOperations: CompiledModelOperations[];
-	cursorEffort?: CompiledCursorEffort;
-	cursorParameters: CompiledCursorParameter[];
 	quotaTiers: CompiledQuotaRule[];
 	hostedDefaults: CompiledHostedDefault[];
 	apiRoutes: CompiledApiRoutes[];

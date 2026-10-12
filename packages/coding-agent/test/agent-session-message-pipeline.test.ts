@@ -1428,18 +1428,6 @@ describe("AgentSession message pipeline", () => {
 
 	it.each([
 		["Antigravity fixed-profile transport", getBundledModel("google-antigravity", "claude-sonnet-4-6")],
-		...(["cursor-agent"] as const).map(
-			api =>
-				[
-					api,
-					buildModel({
-						...getBundledModel("openai", "gpt-4o"),
-						api,
-						provider: "custom",
-						compat: undefined,
-					}),
-				] as const,
-		),
 		[
 			"Ollama Cloud",
 			buildModel({
@@ -2984,50 +2972,6 @@ describe("AgentSession message pipeline", () => {
 			await session.dispose();
 			authStorage.close();
 		}
-	});
-
-	it("rejects Cursor tool opt-out before dispatch, including custom provider names", async () => {
-		let calls = 0;
-		const session = new AgentSession({
-			agent: new Agent({
-				initialState: {
-					model: buildModel({
-						...getBundledModel("openai", "gpt-4o"),
-						api: "cursor-agent",
-						provider: "custom",
-						id: "opaque-model",
-						compat: undefined,
-					}),
-					messages: [],
-					tools: [],
-				},
-			}),
-			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "compaction.enabled": false }),
-			modelRegistry: createModelRegistryStub() as never,
-			sideStreamFn: () => {
-				calls++;
-				const stream = new AssistantMessageEventStream();
-				queueMicrotask(() => {
-					const message = createAssistantMessage("Answer");
-					stream.push({
-						type: "text_delta",
-						contentIndex: 0,
-						delta: "Answer",
-						partial: message,
-					});
-					stream.push({ type: "done", reason: "stop", message });
-				});
-				return stream;
-			},
-		});
-		sessions.push(session);
-		await expect(session.runEphemeralTurn({ promptText: "Question?", tools: false })).rejects.toThrow(
-			"does not support tools: false",
-		);
-		expect(calls).toBe(0);
-		expect((await session.runEphemeralTurn({ promptText: "Question?" })).replyText).toBe("Answer");
-		expect(calls).toBe(1);
 	});
 
 	it.each([undefined, false] as const)("ephemeral tool catalog with tools=%s", async tools => {

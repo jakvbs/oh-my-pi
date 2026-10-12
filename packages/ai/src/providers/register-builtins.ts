@@ -17,7 +17,6 @@ import {
 import * as AnthropicProvider from "./anthropic";
 import * as AzureOpenAIResponsesProvider from "./azure-openai-responses";
 import * as BedrockProvider from "./amazon-bedrock";
-import * as CursorProvider from "./cursor";
 import * as AppleFoundationModelsProvider from "./apple-foundation-models";
 import * as GoogleProvider from "./google";
 import * as GoogleGeminiCliProvider from "./google-gemini-cli";
@@ -33,17 +32,11 @@ type ProviderStream<TApi extends Api> = (
 	options: OptionsForApi<TApi>,
 ) => AsyncIterable<AssistantMessageEvent>;
 
-let cursorStreamOverride: typeof CursorProvider.streamCursor | undefined;
 let bedrockStreamOverride: typeof BedrockProvider.streamBedrock | undefined;
 
 /** Install a host-supplied Bedrock transport in place of the built-in provider. */
 export function setBedrockProviderModule(module: Pick<typeof BedrockProvider, "streamBedrock">): void {
 	bedrockStreamOverride = module.streamBedrock;
-}
-
-/** Install a host-supplied Cursor transport in place of the built-in provider. */
-export function setCursorProviderModule(module: Pick<typeof CursorProvider, "streamCursor">): void {
-	cursorStreamOverride = module.streamCursor;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,8 +132,7 @@ function forwardStream<TApi extends Api>(
 						(limits?.openAIIdleEnvFloorsFirstEvent
 							? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs, limits.defaultFirstEventTimeoutMs)
 							: getStreamFirstEventTimeoutMs(idleTimeoutMs, limits?.defaultFirstEventTimeoutMs)));
-			// Providers with a server-driven local tool bridge (e.g. the Cursor
-			// exec channel) mark their stream busy while a local tool runs; the
+			// Providers with a server-driven local tool bridge mark their stream busy while a local tool runs; the
 			// watchdog must not read that silence as a provider stall (#4593).
 			const localWorkSource = source instanceof EventStreamImpl ? source : undefined;
 			const watchedSource = iterateWithIdleTimeout(source, {
@@ -276,11 +268,6 @@ export const streamOpenAICompletions = createProviderStream<"openai-completions"
 export const streamOpenAIResponses = createProviderStream<"openai-responses">(
 	(model, context, options) => OpenAIResponsesProvider.streamOpenAIResponses(model, context, options),
 	PROVIDER_HANDLED_STREAM_TIMEOUTS,
-);
-
-/** Stream through the host Cursor transport when installed, otherwise the built-in transport. */
-export const streamCursor = createProviderStream<"cursor-agent">((model, context, options) =>
-	(cursorStreamOverride ?? CursorProvider.streamCursor)(model, context, options),
 );
 
 /** Stream Apple's on-device Foundation Model through the shared watchdog. */

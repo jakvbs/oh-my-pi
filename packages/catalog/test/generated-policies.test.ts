@@ -8,8 +8,6 @@ import {
 	linkOpenAIPromotionTargets,
 } from "../scripts/generated-policies";
 import { buildModel } from "../src/build";
-import { resolveProviderModels } from "../src/model-manager";
-import { cursorModelManagerOptions } from "../src/provider-models/special";
 
 function createSpec<TApi extends Api>(overrides: {
 	id: string;
@@ -105,41 +103,6 @@ describe("generated model policies", () => {
 		expect(built[2]?.contextWindow).toBe(272000);
 		expect(built[3]?.contextWindow).toBe(272000);
 		expect(built[3]?.priority).toBe(1);
-	});
-
-	it("projects Cursor tool schemas only for Anthropic Fable variants", () => {
-		const fableModels = [
-			"claude-fable-5-high",
-			"claude-fable-5-low",
-			"claude-fable-5-max",
-			"claude-fable-5-medium",
-			"claude-fable-5-xhigh",
-		].map(id => buildGenerated(createSpec({ id, api: "cursor-agent", provider: "cursor" })));
-		const grok = buildGenerated(createSpec({ id: "cursor-grok-4.6", api: "cursor-agent", provider: "cursor" }));
-		const otherCursorAnthropic = buildGenerated(
-			createSpec({ id: "claude-opus-4-7-high", api: "cursor-agent", provider: "cursor" }),
-		);
-
-		for (const model of fableModels) {
-			expect(model.requiresCursorToolSchemaProjection).toBe(true);
-		}
-		expect(grok.requiresCursorToolSchemaProjection).toBeUndefined();
-		expect(otherCursorAnthropic.requiresCursorToolSchemaProjection).toBeUndefined();
-
-		const rebuiltGrok = buildModel({
-			...fableModels[0],
-			id: "cursor-grok-4.6",
-			name: "cursor-grok-4.6",
-		});
-		expect(rebuiltGrok.requiresCursorToolSchemaProjection).toBeUndefined();
-	});
-
-	it("marks Cursor's default router as variably priced", () => {
-		const routed = buildGenerated(createSpec({ id: "default", api: "cursor-agent", provider: "cursor" }));
-		const named = buildGenerated(createSpec({ id: "composer-2.5", api: "cursor-agent", provider: "cursor" }));
-
-		expect(routed.pricingStatus).toBe("variable");
-		expect(named.pricingStatus).toBeUndefined();
 	});
 
 	it("preserves OpenRouter's mandatory provider-authored effort ladder", () => {
@@ -488,32 +451,6 @@ describe("generated model policies", () => {
 		expect(native.compat?.clampOutputToModelMax).toBe(true);
 	});
 
-	it("bakes verified Cursor image families into the offline catalog", () => {
-		// Rule-owned (`providers/cursor.kdl` input-modalities): baked at build time.
-		const verifiedIds = [
-			"kimi-k3-high",
-			"kimi-k3-low",
-			"kimi-k3-max",
-			"cursor-grok-4.5",
-			"cursor-grok-4.5-fast",
-			"cursor-grok-4.6",
-			"cursor-grok-4.6-fast",
-			"composer-2.5",
-			"composer-2.5-fast",
-		];
-		const unverifiedIds = ["cursor-grok-5", "composer-2.50", "k3-256k"];
-		const models = [...verifiedIds, ...unverifiedIds].map(id =>
-			buildGenerated(createSpec({ id, api: "cursor-agent", provider: "cursor" })),
-		);
-
-		for (const model of models.slice(0, verifiedIds.length)) {
-			expect(model.input).toEqual(["text", "image"]);
-		}
-		for (const model of models.slice(verifiedIds.length)) {
-			expect(model.input).toEqual(["text"]);
-		}
-	});
-
 	it("bills Cerebras cache reads at the live input rate", () => {
 		const cost = { input: 0.99, output: 1.49, cacheRead: 0, cacheWrite: 0 };
 		const cerebras = buildGenerated(
@@ -535,54 +472,6 @@ describe("generated model policies", () => {
 			createSpec({ id: "qwen-3.8-27b", api: "openai-completions", provider: "groq", cost }),
 		);
 		expect(groq.cost.cacheRead).toBe(0);
-	});
-
-	it("applies documented Cursor context-window floors at build time", () => {
-		// Rule-owned (`providers/cursor.kdl` context-window-floor): baked at
-		// build time. createSpec defaults to the 200k discovery fallback.
-		const windows: Array<[string, number]> = [
-			["cursor-grok-4.5", 256_000],
-			["cursor-grok-4.6", 256_000],
-			["default", 256_000],
-			["kimi-k2.7-code", 262_000],
-			["claude-opus-5-preview", 300_000],
-			["claude-fable-5-preview", 300_000],
-			["gpt-5.6-sol-fast", 272_000],
-			["kimi-k3-max", 1_000_000],
-			["composer-2.5", 200_000],
-			["cursor-grok-5", 200_000],
-			["k3-256k", 200_000],
-		];
-		for (const [id, contextWindow] of windows) {
-			expect(buildGenerated(createSpec({ id, api: "cursor-agent", provider: "cursor" })).contextWindow).toBe(
-				contextWindow,
-			);
-		}
-
-		expect(
-			buildGenerated(
-				createSpec({
-					id: "cursor-grok-4.6",
-					api: "cursor-agent",
-					provider: "cursor",
-					contextWindow: 1_000_000,
-				}),
-			).contextWindow,
-		).toBe(1_000_000);
-	});
-
-	it("resolves documented Cursor context windows offline", async () => {
-		const windows: Array<[string, number]> = [
-			["cursor-grok-4.5", 256_000],
-			["cursor-grok-4.6", 256_000],
-			["default", 256_000],
-			["kimi-k2.7-code", 262_000],
-			["gpt-5.6-sol-fast", 272_000],
-		];
-		const resolved = await resolveProviderModels(cursorModelManagerOptions(), "offline");
-		for (const [id, contextWindow] of windows) {
-			expect(resolved.models.find(model => model.id === id)?.contextWindow).toBe(contextWindow);
-		}
 	});
 
 	it("pins MiniMax-M3 long-context providers to 1M context", () => {

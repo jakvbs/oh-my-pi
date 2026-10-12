@@ -85,8 +85,8 @@ provider "xai-oauth" {
 			cost input=0 output=0 cache-read=0 cache-write=0
 			limits context=2000000 max-tokens=2000000
 		}
-		// Cursor's "Composer 2.5 Fast" exposed via SuperGrok: non-reasoning,
-		// text-only, 200K context (mirrors Cursor's composer-* catalog entries).
+		// "Composer 2.5 Fast" exposed via SuperGrok: non-reasoning, text-only,
+		// 200K context.
 		// Off the Grok effort-capable allowlist; reasoning:false also hides the effort dial.
 		model "grok-composer-2.5-fast" name="Grok Composer 2.5 Fast" {
 			reasoning #false

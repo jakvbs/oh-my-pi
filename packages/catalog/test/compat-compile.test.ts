@@ -6,7 +6,6 @@ import { compileBehavior } from "../scripts/compat-compiler/compile-behavior";
 import { compileCascade } from "../scripts/compat-compiler/compile-cascade";
 import { compileProviders } from "../scripts/compat-compiler/compile-providers";
 import { compileTaxonomy } from "../scripts/compat-compiler/compile-taxonomy";
-import { cursorModelParameters } from "../src/compat/behavior";
 import committed from "../src/compat/rules.json";
 
 const AUTH_IDS_PATH = path.join(import.meta.dir, "../src/compat/auth-ids.ts");
@@ -29,12 +28,15 @@ describe("compat compiler grammar", () => {
 
 	test("root on-api compiles into an api-scoped catalog rule", () => {
 		const compiled = compileCascade([
-			{ file: "providers/test.kdl", text: 'on-api "cursor-agent" {\n\trequires-native-tools #true\n}' },
+			{
+				file: "providers/test.kdl",
+				text: 'on-api "bedrock-converse-stream" {\n\trequires-tool-free-history-for-tool-opt-out #true\n}',
+			},
 		]);
 		expect(compiled.rules).toHaveLength(1);
 		expect(compiled.rules[0]).toMatchObject({
-			apis: ["cursor-agent"],
-			catalog: { requiresNativeTools: true },
+			apis: ["bedrock-converse-stream"],
+			catalog: { requiresToolFreeHistoryForToolOptOut: true },
 		});
 	});
 
@@ -103,7 +105,9 @@ describe("compat compiler grammar", () => {
 
 	test("root on-api rejects catalog-entry directives it does not own", () => {
 		expect(() =>
-			compileCascade([{ file: "providers/test.kdl", text: 'on-api "cursor-agent" {\n\tdefault-model "m"\n}' }]),
+			compileCascade([
+				{ file: "providers/test.kdl", text: 'on-api "openai-codex-responses" {\n\tdefault-model "m"\n}' },
+			]),
 		).toThrow(/providers\/test\.kdl:2.*unknown directive `default-model`/);
 	});
 
@@ -124,7 +128,7 @@ describe("compat compiler grammar", () => {
 			compileCascade([
 				{
 					file: "providers/test.kdl",
-					text: 'on-api "cursor-agent" {\n\tpreserves-max-output-tokens "false"\n}',
+					text: 'on-api "openai-codex-responses" {\n\tpreserves-max-output-tokens "false"\n}',
 				},
 			]),
 		).toThrow(/providers\/test\.kdl:2.*axis `preserves-max-output-tokens` rejects value `false`/);
@@ -192,20 +196,6 @@ describe("compat compiler grammar", () => {
 			text: 'behavior {\n\texclude-discovery-modes "embedding" "moderation" provider="litellm"\n}',
 		});
 		expect(compiled.excludeDiscoveryModes).toEqual([{ provider: "litellm", modes: ["embedding", "moderation"] }]);
-	});
-
-	test("cursor-model-parameter compiles a fixed requestedModel parameter", () => {
-		const compiled = compileBehavior({
-			file: "runtime/behavior.kdl",
-			text: 'behavior {\n\tcursor-model-parameter model="composer-2.5" id="fast" value="false"\n}',
-		});
-		expect(compiled.cursorParameters).toEqual([{ model: "composer-2.5", id: "fast", value: "false" }]);
-	});
-
-	test("shipped rules pin composer-2.5 to the Standard tier (#9012)", () => {
-		const parameters = cursorModelParameters("composer-2.5").map(({ id, value }) => ({ id, value }));
-		expect(parameters).toEqual([{ id: "fast", value: "false" }]);
-		expect(cursorModelParameters("composer-2.5-fast")).toEqual([]);
 	});
 
 	test("duplicate axis in one block is rejected", () => {

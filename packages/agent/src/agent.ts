@@ -7,8 +7,6 @@ import {
 	type AssistantMessage,
 	type AssistantMessageEvent,
 	type Context,
-	type CursorExecHandlers,
-	type CursorToolResultHandler,
 	type Effort,
 	type ImageContent,
 	type Message,
@@ -42,12 +40,6 @@ import type { AppendOnlyContextManager } from "./append-only-context";
 import { isProviderRefusalMessage } from "./replay-policy";
 import { SentToolDefinitions } from "./sent-tool-definitions";
 import { Tokenizer, tokenizerEncodingForModel } from "./tokenizer";
-import {
-	createAdditionalContextMessage,
-	joinAdditionalContext,
-	TOOL_RESULT_ADDITIONAL_CONTEXT,
-	type ToolResultWithAdditionalContext,
-} from "./tool-context";
 import type {
 	AgentBeforeModelCall,
 	AgentContext,
@@ -298,27 +290,6 @@ export interface AgentOptions {
 	/** Reject a deferred hard choice when its named tool is no longer active. */
 	onToolChoiceUnavailable?: () => void;
 
-	/**
-	 * Cursor exec handlers for local tool execution.
-	 */
-	cursorExecHandlers?: CursorExecHandlers;
-	/** Additional tools Cursor executes through its MCP request-context bridge, resolved before each provider call. */
-	getCursorTools?: () => AgentTool[];
-
-	/**
-	 * Optional rewrite of Cursor exec-channel tool results. May return a Promise.
-	 *
-	 * The Agent reserves the original result in its Cursor result buffer first,
-	 * then awaits this hook and patches the reserved entry in place. That keeps
-	 * the call paired even if `message_end` arrives while the Promise is still
-	 * pending, and `#emitCursorSplitAssistantMessage` waits for any transformer
-	 * still in flight before persisting, so a late rewrite is not lost. A
-	 * rejecting transformer is swallowed and the reserved payload stands in.
-	 * Hosts that only pass `cursorExecHandlers` (the coding-agent path) never
-	 * hit this hook.
-	 */
-	cursorOnToolResult?: CursorToolResultHandler;
-
 	/** Current working directory used by local tool execution. */
 	cwd?: string;
 	/**
@@ -365,24 +336,6 @@ export interface AgentOptions {
 
 export interface AgentPromptOptions {
 	toolChoice?: ToolChoice;
-}
-
-/** Buffered Cursor exec-channel tool result waiting to be emitted after the assistant message. */
-interface CursorToolResultEntry {
-	toolResult: ToolResultMessage;
-	/**
-	 * Set while an async `cursorOnToolResult` transformer is still running for
-	 * this entry, and cleared once it settles. The drain awaits it so a
-	 * transformer that rewrites the payload is not silently discarded when
-	 * `message_end` lands in the same chunk as the tool result.
-	 */
-	pending?: Promise<void>;
-	/**
-	 * Passive context the executor attached via
-	 * {@link TOOL_RESULT_ADDITIONAL_CONTEXT}, captured before any transformer
-	 * can replace the message. Injected after the buffered results.
-	 */
-	additionalContext?: string;
 }
 
 type QueuedMessageQueue = "steering" | "followUp";
@@ -467,9 +420,6 @@ export class Agent {
 	#hideThinkingSummary?: boolean;
 	#maxRetryDelayMs?: number;
 	#getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
-	#cursorExecHandlers?: CursorExecHandlers;
-	#getCursorTools?: () => AgentTool[];
-	#cursorOnToolResult?: CursorToolResultHandler;
 	#cwd?: string;
 	#cwdResolver?: () => string | undefined;
 
@@ -505,10 +455,6 @@ export class Agent {
 	#appendOnlyContext?: AppendOnlyContextManager;
 	#beforeQueuedMessageDequeueHooks = new Set<(signal?: AbortSignal) => Promise<void> | void>();
 	#beforeModelCallHooks = new Set<(signal?: AbortSignal) => Promise<void> | void>();
-
-	/** Buffered Cursor tool results with text length at time of call (for correct ordering) */
-	#cursorToolResultBuffer: CursorToolResultEntry[] = [];
-	#cursorToolResultDrain: CursorToolResultEntry[] | undefined;
 
 	streamFn: StreamFn;
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
@@ -578,9 +524,6 @@ export class Agent {
 		this.#onResponse = opts.onResponse;
 		this.#onSseEvent = opts.onSseEvent;
 		this.#getToolContext = opts.getToolContext;
-		this.#cursorExecHandlers = opts.cursorExecHandlers;
-		this.#getCursorTools = opts.getCursorTools;
-		this.#cursorOnToolResult = opts.cursorOnToolResult;
 		this.#cwd = opts.cwd;
 		this.#cwdResolver = opts.cwdResolver;
 		this.#kimiApiFormat = opts.kimiApiFormat;
@@ -878,22 +821,6 @@ export class Agent {
 		this.#appendOnlyContext = manager;
 	}
 
-	#toolsForModel(model: Model): AgentTool[] {
-		if (model.api !== "cursor-agent" || !this.#getCursorTools) return this.#state.tools;
-		const cursorTools = this.#getCursorTools();
-		if (cursorTools.length === 0) return this.#state.tools;
-
-		const names = new Set(this.#state.tools.map(tool => tool.name));
-		let merged: AgentTool[] | undefined;
-		for (const tool of cursorTools) {
-			if (names.has(tool.name)) continue;
-			merged ??= this.#state.tools.slice();
-			merged.push(tool);
-			names.add(tool.name);
-		}
-		return merged ?? this.#state.tools;
-	}
-
 	/**
 	 * Assemble the provider Context for a side-channel (no-loop) request, mirroring
 	 * the main loop's prefix (system + normalized tools) so it shares the prompt
@@ -919,7 +846,7 @@ export class Agent {
 		const messages = normalizeMessagesForProvider(llmMessages, model);
 		const tools = ownedDialect
 			? []
-			: (normalizeTools(this.#toolsForModel(model), {
+			: (normalizeTools(this.#state.tools, {
 					injectIntent: this.#intentTracing,
 					pruneDescriptions: this.#pruneToolDescriptions,
 				}) ?? []);
@@ -1461,13 +1388,6 @@ export class Agent {
 		return claim ? [...claim.messages, ...this.#followUpQueue] : this.#followUpQueue;
 	}
 
-	/** Nonblocking snapshot of the latest results, including provisional payloads while transforms are pending. */
-	getPendingToolResults(): readonly ToolResultMessage[] {
-		const results = this.#cursorToolResultDrain?.map(({ toolResult }) => toolResult) ?? [];
-		for (const { toolResult } of this.#cursorToolResultBuffer) results.push(toolResult);
-		return results;
-	}
-
 	get isAborting(): boolean {
 		return this.#abortController?.signal.aborted === true && this.#state.isStreaming;
 	}
@@ -1759,64 +1679,12 @@ export class Agent {
 		this.#state.streamMessage = null;
 		this.#state.error = undefined;
 
-		// Clear Cursor tool result buffer at start of each run
-		this.#cursorToolResultBuffer = [];
-
 		const reasoning = this.#state.thinkingLevel;
 
 		const context: AgentContext = {
 			systemPrompt: this.#state.systemPrompt,
 			messages: this.#state.messages.slice(),
 			tools: this.#state.tools,
-		};
-
-		// Installed unconditionally. Both `cursorExecHandlers` and
-		// `cursorOnToolResult` are optional, but the Cursor provider resolves
-		// native todo calls server-side and synthesizes exec blocks regardless,
-		// marking both `kCursorExecResolved` — `agent-loop.ts` then emits no
-		// placeholder result for them. The provider always offers a paired result
-		// for those blocks (its todo fallback, and every `resolveExecHandler`
-		// exit including the no-handler one), but only through this sink: without
-		// it the result is dropped on the floor, the assistant block is left
-		// unpaired, and `buildSessionContext` strips the whole interaction on
-		// replay. A non-Cursor provider never calls this, so the closure costs
-		// nothing.
-		const cursorOnToolResult = async (message: ToolResultMessage) => {
-			// Cursor executes tools server-side during streaming. We buffer each
-			// toolResult and emit them right after the assistant message closes
-			// (see `#emitCursorSplitAssistantMessage`), so replay receives
-			// (assistant with interleaved toolCall blocks) → results.
-			//
-			// The entry is reserved SYNCHRONOUSLY, before awaiting the optional
-			// transformer. The provider's data loop dispatches messages with
-			// `void handleServerMessage(...)`, so a `message_end` decoded from the
-			// same chunk can drain the buffer while a transformer is still pending
-			// — pushing afterwards would drop the result and strip its toolCall
-			// block as dangling on replay.
-			//
-			// The transformer's in-flight promise is recorded on the entry so the
-			// drain can await it (`#emitCursorSplitAssistantMessage`). Without
-			// that, a transformer resolving after the swap would patch a detached
-			// object while the persisted result kept the original payload — the
-			// rewrite silently lost.
-			const entry: CursorToolResultEntry = {
-				toolResult: message,
-				additionalContext: (message as ToolResultWithAdditionalContext)[TOOL_RESULT_ADDITIONAL_CONTEXT],
-			};
-			this.#cursorToolResultBuffer.push(entry);
-			const transform = this.#cursorOnToolResult;
-			if (transform) {
-				const pending = (async () => {
-					try {
-						const updated = await transform(message);
-						if (updated) entry.toolResult = updated;
-					} catch {}
-				})();
-				entry.pending = pending;
-				await pending;
-				entry.pending = undefined;
-			}
-			return entry.toolResult;
 		};
 
 		let claimedToolChoice: ToolChoice | undefined;
@@ -1884,7 +1752,7 @@ export class Agent {
 				}
 				context.systemPrompt = this.#state.systemPrompt;
 				this.#onModelCallSystemPrompt?.(context.systemPrompt);
-				context.tools = this.#toolsForModel(this.#state.model ?? model);
+				context.tools = this.#state.tools;
 			},
 			beforeModelCall:
 				this.#beforeModelCall || this.#additionalBeforeModelCalls.size > 0
@@ -1898,8 +1766,6 @@ export class Agent {
 							return undefined;
 						}
 					: undefined,
-			cursorExecHandlers: this.#cursorExecHandlers,
-			cursorOnToolResult,
 			cwd: this.#cwd,
 			getCwd: this.#cwdResolver,
 			transformToolCallArguments: this.#transformToolCallArguments,
@@ -1996,12 +1862,6 @@ export class Agent {
 
 					case "message_end":
 						partial = null;
-						// Check if this is an assistant message with buffered Cursor tool results.
-						// If so, split the message to emit tool results at the correct position.
-						if (event.message.role === "assistant" && this.#cursorToolResultBuffer.length > 0) {
-							await this.#emitCursorSplitAssistantMessage(event.message as AssistantMessage);
-							continue; // Skip default emit - split method handles everything
-						}
 						this.#state.streamMessage = null;
 						this.appendMessage(event.message);
 						break;
@@ -2057,21 +1917,7 @@ export class Agent {
 			const shouldEmitVisibleError = !stoppedForAbort;
 			const assistantPartial = partial?.role === "assistant" ? partial : undefined;
 			const hadAssistantStart = assistantPartial !== undefined;
-			// Same contract as the normal drain in `#emitCursorSplitAssistantMessage`:
-			// a transformer still in flight must be awaited before the payload is
-			// snapshotted, or its rewrite patches an entry this catch path already
-			// detached and the original is persisted instead. A provider error is
-			// exactly when a transform is most likely to be mid-flight.
-			const pendingTransforms = this.#cursorToolResultBuffer
-				.filter(entry => entry.pending !== undefined)
-				.map(entry => entry.pending);
-			if (pendingTransforms.length > 0) await Promise.all(pendingTransforms);
-			const bufferedCursorResults = this.#cursorToolResultBuffer.map(({ toolResult }) => toolResult);
-			const bufferedCursorContext = joinAdditionalContext(
-				this.#cursorToolResultBuffer.map(({ additionalContext }) => additionalContext),
-			);
 			const retainedToolCallIds = new Set(completedToolCallIds);
-			for (const { toolCallId } of bufferedCursorResults) retainedToolCallIds.add(toolCallId);
 			const errorMsg: AssistantMessage =
 				shouldEmitVisibleError && assistantPartial
 					? {
@@ -2115,17 +1961,8 @@ export class Agent {
 				this.#state.error = errorMessage;
 				this.#emit({ type: "message_end", message: errorMsg });
 				const toolResults: ToolResultMessage[] = [];
-				this.#cursorToolResultBuffer = [];
-				const bufferedCursorToolCallIds = new Set(bufferedCursorResults.map(({ toolCallId }) => toolCallId));
-				for (const toolResult of bufferedCursorResults) {
-					this.appendMessage(toolResult);
-					this.#emit({ type: "message_start", message: toolResult });
-					this.#emit({ type: "message_end", message: toolResult });
-					toolResults.push(toolResult);
-				}
 				for (const block of errorMsg.content) {
 					if (block.type !== "toolCall") continue;
-					if (bufferedCursorToolCallIds.has(block.id)) continue;
 					const toolResult = createSyntheticToolResultMessage(block, "error", errorMessage);
 					this.#emit({
 						type: "tool_execution_start",
@@ -2147,9 +1984,6 @@ export class Agent {
 					toolResults.push(toolResult);
 				}
 				const agentEndMessages: AgentMessage[] = [errorMsg, ...toolResults];
-				if (bufferedCursorContext !== undefined) {
-					agentEndMessages.push(this.#emitCursorAdditionalContext(bufferedCursorContext));
-				}
 				this.#emit({ type: "turn_end", message: errorMsg, toolResults });
 				turnOpen = false;
 				this.#emit({ type: "agent_end", messages: agentEndMessages });
@@ -2200,59 +2034,5 @@ export class Agent {
 				});
 			}
 		}
-	}
-
-	/**
-	 * Emit a Cursor assistant message with buffered exec-channel toolResults.
-	 *
-	 * Since the Cursor provider now synthesizes `toolCall` content blocks at the
-	 * point each exec tool starts (issue #4348), the assistant message content
-	 * already interleaves text/thinking with toolCall blocks in execution order.
-	 * We emit the message as-is and let the buffered toolResults follow — the
-	 * transcript rebuild in `renderSessionContext` pairs them by `toolCallId`.
-	 *
-	 * Historical note: this used to split the assistant message at
-	 * `textLengthAtCall` to interpose toolResults between preamble and
-	 * continuation. That workaround existed because native cursor tools had no
-	 * toolCall blocks; it also copied `preambleText` into every text block on
-	 * multi-text turns, producing duplicated text on replay.
-	 */
-	async #emitCursorSplitAssistantMessage(assistantMessage: AssistantMessage): Promise<void> {
-		const buffer = this.#cursorToolResultBuffer;
-		this.#cursorToolResultBuffer = [];
-		this.#cursorToolResultDrain = buffer;
-		try {
-			// Keep the detached batch observable while its transforms finish.
-			const pending = buffer.filter(entry => entry.pending !== undefined).map(entry => entry.pending);
-			if (pending.length > 0) await Promise.all(pending);
-
-			this.#state.streamMessage = null;
-			this.appendMessage(assistantMessage);
-			this.#emit({ type: "message_end", message: assistantMessage });
-
-			for (const { toolResult } of buffer) {
-				this.#emit({ type: "message_start", message: toolResult });
-				this.appendMessage(toolResult);
-				this.#emit({ type: "message_end", message: toolResult });
-			}
-			const additionalContext = joinAdditionalContext(buffer.map(entry => entry.additionalContext));
-			if (additionalContext !== undefined) this.#emitCursorAdditionalContext(additionalContext);
-		} finally {
-			this.#cursorToolResultDrain = undefined;
-		}
-	}
-
-	/**
-	 * Append passive context reported by Cursor exec-channel tools after their
-	 * results, mirroring the loop's post-batch developer message. Cursor runs
-	 * those tools server-side mid-stream, so the context reaches the next
-	 * provider request instead of the current one.
-	 */
-	#emitCursorAdditionalContext(text: string): AgentMessage {
-		const message = createAdditionalContextMessage(text);
-		this.#emit({ type: "message_start", message });
-		this.appendMessage(message);
-		this.#emit({ type: "message_end", message });
-		return message;
 	}
 }

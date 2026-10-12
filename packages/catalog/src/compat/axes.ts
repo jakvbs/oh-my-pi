@@ -332,7 +332,6 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 		shape: "scalar",
 		values: ["freeform", "function"],
 	},
-	"requires-native-tools": { key: "requiresNativeTools", set: "catalog", shape: "scalar", values: [true, false] },
 	"requires-tool-free-history-for-tool-opt-out": {
 		key: "requiresToolFreeHistoryForToolOptOut",
 		set: "catalog",
@@ -435,11 +434,6 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 		set: "catalog",
 		shape: "scalar",
 		values: ["free", "included", "variable", "unknown"],
-	},
-	"requires-cursor-tool-schema-projection": {
-		key: "requiresCursorToolSchemaProjection",
-		set: "catalog",
-		shape: "scalar",
 	},
 	"requires-tool-result-image-hoisting": {
 		key: "requiresToolResultImageHoisting",

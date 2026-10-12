@@ -497,76 +497,13 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/olla
 - **Output Token Ceiling Capping**: Ollama Cloud enforces `OLLAMA_CLOUD_MAX_OUTPUT_TOKENS = 65_536` for DeepSeek V4 Pro/Flash models (`isOllamaCloudOutputCapped`). `ollamaCloudModelManagerOptions` caps `maxTokens` at `min(contextWindow, 65536)` and sets `omitMaxOutputTokens: true`. `createChatBody` in `packages/ai/src/providers/ollama.ts` further clamps `num_predict` on wire payloads to `65_536`.
 - **Cache Provider ID**: Resolved by `resolveModelCacheProviderId` in `packages/catalog/src/provider-models/cache-provider-id.ts` using `http://127.0.0.1:11434` for `ollama` or endpoint hash.
 
-## Cursor
-
-Cursor's integration in `packages/ai` operates over an HTTP/2 Connect RPC transport (`/agent.v1.AgentService/Run`) sending length-prefixed binary Protobuf messages (`AgentClientMessage` and `AgentServerMessage`). Key implementation entry points include `packages/ai/src/providers/cursor.ts` for connection lifecycle, Connect message streaming, and frame dispatching; `packages/ai/src/providers/cursor-pi-args.ts` for pure argument and path transformations; `packages/ai/src/providers/cursor/exec-modern.ts` for local tool result frame builders; auth policy in `packages/catalog/src/compat/rules/auth/cursor.kdl` (`login "custom" hook="cursor"`) and `packages/ai/src/registry/oauth/cursor.ts` for PKCE browser authentication and token refresh; `packages/ai/src/usage/cursor.ts` for multi-endpoint quota tracking; and `packages/catalog/src/discovery/cursor.ts` for Connect RPC model discovery.
-
-### Special casings
-- **Pure Argument Translation (`cursor-pi-args.ts`)**: Path and argument formatting functions (`piReadPath`, `piReadPathHasRange`, `piReadDisplayPath`, `piGrepSkip`, `piJoinPath`, `piLsPath`, `piEscapeRegexLiteral`, `piLimit`, `piTimeout`) are kept strictly independent of Protobuf imports so legacy shims can share them without bundling protobuf schemas into virtual registries.
-- **Empty Grep Pattern Rejection**: `grepArgs` frames with an empty `pattern` and non-empty `glob` are rejected up front (`emptyGrepPatternRejection`) with a descriptive error, forcing the model to retry or switch tools rather than triggering local tool failure after block persistence.
-- **Native Tools & `SoftToolRequirement` Interplay**:
-  - Native tools (`CURSOR_NATIVE_TOOL_NAMES`: `bash`, `read`, `write`, `delete`, `ls`, `grep`, `todo`) are omitted when building `requestContext` MCP tool definitions.
-  - **Exception**: `write` is explicitly re-included in `buildMcpToolDefinitions` whenever pi-agent tools are advertised. `write` acts as the `xd://` transport for staged previews from deferrable tools. Without `write`, staged previews cannot be resolved and `SoftToolRequirement('write')` escalation aborts the turn.
-- **`rootPromptMessagesJson` & Blob Store**:
-  - `buildGrpcRequest` passes conversation history as SHA-256 binary blob IDs (`blobStore`) in `rootPromptMessagesJson` and `turns`.
-  - System prompts are stored as individual JSON blobs (`buildCursorSystemPromptJsons`), allowing independent server-side prefix blob caching hits when only downstream prompts change.
-- **Thinking Replay**:
-  - A completed turn keeps the records Cursor's server wrote for it after the run's own user message (assistant and tool records with their reasoning, signatures and redacted reasoning) as a `cursorHistory` `providerPayload` (`captureCursorHistoryPayload`), provided the turn's last checkpoint came after all of its output and tool results, and at capture the opening user message and every stored tool result still match the fingerprints taken when the turn started and before each host callback ran (so host edits, in place or after the callback, count); the digest is taken once the host has stored every result, server-owned tools included. Later requests to the same provider and model on the same wire route send those records back byte for byte (`resolveCursorRecordReplays`) while the turn's opening user message, content and paired tool results still match that digest; another model's or route's turns, and turns whose user message, content or results were since rewritten (pruning, snapcompact, edits, secret redaction, a truncated result on resume), rebuild from content.
-  - The wire route (`cursorWireRoute`) is the requested model id, model-details id, max mode and parameters of the Run request as sent, after `onPayload`: a normalized request never reuses a discovered fallback's records, and a turn whose retries went out on different routes is not captured. When the hook changes the route of a request that replays records, each history field it left as built (`rootPromptMessagesJson`, `turns`, compared by a byte fingerprint taken before the hook) is rebuilt for the sent route; a field the hook edited goes out as the hook left it.
-  - Rebuilt turns carry no reasoning, except same-model Kimi K3 turns without usable records (`canReplayCursorThinking`, `assertCursorKimiK3HistoryReplayable`). Foreign or hidden reasoning is omitted to prevent leaking non-Cursor thinking blocks into native conversation turns.
-
-### Stream behavior
-- **Length-Prefixed Connect Framing**:
-  - Connect HTTP/2 streams use 5-byte headers (1-byte flag + 4-byte big-endian uint32 payload length).
-  - `CONNECT_END_STREAM_FLAG` (`0b00000010`) flags terminal frames carrying JSON error objects (`parseConnectEndStream`).
-- **Trailer & Transport Error Handling**:
-  - Monitors HTTP/2 trailers (`grpc-status`, `grpc-message`) and maps socket or TLS disconnects using `mapH2TransportError`.
-- **Bi-Directional RPC Dispatch**:
-  - Server streams `AgentServerMessage` (`interactionUpdate`, `execServerMessage`, `kvServerMessage`, `interactionQuery`).
-  - Client writes `AgentClientMessage` (`runRequest`, periodic `clientHeartbeat` every 5 seconds, interaction-query responses) and `ExecClientMessage` tool responses (read, write, error, and request-context results).
-- **Interaction Query Handshake**:
-  - Hosted web search / Exa / unnamed field-9 WebFetch send `interactionQuery` and block the turn until the client writes the interaction-query response.
-  - Heartbeats keep HTTP/2 alive but are not semantic progress; an unanswered query sits silent until the 300s idle watchdog (`Provider stream stalled while waiting for the next event`).
-  - `handleInteractionQuery` approves network permission gates and rejects interactive ask / switch-mode / create-plan. VM setup is left unanswered because its result oneof is success-only.
-- **Async Execution Drain & Turn Completion**:
-  - `handleServerMessage` processes frames asynchronously so the socket continues draining. Dispatches are tracked in `inFlightDispatches` and bounded by `options.signal` abort handling before finalizing stream completion.
-  - Stream completion verifies `turnEnded` (`sawTurnEnded`) or throws `incomplete-stream`.
-- **Tool Call Synthesis**:
-  - `synthesizeCursorExecToolCall` generates display `toolCall` blocks on assistant output messages to mirror local tool execution in the UI and transcript.
-  - An MCP frame with no local handler on a stream flagged `externalToolExecutor` (auth-gateway) synthesizes the block **without** `kCursorExecResolved` and pairs no result: the gateway client is the executor, and `isClientToolUse` only reports a handoff for an unresolved call.
-
-### Auth & usage
-- **Credentials & Headers**:
-  - Authenticates via `CURSOR_ACCESS_TOKEN` sent in `Authorization: Bearer <token>`.
-  - Client headers: `x-ghost-mode: true`, `x-cursor-client-version: cli-2026.07.23-e383d2b`, `x-cursor-client-type: cli`, `x-request-id`.
-- **PKCE OAuth & Polling**:
-  - Deep-link PKCE login generates verifier/challenge and redirects to `https://cursor.com/loginDeepControl`.
-  - Polls `https://api2.cursor.sh/auth/poll?uuid=...&verifier=...` with exponential backoff (1s to 10s delay, up to 150 attempts).
-  - Refresh renews the login session the way the Cursor IDE does: POST `https://api2.cursor.sh/oauth/token` with a `refresh_token` grant for the IDE's client id. The renewed session token is both access and refresh credential; `shouldLogout: true` means the session ended and the row is disabled.
-  - Login, and any refresh of a credential still missing one, records the account email from `https://cursor.com/api/auth/me` (`fetchCursorAccountEmail`), so account policies and `/session pin` can name the account; a failed lookup leaves the credential usable without it.
-- **Usage & Quota Tracking (`packages/ai/src/usage/cursor.ts`)**:
-  - Standard quota fetched from `https://api2.cursor.sh/auth/usage` (`parseCursorUsage`).
-  - For OAuth credentials with WorkOS user sessions (`WorkosCursorSessionToken=${userId}::${accessToken}`), fetches personal usage from `https://cursor.com/api/usage-summary` (`parseCursorIndividualUsage`) and user profile email from `https://cursor.com/api/auth/me`.
-- **Turn Usage Accounting (`packages/ai/src/providers/cursor.ts`)**:
-  - `tokenDelta` frames accumulate a running output estimate; `TurnEndedUpdate` then reports the turn's final `input`/`output`/`cache_read`/`cache_write`/`reasoning` counters and every reported bucket replaces that estimate. A frame with no counters leaves the estimate in place.
-  - `conversationCheckpointUpdate.tokenDetails.usedTokens` is whole-conversation occupancy and lands on `usage.contextTokens`, independent of the output estimate — compaction, handoff, and overflow detection size the context from it.
-
-### Catalog model handling
-- **Provider entry (`cursor`)**: `packages/catalog/src/compat/rules/providers/cursor.kdl` declares default model `claude-opus-5-high`. Environment keys: `CURSOR_ACCESS_TOKEN`.
-- **Cache Provider ID (`packages/catalog/src/provider-models/cache-provider-id.ts`)**:
-  - Returns `"cursor:max-mode-v3"` to ensure context window cache invalidation.
-- **Model Discovery (`packages/catalog/src/discovery/cursor.ts`)**:
-  - `fetchCursorUsableModels` calls `GetUsableModels` (`/agent.v1.AgentService/GetUsableModels`) over Connect RPC.
-  - Sets `cursorMaxMode` from `details.maxMode`, assigns `api: "cursor-agent"`, maps 1M max-mode vs 200k default context windows, and defaults `maxTokens` to 64,000.
-  - Dynamic discovery merges with bundled reference models from `models.json`.
-
 ## Pi Native
 Pi Native is a lossless internal server/client transport protocol used when a pi-ai client (such as containerized `omp` or a sidecar agent slot) delegates request execution to an `omp auth-gateway` holding real provider credentials. Activated when a `Model` sets `transport: "pi-native"`, `streamSimple` in `packages/ai/src/stream.ts` short-circuits local provider resolution and POSTs the canonical `Context` directly to `/v1/pi/stream`. Primary entry modules are `packages/ai/src/providers/pi-native-client.ts` (`streamPiNative`) on the client side, `packages/ai/src/providers/pi-native-server.ts` (`parseRequest`, `encodeStream`, `formatError`) on the wire framing side, and `packages/ai/src/auth-gateway/server.ts` (`POST /v1/pi/stream` route handler) on the server side.
 
 ### Special casings
 - **Lossless Pass-through & Dialect Absence**: Unlike OpenAI/Anthropic routes, `pi-native` is not a textual tool-call dialect (`docs/toolconv/pi-native.md`). Tool calls remain canonical pi-ai `ToolCall` content blocks inside `Context` and `AssistantMessageEvent`. It preserves first-class pi-ai fields (service tier, cache markers, thinking budgets, tool-choice variants, image blocks, tool-call IDs) without foreign-wire quantization.
 - **Wire Request & Minimal Boundary Validation**: Client POSTs `{ modelId: "${provider}/${id}", context, options, stream: true }` to `${model.baseUrl}/v1/pi/stream` (`packages/ai/src/providers/pi-native-client.ts` `resolveStreamUrl`). `packages/ai/src/providers/pi-native-server.ts` `parseRequest` accepts `modelId`, `model.id`, or string `model` (supporting `streamProxy` target swaps). Validation checks only object shapes and arrays (`context.messages`, optional `context.systemPrompt`, `context.tools`), leaving message/tool internals unvalidated until downstream provider execution.
-- **Option Allow-list & Non-Wire Key Stripping**: Server filters `options` against `ALLOWED_OPTION_KEYS` in `packages/ai/src/providers/pi-native-server.ts` `parseRequest`, silently dropping unknown keys for cross-version compatibility. Client strips runtime-only and function-valued fields (`signal`, `apiKey`, `fetch`, `onPayload`, `onResponse`, `onSseEvent`, `execHandlers`, `cursorExecHandlers`, `cursorOnToolResult`, `providerSessionState`) via `NON_WIRE_KEYS` in `packages/ai/src/providers/pi-native-client.ts` `buildWireOptions`.
+- **Option Allow-list & Non-Wire Key Stripping**: Server filters `options` against `ALLOWED_OPTION_KEYS` in `packages/ai/src/providers/pi-native-server.ts` `parseRequest`, silently dropping unknown keys for cross-version compatibility. Client strips runtime-only and function-valued fields (`signal`, `apiKey`, `fetch`, `onPayload`, `onResponse`, `onSseEvent`, `execHandlers`, `providerSessionState`) via `NON_WIRE_KEYS` in `packages/ai/src/providers/pi-native-client.ts` `buildWireOptions`.
 - **Gateway Options Modification**: On the auth-gateway (`packages/ai/src/auth-gateway/server.ts`), sampling controls (`temperature`, `topP`, `topK`, `minP`, `stopSequences`, penalties) are stripped for `openai-codex-responses` models to prevent 400 errors, and passthrough request headers are captured (`captureRequestHeaders`) and merged under client headers.
 - **Dispatch Precedence & Cache Bypass**: In `packages/ai/src/stream.ts` `streamSimple`, `model.transport === "pi-native"` takes precedence over extension-registered custom APIs (`getCustomApi`). `packages/ai/src/stream.ts` `assertExplicitOpenAIResponsesPromptCacheSupport` explicitly bypasses prompt cache assertions for `pi-native` transports because validation is deferred to the gateway-resolved model.
 

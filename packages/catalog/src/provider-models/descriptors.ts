@@ -80,7 +80,6 @@ import {
 } from "./openai-compat";
 import {
 	cloudflareWorkersAiModelManagerOptions,
-	cursorModelManagerOptions,
 	localModelManagerOptions,
 	typesafeModelManagerOptions,
 	webModelManagerOptions,
@@ -106,7 +105,6 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	"cloudflare-workers-ai": () => cloudflareWorkersAiModelManagerOptions(),
 	commandcode: config => commandCodeModelManagerOptions(config),
 	coralbricks: config => coralbricksModelManagerOptions(config),
-	cursor: config => cursorModelManagerOptions(config),
 	deepinfra: config => deepinfraModelManagerOptions(config),
 	deepseek: config => deepseekModelManagerOptions(config),
 	"cline-pass": config => clinePassModelManagerOptions(config),

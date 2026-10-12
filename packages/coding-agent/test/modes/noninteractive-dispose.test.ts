@@ -101,9 +101,9 @@ describe("print mode disposes the session before terminating", () => {
 		const abortedMsg: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: "cursor-agent",
-			provider: "cursor",
-			model: "cursor-grok-4.6",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude-sonnet-4-6",
 			usage: {} as AssistantMessage["usage"],
 			stopReason: "aborted",
 			errorMessage: "Request aborted",

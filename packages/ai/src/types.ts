@@ -3,37 +3,6 @@ export * from "@oh-my-pi/pi-catalog/types";
 
 import type { Type } from "@oh-my-pi/omptype";
 import type { AnthropicSlowModeHooks } from "./providers/anthropic-slow-mode";
-import type {
-	DeleteArgs,
-	DeleteResult,
-	DiagnosticsArgs,
-	DiagnosticsResult,
-	GrepArgs,
-	GrepResult,
-	LsArgs,
-	LsResult,
-	McpResult,
-	PiBashExecArgs,
-	PiBashExecResult,
-	PiEditExecArgs,
-	PiEditExecResult,
-	PiFindExecArgs,
-	PiFindExecResult,
-	PiGrepExecArgs,
-	PiGrepExecResult,
-	PiLsExecArgs,
-	PiLsExecResult,
-	PiReadExecArgs,
-	PiReadExecResult,
-	PiWriteExecArgs,
-	PiWriteExecResult,
-	ReadArgs,
-	ReadResult,
-	ShellArgs,
-	ShellResult,
-	WriteArgs,
-	WriteResult,
-} from "@oh-my-pi/pi-catalog/discovery/cursor-proto";
 import type { Effort } from "@oh-my-pi/pi-catalog/effort";
 import type { Api, FetchImpl, KnownApi, Model, Provider, ThinkingBudgets, Usage } from "@oh-my-pi/pi-catalog/types";
 import type { ApiKey } from "./auth-retry";
@@ -42,7 +11,6 @@ import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { FallbackParam, StopDetails } from "./providers/anthropic-wire";
 import type { AzureOpenAIResponsesOptions } from "./providers/azure-openai-responses";
-import type { CursorOptions } from "./providers/cursor";
 import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { GoogleOptions } from "./providers/google";
 import type { GoogleGeminiCliOptions } from "./providers/google-gemini-cli";
@@ -81,7 +49,6 @@ export interface ApiOptionsMap {
 	"google-gemini-cli": GoogleGeminiCliOptions;
 	"google-vertex": GoogleVertexOptions;
 	"ollama-chat": OllamaChatOptions;
-	"cursor-agent": CursorOptions;
 	"apple-foundation-models": AppleFoundationModelsOptions;
 }
 // Compile-time exhaustiveness check - this will fail if ApiOptionsMap doesn't have all KnownApi keys
@@ -708,15 +675,11 @@ export interface StreamOptions {
 	 * Optional `fetch` implementation override. Providers route every HTTP
 	 * request — direct calls, SDK clients, and retry helpers — through this
 	 * implementation when set. Defaults to `globalThis.fetch`. Providers that
-	 * do not use `fetch` (Bedrock's AWS SDK transport, Cursor's HTTP/2
-	 * channel) silently ignore the override.
+	 * do not use `fetch` (Bedrock's AWS SDK transport) silently ignore the override.
 	 */
 	fetch?: FetchImpl;
 	/** Current session working directory for providers that need workspace-scoped discovery. */
 	cwd?: string;
-
-	/** Cursor exec/MCP tool handlers (cursor-agent only). */
-	execHandlers?: CursorExecHandlers;
 	/**
 	 * Anthropic fallback credit redemption handle from a prior classifier refusal.
 	 * When present, the Anthropic provider replays the frozen request body and betas with
@@ -787,19 +750,6 @@ export interface SimpleStreamOptions extends Omit<StreamOptions, "apiKey"> {
 	textVerbosity?: "low" | "medium" | "high";
 	/** Custom token budgets for thinking levels (token-based providers only) */
 	thinkingBudgets?: ThinkingBudgets;
-	/** Cursor exec handlers for local tool execution */
-	cursorExecHandlers?: CursorExecHandlers;
-	/**
-	 * Optional rewrite of Cursor exec-channel tool results. May return a Promise.
-	 *
-	 * The Agent reserves the original result in its buffer before awaiting this
-	 * hook, and the `message_end` drain waits for a still-pending rewrite, so an
-	 * async transformer is honored even when the turn closes in the same chunk.
-	 * A rejecting transformer is swallowed and the reserved payload stands in.
-	 */
-	cursorOnToolResult?: CursorToolResultHandler;
-	/** Cursor hands unhandled MCP calls to an external executor instead of reporting them as missing. */
-	cursorExternalToolExecutor?: boolean;
 	/**
 	 * Amazon Bedrock Guardrail settings forwarded through transports that do not
 	 * dispatch directly to the Bedrock provider. Model-level values take
@@ -1132,27 +1082,7 @@ export interface AnthropicCompactionFiles {
 	after: number;
 }
 
-/**
- * Records Cursor's server wrote into the client's conversation store for one
- * assistant turn: the `rootPromptMessagesJson` entries after the user's message,
- * reasoning signatures and redacted reasoning included. Written and read by the
- * Cursor provider, which sends them back unchanged to the wire model that produced them.
- */
-export interface CursorHistoryPayload {
-	type: "cursorHistory";
-	/** Wire route the records were written under, as sent (requested model, details id, max mode, parameters). */
-	wireRoute: string;
-	/** Digest of the turn's opening user message, content and paired tool results when recorded; a rewritten turn rebuilds instead. */
-	digest: string;
-	/** Record bytes (UTF-8 JSON) in conversation order; each blob id is the SHA-256 of its bytes. */
-	records: string[];
-}
-
-export type ProviderPayload =
-	| OpenAIResponsesHistoryPayload
-	| AnthropicMessagePayload
-	| AnthropicCompactionPayload
-	| CursorHistoryPayload;
+export type ProviderPayload = OpenAIResponsesHistoryPayload | AnthropicMessagePayload | AnthropicCompactionPayload;
 
 /** Provider-reported rewrite applied to request content before inference. */
 export interface ProviderInputTransformation {
@@ -1343,208 +1273,6 @@ export interface ToolResultMessage<TDetails = unknown> {
 }
 
 export type Message = UserMessage | DeveloperMessage | AssistantMessage | ToolResultMessage;
-
-export type CursorExecHandlerResult<T> = { result: T; toolResult?: ToolResultMessage } | T | ToolResultMessage;
-
-/**
- * Optional rewrite of a Cursor exec-channel tool result.
- * May return a Promise. Returning `undefined` keeps the original result.
- *
- * The Agent reserves the original result in its buffer before awaiting this
- * hook, and the `message_end` drain waits for a still-pending rewrite, so an
- * async transformer is honored even when the turn closes in the same chunk.
- * A rejecting transformer is swallowed and the reserved payload stands in.
- */
-export type CursorToolResultHandler = (
-	result: ToolResultMessage,
-) => ToolResultMessage | undefined | Promise<ToolResultMessage | undefined>;
-
-/**
- * Identifies the synthesized assistant block a Cursor exec call was filed
- * under, so paths that produce no handler `toolResult` can still pair one.
- */
-export interface CursorExecPairing {
-	toolCallId: string;
-	toolName: string;
-}
-
-export interface CursorMcpCall {
-	name: string;
-	providerIdentifier: string;
-	toolName: string;
-	toolCallId: string;
-	args: Record<string, unknown>;
-	rawArgs: Record<string, Uint8Array>;
-	/**
-	 * The frame asks only whether this call would be permitted — it must not
-	 * run. The server sends it to resolve a smart-mode approval decision ahead
-	 * of the real invocation, and answers with the dedicated `approved`
-	 * variant, so executing here would fire a side-effecting tool the user has
-	 * not yet been asked about (and fire it twice once the real call arrives).
-	 */
-	approvalOnly?: boolean;
-}
-
-export interface CursorTodoSnapshotItem {
-	content: string;
-	status: "pending" | "in_progress" | "completed" | "abandoned";
-}
-
-/**
- * Authoritative todo list state settled by Cursor's server-side
- * `update_todos` / `read_todos` tools.
- */
-export interface CursorTodoSnapshot {
-	todos: CursorTodoSnapshotItem[];
-	/** True when the server reported the update as a merge. Presentation only. */
-	merged: boolean;
-}
-
-/**
- * Settles a native todo call in the host.
- *
- * Called for every completed native todo call, not just successful ones: the
- * interactive todo card only resolves on a matching `tool_execution_end`, so a
- * refused or failed call that stayed silent would animate forever.
- *
- * `snapshot` is the server-confirmed list, or `null` when there is nothing to
- * mirror — a server error (`error` set), or a benign refusal with `error` null:
- * a filtered, truncated, or empty read, or a snapshot the local model cannot
- * represent (two rows sharing content). Local state MUST be left untouched
- * unless a snapshot is supplied.
- *
- * `toolCallId` is the id of the streamed native call, which is also the key the
- * interactive transcript filed the visible block under. The host MUST reuse it
- * when emitting the synthetic completion, or that block never resolves.
- *
- * Returns the result to persist for that block — always, since every settle
- * needs a paired result or `buildSessionContext` strips the block as dangling.
- * Only the host knows the phase grouping the todo renderer replays from, so the
- * provider persists this value verbatim. When no handler is registered at all,
- * the provider falls back to its own summary-only result.
- */
-export type CursorTodoSyncHandler = (
-	snapshot: CursorTodoSnapshot | null,
-	toolCallId: string,
-	error: string | null,
-	origin?: "read" | "update",
-) => ToolResultMessage;
-
-export interface CursorShellStreamCallbacks {
-	onStdout(data: string): void;
-	onStderr(data: string): void;
-}
-
-/**
- * A modern Pi exec frame plus the call id the dispatcher minted for it.
- *
- * Unlike the legacy exec args (`ReadArgs`, `ShellArgs`, ...), the Pi frames
- * carry no `tool_call_id` field: on modern builds the id rides the streamed
- * `ToolCall` envelope (`ToolCall.tool_call_id = 57`) instead of each variant's
- * args. The exec channel has no access to that envelope, so the dispatcher
- * mints an id and hands it to the handler, keeping the synthesized transcript
- * block and its paired `toolResult` on the same key.
- */
-export interface CursorPiCall<TArgs> {
-	args: TArgs;
-	toolCallId: string;
-}
-
-/** One resource a host's MCP servers advertise. */
-export interface CursorMcpResource {
-	uri: string;
-	name?: string;
-	description?: string;
-	mimeType?: string;
-	/** The server advertising it; Cursor addresses reads by this name. */
-	server: string;
-}
-
-/**
- * The content of one resource read.
- *
- * `text` and `blob` are the wire's content oneof: exactly one is sent, with
- * `text` winning when a host supplies both. A download instead sets
- * `downloadPath` and no content at all — the model is told where the file
- * landed rather than being handed its bytes.
- */
-export interface CursorMcpResourceContent {
-	uri: string;
-	name?: string;
-	description?: string;
-	mimeType?: string;
-	text?: string;
-	blob?: Uint8Array;
-	/**
-	 * Where the host wrote the resource, workspace-relative, when the frame
-	 * asked for a download. Set this INSTEAD of `text`/`blob`: the wire
-	 * contract is that a download returns no content to the model.
-	 */
-	downloadPath?: string;
-}
-
-export interface CursorExecHandlers {
-	read?: (args: ReadArgs) => Promise<CursorExecHandlerResult<ReadResult>>;
-	ls?: (args: LsArgs) => Promise<CursorExecHandlerResult<LsResult>>;
-	grep?: (args: GrepArgs) => Promise<CursorExecHandlerResult<GrepResult>>;
-	write?: (args: WriteArgs) => Promise<CursorExecHandlerResult<WriteResult>>;
-	delete?: (args: DeleteArgs) => Promise<CursorExecHandlerResult<DeleteResult>>;
-	shell?: (args: ShellArgs) => Promise<CursorExecHandlerResult<ShellResult>>;
-	shellStream?: (
-		args: ShellArgs,
-		callbacks: CursorShellStreamCallbacks,
-	) => Promise<CursorExecHandlerResult<ShellResult>>;
-	diagnostics?: (args: DiagnosticsArgs) => Promise<CursorExecHandlerResult<DiagnosticsResult>>;
-	mcp?: (call: CursorMcpCall) => Promise<CursorExecHandlerResult<McpResult>>;
-	/**
-	 * Answers "would this MCP call be permitted", without running it.
-	 *
-	 * A modern `mcpArgs` frame carrying `smart_mode_approval_only` asks for the
-	 * permission decision alone, ahead of the real invocation. Executing the
-	 * tool to answer it would fire a side effect the user never approved — and
-	 * fire it twice once the real call arrives.
-	 *
-	 * `true` only when the host's policy resolves to a definite allow. A pending
-	 * prompt is `false`: it can only be answered interactively at execution
-	 * time, and there is no "ask me later" reply in this frame's result. When no
-	 * handler is registered the provider refuses, since it cannot decide.
-	 */
-	mcpApprovalPreflight?: (call: CursorMcpCall) => Promise<boolean>;
-	/**
-	 * Modern Cursor CLI Pi tool frames (`ExecServerMessage` 45-51). They are a
-	 * distinct frame family from the legacy `readArgs`/`shellArgs`/... set, not
-	 * an alias: different args, different result oneofs, and no `tool_call_id`.
-	 */
-	piRead?: (call: CursorPiCall<PiReadExecArgs>) => Promise<CursorExecHandlerResult<PiReadExecResult>>;
-	piBash?: (call: CursorPiCall<PiBashExecArgs>) => Promise<CursorExecHandlerResult<PiBashExecResult>>;
-	piEdit?: (call: CursorPiCall<PiEditExecArgs>) => Promise<CursorExecHandlerResult<PiEditExecResult>>;
-	piWrite?: (call: CursorPiCall<PiWriteExecArgs>) => Promise<CursorExecHandlerResult<PiWriteExecResult>>;
-	piGrep?: (call: CursorPiCall<PiGrepExecArgs>) => Promise<CursorExecHandlerResult<PiGrepExecResult>>;
-	piFind?: (call: CursorPiCall<PiFindExecArgs>) => Promise<CursorExecHandlerResult<PiFindExecResult>>;
-	piLs?: (call: CursorPiCall<PiLsExecArgs>) => Promise<CursorExecHandlerResult<PiLsExecResult>>;
-	/**
-	 * The resources the host's MCP servers advertise, optionally filtered to one
-	 * server. Without a handler the provider answers an empty catalog, which
-	 * hides resources a host is in fact holding live connections to.
-	 */
-	listMcpResources?: (args: { server?: string }) => Promise<CursorMcpResource[]>;
-	/**
-	 * Read one resource. `null` means the server or uri is genuinely unknown,
-	 * which the provider answers as `not_found`; throwing surfaces as `error`.
-	 */
-	readMcpResource?: (args: {
-		server: string;
-		uri: string;
-		/**
-		 * When set, write the resource here (workspace-relative) and return
-		 * `downloadPath` instead of content.
-		 */
-		downloadPath?: string;
-	}) => Promise<CursorMcpResourceContent | null>;
-	/** Mirror Cursor's server-owned todo list into local session state. */
-	todoSync?: CursorTodoSyncHandler;
-	onToolResult?: CursorToolResultHandler;
-}
 
 /**
  * Plain JSON Schema document used by extension-authored tools (legacy TypeBox

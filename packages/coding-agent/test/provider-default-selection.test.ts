@@ -1,15 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { fetchCursorUsableModels } from "@oh-my-pi/pi-catalog/discovery/cursor";
-import {
-	AvailableModelsResponse_ModelDetailsSchema,
-	AvailableModelsResponseSchema,
-	GetDefaultModelForCliResponseSchema,
-	GetUsableModelsResponseSchema,
-	ModelDetailsSchema,
-} from "@oh-my-pi/pi-catalog/discovery/cursor-proto";
-import { create, toBinary } from "@oh-my-pi/pi-catalog/discovery/protobuf";
 import { getBundledModels } from "@oh-my-pi/pi-catalog/models";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@oh-my-pi/pi-catalog/provider-models";
 import { pickDefaultAvailableModel } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
@@ -40,51 +30,5 @@ describe("provider default selection", () => {
 		const picked = pickDefaultAvailableModel(available);
 
 		expect(picked?.id).toBe(DEFAULT_MODEL_PER_PROVIDER.synthetic);
-	});
-
-	test("keeps Cursor on its bundled default when the account default is the Auto router", async () => {
-		const ids = ["default", DEFAULT_MODEL_PER_PROVIDER.cursor];
-		const responses: Record<string, Uint8Array> = {
-			"/agent.v1.AgentService/GetUsableModels": toBinary(
-				GetUsableModelsResponseSchema,
-				create(GetUsableModelsResponseSchema, {
-					models: ids.map(modelId => create(ModelDetailsSchema, { modelId })),
-				}),
-			),
-			"/aiserver.v1.AiService/AvailableModels": toBinary(
-				AvailableModelsResponseSchema,
-				create(AvailableModelsResponseSchema, {
-					models: ids.map(name =>
-						create(AvailableModelsResponse_ModelDetailsSchema, { name, supportsAgent: true }),
-					),
-				}),
-			),
-			"/agent.v1.AgentService/GetDefaultModelForCli": toBinary(
-				GetDefaultModelForCliResponseSchema,
-				create(GetDefaultModelForCliResponseSchema, { model: create(ModelDetailsSchema, { modelId: "default" }) }),
-			),
-		};
-		const server = Bun.serve({
-			port: 0,
-			fetch: request => {
-				const body = responses[new URL(request.url).pathname];
-				return body ? new Response(body) : new Response(null, { status: 404 });
-			},
-		});
-		try {
-			const specs = await fetchCursorUsableModels({
-				apiKey: "account-token",
-				baseUrl: server.url.toString(),
-				timeoutMs: 1_000,
-			});
-			const cursor = (specs ?? []).map(spec => buildModel(spec));
-			expect(cursor.map(model => model.id).sort()).toEqual([...ids].sort());
-
-			const picked = pickDefaultAvailableModel(cursor);
-
-			expect(picked).toMatchObject({ provider: "cursor", id: DEFAULT_MODEL_PER_PROVIDER.cursor });
-		} finally {
-			server.stop(true);
-		}
 	});
 });

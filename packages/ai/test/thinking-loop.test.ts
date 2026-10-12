@@ -709,9 +709,7 @@ describe("isLoopGuardedModel", () => {
 		const gemini = createMockModel({ provider: "openrouter", id: "google/gemini-3.5-flash" }).model;
 		const deepseek = createMockModel({ provider: "deepseek", id: "deepseek-reasoner" }).model;
 		const grok46 = createMockModel({ provider: "venice", id: "grok-4-6" }).model;
-		const cursorGrok46 = createMockModel({ provider: "cursor", id: "cursor-grok-4.6-high" }).model;
 		const grok460 = createMockModel({ provider: "venice", id: "grok-4.60" }).model;
-		const grok45 = createMockModel({ provider: "cursor", id: "cursor-grok-4.5-high" }).model;
 		const opaqueDeepseek = createMockModel({ provider: "deepseek", id: "opaque-model" }).model;
 		const other = createMockModel({ provider: "openai", id: "gpt-4o" }).model;
 		const openaiNamespacedGemini = createMockModel({ provider: "custom", id: "openai/gemini-pro" }).model;
@@ -721,11 +719,7 @@ describe("isLoopGuardedModel", () => {
 		expect(isLoopGuardedModel(gemini)).toBe(true);
 		expect(isLoopGuardedModel(deepseek)).toBe(true);
 		expect(isLoopGuardedModel(grok46)).toBe(true);
-		// Cursor's wrapped per-tier Grok ids carry structured xai identity
-		// (`taxonomy/xai.kdl` cursor-grok- prefix), so the guard applies.
-		expect(isLoopGuardedModel(cursorGrok46)).toBe(true);
 		expect(isLoopGuardedModel(grok460)).toBe(true);
-		expect(isLoopGuardedModel(grok45)).toBe(true);
 		expect(isLoopGuardedModel(opaqueDeepseek)).toBe(false);
 		expect(isLoopGuardedModel(other)).toBe(false);
 
@@ -735,7 +729,7 @@ describe("isLoopGuardedModel", () => {
 		// enabled: false disables every guarded family.
 		expect(isLoopGuardedModel(gemini, { loopGuard: { enabled: false } })).toBe(false);
 		expect(isLoopGuardedModel(deepseek, { loopGuard: { enabled: false } })).toBe(false);
-		expect(isLoopGuardedModel(grok45, { loopGuard: { enabled: false } })).toBe(false);
+		expect(isLoopGuardedModel(grok46, { loopGuard: { enabled: false } })).toBe(false);
 
 		// enabled: true does not opt unrelated models into the guard.
 		expect(isLoopGuardedModel(other, { loopGuard: { enabled: true } })).toBe(false);

@@ -34,12 +34,7 @@ import {
 } from "@oh-my-pi/pi-ai/dialect";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { appendDuplicateSuffix, MAX_TOOL_CALL_ID_LENGTH } from "@oh-my-pi/pi-ai/providers/transform-messages";
-import {
-	type CursorExecResolvedCarrier,
-	copyCursorExecResolved,
-	getStreamingPartialJson,
-	kCursorExecResolved,
-} from "@oh-my-pi/pi-ai/utils/block-symbols";
+import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import { schemaDefinesProperty } from "@oh-my-pi/pi-ai/utils/schema/json-schema-validator";
 import { stamp } from "@oh-my-pi/pi-ai/utils/schema/stamps";
 import {
@@ -402,10 +397,6 @@ function snapshotAssistantContentBlock(block: AssistantContentBlock): AssistantC
 				arguments: cloneJsonTree(block.arguments),
 				providerMetadata: snapshotToolCallProviderMetadata(block.providerMetadata),
 			};
-			// Object spread copies enumerable symbols in Bun, but the Cursor
-			// exec-resolved marker is load-bearing for skip-on-dispatch — copy
-			// it explicitly so a projector/snapshot path cannot drop it.
-			copyCursorExecResolved(snap, block);
 			return snap;
 		}
 	}
@@ -434,9 +425,8 @@ function snapshotAssistantMessage(message: AssistantMessage): AssistantMessage {
  * within a turn. A fresh snapshot therefore only needs to re-clone:
  *
  * - the block the current event targets (`changedIndex`),
- * - blocks still open (started but not ended) — Cursor's edit block merges
- *   `path`/`stream_content` into a live block without an event, so open blocks
- *   are re-cloned on every delta,
+ * - blocks still open (started but not ended), re-cloned on every delta so a
+ *   provider that patches a live block without an event stays visible,
  * - blocks appended since the previous snapshot.
  *
  * Every other (finalized) block is carried over from the previous snapshot by
@@ -654,8 +644,7 @@ export function agentLoop(
  * A harness that strips failed/aborted tool results in order to re-execute
  * the calls (e.g. `AgentSession.retry`'s tool replay) leaves the transcript
  * in this shape; {@link agentLoopContinue} resumes it by running those calls
- * before the next model call. Cursor exec-resolved blocks are excluded — the
- * provider already executed those server-side. `length`-truncated turns never
+ * before the next model call. `length`-truncated turns never
  * qualify: their trailing call arguments may be incomplete.
  */
 export function unpairedToolCallTail(messages: readonly AgentMessage[]): AssistantMessage | undefined {
@@ -663,9 +652,7 @@ export function unpairedToolCallTail(messages: readonly AgentMessage[]): Assista
 	if (tail?.role !== "assistant") return undefined;
 	// Mirrors the loop's `runnableStop` rule for fresh turns.
 	if (tail.stopReason !== "toolUse" && tail.stopReason !== "stop") return undefined;
-	const hasRunnable = tail.content.some(
-		c => c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
-	);
+	const hasRunnable = tail.content.some(c => c.type === "toolCall");
 	return hasRunnable ? tail : undefined;
 }
 
@@ -1435,8 +1422,7 @@ async function runLoopBody(
 						message => {
 							const finalToolCalls = message.content.filter(
 								(content): content is Extract<AssistantMessage["content"][number], { type: "toolCall" }> =>
-									content.type === "toolCall" &&
-									(content as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
+									content.type === "toolCall",
 							);
 							if (
 								finalToolCalls.length === 0 ||
@@ -1521,13 +1507,7 @@ async function runLoopBody(
 					// Create placeholder tool results for any tool calls in the aborted message
 					// This maintains the tool_use/tool_result pairing that the API requires
 					type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
-					// Cursor exec-resolved blocks already have their toolResult buffered
-					// for out-of-band emission; a placeholder aborted result here would
-					// pair a duplicate to the same toolCallId (issue #4348 codex review).
-					const toolCalls = message.content.filter(
-						(c): c is ToolCallContent =>
-							c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
-					);
+					const toolCalls = message.content.filter((c): c is ToolCallContent => c.type === "toolCall");
 					// Provider-built aborted messages (stream error events) carry no
 					// per-tool labels; derive them from a tool-scoped abort signal so
 					// only the matching call is blamed and siblings stay neutral.
@@ -1575,15 +1555,7 @@ async function runLoopBody(
 				// trailing tool_use may be truncated with incomplete arguments — those calls
 				// are abandoned below. (`error`/`aborted` already returned above.)
 				type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
-				// A Cursor exec-channel synthesized `toolCall` block carries
-				// `kCursorExecResolved` because Cursor already executed the tool
-				// server-side (via the bridge) and buffered the result for
-				// out-of-band emission — running it here again would duplicate the
-				// same side-effecting call (issue #4348 review by @chatgpt-codex-connector).
-				const toolCalls = message.content.filter(
-					(c): c is ToolCallContent =>
-						c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
-				);
+				const toolCalls = message.content.filter((c): c is ToolCallContent => c.type === "toolCall");
 				const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
 				hasMoreToolCalls = runnableStop && toolCalls.length > 0;
 
@@ -2120,7 +2092,7 @@ async function streamAssistantResponse(
 			let turnSnapshot: AssistantMessage | null = null;
 			// Content indices of blocks that started streaming but have not ended
 			// yet — re-cloned on every delta because live blocks may be patched
-			// without a paired event (Cursor's silent edit-block merge).
+			// without a paired event.
 			const openBlocks = new Set<number>();
 			const completedToolCallIds = new Set<string>();
 			const argStreams = new Map<number, { id: string; stream: AgentToolArgStream }>();
@@ -2924,9 +2896,7 @@ function formatToolNotFoundMessage(
  * trim test (`isMalformedToolCallId`): a whitespace-only id is minted like an
  * empty one, never kept — it would be dropped from provider replay together
  * with its result, the live/replay divergence this repair exists to close.
- * Cursor server-resolved blocks are never re-keyed (the provider correlates
- * their results out-of-band under its own ids) but their ids still join the
- * registry so no minted candidate collides with one. Idempotent: the message is
+ * Idempotent: the message is
  * marked repaired and re-entry is a no-op, so the Harmony path can repair
  * before its snapshots while the dispatch-time prepare sees the already-minted
  * ids and leaves them alone.
@@ -2938,7 +2908,7 @@ type ToolCallIdsRepairedCarrier = AssistantMessage & { [kToolCallIdsRepaired]?: 
 
 /**
  * Run-scoped registry of every tool-call id {@link ensureUniqueToolCallIds} has
- * kept, minted, or seen on a server-resolved block under one
+ * kept or minted under one
  * {@link AgentContext}. Keyed by the dispatch context (the same object every
  * `prepareToolCallDispatch` receives) so the uniqueness window spans every
  * assistant turn of the run rather than resetting per message. Each run gets a
@@ -2965,10 +2935,6 @@ function ensureUniqueToolCallIds(message: ToolCallIdsRepairedCarrier, dispatched
 	const seen = new Set<string>();
 	for (const block of content) {
 		if (block.type !== "toolCall") continue;
-		if ((block as CursorExecResolvedCarrier)[kCursorExecResolved] === true) {
-			if (block.id?.trim()) dispatchedIds.add(block.id);
-			continue;
-		}
 		if (block.id?.trim() && !seen.has(block.id) && !dispatchedIds.has(block.id)) {
 			seen.add(block.id);
 			dispatchedIds.add(block.id);
@@ -3020,7 +2986,6 @@ async function prepareToolCallDispatch(
 	const prepared = new Map<string, PreparedToolCall>();
 	for (const toolCall of assistantMessage.content) {
 		if (toolCall.type !== "toolCall") continue;
-		if ((toolCall as CursorExecResolvedCarrier)[kCursorExecResolved] === true) continue;
 		const tool = resolveToolForCall(context.tools, toolCall, resolveFallbackTool);
 		// A host fallback accepts aliases (`xd://recall`, a mis-separated MCP
 		// name) that providers reject when replayed as a function-call name.
@@ -3144,9 +3109,7 @@ async function speculativeFinalCalls(
 	await speculationCoordinator?.settleAdmissions();
 	const calls = new Map<string, AgentToolCall>();
 	for (const content of assistantMessage.content) {
-		if (content.type !== "toolCall" || (content as CursorExecResolvedCarrier)[kCursorExecResolved] === true) {
-			continue;
-		}
+		if (content.type !== "toolCall") continue;
 		const prepared = preparedDispatch.get(content.id);
 		if (
 			!prepared ||
@@ -3214,13 +3177,7 @@ async function executeToolCalls(
 		afterToolCall,
 	} = config;
 	type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
-	// Defensive: the outer loop already filters exec-resolved blocks before
-	// deciding to invoke `executeToolCalls`, but skip them here too so the
-	// guarantee lives with the code that would re-run the tool.
-	const toolCalls = assistantMessage.content.filter(
-		(c): c is ToolCallContent =>
-			c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
-	);
+	const toolCalls = assistantMessage.content.filter((c): c is ToolCallContent => c.type === "toolCall");
 	const emittedToolResults: ToolResultMessage[] = [];
 	const toolCallInfos = toolCalls.map(call => ({ id: call.id, name: call.name }));
 	const batchId = `${assistantMessage.timestamp ?? Date.now()}_${toolCalls[0]?.id ?? "batch"}`;

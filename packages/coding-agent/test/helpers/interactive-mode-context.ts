@@ -119,7 +119,6 @@ export function createSessionStub(
 		getLastAssistantMessage: () => undefined,
 		agent: {
 			state: { streamMessage: null },
-			getPendingToolResults: () => [],
 			metadataForProvider: () => undefined,
 		},
 		getEnabledToolNames: () => [],

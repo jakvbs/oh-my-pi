@@ -52,41 +52,6 @@ export function modelOperationOverrides(provider: string, model: string): readon
 }
 
 /**
- * Splits a Cursor effort-suffixed OpenAI sibling id into its base id and
- * declared effort tier. The family gate requires the declared marker
- * (`gpt-`) followed immediately by an ASCII digit; matching stays
- * case-sensitive to preserve Cursor wire-id behavior.
- */
-export function cursorEffortSuffix(model: string): { base: string; tier: string } | undefined {
-	const rule = behavior.cursorEffort;
-	if (!rule) return undefined;
-	for (const tier of rule.tiers) {
-		if (!model.endsWith(tier)) continue;
-		const prefix = model.slice(0, model.length - tier.length);
-		if (!prefix.endsWith("-")) continue;
-		const base = prefix.slice(0, -1);
-		let family = false;
-		let index = base.indexOf(rule.familyMarker);
-		while (index !== -1) {
-			const next = base.charCodeAt(index + rule.familyMarker.length);
-			if (next >= 48 && next <= 57) {
-				family = true;
-				break;
-			}
-			index = base.indexOf(rule.familyMarker, index + 1);
-		}
-		if (!family) return undefined;
-		return { base, tier };
-	}
-	return undefined;
-}
-
-/** Fixed Cursor `requestedModel` parameters declared for an exact wire model. */
-export function cursorModelParameters(model: string): readonly { id: string; value: string }[] {
-	return behavior.cursorParameters.filter(parameter => parameter.model === model);
-}
-
-/**
  * The catalog-declared quota scope or display tier for a provider model id.
  * Exact authored memberships win; provider-authored substring fallbacks
  * preserve quota semantics for newly discovered ids.

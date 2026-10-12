@@ -8,7 +8,7 @@ remains in `packages/ai/src/providers/anthropic.ts`. The operational contract is
 
 There is no separate `strict-mode.ts` module — OpenAI strict-mode sanitization,
 OpenAI Responses rewriting, Google/Vertex/Gemini-CLI sanitization, Cloud Code
-Assist Claude sanitization, MCP sanitization, and Cursor projection are
+Assist Claude sanitization, and MCP sanitization are
 consolidated in `normalize.ts`. Google, CCA, MCP, and Moonshot use its
 option-driven `normalizeSchema` walk; the other paths have specialized walkers.
 Apple Foundation Models lowering lives in `foundation-models.ts`.
@@ -41,10 +41,6 @@ All exports live under `@oh-my-pi/pi-ai/utils/schema`:
 - `sanitizeSchemaForGrammar(schema)` — widens boolean subschemas for
   grammar-constrained OpenAI-compatible backends while preserving boolean
   `additionalProperties` / `unevaluatedProperties`.
-- `sanitizeSchemaForCursor(schema)` — dereferences and removes composition
-  keywords for models with `requiresCursorToolSchemaProjection: true`.
-  Object alternatives are merged and scalar alternatives
-  widened; local validation still uses the canonical tool schema.
 - `toFoundationModelsSchema(schema, name)` / `decodeFoundationModelsArguments(args, encodedPaths)`
   from `./foundation-models` — lower tool schemas into Apple's
   `GenerationSchema` dialect and decode values that must travel as JSON strings.
@@ -69,7 +65,6 @@ Removed in the unified-flow refactor:
 | Moonshot/Kimi native hosts using MFJS (`toolSchemaFlavor: "moonshot-mfjs"`) | `normalizeSchemaForMoonshot`                                |
 | Grammar-flavored OpenAI-compatible hosts (`toolSchemaFlavor: "grammar"`) | `sanitizeSchemaForGrammar`                                     |
 | `ollama-chat` (`ollama` / `ollama-cloud`) tool parameters           | `toolWireSchema` → `sanitizeSchemaForOllama`                                 |
-| `cursor-agent` with `requiresCursorToolSchemaProjection: true`     | `toolWireSchema` → `sanitizeSchemaForCursor`                                |
 | `google-generative-ai`, `google-vertex`, Gemini CLI                | `normalizeSchemaForGoogle`                                                   |
 | Google-family models with `compat.ccaLegacyParametersSchema`       | `normalizeSchemaForCCA` on the legacy `parameters` path                     |
 | `apple-foundation-models`                                         | `toolWireSchema` → `toFoundationModelsSchema`; argument decoding afterward  |

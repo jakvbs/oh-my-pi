@@ -10,7 +10,6 @@ import { resolveModelPolicy } from "../src/compat/resolve";
 import { compareRevision, parseRevision } from "../src/compat/revision";
 import { seedModels } from "../src/compat/providers";
 import { classifyModel } from "../src/compat/taxonomy";
-import { resolveCursorInput } from "../src/discovery/cursor";
 import { bareModelId, getLongestModelLikeIdSegment } from "../src/identity/id";
 import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
 import { isOllamaCloudOutputCapped, OLLAMA_CLOUD_MAX_OUTPUT_TOKENS } from "../src/provider-models/ollama";
@@ -247,9 +246,6 @@ export function applyOllamaCloudOutputCap(models: ModelSpec<Api>[]): void {
 }
 
 function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
-	if (model.provider === "cursor") {
-		model.input = resolveCursorInput(model.id, model.input);
-	}
 	const limits = modelLimitsFor(model.provider, model.id);
 	if (limits) {
 		if (limits.context !== undefined) model.contextWindow = limits.context;

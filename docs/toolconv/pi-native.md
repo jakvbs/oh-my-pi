@@ -115,7 +115,7 @@ The server accepts this `SimpleStreamOptions` subset:
 Unknown, `null`, and `undefined` option values are silently dropped by the
 server. The client additionally strips runtime/server-owned fields:
 `signal`, `apiKey`, `fetch`, `onPayload`, `onResponse`, `onSseEvent`,
-`execHandlers`, `cursorExecHandlers`, `cursorOnToolResult`, and
+`execHandlers`, and
 `providerSessionState`. `onResponse` still runs locally against the gateway's
 HTTP response; callbacks and runtime handles themselves never cross the wire.
 

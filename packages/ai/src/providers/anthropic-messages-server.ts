@@ -19,7 +19,6 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "../types";
-import { isCursorExecResolved } from "../utils/block-symbols";
 import {
 	type AnthropicAssistantContentBlock,
 	type AnthropicMessage,
@@ -508,19 +507,6 @@ function randomFallback(): string {
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/**
- * True for a `toolCall` block the client is expected to execute.
- *
- * Cursor's exec channel stamps {@link kCursorExecResolved} on calls it already
- * ran server-side — `todo`, `web_fetch`, `connect_scm`, a native it declined —
- * and those are not handoffs: the client never declared the tool, has no
- * implementation to run, and repeating one would reapply a side effect the
- * server already committed. Only unresolved calls are real external handoffs.
- */
-function isClientToolUse(content: AssistantMessage["content"][number]): content is ToolCall {
-	return content.type === "toolCall" && !isCursorExecResolved(content);
-}
-
 function mapStopReasonOut(reason: StopReason, hasToolUse: boolean): "end_turn" | "max_tokens" | "tool_use" {
 	switch (reason) {
 		case "length":
@@ -528,9 +514,7 @@ function mapStopReasonOut(reason: StopReason, hasToolUse: boolean): "end_turn" |
 		case "toolUse":
 			return "tool_use";
 		default:
-			// A provider whose protocol has no separate tool-use stop — Cursor
-			// ends the turn with `stop` when it hands a client-declared tool
-			// back for the caller to execute — still owes the client
+			// A provider whose protocol has no separate tool-use stop still owes the client
 			// `tool_use`, or the canonical Anthropic loop (run tools while
 			// `stop_reason === "tool_use"`) never runs the tool it asked for.
 			// The OpenAI chat wire maps the same case to `tool_calls`.
@@ -558,9 +542,6 @@ function encodeContentBlocks(message: AssistantMessage): Record<string, unknown>
 				blocks.push(c.block);
 				break;
 			case "toolCall":
-				// Cursor already executed this one; the client must not run it
-				// again and cannot answer it. See `isClientToolUse`.
-				if (!isClientToolUse(c)) break;
 				blocks.push({ type: "tool_use", id: c.id, name: c.name, input: c.arguments ?? {} });
 				break;
 		}
@@ -593,7 +574,10 @@ export function encodeResponse(message: AssistantMessage, requestedModelId: stri
 		role: "assistant",
 		model: requestedModelId,
 		content: encodeContentBlocks(message),
-		stop_reason: mapStopReasonOut(message.stopReason, message.content.some(isClientToolUse)),
+		stop_reason: mapStopReasonOut(
+			message.stopReason,
+			message.content.some(c => c.type === "toolCall"),
+		),
 		// TODO: surface the matched stop sequence once pi-ai's
 		// `AssistantMessage.stopReason` carries the matched string. Intentionally
 		// `null` for now (Anthropic schema allows it).
@@ -658,24 +642,6 @@ export function encodeStream(
 			const messageId = newMessageId();
 			let started = false;
 			const open = new Map<number, OpenBlock>();
-			// Cursor's exec channel hands back calls it already ran server-side;
-			// `isClientToolUse` keeps them off the wire. Anthropic clients (the
-			// official SDK included) append every `content_block_start` to their
-			// snapshot and then address deltas by `index`, so a hole in the
-			// numbering misroutes each later delta. Shift emitted indices down by
-			// the number of blocks suppressed before them — identity while
-			// nothing is suppressed. A suppressed call always closes the
-			// preceding text/thinking block before it opens, so no block that is
-			// still open is ever renumbered.
-			const suppressed = new Set<number>();
-			const wireIndex = (contentIndex: number): number => {
-				let shift = 0;
-				for (const index of suppressed) {
-					if (index < contentIndex) shift++;
-				}
-				return contentIndex - shift;
-			};
-
 			const ensureStart = (partial: AssistantMessage | undefined) => {
 				if (started) return;
 				started = true;
@@ -709,7 +675,7 @@ export function encodeStream(
 					const content = message.content[contentIndex];
 					if (content?.type !== "anthropicServerTool") continue;
 					ensureStart(message);
-					const index = wireIndex(contentIndex);
+					const index = contentIndex;
 					controller.enqueue(
 						sseFrame("content_block_start", {
 							type: "content_block_start",
@@ -755,7 +721,7 @@ export function encodeStream(
 						case "text_start": {
 							emitServerToolBlocksBefore(ev.partial, ev.contentIndex);
 							ensureStart(ev.partial);
-							const index = wireIndex(ev.contentIndex);
+							const index = ev.contentIndex;
 							open.set(ev.contentIndex, { index, kind: "text" });
 							controller.enqueue(
 								sseFrame("content_block_start", {
@@ -770,7 +736,7 @@ export function encodeStream(
 							controller.enqueue(
 								sseFrame("content_block_delta", {
 									type: "content_block_delta",
-									index: wireIndex(ev.contentIndex),
+									index: ev.contentIndex,
 									delta: { type: "text_delta", text: ev.delta },
 								}),
 							);
@@ -781,7 +747,7 @@ export function encodeStream(
 						case "thinking_start": {
 							emitServerToolBlocksBefore(ev.partial, ev.contentIndex);
 							ensureStart(ev.partial);
-							const index = wireIndex(ev.contentIndex);
+							const index = ev.contentIndex;
 							open.set(ev.contentIndex, { index, kind: "thinking" });
 							controller.enqueue(
 								sseFrame("content_block_start", {
@@ -796,7 +762,7 @@ export function encodeStream(
 							controller.enqueue(
 								sseFrame("content_block_delta", {
 									type: "content_block_delta",
-									index: wireIndex(ev.contentIndex),
+									index: ev.contentIndex,
 									delta: { type: "thinking_delta", thinking: ev.delta },
 								}),
 							);
@@ -807,7 +773,7 @@ export function encodeStream(
 								controller.enqueue(
 									sseFrame("content_block_delta", {
 										type: "content_block_delta",
-										index: wireIndex(ev.contentIndex),
+										index: ev.contentIndex,
 										delta: { type: "signature_delta", signature: c.thinkingSignature },
 									}),
 								);
@@ -819,16 +785,7 @@ export function encodeStream(
 							emitServerToolBlocksBefore(ev.partial, ev.contentIndex);
 							ensureStart(ev.partial);
 							const tc = ev.partial.content[ev.contentIndex] as ToolCall | undefined;
-							if (tc && !isClientToolUse(tc)) {
-								// Cursor's exec channel already ran this call and
-								// buffered its result. Streaming it would invite the
-								// client to repeat a committed side effect and answer
-								// a tool it never declared, so drop the whole block —
-								// start, deltas and stop — from the wire.
-								suppressed.add(ev.contentIndex);
-								break;
-							}
-							const index = wireIndex(ev.contentIndex);
+							const index = ev.contentIndex;
 							open.set(ev.contentIndex, { index, kind: "tool_use" });
 							controller.enqueue(
 								sseFrame("content_block_start", {
@@ -845,11 +802,10 @@ export function encodeStream(
 							break;
 						}
 						case "toolcall_delta":
-							if (suppressed.has(ev.contentIndex)) break;
 							controller.enqueue(
 								sseFrame("content_block_delta", {
 									type: "content_block_delta",
-									index: wireIndex(ev.contentIndex),
+									index: ev.contentIndex,
 									delta: { type: "input_json_delta", partial_json: ev.delta },
 								}),
 							);
@@ -866,12 +822,10 @@ export function encodeStream(
 									// TODO: surface matched stop sequence once pi-ai
 									// propagates it on the `done` event.
 									delta: {
-										// A call Cursor resolved after it opened (an MCP
-										// frame answered by a local handler) already
-										// streamed; the client still must not be told to
-										// run it, so it does not terminate the turn with
-										// `tool_use` either.
-										stop_reason: mapStopReasonOut(ev.reason, ev.message.content.some(isClientToolUse)),
+										stop_reason: mapStopReasonOut(
+											ev.reason,
+											ev.message.content.some(c => c.type === "toolCall"),
+										),
 										stop_sequence: null,
 									},
 									...(bindingControlsRequested

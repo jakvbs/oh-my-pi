@@ -83,8 +83,7 @@
 		"fix": "oxlint --fix --fix-suggestions . && bun run fmt",
 		"fmt": "oxfmt --no-error-on-unmatched-pattern 'src/**/*.{ts,tsx}' '{test,bench,examples,scripts}/**/*.ts' '*.ts'",
 		"gen:models": "bun scripts/generate-models.ts",
-		"gen:compat": "bun scripts/compile-compat.ts",
-		"gen:proto": "bun scripts/generate-protocols.ts"
+		"gen:compat": "bun scripts/compile-compat.ts"
 	},
 	"dependencies": {
 		"@oh-my-pi/omptype": "catalog:",

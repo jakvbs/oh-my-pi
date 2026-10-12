@@ -1674,8 +1674,7 @@ export class ExtensionRunner {
 	 *
 	 * Handlers see a structured clone, but the result is rebuilt from the
 	 * original blocks: unchanged blocks keep their identity and symbol-keyed
-	 * provider markers (e.g. `kCursorExecResolved`, which `structuredClone`
-	 * drops and without which agent-loop re-runs Cursor-settled tool calls).
+	 * provider markers (`structuredClone` drops symbol keys).
 	 */
 	async emitAssistantMessage(
 		message: AssistantMessage,

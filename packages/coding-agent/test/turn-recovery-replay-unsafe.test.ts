@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage, SyntheticToolResultDetails } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import * as AIError from "@oh-my-pi/pi-ai/error";
-import { kCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import type { Model, Usage } from "@oh-my-pi/pi-catalog/types";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
@@ -662,9 +661,7 @@ describe("TurnRecovery replay-unsafe output classification", () => {
 		});
 
 		it("does not retry a refusal when one call is synthetic-paired and another has no result", () => {
-			// Reachable in practice: the agent loop skips Cursor server-resolved calls
-			// when pairing synthetic results, so a turn can carry one accounted-for
-			// call beside one it never paired. Accounting for only some of them is
+			// Accounting for only some of them is
 			// not proof that none ran.
 			const message = makeRefusal([toolCall("call-1"), toolCall("call-2")]);
 			const recovery = recoveryFor(message, [syntheticResult("call-1")]);
@@ -819,22 +816,14 @@ describe("TurnRecovery replay-unsafe output classification", () => {
 		const nghttp2Refused = "Stream closed with error code NGHTTP2_REFUSED_STREAM";
 		const stallMessage = "Provider stream stalled while waiting for the next event";
 
-		function cursorMessage(content: AssistantMessage["content"], errorMessage: string): AssistantMessage {
+		function resetMessage(content: AssistantMessage["content"], errorMessage: string): AssistantMessage {
 			const message = makeMessage(content, model);
-			message.provider = "cursor";
 			message.errorMessage = errorMessage;
 			return message;
 		}
 
-		function execToolCall(id: string, marked = false): AssistantMessage["content"][number] {
-			const block: AssistantMessage["content"][number] = {
-				type: "toolCall",
-				id,
-				name: "bash",
-				arguments: { command: "pwd" },
-			};
-			if (marked) (block as { [kCursorExecResolved]?: true })[kCursorExecResolved] = true;
-			return block;
+		function execToolCall(id: string): AssistantMessage["content"][number] {
+			return { type: "toolCall", id, name: "bash", arguments: { command: "pwd" } };
 		}
 
 		function mcpToolCall(id: string): AssistantMessage["content"][number] {
@@ -903,15 +892,15 @@ describe("TurnRecovery replay-unsafe output classification", () => {
 			});
 		});
 
-		it("continues a Cursor NGHTTP2_INTERNAL_ERROR after a marked exec result", () => {
-			const message = cursorMessage([execToolCall("call-1", true)], nghttp2Internal);
+		it("continues an NGHTTP2_INTERNAL_ERROR after a resolved tool result", () => {
+			const message = resetMessage([execToolCall("call-1")], nghttp2Internal);
 			const recovery = recoveryForReset(message, [realResult("call-1")]);
 			expect(recovery.isRetryableError(message)).toBe(false);
 			expect(recovery.classifyResolvedInterruptedToolTurn(message)).toBe("stream-stall");
 		});
 
-		it("continues a Cursor NGHTTP2_REFUSED_STREAM after a marked exec result", () => {
-			const message = cursorMessage([execToolCall("call-1", true)], nghttp2Refused);
+		it("continues an NGHTTP2_REFUSED_STREAM after a resolved tool result", () => {
+			const message = resetMessage([execToolCall("call-1")], nghttp2Refused);
 			expect(recoveryForReset(message, [realResult("call-1")]).classifyResolvedInterruptedToolTurn(message)).toBe(
 				"stream-stall",
 			);
@@ -923,38 +912,38 @@ describe("TurnRecovery replay-unsafe output classification", () => {
 			"The operation was aborted",
 			"The operation was aborted.",
 		])("resumes a generic %s abort after resolved tool calls", errorMessage => {
-			const message = cursorMessage([execToolCall("call-1")], errorMessage);
+			const message = resetMessage([execToolCall("call-1")], errorMessage);
 			expect(recoveryForReset(message, [realResult("call-1")]).classifyResolvedInterruptedToolTurn(message)).toBe(
 				"reasonless-abort",
 			);
 		});
 
-		it("continues a Cursor HTTP/2 reset after an unmarked MCP result", () => {
-			const message = cursorMessage([mcpToolCall("mcp-1")], nghttp2Internal);
+		it("continues an HTTP/2 reset after an MCP result", () => {
+			const message = resetMessage([mcpToolCall("mcp-1")], nghttp2Internal);
 			const recovery = recoveryForReset(message, [realResult("mcp-1", "mcp__databricks_production_execute_sql")]);
 			expect(recovery.classifyResolvedInterruptedToolTurn(message)).toBe("stream-stall");
 		});
 
-		it("continues a Cursor idle stall after an unmarked MCP call", () => {
-			const message = cursorMessage([mcpToolCall("mcp-1")], stallMessage);
+		it("continues an idle stall after an MCP result", () => {
+			const message = resetMessage([mcpToolCall("mcp-1")], stallMessage);
 			const recovery = recoveryForReset(message, [realResult("mcp-1", "mcp__databricks_production_execute_sql")]);
 			expect(recovery.classifyResolvedInterruptedToolTurn(message)).toBe("stream-stall");
 		});
 
 		it("does not continue an HTTP/2 reset whose tool call has no result", () => {
-			const message = cursorMessage([execToolCall("call-1", true)], nghttp2Internal);
+			const message = resetMessage([execToolCall("call-1")], nghttp2Internal);
 			expect(recoveryForReset(message, []).classifyResolvedInterruptedToolTurn(message)).toBeUndefined();
 		});
 
 		it("does not continue an HTTP/2 CANCEL reset", () => {
-			const message = cursorMessage([execToolCall("call-1", true)], "Stream closed with error code NGHTTP2_CANCEL");
+			const message = resetMessage([execToolCall("call-1")], "Stream closed with error code NGHTTP2_CANCEL");
 			expect(
 				recoveryForReset(message, [realResult("call-1")]).classifyResolvedInterruptedToolTurn(message),
 			).toBeUndefined();
 		});
 
 		it("matches a Connect-wrapped NGHTTP2 close", () => {
-			const message = cursorMessage(
+			const message = resetMessage(
 				[mcpToolCall("mcp-1")],
 				"Connect error failed_precondition: Error: Stream closed with error code NGHTTP2_INTERNAL_ERROR",
 			);
@@ -970,7 +959,6 @@ describe("TurnRecovery replay-unsafe output classification", () => {
 		const completionsClose = "OpenAI completions stream closed before a finish_reason was received";
 		const responsesClose = "OpenAI responses stream closed before a terminal response event was received";
 		const codexClose = "Codex stream ended before terminal completion event";
-		const cursorClose = "Cursor stream ended before turnEnded";
 
 		function gatewayMessage(content: AssistantMessage["content"], errorMessage: string): AssistantMessage {
 			const message = makeMessage(content, model);
@@ -990,7 +978,6 @@ describe("TurnRecovery replay-unsafe output classification", () => {
 			["completions", completionsClose],
 			["responses", responsesClose],
 			["Codex responses", codexClose],
-			["Cursor", cursorClose],
 		])("continues a premature %s close after a resolved tool call", (_provider, errorMessage) => {
 			const message = gatewayMessage(
 				[{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "pwd" } }],

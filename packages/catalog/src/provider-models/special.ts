@@ -1,4 +1,4 @@
-import { logger, once } from "@oh-my-pi/pi-utils";
+import { logger } from "@oh-my-pi/pi-utils";
 import { providerEntry, seedModels } from "../compat/providers";
 import { type CodexModelDiscoveryResult, fetchCodexModels } from "../discovery/codex";
 import { fetchTypeSafeModels, TYPESAFE_DEFAULT_BASE_URL } from "../discovery/typesafe";
@@ -104,35 +104,6 @@ function unionCodexModels(
 	}
 	return catalogs.length > 0 ? unionAccountCatalogs(catalogs) : null;
 }
-
-// ---------------------------------------------------------------------------
-// Cursor
-// ---------------------------------------------------------------------------
-
-export interface CursorModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	clientVersion?: string;
-}
-
-export function cursorModelManagerOptions(config: CursorModelManagerConfig = {}): ModelManagerOptions<"cursor-agent"> {
-	const { apiKey, baseUrl, clientVersion } = config;
-	return {
-		providerId: "cursor",
-		dynamicModelsAuthoritative: true,
-		cacheProviderId: resolveModelCacheProviderId("cursor", { apiKey, baseUrl }),
-		...(apiKey
-			? {
-					fetchDynamicModels: async () => {
-						const { fetchCursorUsableModels } = await cursorDiscovery();
-						return fetchCursorUsableModels({ apiKey, baseUrl, clientVersion });
-					},
-				}
-			: undefined),
-	};
-}
-
-const cursorDiscovery = once(() => import("../discovery/cursor"));
 
 // ---------------------------------------------------------------------------
 // Synthetic role providers

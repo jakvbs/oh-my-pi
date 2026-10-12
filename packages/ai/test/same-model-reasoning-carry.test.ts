@@ -190,15 +190,6 @@ describe("same-model reasoning carry", () => {
 		expect(carried.content).toBe(DEMOTED);
 	});
 
-	it("never carries reasoning from a host that opts out", () => {
-		const cursorK3: Source = { provider: "cursor", api: "cursor-agent", model: "kimi-k3" };
-
-		const wire = completionsAssistant(moonshotK3(), history(priorTurn(cursorK3)));
-
-		expect(wire.reasoning_content).not.toBe(TRACE);
-		expect(wire.content).toBe(DEMOTED);
-	});
-
 	it("never carries reasoning from modified weights that classify as the base model", async () => {
 		// Abliteration's Large is an abliterated GLM 5.2 and classifies as GLM 5.2.
 		const abliterated: Source = {

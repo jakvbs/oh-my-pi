@@ -25,7 +25,6 @@ import { isConcurrencyCapExclusion, isUsageLimitOutcome } from "./error/rate-lim
 import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
-import type { CursorOptions } from "./providers/cursor";
 import type { GoogleOptions } from "./providers/google";
 import { getVertexAccessToken } from "./providers/google-auth";
 import type { GoogleGeminiCliOptions } from "./providers/google-gemini-cli";
@@ -40,7 +39,6 @@ import {
 	streamAppleFoundationModels,
 	streamAzureOpenAIResponses,
 	streamBedrock,
-	streamCursor,
 	streamGoogle,
 	streamGoogleGeminiCli,
 	streamGoogleVertex,
@@ -900,11 +898,8 @@ export function stream<TApi extends Api>(
 		);
 	}
 	const codec = applyGlyphCodec(context);
-	const execHandlers = options?.execHandlers;
-	const wireOptions: OptionsForApi<TApi> | undefined =
-		execHandlers === undefined ? options : { ...options, execHandlers: codec.wrapCursorExecHandlers(execHandlers) };
 	return codec.wrap(
-		withThinkingLoopGuard(model, wireOptions, opts =>
+		withThinkingLoopGuard(model, options, opts =>
 			withProviderInFlightLimit(model, opts, limited => streamDispatch(model, codec.context, opts, limited)),
 		),
 	);
@@ -1010,9 +1005,6 @@ function streamDispatch<TApi extends Api>(
 
 		case "ollama-chat":
 			return streamOllama(providerModel as Model<"ollama-chat">, context, providerOptions as OllamaChatOptions);
-
-		case "cursor-agent":
-			return streamCursor(providerModel as Model<"cursor-agent">, context, providerOptions as CursorOptions);
 
 		case "apple-foundation-models":
 			return streamAppleFoundationModels(
@@ -1204,17 +1196,7 @@ export function streamSimple<TApi extends Api>(
 		return streamSimpleRequest(model, context, sessionOptions);
 	}
 	const codec = applyGlyphCodec(context);
-	const execHandlers = sessionOptions.cursorExecHandlers ?? sessionOptions.execHandlers;
-	const wrappedExecHandlers = execHandlers === undefined ? undefined : codec.wrapCursorExecHandlers(execHandlers);
-	const wireOptions =
-		wrappedExecHandlers === undefined
-			? sessionOptions
-			: {
-					...sessionOptions,
-					execHandlers: wrappedExecHandlers,
-					cursorExecHandlers: wrappedExecHandlers,
-				};
-	return codec.wrap(streamSimpleRequest(model, codec.context, wireOptions));
+	return codec.wrap(streamSimpleRequest(model, codec.context, sessionOptions));
 }
 
 /**
@@ -1786,7 +1768,6 @@ function mapOptionsForApi<TApi extends Api>(
 		onPayload: options?.onPayload,
 		onResponse: options?.onResponse,
 		onSseEvent: options?.onSseEvent,
-		execHandlers: options?.execHandlers,
 		fetch: options?.fetch,
 		fallbacks: options?.fallbacks,
 		acceptEmptyResponse: options?.acceptEmptyResponse,
@@ -2219,23 +2200,6 @@ function mapOptionsForApi<TApi extends Api>(
 				disableReasoning: options?.disableReasoning,
 				toolChoice: options?.toolChoice,
 			});
-
-		case "cursor-agent": {
-			const execHandlers = options?.cursorExecHandlers ?? options?.execHandlers;
-			const onToolResult = options?.cursorOnToolResult ?? execHandlers?.onToolResult;
-			const cursorModel = model as Model<"cursor-agent">;
-			const effort =
-				options?.reasoning && !options.disableReasoning && !options.forceReasoningOff && cursorModel.reasoning
-					? requireSupportedEffort(cursorModel, options.reasoning)
-					: undefined;
-			return castApi<"cursor-agent">({
-				...base,
-				execHandlers,
-				onToolResult,
-				externalToolExecutor: options?.cursorExternalToolExecutor,
-				wireModelId: resolveWireModelId(cursorModel, effort),
-			});
-		}
 
 		case "apple-foundation-models":
 			return castApi<"apple-foundation-models">({

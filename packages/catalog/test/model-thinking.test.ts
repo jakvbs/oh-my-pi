@@ -1512,26 +1512,26 @@ describe("Qwen 3.8 local template effort ladder", () => {
 		// A collapsed row whose default wire id is a non-floor tier clamps to the
 		// effort that routes there, not the numeric minimum.
 		const grok = buildModel({
-			id: "cursor-grok-4.6",
+			id: "grok-4.6",
 			name: "Grok 4.6",
-			api: "cursor-agent",
-			provider: "cursor",
-			baseUrl: "https://api2.cursor.sh",
+			api: "openai-completions",
+			provider: "xai",
+			baseUrl: "https://api.x.ai/v1",
 			reasoning: true,
 			input: ["text"],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 200_000,
 			maxTokens: 64_000,
-			requestModelId: "cursor-grok-4.6-medium",
+			requestModelId: "grok-4.6-medium",
 			thinking: {
 				mode: "effort",
 				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
 				requiresEffort: true,
 				effortRouting: {
-					[Effort.Low]: "cursor-grok-4.6-low",
-					[Effort.Medium]: "cursor-grok-4.6-medium",
-					[Effort.High]: "cursor-grok-4.6-high",
-					[Effort.XHigh]: "cursor-grok-4.6-xhigh",
+					[Effort.Low]: "grok-4.6-low",
+					[Effort.Medium]: "grok-4.6-medium",
+					[Effort.High]: "grok-4.6-high",
+					[Effort.XHigh]: "grok-4.6-xhigh",
 				},
 			},
 		});

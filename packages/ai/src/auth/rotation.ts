@@ -384,7 +384,7 @@ export class RateLimits implements LimitsApi {
 	 * - usage-limit / account-rate-limit error → {@link RateLimits.markReached}
 	 *   (temporary block via its own backoff — default plus server usage-report
 	 *   reset; sticky left intact so the next resolve re-ranks around the block).
-	 * - exact model-entitlement denial (Codex ChatGPT account or Cursor plan) →
+	 * - exact model-entitlement denial (Codex ChatGPT account) →
 	 *   temporarily block only that requested model, then rotate.
 	 * - other account-scoped policy denial → temporarily block that account
 	 *   without marking its credential suspect, then rotate through siblings.
@@ -406,8 +406,7 @@ export class RateLimits implements LimitsApi {
 		const error = options?.error;
 		const status = AIError.status(error);
 		const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
-		const exactCursorModelPolicy = AIError.isCursorPlanAccountPolicyError(error, provider);
-		const accountPolicy = exactCursorModelPolicy || AIError.isAccountPolicyError(error);
+		const accountPolicy = AIError.isAccountPolicyError(error);
 		if (!accountPolicy && (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message))) {
 			// Thread the provider-specified reset window ("Your limit will reset
 			// in 13 minutes") into the block duration so the credential
@@ -425,9 +424,8 @@ export class RateLimits implements LimitsApi {
 		}
 
 		const deniedModel = AIError.codexChatGPTAccountPolicyModel(error);
-		const exactCodexModelPolicy =
+		const exactModelPolicy =
 			deniedModel !== undefined && AIError.isCodexChatGPTAccountPolicyError(error, provider, options?.modelId);
-		const exactModelPolicy = exactCodexModelPolicy || exactCursorModelPolicy;
 		const sessionCredential = await this.#resolveCredentialTarget(provider, sessionId, {
 			credentialId: options?.credentialId,
 			apiKey: options?.apiKey,
@@ -437,7 +435,7 @@ export class RateLimits implements LimitsApi {
 		// The exact sentence is provider-controlled input. A non-Codex provider,
 		// absent request model, or mismatched model must not turn it into either a
 		// global block or a hard-auth invalidation.
-		if (deniedModel !== undefined && !exactCodexModelPolicy) return { switched: false };
+		if (deniedModel !== undefined && !exactModelPolicy) return { switched: false };
 		if (exactModelPolicy || accountPolicy) {
 			const modelPolicyScope = exactModelPolicy
 				? modelAccountPolicyBlockScope(provider, options?.modelId)

@@ -18,7 +18,6 @@ export type KnownApi =
 	| "google-gemini-cli"
 	| "google-vertex"
 	| "ollama-chat"
-	| "cursor-agent"
 	| "apple-foundation-models";
 export type Api = KnownApi | (string & {});
 
@@ -1399,18 +1398,6 @@ export interface ModelAccountAccess {
 	cyberPrograms?: readonly string[];
 }
 
-/** One Cursor `RequestedModel.parameters` entry recovered from rich discovery. */
-export interface CursorModelParameter {
-	id: string;
-	value: string;
-}
-
-/** Cursor wire target selected after local effort/variant routing. */
-export interface CursorModelRoute {
-	modelId: string;
-	parameters: readonly CursorModelParameter[];
-	maxMode?: boolean;
-}
 // Model interface for the unified model system
 export interface Model<TApi extends Api = Api> {
 	id: string;
@@ -1442,8 +1429,6 @@ export interface Model<TApi extends Api = Api> {
 	 * inferring it from the transport API.
 	 */
 	requiresGlyphTokenization?: boolean;
-	/** Whether this model requires Cursor's tool-schema combiner projection. */
-	requiresCursorToolSchemaProjection?: boolean;
 	/** Whether this model requires tool-result images hoisted into sibling user content blocks. */
 	requiresToolResultImageHoisting?: boolean;
 	/**
@@ -1503,18 +1488,6 @@ export interface Model<TApi extends Api = Api> {
 	supportsComputerUse?: boolean;
 	/** Verbatim explicit computer-use support from the spec; undefined when `buildModel` inferred the runtime value. */
 	supportsComputerUseConfig?: boolean;
-	/** Cursor `max_mode` request flag returned by `GetUsableModels` for premium models that require max mode. */
-	cursorMaxMode?: boolean;
-	/**
-	 * Per-wire-id `max_mode` markers for the members a collapsed Cursor row
-	 * routes to, recorded by `collapseVariants` from live `GetUsableModels`
-	 * rows. {@link cursorMaxMode} on a collapsed row is an OR across members,
-	 * so it cannot tell a `-low` route that needs no max mode from an Opus
-	 * `-fast` route that does; transports look the routed wire id up here
-	 * first. Absent on raw rows (their own `cursorMaxMode` already describes
-	 * their single wire id) and on bundled snapshots that predate discovery.
-	 */
-	cursorMaxModeRoutes?: Readonly<Record<string, boolean>>;
 	/**
 	 * Per-account availability recorded by multi-account discovery: provider
 	 * account key (Codex: ChatGPT `chatgpt_account_id`; Antigravity: login
@@ -1524,21 +1497,6 @@ export interface Model<TApi extends Api = Api> {
 	 * Claude 5.5) straight to eligible accounts. Absent on bundled/config rows.
 	 */
 	accountAccess?: Readonly<Record<string, ModelAccountAccess>>;
-	/** Cursor `RequestedModel.parameters` for this model's default variant. */
-	cursorModelParameters?: readonly CursorModelParameter[];
-	/**
-	 * Per-wire-id Cursor routes recovered from `AvailableModels`. Generic effort
-	 * collapse retains these while routing selects one key at request time.
-	 */
-	cursorModelRoutes?: Readonly<Record<string, CursorModelRoute>>;
-	/** Cursor's account-relative model price/multiplier; not a per-token USD rate. */
-	cursorPrice?: number;
-	/** Cursor requires data retention to invoke this model. */
-	cursorRequiresDataRetention?: boolean;
-	/** Cursor explicitly reports support for its Agent surface. */
-	cursorSupportsAgent?: boolean;
-	/** Cursor explicitly reports support for sandboxed execution. */
-	cursorSupportsSandboxing?: boolean;
 	cost: ModelCost;
 	/**
 	 * Prompt-cache entry lifetime per retention tier, in seconds. Populated only
@@ -1706,7 +1664,6 @@ export interface ModelSpec<TApi extends Api = Api> extends Omit<
 	| "identity"
 	| "compatConfig"
 	| "requiresGlyphTokenization"
-	| "requiresCursorToolSchemaProjection"
 	| "requiresToolResultImageHoisting"
 	| "supportsAssistantPrefill"
 	| "supportsComputerUseConfig"

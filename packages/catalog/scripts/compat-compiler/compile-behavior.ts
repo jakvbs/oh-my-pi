@@ -2,7 +2,7 @@
  * Compiles `rules/runtime/behavior.kdl` into {@link CompiledBehavior}.
  *
  * Ports the o2 runtime-behavior grammar (openai-responses-heuristic,
- * model-operations, cursor-effort, cursor-model-parameter, quota-tiers,
+ * model-operations, quota-tiers,
  * hosted-default) and adds the pi-only nodes: api-routes, model-limits,
  * exclude-discovery-modes, exclude-models, plan-requirement, pricing-peer,
  * and retry-reset-timezone.
@@ -299,7 +299,6 @@ function parsePricingPeer(node: KdlNodeView): CompiledPricingPeer {
 export function compileBehavior(source: { file: string; text: string } | undefined): CompiledBehavior {
 	const behavior: CompiledBehavior = {
 		modelOperations: [],
-		cursorParameters: [],
 		quotaTiers: [],
 		hostedDefaults: [],
 		apiRoutes: [],
@@ -328,28 +327,6 @@ export function compileBehavior(source: { file: string; text: string } | undefin
 			case "model-operations":
 				behavior.modelOperations.push(parseModelOperations(node));
 				break;
-			case "cursor-effort": {
-				if (behavior.cursorEffort) malformed(node);
-				const children = ensureContainer(node, ["family-marker"]);
-				const familyMarker = requiredProp(node, "family-marker");
-				if (!familyMarker || children.length !== 1 || children[0].name !== "tier" || children[0].children) {
-					malformed(node);
-				}
-				validateProps(children[0], []);
-				const tiers = positionalStrings(children[0]);
-				if (tiers.length === 0) malformed(node);
-				behavior.cursorEffort = { familyMarker, tiers };
-				break;
-			}
-			case "cursor-model-parameter": {
-				ensureLeaf(node, ["model", "id", "value"]);
-				const model = requiredProp(node, "model");
-				const id = requiredProp(node, "id");
-				const value = requiredProp(node, "value");
-				if (!model || !id || !value || node.args.length > 0) malformed(node);
-				behavior.cursorParameters.push({ model, id, value });
-				break;
-			}
 			case "quota-tiers":
 				behavior.quotaTiers.push(parseQuotaTiers(node));
 				break;

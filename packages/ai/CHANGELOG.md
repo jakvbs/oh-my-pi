@@ -7,6 +7,7 @@
 - Removed the Devin provider (`devin`, `devin-agent` API), its login flow, model discovery and usage reporting.
 - Removed the Factory Droid provider (`factory-droid`, `factory-droid-agent` API), its login flow, model discovery, usage reporting, credits badge and routed-subscription catalog axes.
 - Removed the GitLab Duo providers (`gitlab-duo`, `gitlab-duo-agent`, `gitlab-duo-agent` API), their login flows, Duo Workflow transport and model discovery.
+- Removed the Cursor provider (`cursor`, `cursor-agent` API): login, discovery, usage, exec/MCP bridge, `execHandlers`/`cursorExecHandlers`/`cursorOnToolResult` stream options, `kCursorExecResolved`, `CursorHistoryPayload`, and the catalog protobuf tooling it alone used.
 
 ## [18.9.2] - 2026-10-11
 

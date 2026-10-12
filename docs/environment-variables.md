@@ -88,7 +88,6 @@ Plain provider credential names come from `env` entries in `packages/catalog/src
 | `COMMAND_CODE_API_KEY`          | Command Code auth                                | Using `commandcode` provider                                   | `COMMANDCODE_API_KEY` is accepted as a legacy alias                                                 |
 | `CHARM_HYPER_API_KEY`           | Charm Hyper auth                                 | Using `charm-hyper` provider                                   | `HYPER_API_KEY` is accepted as a fallback alias                                                     |
 | `VLLM_API_KEY`                  | vLLM auth/discovery opt-in                       | Using `vllm` provider (local OpenAI-compatible servers)        | Any non-empty value works for no-auth local servers                                                 |
-| `CURSOR_ACCESS_TOKEN`           | Cursor provider auth                             | Using Cursor provider                                          | `CURSOR_API_KEY` is accepted as an alias                                                            |
 | `AI_GATEWAY_API_KEY`            | Vercel AI Gateway auth                           | Using `vercel-ai-gateway` provider                             | `VERCEL_AI_GATEWAY_API_KEY` is accepted as an alias                                                 |
 | `CLOUDFLARE_AI_GATEWAY_API_KEY` | Cloudflare AI Gateway auth                       | Using `cloudflare-ai-gateway` provider                         | Gateway token with AI Gateway Run permission; `/login` stores it with the routing IDs               |
 | `CLOUDFLARE_API_TOKEN`          | Cloudflare Workers AI auth                       | Using `cloudflare-workers-ai` provider (Clef judges)            | API token with Workers AI Read and Edit permissions; `CLOUDFLARE_AUTH_TOKEN` is accepted as a fallback |
@@ -315,13 +314,6 @@ OAuth host chain: `KIMI_CODE_OAUTH_HOST` → `KIMI_OAUTH_HOST` → `https://auth
 | `PI_STREAM_IDLE_TIMEOUT_MS`                 | Generic stream idle timeout; `0` disables                                                                                                                                                                     |
 | `PI_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS`   | OpenAI-specific first-event timeout override; `0` disables and takes precedence over the generic value. `omp config set providers.streamFirstEventTimeoutSeconds <seconds>` provides the persisted equivalent |
 | `PI_OPENAI_STREAM_IDLE_TIMEOUT_MS`          | OpenAI-specific idle timeout override; `0` disables and takes precedence over the generic value. `omp config set providers.streamIdleTimeoutSeconds <seconds>` provides the persisted equivalent              |
-
-### Cursor provider debug
-
-| Variable           | Behavior                                                                 |
-| ------------------ | ------------------------------------------------------------------------ |
-| `DEBUG_CURSOR`     | Enables provider debug logs; `2`/`verbose` for detailed payload snippets |
-| `DEBUG_CURSOR_LOG` | Optional file path for JSONL debug log output                            |
 
 ### Prompt cache compatibility switch
 

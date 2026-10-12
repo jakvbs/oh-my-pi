@@ -19,7 +19,7 @@ class "xai" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}
 	}
-	on "cursor" "openrouter" "xai" "xai-oauth" {
+	on "openrouter" "xai" "xai-oauth" {
 		family "grok" {
 			revision ">=0" {
 				thinking-efforts "minimal" "low" "medium" "high"

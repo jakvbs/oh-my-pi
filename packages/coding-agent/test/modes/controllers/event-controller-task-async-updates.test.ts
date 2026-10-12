@@ -14,13 +14,11 @@
  *    background ("running") finalizes and untracks it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { ToolExecutionComponent } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { UiHelpers } from "@oh-my-pi/pi-coding-agent/modes/utils/ui-helpers";
-import type { SessionContext } from "@oh-my-pi/pi-coding-agent/session/session-context";
 import type { TaskToolDetails } from "@oh-my-pi/pi-tui/tools/task";
 import { type BashToolDetails, formatBackgroundNotice } from "@oh-my-pi/pi-tui/tools/bash";
 import type { CoordinationDetails } from "@oh-my-pi/pi-tui/tools/wait";
@@ -133,7 +131,7 @@ describe("EventController async update finalization", () => {
 		expect(component.isTranscriptBlockFinalized()).toBe(true);
 	});
 
-	for (const arrival of ["early", "replay"] as const) {
+	for (const arrival of ["early"] as const) {
 		for (const state of ["completed", "failed"] as const) {
 			it(`renders the ${state} outcome after a ${arrival} background task result`, async () => {
 				const { controller, pendingTools, chatContainer, ctx } = createFixture(true);
@@ -141,54 +139,19 @@ describe("EventController async update finalization", () => {
 				const helpers = new UiHelpers(ctx);
 				ctx.addMessageToChat = helpers.addMessageToChat.bind(helpers);
 				const running = taskResult("running", "Spawned background worker.");
-				if (arrival === "early") {
-					await controller.handleEvent({
-						type: "tool_execution_end",
-						toolCallId: "tc-task",
-						toolName: "task",
-						result: running,
-						isError: false,
-					});
-					await controller.handleEvent({
-						type: "tool_execution_start",
-						toolCallId: "tc-task",
-						toolName: "task",
-						args: { tasks: [{ task: "work" }] },
-					});
-				} else {
-					const result: ToolResultMessage = {
-						role: "toolResult",
-						toolCallId: "tc-task",
-						toolName: "task",
-						...running,
-						isError: false,
-						timestamp: 2,
-					};
-					ctx.viewSession.agent.getPendingToolResults = () => [result];
-					controller.resetTranscriptAnchors();
-					const assistant: AssistantMessage = {
-						role: "assistant",
-						content: [
-							{ type: "toolCall", id: "tc-task", name: "task", arguments: { tasks: [{ task: "work" }] } },
-						],
-						api: "anthropic-messages",
-						provider: "anthropic",
-						model: "test",
-						stopReason: "toolUse",
-						timestamp: 1,
-						usage: {
-							input: 0,
-							output: 0,
-							cacheRead: 0,
-							cacheWrite: 0,
-							totalTokens: 0,
-							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-						},
-					};
-					helpers.renderSessionContext({ messages: [assistant] } as SessionContext);
-					controller.restorePendingToolResults();
-					ctx.viewSession.agent.getPendingToolResults = () => [];
-				}
+				await controller.handleEvent({
+					type: "tool_execution_end",
+					toolCallId: "tc-task",
+					toolName: "task",
+					result: running,
+					isError: false,
+				});
+				await controller.handleEvent({
+					type: "tool_execution_start",
+					toolCallId: "tc-task",
+					toolName: "task",
+					args: { tasks: [{ task: "work" }] },
+				});
 				const component = chatContainer.children.find(
 					(child): child is ToolExecutionComponent => child instanceof ToolExecutionComponent,
 				)!;

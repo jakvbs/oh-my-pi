@@ -281,7 +281,7 @@ Used when native tool APIs are unavailable, or when history must be re-encoded f
 ### Edge guards
 
 - **`utils/tool-call-loop-guard.ts`**: `ToolCallLoopGuard` canonicalizes arguments (sorted keys, `i` / legacy `__intent` stripped) and compares sorted whole-turn call sets across consecutive turns. At the configured repetition threshold it returns a `RepeatedToolCallDetection`; no-call turns and all-exempt turns reset the counter.
-- **`utils/deterministic-id.ts`**: `deterministicUuid(seed)` (SHA-256 → UUID shape) stabilizes Cursor history message IDs. Missing tool-call IDs use provider-specific fallbacks; Google uses `nextToolCallId`.
+- **`utils/deterministic-id.ts`**: `deterministicUuid(seed)` (SHA-256 → UUID shape) derives stable auth-gateway session IDs. Missing tool-call IDs use provider-specific fallbacks; Google uses `nextToolCallId`.
 - **`providers/transform-messages.ts`**: shared pre-flight pass — tool-call dedup, sanitization, id normalization — before provider-specific conversion.
 
 ## 4. Forced tool choice

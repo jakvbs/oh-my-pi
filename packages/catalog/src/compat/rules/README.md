@@ -116,12 +116,12 @@ collapse {
     pair-token "thinking" "reasoning" "reasoner"
     effort-suffix "-minimal" tier="minimal"
     effort-suffix "-max" tier="max" except-bare-prefix="qwen"
-    effort-lane-suffix "-fast" "cursor" bare-prefix="cursor-grok"
-    effort-family "cursor" "gpt-5.6-luna"
+    effort-lane-suffix "-fast" "example-provider" bare-prefix="example"
+    effort-family "example-provider" "gpt-5.6-luna"
     routing-variant-suffix "-wm" "openai-codex" "openai-codex-device"
-    variant-family "cursor" "claude-opus-5" name="Claude Opus 5" { /* reviewed routing */ }
+    variant-family "example-provider" "claude-opus-5" name="Claude Opus 5" { /* reviewed routing */ }
     variant-family "google-antigravity" "gemini-{rev}-flash" name="Gemini {rev} Flash" revision=">=3.6" { /* per-revision template */ }
-    provider-alias "cursor" "opus" "claude-opus-5"
+    provider-alias "example-provider" "opus" "claude-opus-5"
 }
 ```
 
@@ -291,8 +291,6 @@ behavior {
         exclude-substring "embedding"
     }
     model-operations provider="openai" { exact "o3"; prefix "gpt-"; operation "generate_image" }
-    cursor-effort family-marker="gpt-" { tier "minimal" "low" "medium" "high" "xhigh" "max" }
-    cursor-model-parameter model="composer-2.5" id="fast" value="false"
     quota-tiers provider="openai-codex" {
         tier "spark" "gpt-5.3-codex-spark"
         fallback "chat" substring="gpt-"

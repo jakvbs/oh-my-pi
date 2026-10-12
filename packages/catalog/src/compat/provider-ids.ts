@@ -21,7 +21,6 @@ export type KnownProvider =
 	| "commandcode"
 	| "coralbricks"
 	| "coreweave"
-	| "cursor"
 	| "deepinfra"
 	| "deepseek"
 	| "firepass"

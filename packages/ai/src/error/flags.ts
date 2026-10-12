@@ -240,13 +240,6 @@ export function isAnthropicAccountPolicyText(text: string, provider?: string, st
 const CODEX_CHATGPT_ACCOUNT_MODEL_POLICY_PATTERN =
 	/\bThe ['"]([^'"\r\n]+)['"] model is not supported when using Codex with a ChatGPT account\./i;
 const CODEX_CHATGPT_ACCOUNT_MODEL_MAX_LENGTH = 256;
-const CURSOR_PLAN_POLICY_MARKER_PATTERN = /\bERROR_RATE_LIMITED_CHANGEABLE\b/i;
-const CURSOR_PLAN_POLICY_PATTERN = /\bNamed models unavailable\b|\bModel unavailable on\b|\bFree plans can only use\b/i;
-
-function isCursorPlanPolicyText(text: string): boolean {
-	return CURSOR_PLAN_POLICY_MARKER_PATTERN.test(text) && CURSOR_PLAN_POLICY_PATTERN.test(text);
-}
-
 function normalizeCodexChatGPTAccountPolicyModel(modelId: string | undefined): string | undefined {
 	if (typeof modelId !== "string") return undefined;
 	const separator = modelId.lastIndexOf("/");
@@ -614,8 +607,7 @@ function classifyText(
 
 		if (
 			ACCOUNT_POLICY_PATTERN.test(errorMessage) ||
-			isCodexChatGPTAccountPolicyText(errorMessage, provider, modelId) ||
-			(provider === "cursor" && isCursorPlanPolicyText(errorMessage))
+			isCodexChatGPTAccountPolicyText(errorMessage, provider, modelId)
 		) {
 			kinds |= Flag.AccountPolicy | Flag.ContentBlocked;
 		}
@@ -862,22 +854,6 @@ export function isCodexChatGPTAccountPolicyError(
 	return provider === "openai-codex" && deniedIdentity !== undefined && deniedIdentity === requestedIdentity;
 }
 
-/** Whether Cursor returned a non-retryable plan entitlement denial for this account. */
-export function isCursorPlanAccountPolicyError(error: unknown, provider: string, depth = 0): boolean {
-	if (provider !== "cursor" || depth > 6) return false;
-	if (typeof error === "string") return isCursorPlanPolicyText(error);
-	if (!error || typeof error !== "object") return false;
-	if (
-		"errorMessage" in error &&
-		typeof error.errorMessage === "string" &&
-		isCursorPlanPolicyText(error.errorMessage)
-	) {
-		return true;
-	}
-	if ("message" in error && typeof error.message === "string" && isCursorPlanPolicyText(error.message)) return true;
-	return "cause" in error && isCursorPlanAccountPolicyError(error.cause, provider, depth + 1);
-}
-
 /**
  * Strict-tool rejection: grammar too large, schema too complex, or structured
  * outputs unsupported by the model/endpoint.
@@ -1003,7 +979,7 @@ export interface ContextOverflowMessage extends Pick<AssistantMessage, "errorId"
  * Provider-reported usage proves context-window excess — authoritative, compaction-owned (#9235).
  *
  * Prefers `contextTokens` when the provider reports it: providers that run
- * several model calls per turn (Cursor's server-side tool loop) report
+ * several model calls per turn report
  * `input`/`cacheRead` summed across those calls, which can exceed the window
  * many times over while the conversation itself stays small.
  */
