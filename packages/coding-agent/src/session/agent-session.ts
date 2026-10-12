@@ -1839,19 +1839,15 @@ export class AgentSession implements SettingsScope {
 		// instead of sitting behind it. Deferred wakes are not peeked: no
 		// boundary injection would drain them. Foreground tools are unaffected.
 		this.agent.hasQueuedAsides = () => this.#irc.hasAsides();
-		this.agent.setAsideMessageProvider(() => {
+		this.agent.setAsideMessageProvider(boundary => {
 			const thunks: AsideMessage[] = this.#irc.drainPending().map(record => () => record);
 			thunks.push(...this.yieldQueue.drainLazy());
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
 			// that flips a todo just before this poll suppresses the nudge.
 			thunks.push(() => this.#todo.takeMidRunNudge());
-			// Only after a tool batch: an aside at the stop boundary keeps the loop
-			// running, so a reminder there would buy an extra model turn.
-			thunks.push(() =>
-				cfgCompactionBudgetReminders.get(this.settings) && this.agent.state.messages.at(-1)?.role === "toolResult"
-					? this.#contextBudget.take(this.getContextUsage())
-					: null,
-			);
+			if (boundary === "mid-work" && cfgCompactionBudgetReminders.get(this.settings)) {
+				thunks.push(() => this.#contextBudget.take(this.getContextUsage()));
+			}
 			const contextNotesReminder = this.#experimentalContextNotesReminder;
 			if (contextNotesReminder) {
 				this.#experimentalContextNotesReminder = undefined;

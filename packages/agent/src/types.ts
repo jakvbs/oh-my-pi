@@ -62,6 +62,9 @@ export type CommittableAsideMessage = AgentMessage & {
  * let the producer make the final inject-or-drop decision against current state
  * (e.g. dropping late diagnostics a newer edit superseded).
  */
+/** `"mid-work"`: the loop sends another request anyway (tool batch, continuation). `"stop"`: the agent would otherwise yield. */
+export type AsideBoundary = "mid-work" | "stop";
+
 export type AsideMessage = CommittableAsideMessage | (() => CommittableAsideMessage | null);
 
 export interface AgentTurnEndContext {
@@ -357,8 +360,10 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * should reach the model between requests without waiting for the agent to
 	 * fully stop. Returned messages are appended to the context with normal
 	 * message events and keep the loop running so the model can react.
+	 * `boundary` says which poll this is: an aside returned at `"stop"` buys
+	 * another model turn, so passive context should wait for `"mid-work"`.
 	 */
-	getAsideMessages?: () => Promise<AsideMessage[]>;
+	getAsideMessages?: (boundary: AsideBoundary) => Promise<AsideMessage[]>;
 	/**
 	 * Hook fired right before the loop would exit.
 	 *
