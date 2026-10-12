@@ -74,29 +74,20 @@ describe("AuthStorage.oauth.login default manual-code prompt gating", () => {
 	});
 
 	it("synthesizes a default manual-code prompt for a paste-code provider when the caller omits one", async () => {
-		let authUrl = "";
 		let promptMessage = "";
 		const fetchImpl = vi.fn(
 			async () =>
-				new Response(
-					JSON.stringify({
-						access_token: "access-token",
-						refresh_token: "refresh-token",
-						expires_in: 3600,
-						created_at: 1000,
-					}),
-					{ status: 200, headers: { "Content-Type": "application/json" } },
-				),
+				new Response(JSON.stringify({ key: "sk-or-key" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		);
 
-		await storage.oauth.login("gitlab-duo-agent", {
-			onAuth: info => {
-				authUrl = info.url;
-			},
+		await storage.oauth.login("openrouter", {
+			onAuth: () => {},
 			onPrompt: async prompt => {
 				promptMessage = prompt.message;
-				const state = new URL(authUrl).searchParams.get("state");
-				return `vscode://gitlab.gitlab-workflow/authentication?code=manual-code&state=${state}`;
+				return "http://localhost:54549/callback?code=manual-code";
 			},
 			fetch: fetchImpl,
 		});

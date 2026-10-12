@@ -424,8 +424,8 @@ export abstract class OAuthCallbackFlow {
 	 * - the configured `callbackPath` (or a `redirectUri` whose pathname
 	 *   resolves to {@link LAUNCH_PATH}) would collide with the launch route;
 	 * - the flow's `redirectUri` never returns to this loopback server: fixed
-	 *   non-loopback hosts, or custom schemes like GitLab Duo's `vscode://`
-	 *   URI — which `new URL` parses without complaint, so a scheme/host check
+	 *   non-loopback hosts, or custom schemes like `vscode://`
+	 *   URIs — which `new URL` parses without complaint, so a scheme/host check
 	 *   is required, not just the parse failure path. Advertising a localhost
 	 *   `/launch` target for such flows misrepresents the callback endpoint
 	 *   and hands remote users a URL that resolves nowhere.

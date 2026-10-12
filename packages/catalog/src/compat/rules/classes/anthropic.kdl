@@ -292,10 +292,10 @@ class "anthropic" {
 			}
 		}
 	}
-	on "aimlapi" "gitlab-duo" "kilo" "nanogpt" "venice" {
+	on "aimlapi" "kilo" "nanogpt" "venice" {
 		thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 	}
-	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" "gitlab-duo" \
+	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" \
 		"google-antigravity" "google-vertex" "opencode-zen" "snowflake" "vercel-ai-gateway" "zenmux" {
 		family "sonnet" {
 			revision ">=3.7 <4.6" {
@@ -303,7 +303,7 @@ class "anthropic" {
 			}
 		}
 	}
-	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" "gitlab-duo" \
+	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" \
 		"google-vertex" "opencode-zen" "snowflake" "vercel-ai-gateway" {
 		family "haiku" {
 			thinking-mode "budget"
@@ -317,7 +317,7 @@ class "anthropic" {
 			}
 		}
 	}
-	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" "gitlab-duo" \
+	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" \
 		"google-vertex" "opencode-zen" "snowflake" "vercel-ai-gateway" "zenmux" {
 		family "opus" {
 			revision ">=4.5 <4.6" {

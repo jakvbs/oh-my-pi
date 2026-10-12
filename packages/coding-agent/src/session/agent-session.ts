@@ -3618,7 +3618,7 @@ export class AgentSession implements SettingsScope {
 
 		// Local completion time for prompt→yield timing: stamped here, not by the
 		// provider, so the usage row's Δ is exact and provider-independent — some
-		// providers never report `duration` (gitlab-duo) or stamp `timestamp` at
+		// providers never report `duration` or stamp `timestamp` at
 		// request start. Persisted with the message and read on rebuild.
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			event.message.completedAt = Date.now();

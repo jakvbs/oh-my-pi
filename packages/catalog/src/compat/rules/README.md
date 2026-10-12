@@ -141,14 +141,13 @@ discovery {
     pro-reasoning-alias "openai" "gpt-5.6-luna" "gpt-5.6-sol" "gpt-5.6-terra"
     pro-reasoning-sweep "openai" "openai-codex"
     canonical-family-token "claude" "gemini" "gpt"
-    wrapper-prefix "duo-chat-"
     synthetic-prefix "hf:"
 }
 ```
 
 `recover-canonical-params` names providers whose runtime discovery recovers intrinsic base-model parameters from the bundled canonical reference index. `borrow-responses-route` declares sibling-gateway groups whose bundled catalogs hint the responses route; a provider may belong to at most one group. `responses-route-models` pins exact ids onto a provider's responses route. `billing-variant-suffix` declares suffixes (`-free`, `-contributor`) that share a transport with their base id; nothing else — pricing in particular — is derived from the base SKU.
 `trailing-marker` declares routing/quantization markers (`[-:]<marker>$`) a reseller appends without changing model identity; `reference-only-trailing-marker` markers are stripped only when recovering bundled metadata for a proxied id, never during canonical coalescing. `pro-reasoning-alias` names the reviewed base ids the generator projects `-pro` reasoning aliases from, per provider; `pro-reasoning-sweep` names providers swept for stale generated aliases during regeneration.
-`canonical-family-token` lists the vendor-lineage tokens that anchor generator-side canonical-family extraction and attached-version separator insertion (`gpt5` → `gpt-5`) — deliberately broader than the class taxonomy so open-weight lineages without a compat class still coalesce. `wrapper-prefix` and `synthetic-prefix` declare reseller wrapper (`duo-chat-`) and synthetic namespace (`hf:`) prefixes stripped during canonical candidate expansion; the candidate-generation and scoring algorithms stay in `scripts/equivalence.ts`, but every authored token they consume lives here.
+`canonical-family-token` lists the vendor-lineage tokens that anchor generator-side canonical-family extraction and attached-version separator insertion (`gpt5` → `gpt-5`) — deliberately broader than the class taxonomy so open-weight lineages without a compat class still coalesce. `wrapper-prefix` and `synthetic-prefix` declare reseller wrapper and synthetic namespace (`hf:`) prefixes stripped during canonical candidate expansion; the candidate-generation and scoring algorithms stay in `scripts/equivalence.ts`, but every authored token they consume lives here.
 
 ## Cascade grammar
 

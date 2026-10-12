@@ -26,8 +26,6 @@ import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { CursorOptions } from "./providers/cursor";
-import { streamGitLabDuo } from "./providers/gitlab-duo";
-import { type GitLabDuoWorkflowOptions, streamGitLabDuoWorkflow } from "./providers/gitlab-duo-workflow";
 import type { GoogleOptions } from "./providers/google";
 import { getVertexAccessToken } from "./providers/google-auth";
 import type { GoogleGeminiCliOptions } from "./providers/google-gemini-cli";
@@ -930,29 +928,6 @@ function streamDispatch<TApi extends Api>(
 		return customApiProvider.stream(model, context, { ...requestOptions, waitForTerminalDrain: limited });
 	}
 
-	if (model.provider === "gitlab-duo") {
-		const apiKey = requestOptions.apiKey || getEnvApiKey(model.provider);
-		if (!apiKey) {
-			throw new AIError.MissingApiKeyError(model.provider);
-		}
-		return streamGitLabDuo(model, context, {
-			...(requestOptions as SimpleStreamOptions),
-			apiKey,
-			waitForTerminalDrain: limited,
-		});
-	}
-
-	if (model.api === "gitlab-duo-agent") {
-		const apiKey = (requestOptions as StreamOptions | undefined)?.apiKey || getEnvApiKey(model.provider);
-		if (!apiKey) {
-			throw new AIError.MissingApiKeyError(model.provider);
-		}
-		return streamGitLabDuoWorkflow(model as Model<"gitlab-duo-agent">, context, {
-			...(requestOptions as StreamOptions | undefined),
-			apiKey,
-		} as GitLabDuoWorkflowOptions);
-	}
-
 	// Vertex AI and Bedrock Converse authenticate outside the generic API-key path.
 	if (model.api === "google-vertex") {
 		return streamGoogleVertex(model as Model<"google-vertex">, context, requestOptions as GoogleVertexOptions);
@@ -1487,33 +1462,6 @@ function streamSimpleRequest<TApi extends Api>(
 		(typeof requestOptions?.apiKey === "string" ? requestOptions.apiKey : undefined) || getEnvApiKey(model.provider);
 	if (!apiKey) {
 		throw new AIError.MissingApiKeyError(model.provider);
-	}
-
-	// GitLab Duo - wraps Anthropic/OpenAI behind GitLab AI Gateway direct access tokens
-	if (model.provider === "gitlab-duo") {
-		return withThinkingLoopGuard(model, requestOptions, opts =>
-			withProviderInFlightLimit(model, opts, limited =>
-				streamGitLabDuo(model, context, {
-					...opts,
-					apiKey,
-					waitForTerminalDrain: limited,
-				}),
-			),
-		);
-	}
-
-	// GitLab Duo Workflow - IDE workflow protocol + WebSocket action bridge
-	if (model.api === "gitlab-duo-agent") {
-		// Does not route through withProviderInFlightLimit, so heal explicitly.
-		return withThinkingLoopGuard(model, requestOptions, opts =>
-			healLeakedThinking(
-				model,
-				streamGitLabDuoWorkflow(model as Model<"gitlab-duo-agent">, context, {
-					...opts,
-					apiKey,
-				}),
-			),
-		);
 	}
 
 	// Kimi Code - route to dedicated handler that wraps OpenAI or Anthropic API
@@ -2289,12 +2237,6 @@ function mapOptionsForApi<TApi extends Api>(
 			});
 		}
 
-		case "gitlab-duo-agent":
-			return castApi<"gitlab-duo-agent">({
-				...base,
-				cwd: options?.cwd,
-				toolChoice: options?.toolChoice,
-			});
 		case "apple-foundation-models":
 			return castApi<"apple-foundation-models">({
 				...base,

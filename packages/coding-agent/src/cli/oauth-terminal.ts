@@ -151,8 +151,7 @@ export async function runTerminalOAuthLogin(
 	options: { openBrowser?: boolean } = {},
 ): Promise<OAuthLoginIdentity | undefined> {
 	const ask = (msg: string, signal?: AbortSignal) => promptLine(rl, `${msg} `, signal);
-	// Only paste-code providers (fixed non-loopback redirect, e.g. GitLab Duo
-	// Agent's vscode:// URI) get the manual paste fallback. An explicit
+	// Only paste-code providers (fixed non-loopback redirect) get the manual paste fallback. An explicit
 	// `onManualCodeInput` is honored for ANY provider (the storage escape hatch),
 	// so for loopback providers we do not pass it: an eager readline prompt adds
 	// noise to a flow that normally completes through HTTP. `AuthStorage.oauth.login`

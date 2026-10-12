@@ -1594,7 +1594,7 @@ describe("Agent", () => {
 		await agent.prompt("run");
 
 		// The resolver wins over the constructor-time `cwd`: provider workspace
-		// discovery (e.g. GitLab Duo namespace/project) must key off the live dir.
+		// discovery must key off the live dir.
 		expect(mock.calls[0]?.options?.cwd).toBe("/live/repo-b");
 	});
 

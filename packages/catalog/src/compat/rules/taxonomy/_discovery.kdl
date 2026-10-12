@@ -53,8 +53,6 @@ discovery {
 		"deepseek" "llama" "gemma" "nova" "mistral" "ministral" "pixtral" "codestral" \
 		"devstral" "magistral" "ernie" "doubao" "seed" "aion" "olmo" "molmo" "nemotron" \
 		"palmyra" "command" "codex" "coder"
-	// Reseller wrapper prefixes and synthetic namespace prefixes stripped
-	// during canonical candidate expansion.
-	wrapper-prefix "duo-chat-"
+	// Synthetic namespace prefixes stripped during canonical candidate expansion.
 	synthetic-prefix "hf:"
 }

@@ -325,8 +325,7 @@ export interface AgentOptions {
 	 * Resolver for the live working directory, re-read on every turn. When set, it
 	 * overrides the static {@link cwd} at config-build time so a session move
 	 * (`/move`, which updates the host's cwd without reconstructing the Agent) is
-	 * reflected in provider options — e.g. GitLab Duo Agent namespace/project
-	 * discovery keys off this cwd's git remote. Falls back to `cwd` when it returns
+	 * reflected in provider options. Falls back to `cwd` when it returns
 	 * `undefined`.
 	 */
 	cwdResolver?: () => string | undefined;

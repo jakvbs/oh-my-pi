@@ -19,7 +19,6 @@ export type KnownApi =
 	| "google-vertex"
 	| "ollama-chat"
 	| "cursor-agent"
-	| "gitlab-duo-agent"
 	| "apple-foundation-models";
 export type Api = KnownApi | (string & {});
 
@@ -1504,8 +1503,6 @@ export interface Model<TApi extends Api = Api> {
 	supportsComputerUse?: boolean;
 	/** Verbatim explicit computer-use support from the spec; undefined when `buildModel` inferred the runtime value. */
 	supportsComputerUseConfig?: boolean;
-	/** GitLab Duo Workflow root namespace selected during catalog discovery. */
-	gitlabDuoWorkflowRootNamespaceId?: string;
 	/** Cursor `max_mode` request flag returned by `GetUsableModels` for premium models that require max mode. */
 	cursorMaxMode?: boolean;
 	/**

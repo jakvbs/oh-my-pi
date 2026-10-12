@@ -11,7 +11,7 @@ import type { AuthStorage } from "./auth-storage";
  * account UUID in memory. `account_uuid` and `device_id` are omitted for
  * non-Anthropic providers to avoid leaking the user's Claude identity to
  * third-party APIs (including Anthropic-format-compatible proxies such as
- * cloudflare-ai-gateway or gitlab-duo).
+ * cloudflare-ai-gateway).
  *
  * Installed via `Agent#setMetadataResolver` on the main `AgentSession`, each
  * subagent session, and the separately constructed advisor `Agent` — each with
@@ -33,7 +33,7 @@ export function buildSessionMetadata(
 	const userId: Record<string, string> = { session_id: sessionId };
 	// Only look up account_uuid when the request is going to Anthropic. Injecting
 	// a Claude OAuth account_uuid into requests bound for other providers (including
-	// Anthropic-format-compatible proxies like cloudflare-ai-gateway or gitlab-duo)
+	// Anthropic-format-compatible proxies like cloudflare-ai-gateway)
 	// would leak the user's Anthropic identity to unrelated third-party APIs.
 	if (provider === "anthropic") {
 		const accountUuid = authStorage?.oauth.identity("anthropic", sessionId)?.accountId;

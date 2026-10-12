@@ -559,9 +559,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * return value overrides the static {@link SimpleStreamOptions.cwd} for the
 	 * request (falling back to that static `cwd` when it returns `undefined`).
 	 * Lets the host reflect a session move (`/move`, which updates the working
-	 * directory without reconstructing the loop config) into provider options —
-	 * e.g. GitLab Duo Agent namespace/project discovery keys off this cwd's git
-	 * remote, so a stale value would strand discovery on the original repo.
+	 * directory without reconstructing the loop config) into provider options.
 	 */
 	getCwd?: () => string | undefined;
 

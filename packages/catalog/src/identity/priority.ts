@@ -33,7 +33,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"umans",
 	"google-antigravity",
 	"opencode-zen",
-	"gitlab-duo",
 	"opencode-go",
 	"kilo",
 	"vercel-ai-gateway",

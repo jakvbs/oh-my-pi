@@ -14,7 +14,6 @@ import { parseArgs } from "node:util";
 import { discoverAuthStorage } from "@oh-my-pi/pi-ai/auth-broker/discover";
 import type { OAuthAccess } from "@oh-my-pi/pi-ai/auth-storage";
 import type { OAuthProvider } from "@oh-my-pi/pi-ai/oauth/types";
-import { getGitLabDuoModels } from "@oh-my-pi/pi-ai/providers/gitlab-duo";
 import { getProviderDefinition } from "@oh-my-pi/pi-ai/registry";
 import { $env } from "@oh-my-pi/pi-utils";
 import { buildModel } from "../src/build";
@@ -581,14 +580,9 @@ async function generateModels(selectedProvider?: string) {
 	);
 	const catalogProviderModels = catalogProviderModelBatches.flatMap(batch => batch.models);
 	const bundledModelsDevModels = modelsDevModels.filter(model => !authoritativeCatalogProviders.has(model.provider));
-	// getGitLabDuoModels returns built models; project back to spec stage for the bundle.
-	const gitLabDuoModels = getGitLabDuoModels().map(model => toModelSpec(model));
 	// Combine models. stencil.so has priority unless a provider's successful endpoint
 	// discovery is authoritative; those endpoint snapshots replace stencil.so rows.
-	let allModels = applyGlobalModelsDevFallback(
-		[...bundledModelsDevModels, ...catalogProviderModels, ...gitLabDuoModels],
-		modelsDevModels,
-	);
+	let allModels = applyGlobalModelsDevFallback([...bundledModelsDevModels, ...catalogProviderModels], modelsDevModels);
 
 	// Authored seed rows (`rules/providers/<id>.kdl`) whose upstream rows win
 	// dedup. Pushed before the previous-snapshot merge so the current seed, not
@@ -788,7 +782,7 @@ function canonicalizeModelCompat(model: ModelSpec<Api>): void {
  * previous snapshot (or a copied reference row) are dropped so `buildModel`
  * reapplies only the current KDL policy. A tokenizer the row's own id resolves
  * is policy output too; a copied one survives only for ids policy cannot
- * classify (e.g. GitLab Duo aliases of Claude models).
+ * classify.
  */
 export function buildGeneratedModel(model: ModelSpec<Api>): Model<Api> {
 	const spec = { ...model };

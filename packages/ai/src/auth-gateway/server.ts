@@ -814,8 +814,7 @@ export interface AuthGatewayRouter {
 	/** Answers one request; `peer` names the caller in logs. Never rejects: a crashed route answers 500. */
 	route(req: Request, peer: string): Promise<Response>;
 	/**
-	 * Closes the retained provider session state (Codex WebSockets, GitLab Duo
-	 * workflows), whose sockets and timers would otherwise keep the process alive.
+	 * Closes the retained provider session state (Codex WebSockets), whose sockets and timers would otherwise keep the process alive.
 	 */
 	close(): void;
 }
@@ -975,7 +974,7 @@ export function startAuthGateway(opts: AuthGatewayBootOptions): AuthGatewayServe
 		close: async () => {
 			server.stop(true);
 			// Drain after the listener is down: the retained provider states own
-			// sockets and timers (Codex WebSockets, GitLab Duo workflows), so the
+			// sockets and timers (Codex WebSockets), so the
 			// process can't settle until each one is closed.
 			router.close();
 		},

@@ -27,8 +27,6 @@ export type KnownProvider =
 	| "firepass"
 	| "fireworks"
 	| "github-copilot"
-	| "gitlab-duo"
-	| "gitlab-duo-agent"
 	| "gmi-cloud"
 	| "google"
 	| "google-antigravity"

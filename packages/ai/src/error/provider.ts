@@ -1,4 +1,3 @@
-import { ProviderHttpError } from "./classes";
 import { attach, create, Flag } from "./flags";
 
 /** Which part of a provider exchange produced a non-HTTP error. */
@@ -46,14 +45,4 @@ export class ProviderResponseError extends Error {
 		else if (this.kind === "empty-output") attach(this, create(Flag.Transient, Flag.EmptyResponse));
 		else if (this.kind === "incomplete-stream" || this.kind === "empty-body") attach(this, create(Flag.Transient));
 	}
-}
-
-/** Non-2xx response from the GitLab Duo direct-access API. */
-export class GitLabDuoApiError extends ProviderHttpError {
-	override readonly name = "GitLabDuoApiError";
-}
-
-/** Non-2xx response from the GitLab Duo Workflow API. */
-export class GitLabDuoWorkflowApiError extends ProviderHttpError {
-	override readonly name = "GitLabDuoWorkflowApiError";
 }

@@ -160,7 +160,7 @@ describe("ChatTranscriptBuilder turn elapsed", () => {
 	it("measures the span from the local completion time when the provider omits duration", () => {
 		cfgDisplayShowTurnTime.set(settings, true);
 		const transcript = builder();
-		// gitlab-duo-style: `timestamp` stamped at request start, no provider
+		// `timestamp` stamped at request start, no provider
 		// `duration` — the session's `completedAt` stamp still yields the full span.
 		transcript.rebuild(toEntries([userMessage(), assistantMessage({ duration: undefined })]));
 		expect(renderedText(transcript.container)).toContain("Δ 1m");

@@ -109,7 +109,6 @@ Plain provider credential names come from `env` entries in `packages/catalog/src
 | `CLINE_API_KEY`                 | ClinePass subscription + free-tier auth          | Using the `cline-pass` provider                                | Official Cline API-key variable                                                                     |
 | `YOLO_AUTO_API_KEY`             | Yolo-Auto auth                                   | Using `yolo-auto` provider                                     | Flat-rate Qwen models; validated against `https://yolo-auto.com/v1/models`                          |
 | `WAFER_SERVERLESS_API_KEY`      | Wafer Serverless auth                            | Using `wafer-serverless` provider                              | Pay-as-you-go Wafer SKU; validated against `https://pass.wafer.ai/v1/models`                        |
-| `GITLAB_TOKEN`                  | GitLab Duo auth                                  | Using `gitlab-duo` / `gitlab-duo-agent` providers              | Both GitLab providers read the same token                                                           |
 | `BASETEN_API_KEY`               | Baseten auth                                     | Using `baseten` provider                                       | Also configured via the interactive API-key login (`/login baseten`, key from the Baseten dashboard) |
 | `COREWEAVE_API_KEY` / `WANDB_API_KEY` | CoreWeave Serverless Inference auth        | Using `coreweave` provider                                     | Either variable works (W&B fallback). `COREWEAVE_PROJECT` (fallback `WANDB_INFERENCE_PROJECT`) supplies the required `OpenAI-Project` header |
 | `SAKANA_API_KEY` / `FUGU_API_KEY` | Sakana AI auth                                 | Using `sakana` provider                                        | Either variable works; `SAKANA_BASE_URL` / `FUGU_BASE_URL` override the request base URL            |
@@ -294,28 +293,6 @@ OAuth host chain: `KIMI_CODE_OAUTH_HOST` → `KIMI_OAUTH_HOST` → `https://auth
 | `PI_AI_ANTIGRAVITY_CL`      | Overrides Antigravity hub user-agent build changelist (`963137146` if unset) |
 | `PI_AI_ANTIGRAVITY_OS`      | Overrides Antigravity hub user-agent os_type (pinned `darwin` if unset) |
 | `PI_AI_ANTIGRAVITY_ARCH`    | Overrides Antigravity hub user-agent arch (pinned `arm64` if unset) |
-
-### GitLab Duo
-
-| Variable                         | Default / behavior                                                                                                                                                                                                                                                                                               |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_CLIENT_ID`               | OAuth client ID. If unset, the bundled GitLab OAuth application client ID is used.                                                                                                                                                                                                                               |
-| `GITLAB_REDIRECT_URI`            | Exact OAuth redirect URI advertised to GitLab. If unset, the local callback uses `http://localhost:8080/callback`, with random-port fallback. Must use HTTP or HTTPS; loopback callbacks must use HTTP and bind the URI's host and port.                                                                         |
-| `GITLAB_DUO_NAMESPACE_ID`        | Workflow namespace override. Runtime options take precedence; otherwise namespace/project discovery uses the current credentials and working directory.                                                                                                                                                          |
-| `GITLAB_DUO_PROJECT_ID`          | Workflow project override by ID. Runtime `projectId`, then runtime `projectPath`, take precedence; this variable takes precedence over `GITLAB_DUO_PROJECT_PATH`.                                                                                                                                                |
-| `GITLAB_DUO_PROJECT_PATH`        | Workflow project override by path when no runtime project or `GITLAB_DUO_PROJECT_ID` is set.                                                                                                                                                                                                                     |
-| `GITLAB_DUO_WORKFLOW_DEFINITION` | Workflow definition override; runtime `workflowDefinition` takes precedence. Defaults to `ambient`.                                                                                                                                                                                                              |
-| `GITLAB_DUO_WORKFLOW_TRACE`      | Workflow tracing is enabled only when the value is exactly `1`. Each trace event is appended as one JSON object per line; trace write failures are ignored.                                                                                                                                                      |
-| `GITLAB_DUO_WORKFLOW_TRACE_FILE` | Trace output path. The value is trimmed; unset or blank defaults to the absolute path obtained by resolving `../../../../.tmp/gitlab-duo-workflow-trace.log` from the provider module (in a source checkout, `<repo>/.tmp/gitlab-duo-workflow-trace.log`). Missing parent directories are created automatically. |
-
-`GITLAB_CLIENT_ID` and `GITLAB_REDIRECT_URI` affect OAuth login. The four routing/creation
-overrides (`GITLAB_DUO_NAMESPACE_ID`, `GITLAB_DUO_PROJECT_ID`,
-`GITLAB_DUO_PROJECT_PATH`, and `GITLAB_DUO_WORKFLOW_DEFINITION`) affect
-`gitlab-duo-agent` Workflow namespace/project resolution or workflow creation; they
-do not configure OAuth. The two trace variables above affect only local diagnostic
-output. A non-loopback
-redirect URI cannot be served directly by the local callback listener and
-therefore completes through the paste-code path.
 
 ### OpenAI Codex responses (feature/debug controls)
 

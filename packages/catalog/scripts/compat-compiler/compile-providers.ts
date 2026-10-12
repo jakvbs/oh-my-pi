@@ -58,7 +58,6 @@ const KNOWN_APIS = [
 	"google-vertex",
 	"ollama-chat",
 	"cursor-agent",
-	"gitlab-duo-agent",
 	"apple-foundation-models",
 ] as const satisfies readonly KnownApi[];
 type _MissingKnownApis = Exclude<KnownApi, (typeof KNOWN_APIS)[number]>;

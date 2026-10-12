@@ -26,8 +26,6 @@ export * from "./providers/anthropic-slow-mode";
 export type * from "./providers/apple-foundation-models";
 export type * from "./providers/azure-openai-responses";
 export type * from "./providers/cursor";
-export type * from "./providers/gitlab-duo";
-export type * from "./providers/gitlab-duo-workflow";
 export type * from "./providers/google";
 export type * from "./providers/google-gemini-cli";
 export type * from "./providers/google-vertex";

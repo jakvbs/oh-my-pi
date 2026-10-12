@@ -58,8 +58,7 @@ export class OAuthAccounts implements OAuthApi {
 	 * login registered.
 	 */
 	async login(provider: OAuthProviderId, ctrl: OAuthLoginController): Promise<OAuthLoginIdentity | undefined> {
-		// Only paste-code providers (fixed non-loopback redirect, e.g. GitLab Duo
-		// Agent's vscode:// URI) get a default manual-code prompt. For loopback OAuth
+		// Only paste-code providers (fixed non-loopback redirect) get a default manual-code prompt. For loopback OAuth
 		// providers an eager paste prompt adds noise to a flow that normally completes
 		// through HTTP. Synthesizing the default only for paste-code providers is the
 		// authoritative gate (it covers every caller, not

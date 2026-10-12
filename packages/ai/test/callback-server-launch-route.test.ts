@@ -244,7 +244,7 @@ describe("OAuthCallbackFlow /launch route", () => {
 			{
 				preferredPort: 0,
 				allowPortFallback: true,
-				// GitLab Duo shape: `new URL` parses this happily (pathname
+				// Custom-scheme shape: `new URL` parses this happily (pathname
 				// `/authentication`), so the guard must check scheme/host, not
 				// rely on a parse failure. A localhost /launch copy target for
 				// this flow would misrepresent the callback endpoint and point

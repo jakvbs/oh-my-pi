@@ -102,7 +102,7 @@ interface RetainedSession {
  * Close every provider record an evicted (or drained) session held.
  *
  * Anthropic's `close()` resets its sticky flags, Codex's tears down WebSockets
- * and GitLab Duo's stops the server-side workflow — so dropping an entry
+ * — so dropping an entry
  * without closing it leaks exactly the resources the bound exists to cap.
  */
 function closeSessionState(
@@ -293,7 +293,7 @@ export class AuthGatewaySessionStateStore {
 	close(): void {
 		// The only place a leased entry is torn down: the listener is already
 		// down, every in-flight stream is being cancelled with it, and the
-		// process cannot settle while a Codex WebSocket or Duo workflow is open.
+		// process cannot settle while a Codex WebSocket is open.
 		for (const session of this.#sessions.values()) closeSessionState(session.states, session.key, "shutdown");
 		this.#sessions.clear();
 	}

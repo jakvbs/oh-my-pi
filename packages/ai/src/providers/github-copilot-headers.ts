@@ -110,7 +110,7 @@ function normalizeCopilotCacheBaseUrl(baseUrl: string | undefined): string {
 /**
  * Stable cache key for a raw Copilot API key envelope on one effective host.
  * Hashes the bearer with `Bun.hash` (repo-approved hashing API; same
- * credential-scoped pattern as the GitLab Duo and Codex account keys) so token
+ * credential-scoped pattern as the Codex account keys) so token
  * bytes never sit in the map as keys; enterprise/business routing inputs and
  * the normalized effective base URL participate so the same token on two hosts
  * does not share an entry.

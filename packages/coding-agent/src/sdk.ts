@@ -4104,8 +4104,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			},
 			cwd,
 			// Live cwd: `/move` updates SessionManager (and process cwd) without
-			// reconstructing the Agent, so a static cwd would strand GitLab Duo Agent
-			// namespace/project discovery on the original repo's git remote. Re-read it
+			// reconstructing the Agent, so a static cwd would go stale. Re-read it
 			// per turn from the SessionManager.
 			cwdResolver: () => sessionManager.getCwd(),
 			convertToLlm: convertToLlmFinal,
