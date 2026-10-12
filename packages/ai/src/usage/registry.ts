@@ -5,9 +5,7 @@ import { charmHyperUsageProvider } from "./charm-hyper";
 import { claudeRankingStrategy, claudeUsageProvider } from "./claude";
 import { clinePassUsageProvider } from "./cline-pass";
 import { commandCodeRankingStrategy, commandCodeUsageProvider } from "./commandcode";
-import { googleGeminiCliUsageProvider } from "./gemini";
 import { githubCopilotUsageProvider } from "./github-copilot";
-import { antigravityRankingStrategy, antigravityUsageProvider } from "./google-antigravity";
 import { kimiRankingStrategy, kimiUsageProvider } from "./kimi";
 import { museCodeUsageProvider } from "./muse-code";
 import { minimaxCodeUsageProvider } from "./minimax-code";
@@ -29,8 +27,6 @@ export const DEFAULT_USAGE_PROVIDERS: readonly UsageProvider[] = [
 	kimiUsageProvider,
 	minimaxCodeUsageProvider,
 	museCodeUsageProvider,
-	antigravityUsageProvider,
-	googleGeminiCliUsageProvider,
 	ollamaUsageProvider,
 	ollamaCloudUsageProvider,
 	claudeUsageProvider,
@@ -58,7 +54,6 @@ const DEFAULT_RANKING_STRATEGIES = new Map<Provider, CredentialRankingStrategy>(
 	["alibaba-token-plan", alibabaTokenPlanRankingStrategy],
 	["openai-codex", codexRankingStrategy],
 	["anthropic", claudeRankingStrategy],
-	["google-antigravity", antigravityRankingStrategy],
 	["kimi-code", kimiRankingStrategy],
 	["zai", zaiRankingStrategy],
 	["opencode-go", opencodeGoRankingStrategy],

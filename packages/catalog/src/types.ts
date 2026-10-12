@@ -15,7 +15,6 @@ export type KnownApi =
 	| "anthropic-messages"
 	| "bedrock-converse-stream"
 	| "google-generative-ai"
-	| "google-gemini-cli"
 	| "google-vertex"
 	| "ollama-chat"
 	| "apple-foundation-models";
@@ -87,7 +86,6 @@ export const IMAGE_GENERATION_APIS = [
 	"openai-images",
 	"openrouter-images",
 	"google-generative-ai",
-	"google-gemini-cli",
 	"openai-responses",
 	"openai-codex-responses",
 ] as const;
@@ -164,8 +162,7 @@ export interface ThinkingConfig {
 	/**
 	 * Per-effort thinking budget in tokens, baked at build time for collapsed
 	 * variants whose upstream expects an explicit `thinkingBudget` instead of a
-	 * value derived from the generic ladder (Antigravity Cloud Code Assist
-	 * gemini-3.x). Request mapping prefers caller `thinkingBudgets`, then this
+	 * value derived from the generic ladder. Request mapping prefers caller `thinkingBudgets`, then this
 	 * map, then the provider default ladder. Only meaningful for `mode: "budget"`.
 	 */
 	effortBudgets?: Readonly<Partial<Record<Effort, number>>>;
@@ -1211,7 +1208,7 @@ export type ResolvedAnthropicCompat = Required<
 
 /**
  * Compatibility settings for the Google API family (google-generative-ai,
- * google-vertex, google-gemini-cli). Class-driven defaults come from the
+ * google-vertex). Class-driven defaults come from the
  * compat cascade; sparse overrides follow the same shape.
  */
 export interface GoogleCompat {
@@ -1221,7 +1218,7 @@ export interface GoogleCompat {
 	requiresSkipThoughtSignature?: boolean;
 	/** Add the bypass sentinel when a Gemini turn's first function call is unsigned. */
 	requiresSkipThoughtSignatureOnFirstFunctionCall?: boolean;
-	/** Drop unsigned thinking blocks from replayed history (Antigravity Claude). */
+	/** Drop unsigned thinking blocks from replayed history. */
 	dropUnsignedThinking?: boolean;
 	/** Cloud Code Assist legacy `parameters` schema field instead of `parametersJsonSchema`. */
 	ccaLegacyParametersSchema?: boolean;
@@ -1231,14 +1228,6 @@ export interface GoogleCompat {
 	streamFirstEventTimeoutMs?: number;
 	/** Stream-watchdog idle-timeout floor in ms. */
 	streamIdleTimeoutMs?: number;
-	/** Work around the Flash streaming leak (duplicate first chunk) on gemini-cli. */
-	flashStreamLeakWorkaround?: boolean;
-	/** Send the Claude thinking beta header on Antigravity Claude requests. */
-	claudeThinkingBetaHeader?: boolean;
-	/** Antigravity Claude tool-mode request framing. */
-	antigravityClaudeToolMode?: boolean;
-	/** Usage-label bucket Antigravity reports this model under. */
-	antigravityUsageLabel?: string;
 	/** Strip image inputs before encoding (text-only serving of a multimodal id). */
 	stripImageInput?: boolean;
 	/** Thinking-loop watchdog guard family applied to streamed reasoning. */
@@ -1251,17 +1240,12 @@ export interface GoogleCompat {
 export type ResolvedGoogleCompat = Required<
 	Omit<
 		GoogleCompat,
-		| "streamFirstEventTimeoutMs"
-		| "streamIdleTimeoutMs"
-		| "thinkingLoopGuard"
-		| "antigravityUsageLabel"
-		| "supportsSamplingParams"
+		"streamFirstEventTimeoutMs" | "streamIdleTimeoutMs" | "thinkingLoopGuard" | "supportsSamplingParams"
 	>
 > & {
 	streamFirstEventTimeoutMs?: number;
 	streamIdleTimeoutMs?: number;
 	thinkingLoopGuard?: GoogleCompat["thinkingLoopGuard"];
-	antigravityUsageLabel?: string;
 	supportsSamplingParams?: boolean;
 };
 
@@ -1277,7 +1261,7 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 		? AnthropicCompat
 		: TApi extends "bedrock-converse-stream"
 			? BedrockCompat
-			: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+			: TApi extends "google-generative-ai" | "google-vertex"
 				? GoogleCompat
 				: undefined;
 
@@ -1292,7 +1276,7 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 				? ResolvedAnthropicCompat
 				: TApi extends "bedrock-converse-stream"
 					? ResolvedBedrockCompat
-					: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+					: TApi extends "google-generative-ai" | "google-vertex"
 						? ResolvedGoogleCompat
 						: undefined;
 
@@ -1490,11 +1474,9 @@ export interface Model<TApi extends Api = Api> {
 	supportsComputerUseConfig?: boolean;
 	/**
 	 * Per-account availability recorded by multi-account discovery: provider
-	 * account key (Codex: ChatGPT `chatgpt_account_id`; Antigravity: login
-	 * email) → that account's entitlements on this model. An account appears
+	 * account key (Codex: ChatGPT `chatgpt_account_id`) → that account's entitlements on this model. An account appears
 	 * only when its own catalog lists the model, so credential selection can
-	 * route account-gated models (e.g. `gpt-daybreak-blue-latest`, Antigravity
-	 * Claude 5.5) straight to eligible accounts. Absent on bundled/config rows.
+	 * route account-gated models (e.g. `gpt-daybreak-blue-latest`) straight to eligible accounts. Absent on bundled/config rows.
 	 */
 	accountAccess?: Readonly<Record<string, ModelAccountAccess>>;
 	cost: ModelCost;

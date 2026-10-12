@@ -19,7 +19,7 @@ import type { Api, Model } from "./types";
 // headers and records which model ids lost headers or cannot be rebuilt.
 // v9 invalidated Kimi Code rows predating live effort and protocol metadata;
 // v8 invalidated Codex discovery rows predating provider-native V2 compaction
-// metadata; v7 invalidated rows predating the Antigravity Gemini budget-mode
+// metadata; v7 invalidated rows predating the Cloud Code Assist Gemini budget-mode
 // migration (cached specs still carrying `thinking.mode: "google-level"` and
 // the old 3.5-flash effort routing); v6 invalidated rows that may contain the
 // retired unknown-limit sentinels (222222/8888); v5 invalidated rows predating

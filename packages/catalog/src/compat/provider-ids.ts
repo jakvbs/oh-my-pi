@@ -28,8 +28,6 @@ export type KnownProvider =
 	| "github-copilot"
 	| "gmi-cloud"
 	| "google"
-	| "google-antigravity"
-	| "google-gemini-cli"
 	| "google-vertex"
 	| "groq"
 	| "helmcode"

@@ -4,13 +4,15 @@ import type { Model, TJsonSchema, Tool } from "@oh-my-pi/pi-ai/types";
 import { normalizeSchemaForCCA, normalizeSchemaForGoogle } from "@oh-my-pi/pi-ai/utils/schema";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 
-function createModel(id: string): Model<"google-gemini-cli"> {
+/** Claude ids opt into the legacy `parameters` schema path that Cloud Code Assist hosts require. */
+function createModel(id: string): Model<"google-generative-ai"> {
 	return buildModel({
 		id,
 		name: id,
-		api: "google-gemini-cli",
-		provider: "google-antigravity",
+		api: "google-generative-ai",
+		provider: "google",
 		baseUrl: "https://example.com",
+		...(id.startsWith("claude-") && { compat: { ccaLegacyParametersSchema: true } }),
 		reasoning: false,
 		input: ["text"],
 		cost: {

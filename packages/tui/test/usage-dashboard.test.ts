@@ -177,12 +177,12 @@ describe("buildProviderCards", () => {
 	});
 
 	it("keeps an exhausted bucket past the row cap visible", () => {
-		// Gemini emits one limit per model bucket; with declared order alone an
+		// Some providers emit one limit per model bucket; with declared order alone an
 		// exhausted 5th bucket would hide behind "+1 more".
 		const buckets = ["a", "b", "c", "d", "e"].map((model, index) =>
-			limit("google-gemini-cli", "g", model, `Model ${model}`, index === 4 ? 1 : 0.1 * (index + 1), "ok"),
+			limit("acme", "g", model, `Model ${model}`, index === 4 ? 1 : 0.1 * (index + 1), "ok"),
 		);
-		const [card] = buildProviderCards([report("google-gemini-cli", "g@x.test", buckets)], now);
+		const [card] = buildProviderCards([report("acme", "g@x.test", buckets)], now);
 		expect(card.windows.map(window => window.label)).toEqual(["Model b", "Model c", "Model d", "Model e", "Model a"]);
 	});
 
@@ -235,17 +235,17 @@ describe("buildProviderCards", () => {
 
 	it("shows each marked shared quota once without merging independent buckets", () => {
 		const sharedLimit = (counter: "anthropic" | "openai", windowId: "5h" | "7d") => {
-			const value = limit("google-antigravity", "account", windowId, "Claude & GPT (shared)", 0.25, "ok");
+			const value = limit("acme", "account", windowId, "Claude & GPT (shared)", 0.25, "ok");
 			return {
 				...value,
-				id: `google-antigravity:${counter}:default:3p-${windowId}`,
+				id: `acme:${counter}:default:3p-${windowId}`,
 				scope: { ...value.scope, shared: true, sharedGroup: `3p-${windowId}` },
 			};
 		};
 		const reports = [
-			report("google-antigravity", "user@example.test", [
-				limit("google-antigravity", "account", "5h", "Gemini", 0.25, "ok"),
-				limit("google-antigravity", "account", "7d", "Gemini", 0.25, "ok"),
+			report("acme", "user@example.test", [
+				limit("acme", "account", "5h", "Gemini", 0.25, "ok"),
+				limit("acme", "account", "7d", "Gemini", 0.25, "ok"),
 				sharedLimit("anthropic", "5h"),
 				sharedLimit("openai", "5h"),
 				sharedLimit("anthropic", "7d"),

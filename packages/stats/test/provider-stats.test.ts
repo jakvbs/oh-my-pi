@@ -207,7 +207,7 @@ describe("computeUsageWindowStats", () => {
 	});
 
 	it("suffixes the window label when the limit label lacks the duration", () => {
-		// Antigravity exposes daily and weekly limits under the same limit
+		// Providers may expose daily and weekly limits under the same limit
 		// label; the display label must carry the duration to tell them apart.
 		const rows: UsageSnapshotRow[] = [
 			snapshot({

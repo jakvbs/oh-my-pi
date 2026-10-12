@@ -542,11 +542,7 @@ export async function runAuthGatewayCommand(cmd: AuthGatewayCommandArgs): Promis
  * (`{ token, projectId, refreshToken, expiresAt, … }`) rather than the raw
  * access token. Mirrors `getOAuthApiKey` in `packages/ai/src/registry/oauth`.
  */
-const STRUCTURED_API_KEY_PROVIDERS: ReadonlySet<string> = new Set([
-	"github-copilot",
-	"google-gemini-cli",
-	"google-antigravity",
-]);
+const STRUCTURED_API_KEY_PROVIDERS: ReadonlySet<string> = new Set(["github-copilot"]);
 
 /**
  * Provider API types that strict-mode chat probes intentionally skip:

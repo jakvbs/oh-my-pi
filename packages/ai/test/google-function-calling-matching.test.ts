@@ -15,14 +15,14 @@ const ZERO_USAGE: Usage = {
 function createGoogleModel(
 	id: string,
 	api: "google-generative-ai" | "google-vertex" = "google-generative-ai",
-	provider: "google" | "google-antigravity" | "google-vertex" = api === "google-vertex" ? "google-vertex" : "google",
+	provider: "google" | "google-vertex" = api === "google-vertex" ? "google-vertex" : "google",
 ): Model<typeof api> {
 	return buildModel({
 		id,
 		name: id,
 		api,
 		provider: provider,
-		baseUrl: provider === "google-antigravity" ? "https://daily-cloudcode-pa.googleapis.com" : "https://example.com",
+		baseUrl: "https://example.com",
 		reasoning: false,
 		input: ["text", "image"],
 		cost: {
@@ -130,17 +130,5 @@ describe("Google GenerateContent function response matching", () => {
 				},
 			},
 		]);
-	});
-
-	it("keeps Claude call IDs on non-Vertex Google-compatible endpoints", () => {
-		const model = createGoogleModel("claude-sonnet-4-5", "google-generative-ai", "google-antigravity");
-		const { functionCall, functionResponse } = functionCallAndResponse(
-			model,
-			contextWithToolResult("actual_tool_name"),
-		);
-
-		expect(functionCall?.id).toBe("call_12345_abc");
-		expect(functionResponse?.id).toBe("call_12345_abc");
-		expect(functionResponse?.name).toBe(functionCall?.name);
 	});
 });

@@ -27,7 +27,7 @@ describe("LoginDialogComponent", () => {
 		const openSpy = spyOn(openModule, "openPath").mockImplementation(() => {});
 		try {
 			const tui = { requestRender() {} } as unknown as TUI;
-			const dialog = new LoginDialogComponent(tui, "google-antigravity", () => {}, openModule.openPath);
+			const dialog = new LoginDialogComponent(tui, "anthropic", () => {}, openModule.openPath);
 			const authorizationUrl =
 				"https://accounts.google.com/o/oauth2/v2/auth?client_id=x&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A51121%2Foauth-callback&scope=cloud-platform&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 

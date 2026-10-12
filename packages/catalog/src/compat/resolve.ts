@@ -953,7 +953,7 @@ function resolveBedrockPolicy(spec: ModelSpec<"bedrock-converse-stream">, axes: 
 }
 
 function resolveGooglePolicy(
-	spec: ModelSpec<"google-generative-ai" | "google-vertex" | "google-gemini-cli">,
+	spec: ModelSpec<"google-generative-ai" | "google-vertex">,
 	axes: ResolvedAxes,
 ): ResolvedGoogleCompat {
 	const compat: ResolvedGoogleCompat = {
@@ -963,9 +963,6 @@ function resolveGooglePolicy(
 		dropUnsignedThinking: false,
 		ccaLegacyParametersSchema: false,
 		multimodalFunctionResponse: false,
-		flashStreamLeakWorkaround: false,
-		claudeThinkingBetaHeader: false,
-		antigravityClaudeToolMode: false,
 		stripImageInput: false,
 	};
 	applyWireAxes(compat, axes.wire, spec.api);
@@ -1001,7 +998,6 @@ const FIREWORKS_THINKING_EFFORT_MAP: Readonly<Partial<Record<Effort, string>>> =
 function defaultThinkingMode<TApi extends Api>(spec: ModelSpec<TApi>, facts: IdentityFacts): ThinkingConfig["mode"] {
 	switch (spec.api) {
 		case "google-generative-ai":
-		case "google-gemini-cli":
 		case "google-vertex":
 			return facts.is("gemini") && facts.revMajor() === 3 ? "google-level" : "budget";
 		case "anthropic-messages":
@@ -1326,11 +1322,7 @@ export function resolveModelPolicy(spec: ModelSpec<Api>, route?: ResolveRoute): 
 		compat = resolveAnthropicPolicy(spec, facts, axes);
 	} else if (specUsesApi(spec, "bedrock-converse-stream")) {
 		compat = resolveBedrockPolicy(spec, axes);
-	} else if (
-		specUsesApi(spec, "google-generative-ai") ||
-		specUsesApi(spec, "google-vertex") ||
-		specUsesApi(spec, "google-gemini-cli")
-	) {
+	} else if (specUsesApi(spec, "google-generative-ai") || specUsesApi(spec, "google-vertex")) {
 		compat = resolveGooglePolicy(spec, axes);
 	} else {
 		compat = undefined;

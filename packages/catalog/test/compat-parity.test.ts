@@ -31,14 +31,10 @@ const NEW_COMPAT_FIELDS = new Set([
 	"dropUnsignedThinking",
 	"ccaLegacyParametersSchema",
 	"multimodalFunctionResponse",
-	"flashStreamLeakWorkaround",
-	"claudeThinkingBetaHeader",
-	"antigravityClaudeToolMode",
-	"antigravityUsageLabel",
 ]);
 
 /** APIs whose compat record is new with the engine (no baked baseline). */
-const NEW_COMPAT_APIS = new Set(["google-generative-ai", "google-vertex", "google-gemini-cli"]);
+const NEW_COMPAT_APIS = new Set(["google-generative-ai", "google-vertex"]);
 
 function jsonClone<T>(value: T): unknown {
 	return value === undefined ? undefined : JSON.parse(JSON.stringify(value));

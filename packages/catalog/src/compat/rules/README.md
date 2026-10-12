@@ -120,7 +120,7 @@ collapse {
     effort-family "example-provider" "gpt-5.6-luna"
     routing-variant-suffix "-wm" "openai-codex" "openai-codex-device"
     variant-family "example-provider" "claude-opus-5" name="Claude Opus 5" { /* reviewed routing */ }
-    variant-family "google-antigravity" "gemini-{rev}-flash" name="Gemini {rev} Flash" revision=">=3.6" { /* per-revision template */ }
+    variant-family "example-provider" "gemini-{rev}-flash" name="Gemini {rev} Flash" revision=">=3.6" { /* per-revision template */ }
     provider-alias "example-provider" "opus" "claude-opus-5"
 }
 ```
@@ -305,7 +305,7 @@ behavior {
     exclude-models provider="nanogpt" substring="embed" substring="tts"
     plan-requirement provider="openai-codex" { tier "pro" substring="-spark" }
     retry-reset-timezone provider="zai" offset="+08:00"
-    pricing-peer provider="google-antigravity" peers="google" "google-vertex" {
+    pricing-peer provider="example-provider" peers="google" "google-vertex" {
         alias "gemini-3-pro" peer-id="gemini-3-pro-preview"
     }
 }

@@ -54,7 +54,6 @@ const KNOWN_APIS = [
 	"anthropic-messages",
 	"bedrock-converse-stream",
 	"google-generative-ai",
-	"google-gemini-cli",
 	"google-vertex",
 	"ollama-chat",
 	"apple-foundation-models",

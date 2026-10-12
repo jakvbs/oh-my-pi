@@ -38,32 +38,6 @@ behavior {
 		operation "generate_image"
 	}
 
-	// Exact quota bucket memberships reported by Google Gemini CLI.
-	quota-tiers provider="google-gemini-cli" {
-		tier "3-Flash" "gemini-3-flash-preview" "gemini-3-flash" "gemini-3.5-flash"
-		tier "Flash" "gemini-2.5-flash" "gemini-2.5-flash-lite" "gemini-2.0-flash" \
-			"gemini-1.5-flash"
-		tier "Pro" "gemini-2.5-pro" "gemini-3-pro-preview" "gemini-3.1-pro-preview" \
-			"gemini-3-pro" "gemini-3.1-pro" "gemini-pro-agent" "gemini-1.5-pro"
-		// Unknown discovered quota ids retain the upstream display heuristic.
-		fallback "Flash" substring="flash"
-		fallback "Pro" substring="pro"
-	}
-	// Antigravity reports independent backend-family counters. Exact memberships
-	// cover bundled/current ids; fallbacks preserve the same counter for newly
-	// discovered family ids.
-	quota-tiers provider="google-antigravity" {
-		tier "anthropic" "claude-opus-4-6"
-		tier "google" "gemini-3-pro" "gemma-3" "tab_flash_lite_preview" \
-			"tab_jump_flash_lite_preview"
-		tier "openai" "gpt-oss-120b" "openai/gpt-oss-120b"
-		fallback "anthropic" substring="claude-"
-		fallback "google" substring="gemini-"
-		fallback "google" substring="gemma-"
-		fallback "google" substring="tab_"
-		fallback "openai" substring="gpt-"
-		fallback "openai" substring="openai/"
-	}
 	// Codex Spark consumes an independent meter. The broad chat fallback follows
 	// Spark so the specific suffix wins for discovered ids.
 	quota-tiers provider="openai-codex" {
@@ -273,27 +247,13 @@ behavior {
 		limits "minimax-m2.5" context=196608 max-tokens=32768
 	}
 
-	// Antigravity discovery reports no pricing (the subscription bills through
-	// Google); price rows at their first-party equivalents, Vertex before
-	// Anthropic for Claude ids. Aliases map ids whose peer ships differently.
-	pricing-peer provider="google-antigravity" peers="google" "google-vertex" "anthropic" {
-		alias "gemini-3-flash" peer-id="gemini-3-flash-preview"
-		alias "gemini-3-pro" peer-id="gemini-3-pro-preview"
-		alias "gemini-3.1-pro" peer-id="gemini-3.1-pro-preview"
-		alias "claude-opus-4-5" peer-id="claude-opus-4-5@20251101"
-		alias "claude-opus-4-6" peer-id="claude-opus-4-6@default"
-		alias "claude-sonnet-4-5" peer-id="claude-sonnet-4-5@20250929"
-		alias "claude-sonnet-4-6" peer-id="claude-sonnet-4-6@default"
-		alias "claude-opus-5-5" peer-id="claude-opus-5-5@default"
-		alias "claude-sonnet-5-5" peer-id="claude-sonnet-5-5@default"
-	}
 	// SuperGrok surfaces a few models under IDs that differ from their public
 	// xai equivalent, so the exact-id price mirror misses them.
 	pricing-peer provider="xai-oauth" peers="xai" {
 		alias "grok-4.20-multi-agent-0309" peer-id="grok-4.20-multi-agent-beta-latest"
 	}
-	// Token Plan rows report zero cost upstream; like the Antigravity and
-	// SuperGrok rules above, they show the pay-as-you-go equivalent (Credits
+	// Token Plan rows report zero cost upstream; like the SuperGrok rule
+	// above, they show the pay-as-you-go equivalent (Credits
 	// overflow is billed at the PAYG list price). MiniMax-M3.1-Flash-Preview has
 	// no published price and borrows the MiniMax-M3 rate as an estimate.
 	pricing-peer provider="minimax-code" peers="minimax" {

@@ -254,22 +254,22 @@ describe("computeProviderWindowStats", () => {
 	});
 
 	it("does not meter routing copies of one shared upstream pool", () => {
-		// Antigravity reports one third-party pool once per model family; the shared group keeps
+		// A provider may report one third-party pool once per model family; the shared group keeps
 		// them one pool with the worst fraction binding, not one meter per copy.
-		const report = makeReport("google-antigravity", "shared@example.test", [
+		const report = makeReport("acme", "shared@example.test", [
 			makeLimit({
-				id: "google-antigravity:anthropic:default:5h",
+				id: "acme:anthropic:default:5h",
 				label: "Claude & GPT (shared)",
-				provider: "google-antigravity",
+				provider: "acme",
 				usedFraction: 0.4,
 				durationMs: FIVE_HOURS,
 				windowId: "5h",
 				sharedGroup: "third-party:5h",
 			}),
 			makeLimit({
-				id: "google-antigravity:openai:default:5h",
+				id: "acme:openai:default:5h",
 				label: "Claude & GPT (shared)",
-				provider: "google-antigravity",
+				provider: "acme",
 				usedFraction: 0.7,
 				durationMs: FIVE_HOURS,
 				windowId: "5h",
@@ -478,22 +478,6 @@ describe("collectUnreportedAccounts", () => {
 		// per-user pools. An org-only account (no base identifiers to gate on)
 		// stays covered by any same-org report.
 		expect(collectUnreportedAccounts([aliceReport], [alice, bob, orgOnly])).toEqual([bob]);
-	});
-
-	it("does not let one Antigravity account's report cover a sibling on the same Google project", () => {
-		const project = "aicode-consumers";
-		const alice: UsageAccountIdentity = {
-			provider: "google-antigravity",
-			type: "oauth",
-			email: "alice@example.test",
-			projectId: project,
-		};
-		const bob: UsageAccountIdentity = { ...alice, email: "bob@example.test" };
-		const aliceReport = {
-			...makeReport("google-antigravity", alice.email!, []),
-			metadata: { email: alice.email, projectId: project },
-		};
-		expect(collectUnreportedAccounts([aliceReport], [alice, bob])).toEqual([bob]);
 	});
 
 	it("keeps an org-less account covered by its own org-less report when org-scoped siblings exist", () => {
@@ -767,20 +751,20 @@ describe("formatUsageBreakdown", () => {
 		expect(text).toContain("user@example.test · plan: team");
 	});
 
-	it("renders marked Antigravity shared quotas once per account", () => {
-		const antigravity = makeReport("google-antigravity", "user@example.test", [
+	it("renders marked shared quotas once per account", () => {
+		const report = makeReport("acme", "user@example.test", [
 			makeLimit({
-				id: "google-antigravity:google:default:gemini-5h",
+				id: "acme:google:default:gemini-5h",
 				label: "Gemini",
-				provider: "google-antigravity",
+				provider: "acme",
 				usedFraction: 0.25,
 				durationMs: FIVE_HOURS,
 				windowId: "5h",
 			}),
 			makeLimit({
-				id: "google-antigravity:google:default:gemini-weekly",
+				id: "acme:google:default:gemini-weekly",
 				label: "Gemini",
-				provider: "google-antigravity",
+				provider: "acme",
 				usedFraction: 0.25,
 				durationMs: SEVEN_DAYS,
 				windowId: "weekly",
@@ -788,9 +772,9 @@ describe("formatUsageBreakdown", () => {
 			...(["5h", "weekly"] as const).flatMap((windowId, index) =>
 				(["anthropic", "openai"] as const).map(counter =>
 					makeLimit({
-						id: `google-antigravity:${counter}:default:3p-${windowId}`,
+						id: `acme:${counter}:default:3p-${windowId}`,
 						label: "Claude & GPT (shared)",
-						provider: "google-antigravity",
+						provider: "acme",
 						usedFraction: 0.25,
 						durationMs: index === 0 ? FIVE_HOURS : SEVEN_DAYS,
 						windowId,
@@ -800,7 +784,7 @@ describe("formatUsageBreakdown", () => {
 			),
 		]);
 
-		const text = stripVTControlCharacters(formatUsageBreakdown([antigravity], [], Date.now()));
+		const text = stripVTControlCharacters(formatUsageBreakdown([report], [], Date.now()));
 
 		expect(text.match(/Claude & GPT \(shared\)/g)).toHaveLength(2);
 		expect(text.match(/Gemini/g)).toHaveLength(2);
@@ -914,13 +898,13 @@ describe("formatUsageBreakdown", () => {
 
 	it("keeps one row per tier when a report repeats a meter per tier in the same window", () => {
 		const tierUsage = (tier: string, usedFraction: number) => ({
-			...makeLimit({ id: `antigravity:${tier}`, label: "Usage", provider: "google-antigravity", usedFraction }),
+			...makeLimit({ id: `acme:${tier}`, label: "Usage", provider: "acme", usedFraction }),
 			window: { id: "5h", label: "5 hours", durationMs: FIVE_HOURS },
-			scope: { provider: "google-antigravity", windowId: "5h", tier },
+			scope: { provider: "acme", windowId: "5h", tier },
 		});
 		const providerReports = [
-			makeReport("google-antigravity", "both@example.test", [tierUsage("Pro", 0.1), tierUsage("Longer Tier", 0.2)]),
-			makeReport("google-antigravity", "one@example.test", [tierUsage("Longer Tier", 0.3)]),
+			makeReport("acme", "both@example.test", [tierUsage("Pro", 0.1), tierUsage("Longer Tier", 0.2)]),
+			makeReport("acme", "one@example.test", [tierUsage("Longer Tier", 0.3)]),
 		];
 
 		const text = stripVTControlCharacters(formatUsageBreakdown(providerReports, [], Date.now()));
@@ -1075,38 +1059,6 @@ describe("formatUsageBreakdown", () => {
 		const noteIdx = text.indexOf(providerNote);
 		const firstLimitIdx = text.indexOf("5 Hour");
 		expect(noteIdx).toBeLessThan(firstLimitIdx);
-	});
-
-	it("renders Antigravity weekly windows in the usage breakdown", () => {
-		const now = Date.parse("2026-01-01T00:00:00.000Z");
-		const reports: UsageReport[] = [
-			{
-				provider: "google-antigravity",
-				fetchedAt: now,
-				metadata: { email: "ag@example.test", projectId: "proj-1" },
-				limits: [
-					{
-						id: "google-antigravity:google:default:weekly",
-						label: "Usage (Google)",
-						scope: { provider: "google-antigravity", projectId: "proj-1", windowId: "weekly" },
-						window: {
-							id: "weekly",
-							label: "Weekly",
-							durationMs: SEVEN_DAYS,
-							resetsAt: now + SEVEN_DAYS,
-						},
-						amount: { unit: "percent", usedFraction: 0.6, remainingFraction: 0.4 },
-						status: "ok",
-					},
-				],
-			},
-		];
-
-		const text = stripVTControlCharacters(formatUsageBreakdown(reports, [], now));
-		expect(text).toContain("Google Antigravity");
-		expect(text).toContain("Usage (Google) (Weekly)");
-		expect(text).toContain("60.0% used");
-		expect(text).toContain("0.40× quota left");
 	});
 
 	it("renders Cursor request quotas in the usage breakdown", () => {

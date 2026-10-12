@@ -270,12 +270,8 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 	"trust-explicit-thinking-only": wire("trustExplicitThinkingOnly", [...OAI]),
 
 	// ── wire: google APIs ──
-	"antigravity-claude-tool-mode": wire("antigravityClaudeToolMode", ["google"]),
-	"antigravity-usage-label": wire("antigravityUsageLabel", ["google"]),
 	"cca-legacy-parameters-schema": wire("ccaLegacyParametersSchema", ["google"]),
-	"claude-thinking-beta-header": wire("claudeThinkingBetaHeader", ["google"]),
 	"drop-unsigned-thinking": wire("dropUnsignedThinking", ["google"]),
-	"flash-stream-leak-workaround": wire("flashStreamLeakWorkaround", ["google"]),
 	"multimodal-function-response": wire("multimodalFunctionResponse", ["google"]),
 	"requires-skip-thought-signature": wire("requiresSkipThoughtSignature", ["google"]),
 	"requires-skip-thought-signature-on-first-function-call": wire("requiresSkipThoughtSignatureOnFirstFunctionCall", [
@@ -469,5 +465,4 @@ export const API_COMPAT_RECORDS: Readonly<Record<string, readonly CompatRecordNa
 	"bedrock-converse-stream": ["bedrock"],
 	"google-generative-ai": ["google"],
 	"google-vertex": ["google"],
-	"google-gemini-cli": ["google"],
 };

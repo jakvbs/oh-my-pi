@@ -4,7 +4,6 @@
 		"claude-haiku-5.5",
 		"haiku-5-5",
 		"haiku-5.5",
-		"google-antigravity/gemini-3.8-flash",
 		"gemini-3.8-flash",
 		"gemini-3-8-flash",
 		"gemini-3.7-flash",
@@ -72,7 +71,6 @@
 	"image": [
 		"openai/gpt-image-2",
 		"openai-codex/gpt-image-2",
-		"google-antigravity/gemini-3-pro-image",
 		"xai/grok-imagine-image",
 		"xai-oauth/grok-imagine-image",
 		"openrouter/google/gemini-3-pro-image",

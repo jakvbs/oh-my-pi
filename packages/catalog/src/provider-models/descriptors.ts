@@ -4,8 +4,7 @@
  * rows — is authored in `src/compat/rules/providers/<id>.kdl` and read from
  * the compiled entry (`src/compat/providers.ts`); this table holds only the
  * code half. Providers without a factory (`amazon-bedrock`, `azure`,
- * MiniMax, and the bespoke OAuth-driven managers
- * `google-antigravity` / `google-gemini-cli` / `openai-codex` built by the
+ * MiniMax, and the bespoke OAuth-driven `openai-codex` manager built by the
  * coding-agent runtime) still have a KDL entry but no runtime discovery here.
  */
 import type { KnownProvider } from "../compat/provider-ids";

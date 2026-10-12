@@ -3512,24 +3512,6 @@ describe("ModelRegistry", () => {
 			expect(vertexAuthoritative.find("google-vertex", "gemini-1.5-pro")).toBeUndefined();
 		});
 
-		test("does not offer bundled Antigravity chat ids absent from a fresh account roster after restart", () => {
-			const served = getBundledModels("google-antigravity").find(model => model.id === "claude-sonnet-4-6");
-			if (!served) throw new Error("Missing bundled Antigravity control model");
-			writeModelCache(
-				"google-antigravity",
-				Date.now(),
-				[served],
-				true,
-				fingerprintStaticModels(getBundledModels("google-antigravity"), true),
-				path.join(tempDir, "models.db"),
-			);
-			const restarted = new ModelRegistry(authStorage, modelsJsonPath);
-
-			expect(restarted.find("google-antigravity", "claude-sonnet-4-6")).toBeDefined();
-			expect(restarted.find("google-antigravity", "claude-sonnet-5-5")).toBeUndefined();
-			expect(restarted.find("google-antigravity", "gemini-3-pro-image")).toBeDefined();
-		});
-
 		test("does not re-add bundled synthetic models after authoritative cache load", () => {
 			const syntheticModels = getModelsForProvider(syntheticCacheLoad, "synthetic");
 			expect(syntheticModels.map(model => model.id)).toEqual(["hf:zai-org/GLM-5.1"]);
@@ -3616,83 +3598,75 @@ describe("ModelRegistry", () => {
 	});
 
 	describe("effort-tier variant collapsing", () => {
+		const OPUS = "[Kiro] claude-opus-4-7";
+		const OPUS_THINKING = "[Kiro] claude-opus-4-7-thinking";
 		let kiroTwins: ModelRegistry;
-		let antigravityOverride: ModelRegistry;
+		let kiroOverride: ModelRegistry;
 		let suppressible: ModelRegistry;
 		beforeAll(() => {
-			kiroTwins = readonlyRegistry({
-				providers: {
-					newapi: providerConfig("https://newapi.example.com/v1", [
-						{ id: "[Kiro] claude-opus-4-7" },
-						{ id: "[Kiro] claude-opus-4-7-thinking" },
-					]),
-				},
-			});
-			antigravityOverride = readonlyRegistry({
-				providers: {
-					"google-antigravity": { modelOverrides: { "gemini-3-pro-high": { contextWindow: 222_222 } } },
-				},
+			const twins = providerConfig("https://newapi.example.com/v1", [{ id: OPUS }, { id: OPUS_THINKING }]);
+			kiroTwins = readonlyRegistry({ providers: { newapi: twins } });
+			kiroOverride = readonlyRegistry({
+				providers: { newapi: { ...twins, modelOverrides: { [OPUS_THINKING]: { contextWindow: 222_222 } } } },
 			});
 			// Dedicated instance: the suppression test mutates it via suppressSelector.
-			suppressible = readonlyRegistry({ providers: {} });
+			suppressible = readonlyRegistry({ providers: { newapi: twins } });
 		});
 
 		test("collapses X/X-thinking twins from custom providers", () => {
 			const models = getModelsForProvider(kiroTwins, "newapi");
-			expect(models.map(m => m.id)).toEqual(["[Kiro] claude-opus-4-7"]);
+			expect(models.map(m => m.id)).toEqual([OPUS]);
 			// Effort routing to the consumed twin forces reasoning even though
 			// the config never marked it.
 			expect(models[0]?.reasoning).toBe(true);
-			expect(models[0]?.thinking?.effortRouting?.[Effort.High]).toBe("[Kiro] claude-opus-4-7-thinking");
-			expect(models[0]?.thinking?.effortRouting?.off).toBe("[Kiro] claude-opus-4-7");
+			expect(models[0]?.thinking?.effortRouting?.[Effort.High]).toBe(OPUS_THINKING);
+			expect(models[0]?.thinking?.effortRouting?.off).toBe(OPUS);
 			// Saved selectors for the consumed twin resolve via the grammar alias.
-			expect(kiroTwins.find("newapi", "[Kiro] claude-opus-4-7-thinking")?.id).toBe("[Kiro] claude-opus-4-7");
+			expect(kiroTwins.find("newapi", OPUS_THINKING)?.id).toBe(OPUS);
 		});
 
 		test("modelOverrides keyed by retired variant ids re-key onto the collapsed model", () => {
-			const collapsed = antigravityOverride.find("google-antigravity", "gemini-3-pro");
-			expect(collapsed?.contextWindow).toBe(222_222);
+			expect(kiroOverride.find("newapi", OPUS)?.contextWindow).toBe(222_222);
 			// The retired selector resolves to the same collapsed model.
-			expect(antigravityOverride.find("google-antigravity", "gemini-3-pro-high")?.id).toBe("gemini-3-pro");
+			expect(kiroOverride.find("newapi", OPUS_THINKING)?.id).toBe(OPUS);
 		});
 
 		test("retired variant maximum override wins over a larger custom maximum", async () => {
 			writeRawModelsJson({
-				"google-antigravity": {
-					baseUrl: "https://example.com/v1",
-					api: "google-gemini-cli",
+				newapi: {
+					baseUrl: "https://newapi.example.com/v1",
+					api: "anthropic-messages",
 					auth: "none",
-					models: [{ id: "gemini-3-pro", contextWindow: 128_000, maxContextWindow: 800_000 }],
-					modelOverrides: { "gemini-3-pro-high": { maxContextWindow: 512_000 } },
+					models: [
+						{ id: OPUS, contextWindow: 128_000, maxContextWindow: 800_000 },
+						{ id: OPUS_THINKING, contextWindow: 128_000, maxContextWindow: 800_000 },
+					],
+					modelOverrides: { [OPUS_THINKING]: { maxContextWindow: 512_000 } },
 				},
 			});
 			const testSettings = Settings.isolated();
 			cfgExtendedContext.set(testSettings, true);
 			const registry = new ModelRegistry(authStorage, modelsJsonPath, { settings: testSettings });
 			expect(registry.getError()).toBeUndefined();
-			expect(registry.find("google-antigravity", "gemini-3-pro")?.contextWindow).toBe(512_000);
-			expect(registry.find("google-antigravity", "gemini-3-pro-high")).toMatchObject({
-				id: "gemini-3-pro",
-				contextWindow: 512_000,
-			});
+			expect(registry.find("newapi", OPUS)?.contextWindow).toBe(512_000);
+			expect(registry.find("newapi", OPUS_THINKING)).toMatchObject({ id: OPUS, contextWindow: 512_000 });
 
 			cfgExtendedContext.set(testSettings, false);
 			await registry.reapplyModelPolicies();
-			expect(registry.find("google-antigravity", "gemini-3-pro")?.contextWindow).toBe(128_000);
+			expect(registry.find("newapi", OPUS)?.contextWindow).toBe(128_000);
 
 			cfgExtendedContext.set(testSettings, true);
 			await registry.reapplyModelPolicies();
 			await registry.refresh("offline");
 			expect(registry.getError()).toBeUndefined();
-			expect(registry.find("google-antigravity", "gemini-3-pro")?.contextWindow).toBe(512_000);
-			expect(registry.find("google-antigravity", "gemini-3-pro-high")?.contextWindow).toBe(512_000);
+			expect(registry.find("newapi", OPUS)?.contextWindow).toBe(512_000);
+			expect(registry.find("newapi", OPUS_THINKING)?.contextWindow).toBe(512_000);
 		});
 
 		test("suppressed selectors keyed by retired variant ids bind to the collapsed id", () => {
-			suppressible.suppressSelector("google-antigravity/gemini-3-pro-high", Date.now() + 60_000);
-			expect(suppressible.isSelectorSuppressed("google-antigravity/gemini-3-pro")).toBe(true);
-			expect(suppressible.isSelectorSuppressed("google-antigravity/gemini-3-pro-low")).toBe(true);
-			expect(suppressible.isSelectorSuppressed("google-antigravity/gemini-2.5-pro")).toBe(false);
+			suppressible.suppressSelector(`newapi/${OPUS_THINKING}`, Date.now() + 60_000);
+			expect(suppressible.isSelectorSuppressed(`newapi/${OPUS}`)).toBe(true);
+			expect(suppressible.isSelectorSuppressed("newapi/claude-sonnet-4-6")).toBe(false);
 		});
 	});
 });

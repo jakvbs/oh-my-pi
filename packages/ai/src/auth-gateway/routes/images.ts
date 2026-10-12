@@ -14,12 +14,7 @@ import {
 import { gatewayResponseHeaders, json, resolveClientIdentity } from "../http";
 
 function isGatewayImageApi(api: string): boolean {
-	return (
-		api === "openai-images" ||
-		api === "openrouter-images" ||
-		api === "google-generative-ai" ||
-		api === "google-gemini-cli"
-	);
+	return api === "openai-images" || api === "openrouter-images" || api === "google-generative-ai";
 }
 
 async function handleImages(

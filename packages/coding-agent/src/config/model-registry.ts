@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { ApiKeyResolver, FetchImpl, ResolvedApiKey, UsageProvider } from "@oh-my-pi/pi-ai";
-import { type AuthApiKeyOptions, oauthAccountKey } from "@oh-my-pi/pi-ai/auth-storage";
+import type { AuthApiKeyOptions } from "@oh-my-pi/pi-ai/auth-storage";
 import { registerCustomApi, unregisterCustomApis } from "@oh-my-pi/pi-ai/api-registry";
 import { registerOAuthProvider, unregisterOAuthProvider, unregisterOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@oh-my-pi/pi-ai/oauth/types";
@@ -36,8 +36,6 @@ import {
 } from "@oh-my-pi/pi-catalog/model-manager";
 import { getBundledModels, getBundledProviders } from "@oh-my-pi/pi-catalog/models";
 import {
-	googleAntigravityModelManagerOptions,
-	googleGeminiCliModelManagerOptions,
 	isCredentialScopedModelCacheProvider,
 	MODELS_DEV_CATALOG_PROVIDER_IDS,
 	modelsDevCatalogFallback,
@@ -107,8 +105,6 @@ import {
 	BUILT_IN_DISCOVERY_CACHE_TTL_MS,
 	BUILT_IN_DISCOVERY_NON_AUTHORITATIVE_RETRY_MS,
 	type BuiltInDiscoveryResult,
-	extractGoogleOAuthProjectId,
-	extractGoogleOAuthToken,
 	getOAuthCredentialsForProvider,
 	isAuthenticated,
 	isDiscoveryBearerApiKey,
@@ -2259,20 +2255,6 @@ export class ModelRegistry {
 		}
 	}
 
-	/**
-	 * Resolve the GCP project id for Gemini CLI quota discovery from the stored
-	 * OAuth credential matched to the token in use. Used only as a fallback for
-	 * the discovery fast path, where `peekApiKey` returns the bare access token
-	 * (stripping the structured identity); matching strictly by `access` avoids
-	 * attaching an unrelated account's project. Workspace/Standard accounts
-	 * require the id because project-less `loadCodeAssist` cannot resolve one.
-	 */
-	#resolveGeminiCliDiscoveryProjectId(oauthToken: string): string | undefined {
-		const credentials = getOAuthCredentialsForProvider(this.authStorage, "google-gemini-cli");
-		const projectId = credentials.find(credential => credential.access === oauthToken)?.projectId?.trim();
-		return projectId ? projectId : undefined;
-	}
-
 	async #collectBuiltInModelManagerOptions(
 		strategy: ModelRefreshStrategy,
 		providerFilter: ReadonlySet<string> | undefined,
@@ -2283,39 +2265,6 @@ export class ModelRegistry {
 			resolveKey: (value: string | undefined) => string | undefined;
 			createOptions: (key: string, raw: string | undefined) => ModelManagerOptions<Api>;
 		}> = [
-			{
-				providerId: "google-antigravity",
-				resolveKey: extractGoogleOAuthToken,
-				createOptions: oauthToken =>
-					googleAntigravityModelManagerOptions({
-						resolveAccounts: async () => {
-							const accounts = await resolveOAuthDiscoveryAccounts(
-								this.authStorage,
-								"google-antigravity",
-								oauthToken,
-							);
-							return (
-								accounts?.map(account => ({
-									accessToken: account.accessToken,
-									accountKey: oauthAccountKey(account),
-								})) ?? null
-							);
-						},
-						endpoint: this.#descriptorBaseUrl("google-antigravity"),
-						fetch: this.#fetch,
-					}),
-			},
-			{
-				providerId: "google-gemini-cli",
-				resolveKey: extractGoogleOAuthToken,
-				createOptions: (oauthToken, raw) =>
-					googleGeminiCliModelManagerOptions({
-						oauthToken,
-						projectId: extractGoogleOAuthProjectId(raw) ?? this.#resolveGeminiCliDiscoveryProjectId(oauthToken),
-						endpoint: this.#descriptorBaseUrl("google-gemini-cli"),
-						fetch: this.#fetch,
-					}),
-			},
 			{
 				providerId: "openai-codex",
 				resolveKey: value => value,

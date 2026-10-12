@@ -146,7 +146,7 @@ describe("resolveImageTokenization", () => {
 				GPT_PATCH,
 			);
 		}
-		for (const api of ["google-generative-ai", "google-gemini-cli", "google-vertex"]) {
+		for (const api of ["google-generative-ai", "google-vertex"]) {
 			expect(resolveImageTokenization({ provider: "google", api, id: "gemini-2.5-pro" })).toEqual({
 				regime: "fixed",
 				tokens: 1120,

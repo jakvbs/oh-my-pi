@@ -296,7 +296,7 @@ class "anthropic" {
 		thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 	}
 	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" \
-		"google-antigravity" "google-vertex" "opencode-zen" "snowflake" "vercel-ai-gateway" "zenmux" {
+		"google-vertex" "opencode-zen" "snowflake" "vercel-ai-gateway" "zenmux" {
 		family "sonnet" {
 			revision ">=3.7 <4.6" {
 				thinking-mode "budget"
@@ -347,7 +347,7 @@ class "anthropic" {
 			}
 		}
 	}
-	on "amazon-bedrock" "google-antigravity" "openrouter" {
+	on "amazon-bedrock" "openrouter" {
 		family "sonnet" {
 			revision ">=4.6 <5" {
 				thinking-efforts "minimal" "low" "medium" "high"
@@ -357,7 +357,7 @@ class "anthropic" {
 			thinking-efforts "minimal" "low" "medium" "high"
 		}
 	}
-	on "amazon-bedrock" "google-antigravity" {
+	on "amazon-bedrock" {
 		family "sonnet" {
 			revision ">=4.6 <5" {
 				thinking-mode "budget"
@@ -691,18 +691,6 @@ class "anthropic" {
 		revision "=3.5" {
 			inject-claude-code-instruction #false
 		}
-	}
-
-	// Cloud Code Assist exposes Claude through Google's wire envelope.
-	on "google-antigravity" "google-gemini-cli" {
-		supports-function-part-id #true
-		cca-legacy-parameters-schema #true
-	}
-	on "google-antigravity" {
-		drop-unsigned-thinking #true
-		claude-thinking-beta-header #true
-		antigravity-claude-tool-mode #true
-		antigravity-usage-label "true"
 	}
 }
 

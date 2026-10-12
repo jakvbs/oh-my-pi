@@ -229,7 +229,6 @@ function apiFamily(api?: Api): ApiFamily {
 		case "azure-openai-responses":
 			return "openai";
 		case "google-generative-ai":
-		case "google-gemini-cli":
 		case "google-vertex":
 			return "google";
 		default:
@@ -547,7 +546,6 @@ export const PROVIDER_IMAGE_BUDGETS: Record<string, number> = {
 	"openai-codex": 200,
 	google: 200,
 	"google-vertex": 200,
-	"google-gemini-cli": 200,
 	openrouter: 90,
 	umans: 10,
 };

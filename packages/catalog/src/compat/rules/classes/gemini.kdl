@@ -70,9 +70,7 @@ class "gemini" {
 	// (400 THINKING_LEVEL_MINIMAL; observed on 3.7 and 3.8). Only the direct
 	// google-level transports emit `thinkingLevel` on the wire, so the tier is
 	// dropped there; budget (anthropic-messages) and reasoning_effort resellers
-	// never send the rejected value and keep the four-tier ladder. The collapsed
-	// google-antigravity / google-gemini-cli variants remap minimal -> LOW and
-	// carry their own explicit ladder, so they are unaffected.
+	// never send the rejected value and keep the four-tier ladder.
 	// https://ai.google.dev/gemini-api/docs/generate-content/thinking#thinking-levels
 	on "google" "google-vertex" "opencode-zen" {
 		family "flash" {
@@ -98,19 +96,13 @@ class "gemini" {
 			supports-function-part-id #true
 		}
 	}
-	on "google-antigravity" "google-gemini-cli" {
-		family "flash" {
-			stream-first-event-timeout-ms 60000
-			flash-stream-leak-workaround #true
-		}
-	}
 
 	thinking-loop-guard "gemini"
 }
 
 // Google Search grounding is a Gemini 2+ lineage capability on every Gemini transport.
 class "gemini" {
-	on-api "google-generative-ai" "google-gemini-cli" {
+	on-api "google-generative-ai" {
 		revision ">=2" {
 			web-search "gemini"
 			web-search-model "gemini-2.5-flash"

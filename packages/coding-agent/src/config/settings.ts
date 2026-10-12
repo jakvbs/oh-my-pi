@@ -3224,11 +3224,7 @@ export class Settings {
 			const legacyWebOrder = legacy(providerSettings, "webSearchOrder", "providers.webSearchOrder");
 			const legacyWebExclude = legacy(providerSettings, "webSearchExclude", "providers.webSearchExclude");
 			const legacyGeminiModel = legacy(providerSettings, "webSearchGeminiModel", "providers.webSearchGeminiModel");
-			const geminiSelectors = (model: string): string[] => [
-				`google-gemini-cli/${model}`,
-				`google-antigravity/${model}`,
-				`google/${model}`,
-			];
+			const geminiSelectors = (model: string): string[] => [`google/${model}`];
 			const webSelectors = (provider: string, geminiModel: string): string[] => {
 				switch (provider) {
 					case "gemini":
@@ -3293,8 +3289,6 @@ export class Settings {
 						return "openai/gpt-image-2";
 					case "openai-codex":
 						return "openai-codex/gpt-image-2";
-					case "antigravity":
-						return "google-antigravity/gemini-3-pro-image";
 					case "xai":
 						return "xai/grok-imagine-image";
 					case "openrouter":
