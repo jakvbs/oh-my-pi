@@ -483,6 +483,7 @@ if (isProcessEntry || !Bun.isMainThread) {
 	const postmortem: typeof Postmortem | undefined = isProcessEntry
 		? require("@oh-my-pi/pi-utils/postmortem.js")
 		: undefined;
+	postmortem?.registerProcessSignalHandling();
 	// A one-shot CLI run (`omp --help | head`, `omp --version | true`, `omp <sub> | grep -m1`)
 	// whose stdout consumer closes before the write drains gets an EPIPE that Bun surfaces as
 	// an unhandled rejection. Treat a vanished stdout peer as an ordinary Unix disconnect

@@ -322,6 +322,7 @@ describe("postmortem expected cleanup errors", () => {
 		const result = await runPostmortemProbe(`
 			import { postmortem } from "${postmortemModuleUrl}";
 
+			postmortem.registerProcessSignalHandling();
 			postmortem.register("outer", () => {
 				// Registered during the signal-driven exit pass: the process must not
 				// terminate until this async work completes.
@@ -340,5 +341,22 @@ describe("postmortem expected cleanup errors", () => {
 
 		expect(result.exitCode).toBe(143);
 		expect(result.stdout).toContain("late-done");
+	});
+
+	it.skipIf(process.platform === "win32")("lets an embedder finish async SIGINT teardown before exiting", async () => {
+		const result = await runPostmortemProbe(`
+			import "${postmortemModuleUrl}";
+
+			process.once("SIGINT", async () => {
+				await Bun.sleep(50);
+				console.log("host-cleanup-complete");
+				process.exit(130);
+			});
+			process.kill(process.pid, "SIGINT");
+			await Bun.sleep(10_000);
+		`);
+
+		expect(result.exitCode).toBe(130);
+		expect(result.stdout).toContain("host-cleanup-complete");
 	});
 });

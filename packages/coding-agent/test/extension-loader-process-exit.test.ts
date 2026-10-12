@@ -70,6 +70,7 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 import { postmortem } from "@oh-my-pi/pi-utils";
 import { withHostGuard } from "@oh-my-pi/pi-coding-agent/extensibility/utils";
 
+postmortem.registerProcessSignalHandling();
 postmortem.register("probe-cleanup", reason => {
 	process.stdout.write(\`cleanup:\${reason}\\n\`);
 });
@@ -209,6 +210,7 @@ try {
 			const { exitCode, stdout, stderr } = await runProbe(
 				`
 import { postmortem } from "@oh-my-pi/pi-utils";
+postmortem.registerProcessSignalHandling();
 postmortem.register("probe", reason => process.stdout.write(\`cleanup:\${reason}\\n\`));
 process.reallyExit = globalThis.__ompNativeReallyExit;
 process.stdout.write("armed\\n");
