@@ -1853,11 +1853,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
 	);
 	const hasExistingSession = existingBranch.length > 0;
-	const systemPromptSource =
-		options.systemPrompt === undefined
-			? (options.systemPromptSource ?? existingSession.systemPromptSource)
-			: undefined;
-	const sourcedPolicy = systemPromptSource ? await readSystemPromptSource(systemPromptSource) : undefined;
+	if (
+		options.systemPromptSource &&
+		!Bun.deepEquals(options.systemPromptSource, sessionManager.getSystemPromptSource())
+	) {
+		sessionManager.appendSystemPromptChange(options.systemPromptSource);
+	}
 	const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
 	const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
 
@@ -3548,6 +3549,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					: resolveTelemetry(options.telemetry, providerSessionId),
 			),
 		});
+		// The session's recorded source, not the startup option, so /new, /resume and branch
+		// switches render the policy of the session they land in.
+		const policyText = async (): Promise<string | undefined> => {
+			if (options.systemPrompt !== undefined) {
+				return typeof options.systemPrompt === "function" ? options.systemPrompt() : options.systemPrompt;
+			}
+			const source = sessionManager.getSystemPromptSource();
+			return source ? await readSystemPromptSource(source) : undefined;
+		};
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
 			tools: Map<string, AgentTool>,
@@ -3692,10 +3702,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				additionalWorkspaceRoots: sessionManager.getAdditionalDirectories(),
 				xdevTools: toolSession.xdev ? xdevEntries(toolSession.xdev) : [],
 				xdevDocs: xdevPromptDocs ? renderXdevPromptDocs(xdevPromptDocs, routedCatalogNames) : "",
-				systemPrompt:
-					typeof options.systemPrompt === "function"
-						? options.systemPrompt()
-						: (options.systemPrompt ?? sourcedPolicy),
+				systemPrompt: await policyText(),
 				skills: cfgSkillful.get(settings) ? (session?.skills ?? skills) : [],
 				skillDescriptions,
 				contextFiles,
@@ -4214,12 +4221,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					Object.keys(initialServiceTierByFamily).length > 0 ? initialServiceTierByFamily : null,
 				);
 			}
-		}
-		if (
-			options.systemPromptSource &&
-			!Bun.deepEquals(options.systemPromptSource, existingSession.systemPromptSource)
-		) {
-			sessionManager.appendSystemPromptChange(options.systemPromptSource);
 		}
 
 		// Advisors share this session's extension runner (for the approval gate

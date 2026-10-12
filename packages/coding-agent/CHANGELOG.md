@@ -33,7 +33,7 @@
 
 ### Fixed
 
-- A session started with `--system-prompt` keeps it when resumed without the flag. A file is re-read on every resume, so edits reach the session; a recorded file that no longer exists stops the resume with an error instead of falling back to `~/.agents/AGENTS.md`.
+- A session started with `--system-prompt` keeps it when resumed without the flag and in sessions started with `/new`, and switching sessions renders each session's own policy. A file is re-read on every prompt rebuild, so edits reach the session; a recorded file that no longer exists stops startup with an error instead of falling back to `~/.agents/AGENTS.md`.
 
 - Fixed the `bash` tool rejecting `name` together with `async` ("Service mode does not accept async or timeout"), which sent models into a retry loop; the call now runs as a background job and notes the ignored `name`/`ready`, and a `timeout` next to `name` is ignored instead of failing.
 - Fixed overlapping TypeScript language servers when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server handles its file types and the built-in `typescript-native` handles only the remaining types.

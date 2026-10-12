@@ -3454,6 +3454,12 @@ export class SessionManager {
 		return entry.id;
 	}
 
+	/** Latest `--system-prompt` source recorded on the current branch. */
+	getSystemPromptSource(): SystemPromptSource | undefined {
+		const entry = this.getBranch().findLast(entry => entry.type === "system_prompt_change");
+		return entry?.type === "system_prompt_change" ? entry.source : undefined;
+	}
+
 	appendSystemPromptChange(source: SystemPromptSource): string {
 		const entry: SystemPromptChangeEntry = { type: "system_prompt_change", ...this.#freshEntryFields(), source };
 		this.#recordEntry(entry);

@@ -8,7 +8,12 @@ import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manage
 import { TempDir } from "@oh-my-pi/pi-utils";
 import { makeAssistantMessage } from "./session-manager/helpers";
 
-async function start(tempDir: TempDir, sessionManager: SessionManager, systemPromptSource?: SystemPromptSource) {
+async function start(
+	tempDir: TempDir,
+	sessionManager: SessionManager,
+	systemPromptSource?: SystemPromptSource,
+	options?: { newSession?: boolean },
+) {
 	const authStorage = await AuthStorage.create(tempDir.join(`auth-${Bun.nanoseconds()}.db`));
 	authStorage.keys.setRuntime("openai", "test-key");
 	try {
@@ -28,6 +33,7 @@ async function start(tempDir: TempDir, sessionManager: SessionManager, systemPro
 			enableLsp: false,
 			...(systemPromptSource ? { systemPromptSource } : {}),
 		});
+		if (options?.newSession) await session.newSession();
 		const systemPrompt = session.systemPrompt.join("\n");
 		sessionManager.appendMessage({ role: "user", content: "hi", timestamp: Date.now() });
 		sessionManager.appendMessage(makeAssistantMessage());
@@ -39,17 +45,17 @@ async function start(tempDir: TempDir, sessionManager: SessionManager, systemPro
 }
 
 describe("--system-prompt across resume", () => {
-	it("records the file and re-reads it when the session resumes without the flag", async () => {
+	it("keeps the role through /new and re-reads the file when that session resumes without the flag", async () => {
 		using tempDir = TempDir.createSync("@omp-system-prompt-resume-");
 		const role = tempDir.join("role.md");
 		await Bun.write(role, "Answer with KIWI.");
 		const sessionManager = SessionManager.create(tempDir.path(), tempDir.join("sessions"));
 
-		const first = await start(tempDir, sessionManager, { path: role });
+		const afterNew = await start(tempDir, sessionManager, { path: role }, { newSession: true });
 		await Bun.write(role, "Answer with MANGO.");
 		const resumed = await start(tempDir, await SessionManager.open(sessionManager.getSessionFile()!));
 
-		expect([first.includes("Answer with KIWI."), resumed.includes("Answer with MANGO.")]).toEqual([true, true]);
+		expect([afterNew.includes("Answer with KIWI."), resumed.includes("Answer with MANGO.")]).toEqual([true, true]);
 	});
 
 	it("refuses to resume when the recorded file is gone", async () => {

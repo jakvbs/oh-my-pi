@@ -43,7 +43,7 @@ The path is fixed. Profiles, `PI_CODING_AGENT_DIR`, and the SDK `agentDir` optio
 
 ### Text or file resolution
 
-A single-line `--system-prompt` value that names an existing file is a file source; any other value, and every value containing a newline, is the policy text itself. The session records the source, so `--resume` or `--continue` without the flag keeps it. A file source is recorded as its absolute path and read at every start, so edits reach the session on its next resume; if the recorded file is gone or unreadable, startup fails instead of falling back to `~/.agents/AGENTS.md`. Passing `--system-prompt` on resume replaces the recorded source.
+A single-line `--system-prompt` value that names an existing file is a file source; any other value, and every value containing a newline, is the policy text itself. The session records the source: `--resume` or `--continue` without the flag keeps it, `/new` carries it into the new session, and switching to another session renders that session's own source. A file source is recorded as its absolute path and read on every system prompt rebuild, like `~/.agents/AGENTS.md`, so edits reach the session; if the recorded file is gone at startup, startup fails instead of falling back to `~/.agents/AGENTS.md`. Passing `--system-prompt` on resume replaces the recorded source.
 
 The policy text is plain text. It is inserted verbatim and never compiled as Handlebars, so `{{cwd}}` reaches the model as those characters.
 

@@ -9023,10 +9023,12 @@ export class AgentSession implements SettingsScope {
 				} else {
 					await this.sessionManager.flush();
 				}
+				const systemPromptSource = this.sessionManager.getSystemPromptSource();
 				await this.sessionManager.newSession({
 					...options,
 					additionalDirectories: cfgWorkspaceAdditionalDirectories.get(this.settings),
 				});
+				if (systemPromptSource) this.sessionManager.appendSystemPromptChange(systemPromptSource);
 				this.#bash.markSessionTransition(bashTransition);
 				// The new session owns the transcript from here, so the previous
 				// conversation's advisor spend is retired with it. Clearing at the commit
