@@ -346,7 +346,7 @@ For the example above:
 - `anthropic` and `openai` are additionally disabled under `~/projects/sensitive`.
 - `openrouter` is additionally disabled under `~/work/client-a` and `~/work/client-b`.
 
-Path scopes are resolved **after** the settings merge. Because a higher-precedence layer replaces the whole array, a project-level `disabledProviders` array drops any scoped entries that only existed in the global array. `enabledModels` and `enabledProviders` also support this form. See [Settings](./settings.md) for details.
+Path scopes are resolved **after** the settings merge. Because a higher-precedence layer replaces the whole array, a project-level `disabledProviders` array drops any scoped entries that only existed in the global array. `enabledModels` also supports this form. See [Settings](./settings.md) for details.
 
 ## Provider IDs vs discovery provider IDs
 
@@ -358,11 +358,9 @@ Path scopes are resolved **after** the settings merge. Because a higher-preceden
 | Entry type            | Examples                                                                      | Effect                                                          |
 | --------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | Model provider ID     | `anthropic`, `openai`, `google`, `groq`, `openrouter`, `ollama`, `my-gateway` | Removes that provider's models from availability.               |
-| Discovery provider ID | `native`, `claude`, `codex`, `gemini`, `agents`, `github`                     | Stops that discovery source from contributing capability items. |
+| Discovery provider ID | `native`, `agents`, `agents-md`, `claude-plugins`, `mcp-json`                 | Stops that discovery source from contributing capability items. |
 
-`enabledProviders` controls opt-in user-level foreign discovery sources; it is not a model-provider allowlist. Project-level foreign sources have separate discovery behavior. Use model settings to narrow model selection.
-
-Watch the related names. The Google Gemini **API** models use the model provider ID `google`; `gemini` is a **discovery** provider ID (the source that reads `GEMINI.md`), not the Google model provider. Use discovery IDs only when you intend to disable an entire config source. See [Context files](./context-files.md) for the discovery-provider side.
+Use model settings to narrow model selection. Use discovery IDs only when you intend to disable an entire config source. See [Context files](./context-files.md) for the discovery-provider side.
 
 ## Custom providers in `models.yml`
 

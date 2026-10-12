@@ -102,7 +102,6 @@ import type { AgentMetrics } from "@oh-my-pi/pi-tui/overlays/agent-hub-projectio
 import { sumSubagentTreeCost } from "./agent-hub-runtime";
 import { type AgentSession, type AgentSessionEvent, type DroppedPrompt } from "../session/agent-session";
 import type { CompactMode } from "../session/compact-modes";
-import type { ForeignSessionSource } from "../session/foreign-session-store";
 import { HistoryStorage } from "../session/history-storage";
 import { syncTextPrediction, textPredictionBackend } from "../predict/client";
 import { setWordPredictionHost } from "@oh-my-pi/pi-tui/prompt/word-completion";
@@ -6107,8 +6106,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.showThinkingSelector();
 	}
 
-	showSessionSelector(source?: ForeignSessionSource): void {
-		void this.#selectorController.showSessionSelector(source);
+	showSessionSelector(): void {
+		void this.#selectorController.showSessionSelector();
 	}
 
 	async handleResumeSession(sessionPath: string): Promise<void> {

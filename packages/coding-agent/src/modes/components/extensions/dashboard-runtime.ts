@@ -2,7 +2,7 @@ import type { ExtensionDashboardRuntime } from "@oh-my-pi/pi-tui/overlays/extens
 import { getMCPConfigPath } from "@oh-my-pi/pi-utils";
 import { parseRuleAgents, parseRuleConditionAndScope } from "../../../capability/rule";
 import type { Settings } from "../../../config/settings";
-import { getAllProvidersInfo, isForeignUserProvider, isUserSourceEnabled } from "../../../discovery";
+import { getAllProvidersInfo } from "../../../discovery";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import type { MCPManager } from "../../../mcp/manager";
@@ -10,7 +10,7 @@ import { MCP_CONNECTION_STATUS_EVENT_CHANNEL } from "../../../mcp/startup-events
 import type { EventBus } from "../../../utils/event-bus";
 import { toolFileHeaderDescription } from "./inspector-runtime";
 import { applyMcpToggleRuntime } from "./mcp-runtime";
-import { loadAllExtensions, toggleProvider, toggleUserSource } from "./state-manager";
+import { loadAllExtensions, toggleProvider } from "./state-manager";
 
 import { cfgDisabledExtensions } from "../../../extensibility/settings";
 import { cfgMcpEnableProjectConfig } from "../../../mcp/settings";
@@ -27,15 +27,9 @@ export function createExtensionDashboardRuntime(options: {
 	return {
 		getDisabledExtensions: () => cfgDisabledExtensions.get(settings),
 		setDisabledExtensions: ids => cfgDisabledExtensions.set(settings, ids),
-		getProviders: () =>
-			getAllProvidersInfo().map(provider => ({
-				...provider,
-				userSourceEnabled: isUserSourceEnabled(provider.id),
-				foreignUserSource: isForeignUserProvider(provider.id),
-			})),
+		getProviders: () => getAllProvidersInfo(),
 		loadExtensions: disabledIds => loadAllExtensions(cwd, disabledIds),
 		toggleProvider,
-		toggleUserSource,
 		async persistMcpToggle(name, enabled, sourcePath) {
 			await setMcpServerEnabled({
 				userPath: getMCPConfigPath("user", cwd),

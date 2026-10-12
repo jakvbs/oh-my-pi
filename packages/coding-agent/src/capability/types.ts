@@ -1,9 +1,8 @@
 /**
  * Core types for the capability-based config discovery system.
  *
- * This architecture inverts control: instead of callers knowing about paths like
- * `.claude`, `.codex`, `.gemini`, they simply ask for `load("mcps")` and get back
- * a unified array of MCP servers.
+ * Callers ask for `load("mcps")` and get back a unified array of MCP servers
+ * without knowing which provider or path supplied them.
  */
 
 /** Extension sub-discovery mode; `explicit-only` suppresses ambient sources. */
@@ -15,8 +14,7 @@ export type ExtensionRootMode = "merge" | "explicit-only";
  * post-startup reloads. `explicit` are the SDK `additionalExtensionPaths` / CLI
  * `--extension` roots (always active, user-level); `configured` is the live
  * `extensions:` setting (ambient, only in `merge` mode); `configuredLevel` is
- * its provenance as resolved by `Settings` (the authority — includes foreign
- * project providers like `.claude/settings.json`, never re-derived from `.omp`
+ * its provenance as resolved by `Settings` (the authority, never re-derived from `.omp`
  * on disk); `mode` gates the ambient/installed sources.
  */
 export interface EffectiveExtensionRoots {
@@ -52,12 +50,6 @@ export interface LoadContext {
 	extensionRoots?: EffectiveExtensionRoots;
 	/** Provider IDs explicitly requested by caller in LoadOptions */
 	explicitProviders?: Set<string>;
-	/**
-	 * Scan foreign `~/` sources even when not opted in. Set for
-	 * `includeDisabled` (dashboard) loads so opted-out items are listed
-	 * and can be switched on.
-	 */
-	includeOptOutUserSources?: boolean;
 }
 
 /**
@@ -73,13 +65,13 @@ export interface LoadResult<T> {
  * A provider that can load items for a capability.
  */
 export interface Provider<T> {
-	/** Unique provider ID (e.g., "claude", "omp", "mcp-json", "agents-md") */
+	/** Unique provider ID (e.g., "native", "mcp-json", "agents-md") */
 	id: string;
 
-	/** Human-readable name for UI display (e.g., "Claude Code", "OpenAI Codex") */
+	/** Human-readable name for UI display (e.g., "OMP", "AGENTS.md") */
 	displayName: string;
 
-	/** Short description for settings UI (e.g., "Load config from ~/.claude and .claude/") */
+	/** Short description for settings UI (e.g., "Load config from ~/.omp and .omp/") */
 	description: string;
 
 	/**
@@ -155,10 +147,8 @@ export interface SourceMeta {
 	level: "user" | "project" | "native";
 	/**
 	 * Registry or CLI source that supplied a plugin root, when the provider
-	 * tracks it (currently `claude-plugins`: `"claude"` for `~/.claude/plugins`,
-	 * `"omp"` for omp's own registry, `"plugin-dir"` for `--plugin-dir`). Lets
-	 * user-scope gating distinguish omp's own installs from the foreign Claude
-	 * tree — see `isSourceEnabled` in `extensibility/skills.ts` (#10743).
+	 * tracks it (currently `claude-plugins`: `"omp"` for omp's own registry,
+	 * `"plugin-dir"` for `--plugin-dir`).
 	 */
 	origin?: string;
 	/**
@@ -167,7 +157,7 @@ export interface SourceMeta {
 	 * the extension package directory name, `skillshare` the package name).
 	 * Preferred by `skillNamespace` in `extensibility/skills.ts` over parsing
 	 * the item's path, since installed plugin caches
-	 * (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/...`)
+	 * (`~/.omp/plugins/cache/<marketplace>/<plugin>/<version>/skills/...`)
 	 * put the version, not the plugin name, in the path segment owning `skills/`.
 	 */
 	pluginName?: string;

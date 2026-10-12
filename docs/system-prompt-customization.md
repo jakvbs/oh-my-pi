@@ -51,15 +51,15 @@ The policy text is plain text. It is inserted verbatim and never compiled as Han
 
 Which automatic inputs reach each kind of session. An input applies only when it exists or is enabled. Advisors build a dedicated prompt that also carries memory instructions and the shared and per-advisor instructions; `@path` imports in `WATCHDOG.md` are expanded.
 
-| Session type     | Policy block                                       | Project `AGENTS.md` | Project `CLAUDE.md` / `GEMINI.md` | MCP tools | MCP server instructions | `WATCHDOG.md` |
-| ---------------- | -------------------------------------------------- | ------------------- | --------------------------------- | --------- | ----------------------- | ------------- |
-| Main session     | `--system-prompt` or `~/.agents/AGENTS.md`        | Discovered          | Discovered                        | Yes       | Yes                     | No            |
-| Task subagent    | The agent definition rendered for this spawn       | Not inherited       | Inherited                         | Inherited | Inherited               | No            |
-| Advisor/watchdog | Dedicated advisor prompt                           | Inherited           | Inherited                         | No        | No                      | Yes           |
+| Session type     | Policy block                                       | Project `AGENTS.md` | MCP tools | MCP server instructions | `WATCHDOG.md` |
+| ---------------- | -------------------------------------------------- | ------------------- | --------- | ----------------------- | ------------- |
+| Main session     | `--system-prompt` or `~/.agents/AGENTS.md`        | Discovered          | Yes       | Yes                     | No            |
+| Task subagent    | The agent definition rendered for this spawn       | Not inherited       | Inherited | Inherited               | No            |
+| Advisor/watchdog | Dedicated advisor prompt                           | Inherited           | No        | No                      | Yes           |
 
 1. A task subagent keeps the harness and the context block. Its policy is the subagent prompt rendered from the agent definition and assignment, so the main agent's user policy does not leak into it.
 2. Task spawning drops inherited context files whose basename is `agents.md` (case-insensitive). Text pulled in through `@` imports is not filtered, and additional workspace roots are discovered separately.
-3. Context discovery reads project-level files only. User-level files such as `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, and `~/.copilot/copilot-instructions.md` are not loaded. Put user-wide instructions in `~/.agents/AGENTS.md`.
+3. Context discovery reads project-level `AGENTS.md` files only. Other tools' files (`CLAUDE.md`, `GEMINI.md`, `copilot-instructions.md`) are not loaded at any level. Put user-wide instructions in `~/.agents/AGENTS.md`.
 4. A task agent's `tools:` list does not remove MCP tools or server instructions: the tools stay available top-level or under `xd://`. Children of restricted sessions run with `restrictToolNames`, which drops both.
 
 ## Recipes
@@ -88,7 +88,7 @@ The policy block does not affect title-generation calls. Use `TITLE_SYSTEM.md`:
 Return a concise noun phrase that names the user's task.
 ```
 
-`TITLE_SYSTEM.md` uses project-first config-base discovery with no ancestor walk. Foreign user bases require `enabledProviders` opt-in (or `CLAUDE_CONFIG_DIR` for Claude). When absent, OMP titles a new session from a fork of its first reply (the session's own model, on the cached prompt) with the bundled tiny-model title prompt as the fallback. The override is used for both initial automatic titles and replan-driven title refreshes, and turns the reply fork off: titles come from the tiny title model.
+`TITLE_SYSTEM.md` uses project-first `.omp` config-base discovery with no ancestor walk. When absent, OMP titles a new session from a fork of its first reply (the session's own model, on the cached prompt) with the bundled tiny-model title prompt as the fallback. The override is used for both initial automatic titles and replan-driven title refreshes, and turns the reply fork off: titles come from the tiny title model.
 
 Generated title output has an enforced normalization contract even with a custom prompt. OMP considers only the first trimmed line, strips surrounding quotes, `<title>...</title>` markers, and terminal punctuation, and treats `none` or `<title/>` as “no title yet.” A result longer than 80 characters or 12 words is rejected rather than truncated. Empty, deferred, or rejected output leaves the session unnamed, so a later eligible title attempt can name it.
 
@@ -113,6 +113,6 @@ These sources no longer exist. Move their content into `~/.agents/AGENTS.md`.
 | SDK `systemPrompt` callback over the generated blocks       | SDK `fixedSystemPrompt`                        |
 | `personality` setting, `PERSONALITY.md`                     | `~/.agents/AGENTS.md`                         |
 | User `~/.omp/agent/RULES.md`                                | `~/.agents/AGENTS.md`                         |
-| User-level context files from foreign tools                 | `~/.agents/AGENTS.md`                         |
+| Context files of other tools (`CLAUDE.md`, `GEMINI.md`, …) | `AGENTS.md` or `~/.agents/AGENTS.md`         |
 
 Project `.omp/RULES.md` remains a sticky always-apply rule in the context block. See [Context files](./context-files.md).

@@ -214,20 +214,6 @@ describe("parseArgs @file parsing with quotes", () => {
 	});
 });
 
-describe("foreign session import flags", () => {
-	it("parses each source flag without consuming the initial message", () => {
-		const claude = parseArgs(["--from-claude", "continue this session"]);
-		const codex = parseArgs(["--from-codex", "continue this session"]);
-
-		expect(claude.fromClaude).toBe(true);
-		expect(claude.messages).toEqual(["continue this session"]);
-		expect(claude.unrecognizedFlags).toEqual([]);
-		expect(codex.fromCodex).toBe(true);
-		expect(codex.messages).toEqual(["continue this session"]);
-		expect(codex.unrecognizedFlags).toEqual([]);
-	});
-});
-
 describe("restartArgv (/restart relaunch argv)", () => {
 	it("keeps configuration flags, drops positionals, and appends --resume", () => {
 		expect(restartArgv(["--model", "gpt-5", "fix the bug", "@notes.md"], "sid")).toEqual([
@@ -239,9 +225,10 @@ describe("restartArgv (/restart relaunch argv)", () => {
 	});
 
 	it("drops every session-source flag, including inline = and value forms", () => {
-		expect(
-			restartArgv(["--resume=old", "-r", "old2", "--continue", "-c", "--fork", "xyz", "--from-claude"], "sid"),
-		).toEqual(["--resume", "sid"]);
+		expect(restartArgv(["--resume=old", "-r", "old2", "--continue", "-c", "--fork", "xyz"], "sid")).toEqual([
+			"--resume",
+			"sid",
+		]);
 	});
 
 	it("keeps the value of an unknown extension flag instead of dropping it as a positional", () => {

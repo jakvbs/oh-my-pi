@@ -319,18 +319,9 @@ import {
 import { cfgInterruptMode } from "./modes/settings";
 import { cfgFollowUpMode } from "./modes/settings";
 import { cfgSteeringMode } from "./modes/settings";
-import {
-	cfgCommandsEnableClaudeProject,
-	cfgCommandsEnableClaudeUser,
-	cfgCommandsEnableOpencodeProject,
-	cfgCommandsEnableOpencodeUser,
-	cfgDisabledExtensions,
-	cfgExtensions,
-	cfgSkills,
-	type SkillsSettings,
-} from "./extensibility/settings";
+import { cfgDisabledExtensions, cfgExtensions, cfgSkills, type SkillsSettings } from "./extensibility/settings";
 import { cfgTtsr } from "./export/ttsr-settings";
-import { cfgDisabledProviders, cfgEnabledModels, cfgEnabledProviders, cfgModelRoles } from "./config/model-settings";
+import { cfgDisabledProviders, cfgEnabledModels, cfgModelRoles } from "./config/model-settings";
 import { cfgEditRecoverInlineEdits } from "./edit/settings";
 import { cfgGoalEnabled } from "./goals/settings";
 import {
@@ -363,14 +354,9 @@ const cfgToolCallSwitches = combine({
 	abortOnFabricatedResult: cfgToolsAbortOnFabricatedResult,
 });
 
-/** Settings skill and file slash-command discovery reads (foreign sources gated by the provider lists). */
+/** Settings skill and file slash-command discovery reads. */
 const cfgSkillsAndCommandsDiscovery = combine({
 	skills: cfgSkills,
-	commandsClaudeUser: cfgCommandsEnableClaudeUser,
-	commandsClaudeProject: cfgCommandsEnableClaudeProject,
-	commandsOpencodeUser: cfgCommandsEnableOpencodeUser,
-	commandsOpencodeProject: cfgCommandsEnableOpencodeProject,
-	enabledProviders: cfgEnabledProviders,
 	disabledProviders: cfgDisabledProviders,
 });
 
@@ -667,7 +653,7 @@ export interface CreateAgentSessionOptions {
 	 */
 	preloadedPreparedExtensions?: readonly PreparedExtension[];
 	/**
-	 * Pre-discovered custom-tool source paths from `.omp/tools/`, `.claude/tools/`,
+	 * Pre-discovered custom-tool source paths from `.omp/tools/`,
 	 * plugins, etc. When provided, the filesystem-scan inside
 	 * `discoverCustomToolPaths()` is skipped — subagents inherit the parent's
 	 * scan result and call `loadCustomTools()` themselves so each session binds
@@ -2455,7 +2441,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		let customToolPaths: ToolPathWithSource[] = [];
 		const inlineExtensions: ExtensionFactory[] = [];
 		if (!restrictToolNames) {
-			// Discover custom tools from `.omp/tools/`, `.claude/tools/`, plugins, etc.
+			// Discover custom tools from `.omp/tools/`, plugins, etc.
 			// Subagents reuse the parent's scan via `preloadedCustomToolPaths` to skip
 			// the FS walk, but ALWAYS re-call `loadCustomTools` here so factories bind
 			// to THIS session's `CustomToolAPI` (cwd, exec, pushPendingAction, UI).

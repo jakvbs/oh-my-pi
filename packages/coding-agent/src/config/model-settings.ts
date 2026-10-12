@@ -67,13 +67,6 @@ export const cfgEnabledModels = register({
 	pathScoped: { valuesKey: "models" },
 });
 
-export const cfgEnabledProviders = register({
-	id: "enabledProviders",
-	type: "array",
-	default: EMPTY_STRING_ARRAY,
-	pathScoped: { valuesKey: "providers" },
-});
-
 export const cfgDisabledProviders = register({
 	id: "disabledProviders",
 	type: "array",

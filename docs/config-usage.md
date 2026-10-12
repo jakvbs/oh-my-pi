@@ -29,8 +29,8 @@ Key integration points:
 ```text
          Generic helper order (`config.ts`)
 ┌───────────────────────────────────────┐
-│ 1) ~/.omp/agent, ~/.claude, ...       │
-│ 2) <cwd>/.omp, <cwd>/.claude, ...     │
+│ 1) ~/.omp/agent                       │
+│ 2) <cwd>/.omp                         │
 └───────────────────────────────────────┘
                     │
                     ▼
@@ -50,26 +50,10 @@ Key integration points:
 
 ## Canonical roots
 
-`src/config.ts` defines a fixed source priority list:
+`src/config.ts` reads only the native `.omp` base. Configuration directories of other agent tools (`.claude`, `.codex`, `.gemini`, …) are not read.
 
-1. `.omp` (native)
-2. `.claude`
-3. `.codex`
-4. `.gemini`
-
-User-level bases:
-
-- OMP native: `~/<PI_CONFIG_DIR>/agent` (normally `~/.omp/agent`; a named profile changes this as described below)
-- Claude's active config directory (`~/.claude` by default; `CLAUDE_CONFIG_DIR` overrides it)
-- `~/.codex`
-- `~/.gemini`
-
-Project-level bases:
-
-- `<cwd>/.omp`
-- `<cwd>/.claude`
-- `<cwd>/.codex`
-- `<cwd>/.gemini`
+- User-level base: `~/<PI_CONFIG_DIR>/agent` (normally `~/.omp/agent`; a named profile changes this as described below)
+- Project-level base: `<cwd>/.omp`
 
 `CONFIG_DIR_NAME` is `.omp` (`packages/utils/src/dirs.ts`). `PI_CONFIG_DIR` changes the OMP user root used by the generic helpers. `PI_CODING_AGENT_DIR` is different: for the default profile it changes `getAgentDir()` consumers such as native discovery, settings, and runtime state, but it does **not** change the generic `getConfigDirs()` / `findConfigFile()` OMP base. Named profiles ignore `PI_CODING_AGENT_DIR`.
 
@@ -83,7 +67,7 @@ Keybindings are the one exception: a named profile merges the default profile's 
 
 On macOS and Linux, an existing `$XDG_DATA_HOME/omp`, `$XDG_STATE_HOME/omp`, or `$XDG_CACHE_HOME/omp` can relocate the corresponding data, state, or cache paths. For a named profile, OMP uses an XDG category only when that category already contains `omp/profiles/<name>`; otherwise that category remains under `~/.omp/profiles/<name>`. Run `omp config init-xdg` before relying on XDG paths.
 
-The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools, and the project-level bases (`<cwd>/.omp`, `<cwd>/.claude`, ...) are keyed to the working directory. Throughout this document, read `~/.omp/agent` as shorthand for the active profile's agent directory unless an environment override or XDG path is being discussed.
+The project-level base (`<cwd>/.omp`) is not profile-scoped and loads identically under every profile because it is keyed to the working directory. Throughout this document, read `~/.omp/agent` as shorthand for the active profile's agent directory unless an environment override or XDG path is being discussed.
 
 ## Important constraint
 
@@ -97,8 +81,8 @@ The generic helpers in `src/config.ts` do **not** include `.pi` in source discov
 
 Returns ordered entries:
 
-- User-level entries first (by source priority)
-- Then project-level entries (by same source priority)
+- User-level entry first
+- Then the project-level entry
 
 Options:
 
@@ -109,15 +93,13 @@ Options:
 
 This API is used for directory-based config lookups (commands, hooks, tools, agents, etc.).
 
-Disabled foreign user sources (`isUserSourceEnabled`) are omitted from the user entries; project entries are not filtered by this helper. Claude user paths honor `CLAUDE_CONFIG_DIR` (trimmed and resolved relative to the process working directory).
-
 ## `findConfigFile(subpath, options)` / `findConfigFileWithMeta(...)`
 
 Searches for the first existing file across ordered bases, returns first match (path-only or path+metadata).
 
 ## `findAllNearestProjectConfigDirs(subpath, cwd)`
 
-Walks parent directories upward and returns the **nearest existing directory per source base** (`.omp`, `.claude`, `.codex`, `.gemini`), then sorts results by source priority.
+Walks parent directories upward and returns the **nearest existing `.omp` directory**.
 
 Use this when project config should be inherited from ancestor directories (monorepo/nested workspace behavior).
 
@@ -217,17 +199,12 @@ Most non-core config loading flows through the capability registry (`src/capabil
 Providers are sorted by numeric priority (higher first). Full set:
 
 - Native OMP (`builtin.ts`): `100`
+- Skillshare (`skillshare`): `95`
 - OMP plugins (`omp-plugins`): `90`
-- Claude: `80`
 - Agent Plugins standard (`agent-plugins`): `75`
-- Codex / agents / Claude plugins marketplace: `70`
-- Gemini: `60`
-- OpenCode: `55`
-- Cursor / Windsurf: `50`
-- Cline: `40`
-- GitHub Copilot: `30`
-- VS Code: `20`
-- agents-md (`AGENTS.md` files) / claude-md (standalone `CLAUDE.md` files): `10`
+- agents / OMP marketplace plugins (`claude-plugins`): `70`
+- agents-md (`AGENTS.md` files): `10`
+- custom-context (`contextFiles.extra`): `9`
 - mcp-json / ssh-json / managed-skills (auto-learn): `5`
 - Built-in default rules (`builtin-defaults`): `1`
 
@@ -235,18 +212,12 @@ Providers are sorted by numeric priority (higher first). Full set:
 Provider precedence (higher wins)
 
 native (.omp)           priority 100
+skillshare              priority  95
 omp-plugins             priority  90
-claude                  priority  80
 agent-plugins           priority  75
-codex / agents /
-  claude-plugins        priority  70
-gemini                  priority  60
-opencode                priority  55
-cursor / windsurf       priority  50
-cline                   priority  40
-github                  priority  30
-vscode                  priority  20
-agents-md / claude-md   priority  10
+agents / claude-plugins priority  70
+agents-md               priority  10
+custom-context          priority   9
 mcp-json / ssh-json /
   managed-skills        priority   5
 builtin-defaults        priority   1
@@ -321,7 +292,7 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 
 - Missing `TITLE_SYSTEM.md` keeps the bundled title prompts. A new session's first title then comes from a fork of its first reply: when the reply's first text or tool-call block starts, the session's own model answers `src/prompts/system/title-fork.md` as a side turn on the cached prefix, naming the title plus a card index (Nerd Fonts icon, emoji, 1-6 character code) that the window title shows as `<icon> <CODE>: <title>`. The tiny title model takes over when the fork fails, times out, declines, or the reply never starts.
 - With `TITLE_SYSTEM.md` present, the first title skips the fork and comes from the tiny title model with the override, as do replan refreshes.
-- Discovery checks the current project directory bases first (`<cwd>/.omp`, `.claude`, `.codex`, `.gemini`), then the user bases in the generic helper order. Unlike native `.omp/AGENTS.md`, project title discovery does **not** walk ancestor directories.
+- Discovery checks `<cwd>/.omp` first, then the user base. Unlike native `.omp/AGENTS.md`, project title discovery does **not** walk ancestor directories.
 - The override replaces only the automatic session-title generation system prompt; the session's policy block is unaffected.
 - The online path asks the title model to wrap the title in `<title>...</title>` and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray `{"title": "..."}` JSON echo all still work). A `TITLE_SYSTEM.md` override gets the wrap-in-`<title>` instruction appended after it. The local tiny-title path keeps the `<title>...</title>` prefill/stop wrapper and uses this file as its system turn.
 
@@ -344,7 +315,7 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 ## Extensions subsystem
 
 - `discoverAndLoadExtensions()` loads native extension-module capability items, JS/TS hook factories, installed-plugin entry points, and explicit configured paths.
-- Ambient extension-module capability discovery is explicitly restricted to `provider: "native"`; foreign providers are not scanned for this step.
+- Ambient extension-module capability discovery is explicitly restricted to `provider: "native"`.
 
 ---
 

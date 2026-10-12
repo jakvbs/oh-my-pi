@@ -22,9 +22,6 @@ function makeSkillMd(name: string, dir: string) {
 }
 
 const ALL_DEFAULT_SOURCES_DISABLED = {
-	enableCodexUser: false,
-	enableClaudeUser: false,
-	enableClaudeProject: false,
 	enablePiUser: false,
 	enablePiProject: false,
 	enableAgentsUser: false,
@@ -251,8 +248,8 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 		const customDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-custom-skill-"));
 		tempDirs.push(customDir);
 
-		// A default discovery path (Claude project skills) claims the name first.
-		const defaultSkill = path.join(cwd, ".claude", "skills", "shared-name");
+		// A default discovery path (native project skills) claims the name first.
+		const defaultSkill = path.join(cwd, ".omp", "skills", "shared-name");
 		await fs.mkdir(defaultSkill, { recursive: true });
 		await Bun.write(path.join(defaultSkill, "SKILL.md"), makeSkillMd("shared-name", "default"));
 
@@ -263,11 +260,8 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 
 		const { skills } = await loadSkills({
 			cwd,
-			enableCodexUser: false,
-			enableClaudeUser: false,
-			enableClaudeProject: true,
 			enablePiUser: false,
-			enablePiProject: false,
+			enablePiProject: true,
 			enableAgentsUser: false,
 			enableAgentsProject: false,
 			customDirectories: [customDir],
@@ -277,7 +271,7 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 		// The custom-directory skill overrides onto the bare name (#7190); the
 		// displaced provider skill stays reachable under its namespaced form.
 		const bareEntry = skills.find(s => s.name === "shared-name");
-		const defaultEntry = skills.find(s => s.name === "claude/shared-name");
+		const defaultEntry = skills.find(s => s.name === "native/shared-name");
 		expect(bareEntry).toBeDefined();
 		expect(defaultEntry).toBeDefined();
 		expect(bareEntry!.filePath).toBe(path.join(customSkill, "SKILL.md"));
@@ -295,9 +289,9 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 		const customDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-custom-skill-identical-"));
 		tempDirs.push(customDir);
 
-		// A default discovery path (Claude project skills) claims the name first,
+		// A default discovery path (native project skills) claims the name first,
 		// with the SAME body the custom-directory skill below will also carry.
-		const defaultSkill = path.join(cwd, ".claude", "skills", "shared-name");
+		const defaultSkill = path.join(cwd, ".omp", "skills", "shared-name");
 		await fs.mkdir(defaultSkill, { recursive: true });
 		await Bun.write(path.join(defaultSkill, "SKILL.md"), makeSkillMd("shared-name", "same"));
 
@@ -308,11 +302,8 @@ describe("skill:// resolution honors skills.customDirectories (#7190)", () => {
 
 		const { skills } = await loadSkills({
 			cwd,
-			enableCodexUser: false,
-			enableClaudeUser: false,
-			enableClaudeProject: true,
 			enablePiUser: false,
-			enablePiProject: false,
+			enablePiProject: true,
 			enableAgentsUser: false,
 			enableAgentsProject: false,
 			customDirectories: [customDir],

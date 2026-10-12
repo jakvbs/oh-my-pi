@@ -31,7 +31,7 @@ export interface FileSlashCommand {
 	/** Argument hint from `argument-hint`/`argumentHint` frontmatter, shown as inline ghost text. */
 	argumentHint?: string;
 	content: string;
-	source: string; // e.g., "via Claude Code (User)"
+	source: string; // e.g., "via OMP User"
 	/** Source metadata for display */
 	_source?: { providerName: string; level: "user" | "project" | "native" };
 }

@@ -8,15 +8,11 @@ This document describes how slash commands are discovered, deduplicated, surface
 - [`src/capability/slash-command.ts`](../packages/coding-agent/src/capability/slash-command.ts)
 - [`src/discovery/builtin.ts`](../packages/coding-agent/src/discovery/builtin.ts)
 - [`src/discovery/omp-plugins.ts`](../packages/coding-agent/src/discovery/omp-plugins.ts)
-- [`src/discovery/claude.ts`](../packages/coding-agent/src/discovery/claude.ts)
-- [`src/discovery/codex.ts`](../packages/coding-agent/src/discovery/codex.ts)
 - [`src/discovery/claude-plugins.ts`](../packages/coding-agent/src/discovery/claude-plugins.ts)
 - [`src/discovery/agents.ts`](../packages/coding-agent/src/discovery/agents.ts)
-- [`src/discovery/opencode.ts`](../packages/coding-agent/src/discovery/opencode.ts)
 - [`src/capability/index.ts`](../packages/coding-agent/src/capability/index.ts)
 - [`src/discovery/helpers.ts`](../packages/coding-agent/src/discovery/helpers.ts)
 - [`src/discovery/omp-extension-roots.ts`](../packages/coding-agent/src/discovery/omp-extension-roots.ts)
-- [`src/config/claude-paths.ts`](../packages/coding-agent/src/config/claude-paths.ts)
 - [`src/utils/command-args.ts`](../packages/coding-agent/src/utils/command-args.ts)
 - [`src/slash-commands/builtin-registry.ts`](../packages/coding-agent/src/slash-commands/builtin-registry.ts)
 - [`src/slash-commands/acp-builtins.ts`](../packages/coding-agent/src/slash-commands/acp-builtins.ts)
@@ -38,15 +34,12 @@ Current slash-command providers and priorities:
 
 1. `native` (OMP) — priority `100`
 2. `omp-plugins` (extension packages) — priority `90`
-3. `claude` — priority `80`
-4. `claude-plugins` — priority `70`
-5. `agents` (`.agent`/`.agents` standard dirs) — priority `70`
-6. `codex` — priority `70`
-7. `opencode` — priority `55`
+3. `claude-plugins` (OMP marketplace plugins) — priority `70`
+4. `agents` (`.agent`/`.agents` standard dirs) — priority `70`
 
-Tie behavior: equal-priority providers keep registration order. Current import order registers `claude-plugins` before `agents` before `codex`, so plugin commands win over both on name collisions.
+Tie behavior: equal-priority providers keep registration order. Current import order registers `claude-plugins` before `agents`, so plugin commands win on name collisions.
 
-Foreign user-level sources are opt-in through `enabledProviders` (`claude`, `codex`, `opencode`, or `claude-plugins`; `*`/`all` enables all). Project sources are unaffected by this user opt-in. Claude/OpenCode also retain commands-only user toggles, described below. Setting `CLAUDE_CONFIG_DIR` opts in and relocates Claude's user source.
+Commands of other agent tools (`.claude/commands`, `.codex/commands`, `.opencode/commands`) are not read.
 
 ### Name-collision behavior
 
@@ -87,44 +80,13 @@ The default paths above can be relocated by `PI_CONFIG_DIR`, the default-profile
 
 Scans `commands/*.md` in explicit extension-package directories, the effective `extensions` setting, and enabled npm/link plugins, in that order. The configured array follows settings replacement precedence; project and user arrays are not concatenated. Session-supplied effective roots are reused on reload. Explicit-only discovery omits configured and installed roots, and file entrypoints contribute no subdirectory resources. Marketplace roots are excluded here to avoid duplicate discovery and are handled by `claude-plugins`.
 
-## `claude` provider (`claude.ts`)
-
-The project side is controlled by `commands.enableClaudeProject` (default `true`). The user side loads when Claude is opted in, `CLAUDE_CONFIG_DIR` is set, or `commands.enableClaudeUser` is `true` (default `false`):
-
-- user: `<Claude config dir>/commands/**/*.md` (recursive; defaults to `~/.claude`)
-- project: `<cwd>/.claude/commands/**/*.md` (recursive)
-
-Commands in subdirectories additionally get a namespaced alias: `foo/bar.md` is registered under both `bar` and `foo:bar` (`addClaudeCommandNamespaceAliases`).
-
-The provider pushes user items before project items, so **user Claude commands beat project Claude commands** on same-name collisions inside this provider.
-
-## `codex` provider (`codex.ts`)
-
-Loads:
-
-- user: `~/.codex/commands/*.md` (only when `codex` user discovery is opted in)
-- project: `<cwd>/.codex/commands/*.md`
-
-Both sides are loaded then flattened in user-first order, so **user Codex commands beat project Codex commands** on collisions.
-
-Codex command content is parsed with frontmatter stripping (`parseFrontmatter`), and command name can be overridden by frontmatter `name`; otherwise filename is used.
-
-## `opencode` provider (`opencode.ts`)
-
-The project side is controlled by `commands.enableOpencodeProject` (default `true`). The user side loads when OpenCode is opted in or `commands.enableOpencodeUser` is `true` (default `false`):
-
-- user: `~/.config/opencode/commands/*.md`
-- project: `<cwd>/.opencode/commands/*.md`
-
-Both sides are loaded then flattened in user-first order, so **user OpenCode commands beat project OpenCode commands** on collisions. OpenCode command content is parsed with frontmatter stripping, and command name can be overridden by frontmatter `name`; otherwise filename is used.
-
 ## `claude-plugins` provider (`claude-plugins.ts`)
 
-Loads roots via `listClaudePluginRoots(...)`, which reads the active Claude config directory's `plugins/installed_plugins.json`, the active OMP plugins directory's `installed_plugins.json` (profile/XDG-aware), and the nearest project `.omp/plugins/installed_plugins.json`. Claude-origin user roots require `claude` or `claude-plugins` user opt-in; OMP and explicit local roots do not. Disabled registry entries and Claude `enabledPlugins: false` entries are excluded.
+Loads roots via `listClaudePluginRoots(...)`, which reads the active OMP plugins directory's `installed_plugins.json` (profile/XDG-aware) and the nearest project `.omp/plugins/installed_plugins.json`. Claude Code's own plugin registry is not read. Disabled registry entries are excluded.
 
 For each root it normally scans `<pluginRoot>/commands/*.md`. Manifest `commands`/`slash-commands` entries can instead select directories or individual Markdown files; the first populated key wins. Command names are prefixed with the plugin name when one is present: `<plugin>:<command>`.
 
-Across the three registries, roots are merged by precedence rather than sorted: `--plugin-dir` injected roots come first, then project-scoped entries (which shadow user entries for the same plugin id), then user entries, with the OMP registry authoritative over Claude's for the same plugin id. Within each registry, per-plugin entry order from the JSON data is preserved; there is no additional sort step.
+Across the registries, roots are merged by precedence rather than sorted: `--plugin-dir` injected roots come first, then project-scoped entries (which shadow user entries for the same plugin id), then user entries. Within each registry, per-plugin entry order from the JSON data is preserved; there is no additional sort step.
 
 ## `agents` provider (`agents.ts`)
 
@@ -141,10 +103,8 @@ For each command:
    - `frontmatter.description` if present
    - else first non-empty body line (max 60 chars with `...`)
 3. keep parsed body as executable template content
-4. compute a display source string like `via Claude Code Project`
+4. compute a display source string like `via OMP Project`
 5. preserve `argumentHint` from discovery, or parse `argumentHint`/`argument-hint` frontmatter for autocomplete ghost text and ACP input hints
-
-Codex/OpenCode providers strip frontmatter before this stage. Their discovered argument hints survive, but the runtime description currently falls back to the body rather than using the separately discovered description.
 
 Frontmatter parse severity is level-dependent:
 

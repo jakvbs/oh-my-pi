@@ -196,19 +196,15 @@ Other harnesses bolt on gh_issue_view, gh_pr_view, gh_search — each with its o
 
 Run omp inside Zed and you get the same agent you drive from the terminal — reading the buffer you're actually looking at, writing through the editor's save path, spawning shells in the editor's terminal. Destructive tools pause for a permission prompt you can answer once and forget. No bridge, no plugin, no second brain to keep in sync.
 
-### 12 · Inherits what your other tools already wrote
-
-Every other agent ships an importer and expects you to convert. omp reads the eight formats already on disk in their native shape — Cursor MDC, Cline .clinerules, Codex AGENTS.md, Copilot applyTo, and the rest. No migration script, no YAML-to-TOML port, no "supported subset" footnotes. The config your team wrote last quarter still works tonight.
-
-### 13 · omp commit: atomic splits, validated messages
+### 12 · omp commit: atomic splits, validated messages
 
 omp reads the working tree through git_overview, git_file_diff, and git_hunk, then splits unrelated changes into atomic commits ordered by their dependencies. Cycles are rejected before anything is written. Source files score above tests, docs, and configs, so the headline commit is the one that matters. Lock files are excluded from analysis entirely.
 
-### 14 · Read PRs. _Walk skills._ Pull JSON out of subagents.
+### 13 · Read PRs. _Walk skills._ Pull JSON out of subagents.
 
 Sixteen internal schemes — `pr://`, `issue://`, `agent://`, `skill://`, `ssh://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `grep` walks a diff like a directory. `agent://<id>/findings.0.path` pulls a field out of a subagent's output by path.
 
-### 15 · Conflict resolution, made easy.
+### 14 · Conflict resolution, made easy.
 
 Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@base` to `conflict://N` and the file resolves cleanly. Bulk form: `conflict://*`.
 
@@ -515,7 +511,7 @@ An extension is a TypeScript module. Same tool API, same slash-command registry,
 
 ### Discovery
 
-On first run omp inherits whatever is already on disk: rules, skills, and MCP servers from `.claude`, `.cursor`, `.windsurf`, `.gemini`, `.codex`, `.cline`, `.github/copilot`, and `.vscode`. No migration script.
+omp reads only its own config: `.omp`, `.agents`, `AGENTS.md`, root `mcp.json`, and installed plugins. Configuration of other agent tools is never imported.
 
 ### Extensibility
 

@@ -31,7 +31,7 @@ This document describes operator-visible behavior for session export, sharing, c
 | `/fork`                                 | Interactive slash command    | Yes (active session identity changes)         | Creates new session file and switches current session to it (persistent mode only)         | Copies artifact directory to new session namespace when present                     |
 | `/fork pane`, `/fork window`, `/fork tab` | Interactive slash command  | No (parent session retained)                   | Opens a child OMP process from the flushed current transcript in a multiplexer pane/group (tmux window, Zellij/Herdr/Orca tab, or CMUX workspace) | Child receives a separate forked session                                            |
 | `--fork <id\|path>`                     | CLI startup                  | Yes after session creation                    | Creates a new session fork from the selected source into current cwd/session dir           | Copies source artifacts recursively by default                                      |
-| `/resume [id\|@claude\|@codex]`         | Interactive slash command    | Yes (active in-memory state replaced)         | Switches to a selected/matched session, or imports a selected foreign session              | None                                                                                |
+| `/resume [id]`                          | Interactive slash command    | Yes (active in-memory state replaced)         | Switches to a selected/matched session                                                     | None                                                                                |
 | `--resume`                              | CLI startup picker           | Yes after session creation                    | Opens selected existing session file (picker opens in current-folder scope; the global list is preloaded only for the empty-everything early exit and instant Tab switching) | None                |
 | `--resume <id\|path>`                   | CLI startup                  | Yes after session creation                    | Opens existing session; a missing recorded cwd may be re-rooted into the current directory | None                                                                                |
 | `/restart`                              | Interactive slash command    | Yes (process relaunches)                      | Keeps configuration flags; resumes a materialized session, otherwise starts fresh          | None                                                                                |
@@ -412,7 +412,6 @@ Without an argument:
 With an argument:
 
 - `/resume <id>` resolves an id/filename prefix with local-first, then global fallback and switches directly to the matched file; an unknown value reports `Session "<value>" not found`.
-- `/resume @claude` and `/resume @codex` open a foreign-session picker. Selecting one converts and persists it under a fresh OMP session identity, then switches to that new session.
 
 ## CLI `--resume`
 
@@ -466,7 +465,7 @@ This is startup-only behavior; there is no interactive `/continue` slash command
 Interactive `/restart` performs normal teardown, flushes postmortem cleanup and
 stdout, then relaunches the CLI. `restartArgv()` preserves launch configuration
 flags but strips original prompts/`@file` positionals and one-shot session
-selectors (`--session`, `--resume`, `--continue`, `--fork`, and foreign imports).
+selectors (`--session`, `--resume`, `--continue`, and `--fork`).
 It adds `--resume <current-id>` only when the session actually exists on disk;
 an in-memory or never-materialized session restarts fresh.
 

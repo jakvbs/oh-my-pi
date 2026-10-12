@@ -13,6 +13,9 @@
 - `~/.agents/AGENTS.md` is the policy block, at a fixed path that ignores profiles and the agent dir; `~/.omp/agent/AGENTS.md` is no longer read, and neither file is a context file. User-level context files are no longer loaded from any provider (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`, `~/.agent(s)/AGENTS.md`, `contextFiles.extra` in the agent directory), and `<agentDir>/RULES.md` is no longer a sticky rule. Project `.omp/RULES.md` is unchanged.
 - Removed the `personality` setting, `PERSONALITY.md`, and the bundled personality presets.
 - Task subagents keep the harness and context blocks; their rendered agent prompt is the policy block, so the main session's `AGENTS.md` no longer reaches them.
+- Removed every discovery provider that read another agent tool's configuration: `claude`, `claude-md`, `codex`, `gemini`, `opencode`, `cursor`, `windsurf`, `cline`, `github`, and `vscode`. `CLAUDE.md`, `GEMINI.md`, `copilot-instructions.md`, `.cursorrules`, `.clinerules`, and the `.claude`, `.codex`, `.gemini`, `.opencode`, `.cursor`, `.windsurf`, `.github`, and `.vscode` trees no longer contribute context files, rules, skills, commands, hooks, tools, MCP servers, LSP configs, extensions, or settings. Only `.omp`, `.agents`, `AGENTS.md`, root `mcp.json`, and installed plugins are discovered.
+- Removed the `enabledProviders` setting, the `/extensions` "Load ~/ config" toggle, the `skills.enableCodexUser`/`enableClaudeUser`/`enableClaudeProject` and `commands.enableClaude*`/`enableOpencode*` settings, and `CLAUDE_CONFIG_DIR` support. The marketplace reads only OMP plugin registries; Claude Code's `~/.claude/plugins` registry and `enabledPlugins` are no longer read.
+- Removed `--from-claude`, `--from-codex`, and the Claude Code/Codex prompt-history seeding of text prediction.
 
 ### Added
 
