@@ -11,6 +11,8 @@ import { TspHarness } from "./native/tsp-harness";
 
 const ENTER = "\n";
 const DOWN = "\x1b[B";
+const RIGHT = "\x1b[C";
+const LEFT = "\x1b[D";
 
 /** A terminal that draws every kind (`meter` included). */
 const CX: DescribeContext = { cols: 100, reduceMotion: false, dark: true, supports: () => true, feature: () => true };

@@ -6,23 +6,6 @@ import { SPINNER_ADVANCE_MS } from "@oh-my-pi/pi-tui/components/loader";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import type { TUI } from "@oh-my-pi/pi-tui";
 
-/**
- * Starts watching the shared spinner ticker; the returned probe reports whether
- * its interval is still armed. Collab relay sockets keep a heartbeat interval on
- * the same fake clock, so `vi.getTimerCount()` cannot isolate the ticker. Call
- * after `vi.useFakeTimers()` and before any live block registers.
- */
-function watchSpinnerTicker(): () => boolean {
-	const arm = spyOn(globalThis, "setInterval");
-	const clear = spyOn(globalThis, "clearInterval");
-	return () =>
-		arm.mock.calls.some(([, ms], index) => {
-			if (ms !== SPINNER_ADVANCE_MS) return false;
-			const timer = arm.mock.results[index]?.value;
-			return !clear.mock.calls.some(([cleared]) => cleared === timer);
-		});
-}
-
 // Contract under test: live tool previews that render a pending/running status
 // must keep the spinner glyph tied to the shared tool-frame ticker. This covers
 // both the shared ToolExecutionComponent interval and renderer-local caches that
