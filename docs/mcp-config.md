@@ -14,7 +14,7 @@ Source of truth in code:
 
 ## Preferred config locations
 
-OMP can discover MCP servers from multiple tools (`.claude/`, `.cursor/`, `.vscode/`, `opencode.json`, and more), but for OMP-native configuration you should usually use one of these primary files:
+For OMP-native configuration use one of these primary files:
 
 - Project: `.omp/mcp.json`
 - User: `~/.omp/agent/mcp.json` (or `~/.omp/profiles/<name>/agent/mcp.json` when a named profile is active — see [Profiles](#profiles))
@@ -30,20 +30,9 @@ OMP also accepts fallback standalone files in the project root:
 
 Use `.omp/mcp.json` or `~/.omp/agent/mcp.json` when you want OMP to own the configuration. Use root `mcp.json` / `.mcp.json` only when you want a portable fallback file that other MCP clients may also read.
 
-### Imported tool configs
+### Plugin configs
 
-OMP also translates these current tool-native sources:
-
-- Claude Code: `~/.claude.json`, `~/.claude/mcp.json`, and project `.claude/.mcp.json` / `.claude/mcp.json`
-- Codex: `~/.codex/config.toml` and `.codex/config.toml` (`[mcp_servers.*]`)
-- Gemini CLI: `~/.gemini/settings.json` and `.gemini/settings.json`
-- OpenCode: `opencode.json` / `opencode.jsonc` in `~/.config/opencode/`, the project root, and project `.opencode/` (the `mcp` map)
-- Cursor: `~/.cursor/mcp.json` and `.cursor/mcp.json`
-- Windsurf: `~/.codeium/windsurf/mcp_config.json` and `.windsurf/mcp_config.json`
-- VS Code: project-only `.vscode/mcp.json` using `mcp.servers`
-- installed Claude marketplace plugins, OMP extension packages, and portable Agent Plugins (`plugin.json` plus root `mcp.json`) that declare MCP servers
-
-For Claude Code, Codex, Gemini CLI, Cursor, and Windsurf, the project entry is encountered before its same-named user entry — matching OMP-native config, whose project entry precedes its active-profile user entry — so a project `enabled: false` suppresses a same-named user server. OpenCode deep-merges each server across layers: project overrides user, `.opencode/` overrides the project root, and `.jsonc` overrides `.json` within a directory. Partial overrides inherit fields from lower layers. Cross-provider priority is listed in [Discovery and precedence](#discovery-and-precedence).
+OMP also loads MCP servers declared by installed OMP marketplace plugins, OMP extension packages, and portable Agent Plugins (`plugin.json` plus root `mcp.json`). Configuration files of other agent tools (`.claude.json`, `.codex/config.toml`, `.gemini/settings.json`, `opencode.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, …) are not read. Cross-provider priority is listed in [Discovery and precedence](#discovery-and-precedence).
 
 ### Profiles
 
@@ -54,7 +43,7 @@ Named profiles (`omp --profile <name>` or `OMP_PROFILE`/`PI_PROFILE`) isolate us
 
 Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own user-level servers — never the default profile's `~/.omp/agent/mcp.json`. Add a server to a profile by launching under it (`omp --profile <name>`) and running `/mcp add` → User level, or by editing `~/.omp/profiles/<name>/agent/mcp.json` directly.
 
-Project-scoped MCP config (`.omp/mcp.json`) is keyed to the working directory, not the profile, so it applies under every profile. External-tool configs (`.claude/`, `.cursor/`, etc.) are also profile-independent because they belong to those tools rather than to an OMP profile.
+Project-scoped MCP config (`.omp/mcp.json`) is keyed to the working directory, not the profile, so it applies under every profile.
 
 MCP follows the same profile rules as the rest of OMP-native config; see [Configuration Discovery → Profiles](./config-usage.md#profiles).
 
@@ -496,22 +485,17 @@ OMP loads providers in descending priority. The MCP-capable order is:
 
 1. OMP native config
 2. OMP extension packages
-3. Claude Code
-4. Agent Plugins
-5. Claude marketplace plugins and Codex
-6. Gemini CLI
-7. OpenCode
-8. Cursor and Windsurf
-9. VS Code
-10. root `mcp.json` / `.mcp.json` fallback files
+3. Agent Plugins
+4. OMP marketplace plugins
+5. root `mcp.json` / `.mcp.json` fallback files
 
-Across providers, the first definition wins. Duplicate names are not merged; OpenCode's internal config layers are the exception described above. A differently named definition is also shadowed when its transport, endpoint/command inputs, auth, and request-id mode are equivalent to a higher-priority definition.
+Across providers, the first definition wins. Duplicate names are not merged. A differently named definition is also shadowed when its transport, endpoint/command inputs, auth, and request-id mode are equivalent to a higher-priority definition.
 
 Within OMP native config, project `.omp/mcp.json` precedes `.omp/.mcp.json`, then the active profile's user `mcp.json` and `.mcp.json`. Root fallback `mcp.json` precedes root `.mcp.json`. In practice:
 
 - prefer `.omp/mcp.json` or the active profile's user `mcp.json` for an OMP-specific override
-- keep names and endpoint definitions unique across tools when possible
-- use the user `disabledServers` list when a third-party config keeps reintroducing an unwanted server
+- keep names and endpoint definitions unique across sources when possible
+- use the user `disabledServers` list when a plugin keeps reintroducing an unwanted server
 - set `mcp.enableProjectConfig: false` to exclude every project-level source before deduplication, allowing a same-named user entry to survive
 
 ## Troubleshooting
@@ -535,7 +519,7 @@ The JSON is valid, but the server may still be unreachable. Use `/mcp test <name
 
 ### The server exists in another tool's config but not in OMP
 
-Run `/mcp list`. OMP discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name.
+Run `/mcp list`. OMP discovers MCP files from several sources, and project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name.
 
 ### A namespaced server works but the editor rejects its name
 

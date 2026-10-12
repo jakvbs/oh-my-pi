@@ -17,53 +17,37 @@ import "../capability/settings";
 import "../capability/skill";
 import "../capability/slash-command";
 import "../capability/ssh";
-import "../capability/system-prompt";
 import "../capability/tool";
 // Import providers (each registers itself on import)
 import "./agent-plugins";
 import "./agents-md";
-import "./claude-md";
 import "./custom-context-files";
 import "./builtin";
 import "./builtin-defaults";
-import "./claude";
 import "./claude-plugins";
-import "./cline";
 import "./agents";
-import "./codex";
-import "./cursor";
-import "./gemini";
-import "./opencode";
-import "./github";
 import "./mcp-json";
 import "./omp-plugins";
 import "./skillshare";
 import "./ssh";
-import "./vscode";
-import "./windsurf";
 
 // Re-export the main API from capability registry
 export {
 	cacheStats,
 	// Provider management
 	disableProvider,
-	disableUserSource,
 	enableProvider,
-	enableUserSource,
 	getAllCapabilitiesInfo,
 	getAllProvidersInfo,
 	// Introspection
 	getCapability,
 	getCapabilityInfo,
 	getDisabledProviders,
-	getEnabledProviders,
 	getProviderInfo,
 	// Initialization
 	initializeWithSettings,
 	invalidate,
-	isForeignUserProvider,
 	isProviderEnabled,
-	isUserSourceEnabled,
 	listCapabilities,
 	// Loading API
 	loadCapability,
@@ -71,7 +55,6 @@ export {
 	reset,
 	resetCapabilityForTests,
 	setDisabledProviders,
-	setEnabledProviders,
 } from "../capability";
 export type { ContextFile } from "../capability/context-file";
 export type { Extension, ExtensionManifest } from "../capability/extension";
@@ -86,7 +69,6 @@ export type { Settings } from "../capability/settings";
 export type { Skill, SkillFrontmatter } from "../capability/skill";
 export type { SlashCommand } from "../capability/slash-command";
 export type { SSHHost } from "../capability/ssh";
-export type { SystemPrompt } from "../capability/system-prompt";
 export type { CustomTool } from "../capability/tool";
 // Re-export types
 export type * from "../capability/types";

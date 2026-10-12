@@ -240,6 +240,30 @@ describe("AgentSession session stats", () => {
 		expect(stats.contextUsage).toEqual(directUsage);
 	});
 
+	it("reports the auto-compaction threshold only while compaction is on", async () => {
+		const target = { ...model(), contextWindow: 200_000 };
+		const sessionWith = (settings: Settings) =>
+			new AgentSession({
+				agent: new Agent({ initialState: { model: target, systemPrompt: ["Test"], tools: [], messages: [] } }),
+				sessionManager: SessionManager.inMemory(),
+				settings,
+				modelRegistry,
+			});
+
+		session = sessionWith(
+			Settings.isolated({
+				"compaction.enabled": true,
+				"compaction.modelThresholdsEnabled": false,
+				"compaction.thresholdPercent": 50,
+			}),
+		);
+		expect(session.getContextUsage()?.compactionThreshold).toBe(100_000);
+
+		await session.dispose();
+		session = sessionWith(Settings.isolated({ "compaction.enabled": false }));
+		expect(session.getContextUsage()).not.toHaveProperty("compactionThreshold");
+	});
+
 	it("treats persisted assistant messages without usage as zero-cost history", async () => {
 		const model = modelRegistry.getAll().find(candidate => candidate.contextWindow && candidate.contextWindow > 0);
 		if (!model) {

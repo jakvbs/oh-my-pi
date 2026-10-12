@@ -71,7 +71,7 @@ type ExitAliasName = "process.exit" | "process.reallyExit";
 /**
  * stdin events a loaded module must not be allowed to leave hijacked. A
  * top-level `new StdioServerTransport()` (or a bare `process.stdin.resume()`)
- * inside a `~/.claude/tools` MCP server attaches a `data` consumer and puts the
+ * inside a user tools-directory MCP server attaches a `data` consumer and puts the
  * shared stdin into flowing mode; Bun delivers one `data` event to that
  * consumer and the TUI's own listener (attached later in `terminal.start()`)
  * then never re-arms — every keypress after the first is swallowed (#5618).
@@ -91,8 +91,7 @@ let hostGuardStdinWasRaw = false;
  * Run `fn` with host-owned process state fenced off from third-party module
  * evaluation, restored in `finally`. Guards the dynamic-import and
  * factory-invocation sites that load extension / hook / tool / plugin modules
- * from user directories (including Claude Code's `~/.claude/tools`, which OMP
- * slurps wholesale). Two hazards are neutralized:
+ * from user directories. Two hazards are neutralized:
  *
  * - **Hard exit.** `process.exit(0)` / `process.reallyExit(0)` in a stranger's
  *   script (e.g. a CLI-shaped module with `main()` at the bottom) would kill

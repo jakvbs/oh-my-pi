@@ -40,8 +40,7 @@ class ProcessExitSignal extends Error {
 
 /**
  * Run the root command as an interactive terminal launch, observing the
- * session-resolution side channels: the session picker, the foreign-transcript
- * store, and session construction.
+ * session-resolution side channels: the session picker and session construction.
  */
 async function launchInteractive(rawArgs: string[]): Promise<{ thrown: unknown; touched: string[] }> {
 	using authDir = TempDir.createSync("@omp-goal-auth-");
@@ -67,10 +66,6 @@ async function launchInteractive(rawArgs: string[]): Promise<{ thrown: unknown; 
 			selectSession: async () => {
 				touched.push("picker");
 				return null;
-			},
-			createForeignSessionStore: () => {
-				touched.push("import");
-				throw new Error("foreign store opened");
 			},
 			createAgentSession: async () => {
 				touched.push("session");
@@ -126,17 +121,10 @@ describe("--goal launch option", () => {
 		expect(fs.readdirSync(dir.path())).toEqual(["src.jsonl"]);
 	}, 30_000);
 
-	it("rejects resume, fork, and import shapes before session resolution acts on them", async () => {
+	it("rejects resume and fork shapes before session resolution acts on them", async () => {
 		using dir = TempDir.createSync("@omp-goal-fork-tty-");
 		const source = writeSourceSession(dir.path());
-		for (const shape of [
-			["--fork", source],
-			["--resume"],
-			["--resume", source],
-			["--continue"],
-			["--from-claude"],
-			["--from-codex"],
-		]) {
+		for (const shape of [["--fork", source], ["--resume"], ["--resume", source], ["--continue"]]) {
 			const rawArgs = ["--session-dir", dir.path(), ...shape, "--goal", "do thing"];
 			const { thrown, touched } = await launchInteractive(rawArgs);
 			expect(thrown, shape.join(" ")).toBeInstanceOf(CliUsageError);

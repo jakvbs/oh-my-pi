@@ -2,21 +2,43 @@
 
 ## [Unreleased]
 
-### Breaking Changes
-
-- Renamed `takeRecentLoopPhase()` to `takeLoopPhaseAttribution()`, which returns `LoopPhaseAttribution` (`{ label, ms }`) instead of a string, returns `undefined` unless a window was armed with `resetLoopPhaseWindow()`, and names a label only when it outweighs unlabeled time ([#15019](https://github.com/can1357/oh-my-pi/pull/15019) by [@jaredlyon](https://github.com/jaredlyon)).
+## [18.10.0] - 2026-10-12
 
 ### Added
 
-- Added `withLoopPhase(label, fn)`, which runs `fn` under a loop phase and pops it in `finally`; for an async `fn` only its synchronous prefix is labeled ([#15001](https://github.com/can1357/oh-my-pi/pull/15001) by [@jaredlyon](https://github.com/jaredlyon)).
-
-### Changed
-
-- Sped up streaming JSON string scanning for long tool-argument payloads by bulk-skipping ordinary characters ([#14297](https://github.com/can1357/oh-my-pi/pull/14297) by [@abilliontokens](https://github.com/abilliontokens)).
+- Added `getMnemopiEmbedRuntimeDir()` for the shared mnemopi embedding server endpoints and logs.
 
 ### Fixed
 
-- Fixed archive extraction failing on Windows without the symlink privilege: symlink entries now degrade to a directory junction or an in-archive file copy instead of failing the whole archive with `EPERM`, dangling links that cannot be copied are skipped instead of aborting, and directory symlink entries are extracted instead of being skipped ([#14820](https://github.com/can1357/oh-my-pi/pull/14820) by [@jchanghong023](https://github.com/jchanghong023)).
+- Fixed `ChildProcess.kill()` silently leaving the child running when the native process handle could not be resolved or used; it now signals the child directly and escalates to SIGKILL after the grace period.
+
+## [18.9.2] - 2026-10-11
+
+### Changed
+
+- Improved streaming JSON parsing performance for tool arguments containing many string values.
+
+### Fixed
+
+- Fixed parsing of long strings that contain closing delimiters other than double or single quotes.
+
+## [18.9.0] - 2026-10-11
+
+### Breaking Changes
+
+- Renamed `takeRecentLoopPhase()` to `takeLoopPhaseAttribution()`. The new API returns a `LoopPhaseAttribution` object (`{ label, ms }`) and reports a label only when it accounts for more time than unlabeled work within an armed measurement window.
+
+### Added
+
+- Added `withLoopPhase(label, fn)` for attributing synchronous work to a named loop phase, with automatic cleanup even when the callback throws.
+
+### Changed
+
+- Improved streaming JSON parsing performance for long tool-argument payloads.
+
+### Fixed
+
+- Fixed archive extraction on Windows systems without symlink privileges by allowing symlink entries to be extracted using supported fallbacks, while skipping unresolvable dangling links instead of failing the entire archive.
 
 ## [18.8.9] - 2026-10-10
 

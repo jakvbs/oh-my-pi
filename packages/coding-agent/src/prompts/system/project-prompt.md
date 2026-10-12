@@ -15,6 +15,14 @@ MUST follow these context files for all tasks:
 </repo-rules>
 {{/if}}
 
+{{#if alwaysApplyRules.length}}
+<generic-rules>
+{{#each alwaysApplyRules}}
+{{content}}
+{{/each}}
+</generic-rules>
+{{/if}}
+
 {{#if agentsMdSearch.files.length}}
 <dir-context>
 Some directories may have rules; deeper rules override higher ones.
@@ -24,7 +32,7 @@ Before changes in these directories, MUST read:
 {{/if}}
 
 {{#ifAny contextFiles.length agentsMdSearch.files.length}}
-Context files above auto-loaded. NEVER `grep`/`glob` for `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or similar agent/context files: relevant files already in context; others noise.
+Context files above auto-loaded. NEVER `grep`/`glob` for `AGENTS.md` or similar agent/context files: relevant files already in context; others noise.
 {{/ifAny}}
 
 {{#if includeWorkspaceTree}}
@@ -51,15 +59,6 @@ Additional workspace directories. This CURRENT workspace state supersedes worksp
 {{/if}}
 </project-context>
 
-<critical>
-- Each response MUST advance the task; completion only stopping condition.
-- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.
-{{#if subagent}}
-- Changes complete → yield; verification is main agent's job. NEVER run it yourself unless your assignment explicitly instructs it.
-{{else}}
-- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.
-{{/if}}
-</critical>
 
 {{#if appendPrompt}}
 {{appendPrompt}}

@@ -15,9 +15,9 @@ import { formatLocalDateTimeWithOffset } from "@oh-my-pi/pi-tui/chrome/local-dat
 import { prompt } from "@oh-my-pi/pi-utils";
 import dateCwdReminderTemplate from "../prompts/system/date-cwd-reminder.md" with { type: "text" };
 
-/** Renders the reminder text for the given local calendar date and cwd. */
-export function renderDateCwdReminder(date: string, cwd: string): string {
-	return prompt.render(dateCwdReminderTemplate, { date, cwd }).trim();
+/** Renders the reminder text for the given local calendar date, cwd, and session. */
+export function renderDateCwdReminder(date: string, cwd: string, sessionId?: string): string {
+	return prompt.render(dateCwdReminderTemplate, { date, cwd, sessionId }).trim();
 }
 
 /**
@@ -70,9 +70,9 @@ export class DateCwdReminderInjector {
 	#seen = new WeakSet<object>();
 
 	/** Apply the current reminder while preserving all earlier injected bytes. */
-	transform(context: Context, date: string, cwd: string): Context {
+	transform(context: Context, date: string, cwd: string, sessionId?: string): Context {
 		if (!context.systemPrompt || context.systemPrompt.length === 0 || context.messages.length === 0) return context;
-		const reminder = renderDateCwdReminder(date, cwd);
+		const reminder = renderDateCwdReminder(date, cwd, sessionId);
 		const stamped = this.#stampTurns(context.messages);
 		const messages = this.#inject(stamped, reminder);
 		return messages === context.messages ? context : { ...context, messages };

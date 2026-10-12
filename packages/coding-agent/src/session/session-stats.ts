@@ -17,6 +17,7 @@ import {
 	type NonMessageTokenSource,
 } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import type { ContextUsageBreakdown, SessionStats } from "./agent-session-types";
+import { resolveSessionCompactionThreshold } from "./model-compaction-threshold";
 import { getLatestCompactionEntry } from "./session-context";
 import type { SessionEntry } from "./session-entries";
 import type { SessionManager } from "./session-manager";
@@ -356,10 +357,15 @@ export class SessionStatsTracker {
 	getContextUsage(options?: { contextWindow?: number }): ContextUsage | undefined {
 		const breakdown = this.getContextBreakdown(options);
 		if (!breakdown) return undefined;
+		const settings = this.#host.session.settings;
+		const compactionThreshold = settings
+			? resolveSessionCompactionThreshold(settings, breakdown.contextWindow, this.#host.model())
+			: undefined;
 		return {
 			tokens: breakdown.usedTokens,
 			contextWindow: breakdown.contextWindow,
 			percent: breakdown.contextWindow > 0 ? (breakdown.usedTokens / breakdown.contextWindow) * 100 : 0,
+			...(compactionThreshold === undefined ? {} : { compactionThreshold }),
 		};
 	}
 

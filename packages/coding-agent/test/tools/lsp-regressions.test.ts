@@ -7,7 +7,6 @@ import type { AgentToolResult, RenderResultOptions } from "@oh-my-pi/pi-agent-co
 import { arkToWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { preloadPluginRoots } from "@oh-my-pi/pi-coding-agent/discovery/helpers";
-import { restoreEnvValue } from "../helpers/settings-test-state";
 import { createLspWritethrough, LspTool } from "@oh-my-pi/pi-coding-agent/lsp";
 import * as lspClient from "@oh-my-pi/pi-coding-agent/lsp/client";
 import * as lspConfig from "@oh-my-pi/pi-coding-agent/lsp/config";
@@ -367,8 +366,8 @@ function textResult(result: AgentToolResult<LspToolDetails>): string {
 }
 
 /**
- * `loadConfig` walks the user config directories (~/.omp/agent, ~/.pi/agent,
- * ~/.claude), which resolve from os.homedir(). A developer with a real
+ * `loadConfig` walks the user config directory (~/.omp/agent),
+ * which resolves from os.homedir(). A developer with a real
  * lsp.json there flips loadConfig off its auto-detect path onto the override
  * path, where their rootMarkers replace the packaged ones — so these tests
  * would assert against that machine's config instead of the defaults. Point
@@ -2798,24 +2797,13 @@ describe("lsp regressions", () => {
 		expect(detectLanguageId(emacsPath)).toBe("emacs-lisp");
 	});
 
-	it("loads config-only marketplace LSP servers from Claude plugin cache", async () => {
-		const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-		delete process.env.CLAUDE_CONFIG_DIR;
-		delete Bun.env.CLAUDE_CONFIG_DIR;
+	it("loads config-only marketplace LSP servers from the OMP plugin cache", async () => {
 		const tempDir = TempDir.createSync("@omp-lsp-marketplace-config-");
 		const home = path.join(tempDir.path(), "home");
 		const cwd = path.join(tempDir.path(), "repo");
-		const pluginRoot = path.join(
-			home,
-			".claude",
-			"plugins",
-			"cache",
-			"claude-plugins-official",
-			"csharp-lsp",
-			"1.0.0",
-		);
+		const pluginRoot = path.join(home, ".omp", "plugins", "cache", "claude-plugins-official", "csharp-lsp", "1.0.0");
 		const marketplaceRoot = path.dirname(path.dirname(pluginRoot));
-		const registryPath = path.join(home, ".claude", "plugins", "installed_plugins.json");
+		const registryPath = path.join(home, ".omp", "plugins", "installed_plugins.json");
 
 		await fs.promises.mkdir(pluginRoot, { recursive: true });
 		await fs.promises.mkdir(cwd, { recursive: true });
@@ -2885,7 +2873,6 @@ describe("lsp regressions", () => {
 			try {
 				await preloadPluginRoots(path.join(tempDir.path(), "empty-home"), cwd);
 			} finally {
-				restoreEnvValue("CLAUDE_CONFIG_DIR", originalClaudeConfigDir);
 				tempDir.removeSync();
 			}
 		}

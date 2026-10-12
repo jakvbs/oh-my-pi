@@ -50,6 +50,7 @@ function createMockSession(messages: AssistantMessage[]): AgentSession {
 		extensionRunner: undefined,
 		subscribe: () => () => {},
 		prompt: async () => {},
+		disableStopTimeTodoReminders: () => {},
 		prepareForHeadlessAdvisorDrain: () => {},
 		setTextOutputCommitted: () => {},
 		waitForAdvisorCatchup: async () => true,

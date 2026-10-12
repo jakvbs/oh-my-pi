@@ -61,7 +61,7 @@ export function formatReadHashlineHeader(displayPath: string, tag: string): stri
 	// path exists, so Patcher's tag-path recovery never runs). The relative
 	// path stays directly resolvable against cwd and names the file uniquely.
 	// Out-of-workspace reads use an absolute displayPath; `shortenPath` keeps
-	// `~/.claude/...` (round-trips through resolveToCwd's ~ expansion) instead
+	// `~/.omp/...` (round-trips through resolveToCwd's ~ expansion) instead
 	// of leaking the full home path into the read output.
 	const anchor = path.isAbsolute(displayPath) ? shortenPath(displayPath) : displayPath;
 	return formatHashlineHeader(anchor, tag);

@@ -86,15 +86,11 @@ Argument handling:
 | `--continue`, `-c` | Continue the previous session. |
 | `--resume [id]`, `-r`, `--session [id]` | Resume a session by ID prefix or path, or open the picker when no value is given. |
 | `--fork <session>` | Fork a saved session (by ID prefix or path) into a new session. See [session operations](./session-operations-export-share-fork-resume.md). |
-| `--from-claude` | Import a Claude Code session into OMP. |
-| `--from-codex` | Import a Codex session into OMP. |
 | `--export <session>` | Export a session file to HTML and exit. |
 | `--no-title` | Disable title auto-generation (equivalent to the `PI_NO_TITLE` [environment variable](./environment-variables.md)). |
 
-`--continue`, `--resume`, `--fork`, and foreign-session imports require
-persistence and cannot use `--no-session`. `--from-claude` and `--from-codex`
-are mutually exclusive and cannot be combined with `--continue`, `--resume`,
-or `--fork`.
+`--continue`, `--resume`, and `--fork` require persistence and cannot use
+`--no-session`.
 
 #### Model selection
 
@@ -160,9 +156,7 @@ See [providers](./providers.md) and [models](./models.md) for model resolution.
 
 | Flag | Description |
 | --- | --- |
-| `--system-prompt <text\|file>` | Plain-text system prompt override (default: coding assistant prompt). See [system prompt customization](./system-prompt-customization.md). |
-| `--system-prompt-template <path>` | Strictly read `<path>` as a Handlebars system-prompt template; mutually exclusive with `--system-prompt`. See [system prompt customization](./system-prompt-customization.md). |
-| `--append-system-prompt <text\|file>` | Append plain text or file contents to the system prompt. |
+| `--system-prompt <text\|file>` | Policy block replacing `~/.agents/AGENTS.md`, recorded in the session so a resume without the flag and `/new` keep it; a file is re-read on every prompt rebuild. The harness and context blocks still render. See [system prompt customization](./system-prompt-customization.md). |
 
 #### Output mode
 

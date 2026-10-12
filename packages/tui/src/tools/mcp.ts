@@ -404,7 +404,7 @@ export interface MCPToolDetails {
 	mcpMeta?: Record<string, unknown>;
 	/** Provider ID (e.g., "claude", "mcp-json") */
 	provider?: string;
-	/** Provider display name (e.g., "Claude Code", "MCP Config") */
+	/** Provider display name (e.g., "MCP Config") */
 	providerName?: string;
 	/** Structured output metadata (set by the spill wrapper when output is truncated to an artifact). */
 	meta?: OutputMeta;

@@ -2,7 +2,7 @@
 
 This document covers how the coding agent discovers and loads extension modules at startup. Scanned native/configured directories auto-discover `.ts` and `.js`; explicitly named files and installed-plugin manifest entries may also use `.mjs` and `.cjs`.
 
-It does **not** cover [`gemini-extension.json` manifest extensions](./gemini-manifest-extensions.md), which are documented separately.
+Native `.omp/extensions/<name>/gemini-extension.json` manifests only feed the `extensions` metadata capability; they do not identify a runnable entry point and are not covered here.
 
 ## What this subsystem does
 
@@ -186,7 +186,7 @@ or `project`:
 
 ```yaml
 disabledExtensions:
-  - context-file:user:CLAUDE.md
+  - context-file:project:AGENTS.local.md
 ```
 
 The id carries no directory and no depth, so a `project` entry disables files of

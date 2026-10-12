@@ -211,6 +211,7 @@ import { anthropicSlowModeHasNoSiblingHeadroom } from "./session/anthropic-slow-
 import { CacheWarmer } from "./session/cache-warmer";
 import { createSettingsAwareStreamFn, resolveOpenAIWebsocketPreference } from "./session/settings-stream-fn";
 import { SnapcompactInlineTransformer } from "./session/snapcompact-inline";
+import type { SystemPromptSource } from "./session/session-entries";
 import { createSnapcompactSavingsRecorder } from "./session/snapcompact-savings-journal";
 import { createSpeculativeToolExecutionConfig } from "./speculation/host";
 import { closeAllConnections } from "./ssh/connection-manager";
@@ -218,9 +219,9 @@ import {
 	type BuildSystemPromptResult,
 	buildSystemPrompt as buildSystemPromptInternal,
 	cfgSystemPromptInputs,
-	composeAppendPrompt,
 	loadProjectContextFiles as loadContextFilesInternal,
 	projectSystemPromptToolMetadata,
+	readSystemPromptSource,
 } from "./system-prompt";
 import type { AgentDefinition } from "./task/types";
 import { AgentOutputManager } from "./task/output-manager";
@@ -302,7 +303,6 @@ import {
 	cfgIncludeModelInPrompt,
 	cfgIncludeWorkspaceTree,
 	cfgInlineToolDescriptors,
-	cfgPersonality,
 	cfgProviderAppendOnlyContext,
 	cfgProvidersCacheWarming,
 	cfgProvidersKimiApiFormat,
@@ -321,18 +321,9 @@ import {
 import { cfgInterruptMode } from "./modes/settings";
 import { cfgFollowUpMode } from "./modes/settings";
 import { cfgSteeringMode } from "./modes/settings";
-import {
-	cfgCommandsEnableClaudeProject,
-	cfgCommandsEnableClaudeUser,
-	cfgCommandsEnableOpencodeProject,
-	cfgCommandsEnableOpencodeUser,
-	cfgDisabledExtensions,
-	cfgExtensions,
-	cfgSkills,
-	type SkillsSettings,
-} from "./extensibility/settings";
+import { cfgDisabledExtensions, cfgExtensions, cfgSkills, type SkillsSettings } from "./extensibility/settings";
 import { cfgTtsr } from "./export/ttsr-settings";
-import { cfgDisabledProviders, cfgEnabledModels, cfgEnabledProviders, cfgModelRoles } from "./config/model-settings";
+import { cfgDisabledProviders, cfgEnabledModels, cfgModelRoles } from "./config/model-settings";
 import { cfgEditRecoverInlineEdits } from "./edit/settings";
 import { cfgGoalEnabled } from "./goals/settings";
 import {
@@ -365,14 +356,9 @@ const cfgToolCallSwitches = combine({
 	abortOnFabricatedResult: cfgToolsAbortOnFabricatedResult,
 });
 
-/** Settings skill and file slash-command discovery reads (foreign sources gated by the provider lists). */
+/** Settings skill and file slash-command discovery reads. */
 const cfgSkillsAndCommandsDiscovery = combine({
 	skills: cfgSkills,
-	commandsClaudeUser: cfgCommandsEnableClaudeUser,
-	commandsClaudeProject: cfgCommandsEnableClaudeProject,
-	commandsOpencodeUser: cfgCommandsEnableOpencodeUser,
-	commandsOpencodeProject: cfgCommandsEnableOpencodeProject,
-	enabledProviders: cfgEnabledProviders,
 	disabledProviders: cfgDisabledProviders,
 });
 
@@ -591,14 +577,21 @@ export interface CreateAgentSessionOptions {
 	/** Host-owned display sink for non-fatal startup prewalk warnings. */
 	onPrewalkWarning?: (warning: string) => void;
 
-	/** Provider-facing system prompt override. Replaces the fully rendered default blocks. */
-	systemPrompt?: string | string[] | ((defaultPrompt: string[]) => string | string[]);
-	/** Raw Handlebars template replacing the bundled default system prompt rendering. */
-	systemPromptTemplate?: string;
-	/** Already-loaded custom prompt text rendered through the bundled custom system prompt template. */
-	customSystemPrompt?: string;
-	/** Already-loaded text appended through the bundled system prompt templates. */
-	appendSystemPrompt?: string;
+	/**
+	 * Policy block of the system prompt, replacing the user's `~/.agents/AGENTS.md`. The harness
+	 * and context blocks still render. A function re-renders the policy on every prompt rebuild.
+	 */
+	systemPrompt?: string | (() => string);
+	/**
+	 * Policy source given on the command line. Recorded in the session, so a resume without one
+	 * restores the latest recorded source; ignored when `systemPrompt` is set.
+	 */
+	systemPromptSource?: SystemPromptSource;
+	/**
+	 * Provider-facing blocks used verbatim; nothing renders. For helper sessions with their own
+	 * contract (compressor, tan) and for replaying a persisted subagent prompt.
+	 */
+	fixedSystemPrompt?: readonly string[];
 	/**
 	 * Already-loaded title-generation system prompt override (typically
 	 * {@link discoverTitleSystemPromptFile} → {@link resolvePromptInput}). When
@@ -667,7 +660,7 @@ export interface CreateAgentSessionOptions {
 	 */
 	preloadedPreparedExtensions?: readonly PreparedExtension[];
 	/**
-	 * Pre-discovered custom-tool source paths from `.omp/tools/`, `.claude/tools/`,
+	 * Pre-discovered custom-tool source paths from `.omp/tools/`,
 	 * plugins, etc. When provided, the filesystem-scan inside
 	 * `discoverCustomToolPaths()` is skipped — subagents inherit the parent's
 	 * scan result and call `loadCustomTools()` themselves so each session binds
@@ -1245,10 +1238,8 @@ export interface BuildSystemPromptOptions {
 	skills?: Skill[];
 	contextFiles?: Array<{ path: string; content: string }>;
 	cwd?: string;
-	customPrompt?: string;
-	/** Raw Handlebars template replacing the bundled default system prompt rendering. */
-	systemPromptTemplate?: string;
-	appendPrompt?: string;
+	/** Policy block text; replaces the user's `~/.agents/AGENTS.md`. */
+	systemPrompt?: string;
 	inlineToolDescriptors?: boolean;
 	includeWorkspaceTree?: boolean;
 }
@@ -1256,8 +1247,8 @@ export interface BuildSystemPromptOptions {
 /**
  * Build the default provider-facing system prompt blocks.
  *
- * The returned `systemPrompt` preserves the stable harness prompt and dynamic project context
- * as separate entries so providers can cache prompt prefixes without concatenating blocks.
+ * The returned `systemPrompt` holds the harness, policy, and context blocks as separate entries
+ * so providers can cache prompt prefixes without concatenating blocks.
  */
 export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<BuildSystemPromptResult> {
 	const toolNames = options.tools?.map(tool => tool.name);
@@ -1270,11 +1261,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		: undefined;
 	return await buildSystemPromptInternal({
 		cwd: options.cwd,
-		customPrompt: options.customPrompt,
-		systemPromptTemplate: options.systemPromptTemplate,
+		systemPrompt: options.systemPrompt,
 		skills: options.skills,
 		contextFiles: options.contextFiles,
-		appendSystemPrompt: options.appendPrompt,
 		inlineToolDescriptors: options.inlineToolDescriptors,
 		includeWorkspaceTree: options.includeWorkspaceTree,
 		toolNames,
@@ -1618,7 +1607,7 @@ export function createAutoLearnCaptureRunner(
  * const { session } = await createAgentSession({
  *   model: myModel,
  *   getApiKey: async () => Bun.env.MY_KEY,
- *   systemPrompt: ['You are helpful.'],
+ *   systemPrompt: 'You are helpful.',
  *   tools: codingTools({ cwd: getProjectDir() }),
  *   skills: [],
  *   sessionManager: SessionManager.inMemory(),
@@ -1634,9 +1623,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 }
 
 async function createAgentSessionScoped(options: CreateAgentSessionOptions): Promise<CreateAgentSessionResult> {
-	if (options.systemPromptTemplate !== undefined && options.customSystemPrompt !== undefined) {
-		throw new Error("systemPromptTemplate cannot be combined with a literal custom system prompt");
-	}
 	const cwd = options.cwd ?? getProjectDir();
 	const agentDir = options.agentDir ?? getAgentDir();
 	const eventBus = options.eventBus ?? new EventBus();
@@ -1820,9 +1806,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		options.modelPattern !== undefined ||
 		options.thinkingLevel !== undefined ||
 		options.systemPrompt !== undefined ||
-		options.systemPromptTemplate !== undefined ||
-		options.customSystemPrompt !== undefined ||
-		options.appendSystemPrompt !== undefined ||
+		options.systemPromptSource !== undefined ||
+		options.fixedSystemPrompt !== undefined ||
 		options.toolNames !== undefined ||
 		options.customTools !== undefined ||
 		options.mcpTools !== undefined;
@@ -1868,6 +1853,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
 	);
 	const hasExistingSession = existingBranch.length > 0;
+	if (
+		options.systemPromptSource &&
+		!Bun.deepEquals(options.systemPromptSource, sessionManager.getSystemPromptSource())
+	) {
+		sessionManager.appendSystemPromptChange(options.systemPromptSource);
+	}
 	const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
 	const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
 
@@ -2464,7 +2455,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		let customToolPaths: ToolPathWithSource[] = [];
 		const inlineExtensions: ExtensionFactory[] = [];
 		if (!restrictToolNames) {
-			// Discover custom tools from `.omp/tools/`, `.claude/tools/`, plugins, etc.
+			// Discover custom tools from `.omp/tools/`, plugins, etc.
 			// Subagents reuse the parent's scan via `preloadedCustomToolPaths` to skip
 			// the FS walk, but ALWAYS re-call `loadCustomTools` here so factories bind
 			// to THIS session's `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
@@ -3558,6 +3549,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					: resolveTelemetry(options.telemetry, providerSessionId),
 			),
 		});
+		// The session's recorded source, not the startup option, so /new, /resume and branch
+		// switches render the policy of the session they land in.
+		const policyText = async (): Promise<string | undefined> => {
+			if (options.systemPrompt !== undefined) {
+				return typeof options.systemPrompt === "function" ? options.systemPrompt() : options.systemPrompt;
+			}
+			const source = sessionManager.getSystemPromptSource();
+			return source ? await readSystemPromptSource(source) : undefined;
+		};
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
 			tools: Map<string, AgentTool>,
@@ -3613,13 +3613,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			const inlineToolDescriptors = resolveInlineToolDescriptors();
 			// Unset only during the initial build; the agent is constructed with it.
 			if (agent) agent.pruneToolDescriptions = inlineToolDescriptors;
-			// A fixed string or array in systemPrompt replaces all generated blocks.
-			// Preserve the bookkeeping above, but skip discovering or rendering a
-			// template whose output would be discarded.
-			if (options.systemPrompt !== undefined && typeof options.systemPrompt !== "function") {
-				return {
-					systemPrompt: typeof options.systemPrompt === "string" ? [options.systemPrompt] : options.systemPrompt,
-				};
+			// A fixed prompt skips rendering but keeps the bookkeeping above.
+			if (options.fixedSystemPrompt !== undefined) {
+				return { systemPrompt: [...options.fixedSystemPrompt] };
 			}
 
 			// Build combined append prompt: auto-learn guidance
@@ -3686,7 +3682,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					appendParts.push(`### ${srvName}\n${truncated}`);
 				}
 			}
-			const appendPrompt = composeAppendPrompt(appendParts, options.appendSystemPrompt);
+			const appendPrompt = appendParts.length > 0 ? appendParts.join("\n\n") : undefined;
 			// Owned/in-band tool dialects (non-native) require the full functions-
 			// namespace catalog; native tool calling lets the compact name list suffice.
 			const nativeTools = resolveDialect(cfgToolsFormat.get(settings), agent?.state.model ?? model) === undefined;
@@ -3701,13 +3697,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					? { mode: "compact", toolNames: [...toolNames, ...mountedPromptToolNames] }
 					: { mode: "full" },
 			);
-			const defaultPrompt = await buildSystemPromptInternal({
+			return await buildSystemPromptInternal({
 				cwd: promptCwd,
 				additionalWorkspaceRoots: sessionManager.getAdditionalDirectories(),
 				xdevTools: toolSession.xdev ? xdevEntries(toolSession.xdev) : [],
 				xdevDocs: xdevPromptDocs ? renderXdevPromptDocs(xdevPromptDocs, routedCatalogNames) : "",
-				resolvedCustomPrompt: options.customSystemPrompt,
-				systemPromptTemplate: options.systemPromptTemplate,
+				systemPrompt: await policyText(),
 				skills: cfgSkillful.get(settings) ? (session?.skills ?? skills) : [],
 				skillDescriptions,
 				contextFiles,
@@ -3715,7 +3710,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				toolNames,
 				rules: rulebookRules,
 				alwaysApplyRules,
-				resolvedAppendSystemPrompt: appendPrompt,
+				appendPrompt,
 				skillsSettings: cfgSkills.get(settings),
 				inlineToolDescriptors,
 				nativeTools,
@@ -3735,22 +3730,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				settingsApproval: toolSession.settingsApproval === true,
 				model: getActiveModelString(),
 				includeModelInPrompt: cfgIncludeModelInPrompt.get(settings),
-				personality: agentKind === "sub" ? "none" : cfgPersonality.get(settings),
-				subagent: agentKind === "sub",
 				renderMermaid: tuiTranscript && cfgTuiRenderMermaid.get(settings),
 				renderSvg: tuiTranscript && cfgTuiRenderSvg.get(settings),
 				autoGraph: tuiTranscript && cfgTuiAutoGraph.get(settings) !== "off",
 				reactions: agentKind === "main" && options.hasUI === true && cfgTuiReactions.get(settings),
 				activeRepoContext,
 			});
-
-			if (typeof options.systemPrompt !== "function") {
-				return defaultPrompt;
-			}
-			const customPrompt = options.systemPrompt(defaultPrompt.systemPrompt);
-			return {
-				systemPrompt: typeof customPrompt === "string" ? [customPrompt] : customPrompt,
-			};
 		};
 
 		const toolNamesFromRegistry = Array.from(toolRegistry.keys());
@@ -3998,6 +3983,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				transformed,
 				formatLocalCalendarDate(),
 				normalizePromptPath(sessionManager.getCwd()),
+				sessionManager.getSessionId(),
 			);
 		};
 		const onPayload = async (payload: unknown, model?: Model, signal?: AbortSignal) => {
@@ -4447,7 +4433,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// A caller-supplied store belongs to the caller (the CLI keeps it in sync itself).
 		if (ownsAuthStorage) createAuthStorageSettingsSync(session, authStorage);
 		// One coalesced prompt rebuild for every prompt input (rule bucketing, the
-		// `tools.format` catalog dialect, personality, …), so a bulk change rebuilds once.
+		// `tools.format` catalog dialect, …), so a bulk change rebuilds once.
 		// Hide Secrets first switches outbound obfuscation on the live obfuscator (earlier
 		// placeholders keep deobfuscating, the first switch-on builds it): the prompt
 		// reports its state.
@@ -4910,6 +4896,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 							transformed,
 							formatLocalCalendarDate(),
 							normalizePromptPath(sessionManager.getCwd()),
+							sessionManager.getSessionId(),
 						);
 					},
 					temperature: agent.temperature,

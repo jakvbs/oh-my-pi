@@ -24,7 +24,7 @@ import {
 	stringifyJson,
 	toError,
 } from "@oh-my-pi/pi-utils";
-import type { StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
+import { isTaskToolDetails, type StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
 import { moveFileAcrossDevices } from "../utils/atomic-file";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore, lazyImageDataSync } from "./blob-store";
@@ -58,6 +58,8 @@ import {
 	type NewSessionOptions,
 	type ResetBoundaryEntry,
 	type ServiceTierChangeEntry,
+	type SystemPromptChangeEntry,
+	type SystemPromptSource,
 	type SessionEntry,
 	type SessionHeader,
 	type SessionInitEntry,
@@ -448,6 +450,33 @@ function resetUsageCost(usage: Usage | undefined): void {
 	usage.premiumRequests = undefined;
 }
 
+/** Clear child billing kept in task results without discarding their token counts. */
+function resetTaskResultBilling(details: unknown): void {
+	if (!isTaskToolDetails(details)) return;
+	resetUsageCost(taskUsageFrom(details));
+	for (const result of details.results) {
+		if (result === null || typeof result !== "object") continue;
+		resetUsageCost(taskUsageFrom(result));
+		resetNestedTaskBilling(result.extractedToolData);
+	}
+	const progress = details.progress;
+	if (Array.isArray(progress)) {
+		for (const item of progress) {
+			if (item === null || typeof item !== "object") continue;
+			if (typeof item.cost === "number") item.cost = 0;
+			resetTaskResultBilling(item.inflightTaskDetails);
+			resetNestedTaskBilling(item.extractedToolData);
+		}
+	}
+}
+
+/** Recurse only through task snapshots extracted from the task subprocess tool. */
+function resetNestedTaskBilling(extractedToolData: Record<string, unknown[]> | undefined): void {
+	const tasks = extractedToolData?.task;
+	if (!Array.isArray(tasks)) return;
+	for (const task of tasks) resetTaskResultBilling(task);
+}
+
 function isAssistantEntry(entry: SessionEntry): boolean {
 	return entry.type === "message" && entry.message.role === "assistant";
 }
@@ -463,6 +492,7 @@ function isDraftOnlyMetadataEntry(entry: SessionEntry): boolean {
 		case "model_change":
 		case "thinking_level_change":
 		case "service_tier_change":
+		case "system_prompt_change":
 		case "mode_change":
 		case "credential_pin":
 			return true;
@@ -3424,6 +3454,18 @@ export class SessionManager {
 		return entry.id;
 	}
 
+	/** Latest `--system-prompt` source recorded on the current branch. */
+	getSystemPromptSource(): SystemPromptSource | undefined {
+		const entry = this.getBranch().findLast(entry => entry.type === "system_prompt_change");
+		return entry?.type === "system_prompt_change" ? entry.source : undefined;
+	}
+
+	appendSystemPromptChange(source: SystemPromptSource): string {
+		const entry: SystemPromptChangeEntry = { type: "system_prompt_change", ...this.#freshEntryFields(), source };
+		this.#recordEntry(entry);
+		return entry.id;
+	}
+
 	appendModeChange(mode: string, data?: Record<string, unknown>): string {
 		const entry: ModeChangeEntry = { type: "mode_change", ...this.#freshEntryFields(), mode, data };
 		this.#recordEntry(entry);
@@ -4008,7 +4050,12 @@ export class SessionManager {
 	 * on them — since only billing attribution is inherited, not context size.
 	 */
 	static #resetInheritedUsageCost(history: SessionEntry[]): void {
-		for (const entry of history) resetUsageCost(entryUsage(entry));
+		for (const entry of history) {
+			resetUsageCost(entryUsage(entry));
+			if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "task") {
+				resetTaskResultBilling(entry.message.details);
+			}
+		}
 	}
 
 	/**

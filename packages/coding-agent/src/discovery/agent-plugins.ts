@@ -37,7 +37,7 @@ const PROVIDER_ID = "agent-plugins";
 const DISPLAY_NAME = "Agent Plugins";
 const DESCRIPTION = "Portable Agent Plugins packages (plugin.json, skills/, mcp.json) per agent-plugins.org";
 // Above claude-plugins (70) so the standard's semantics win for packages that
-// declare it; below claude.ts (80) so user-level .claude/ overrides still apply.
+// declare it.
 const PRIORITY = 75;
 
 interface CandidateRoot {

@@ -38,7 +38,15 @@ export const stateDefs = {
 		"notes?": "string[]",
 	},
 	TodoPhase: { name: "string", tasks: "TodoItem[]" },
-	ContextUsage: { tokens: "number.integer", contextWindow: "number.integer", percent: "number" },
+	ContextUsage: {
+		tokens: "number.integer",
+		contextWindow: "number.integer",
+		percent: "number",
+		"compactionThreshold?": doc(
+			"number.integer",
+			"Tokens at which auto-compaction triggers; absent when compaction is off.",
+		),
+	},
 	QueuedMessagesState: doc(
 		{
 			steering: "string[]",

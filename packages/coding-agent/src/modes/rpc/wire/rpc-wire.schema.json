@@ -2280,6 +2280,10 @@
 				},
 				"percent": {
 					"type": "number"
+				},
+				"compactionThreshold": {
+					"type": "integer",
+					"description": "Tokens at which auto-compaction triggers; absent when compaction is off."
 				}
 			},
 			"required": [

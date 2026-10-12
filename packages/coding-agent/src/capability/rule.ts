@@ -1,8 +1,7 @@
 /**
  * Rules Capability
  *
- * Project-specific rules from Cursor (.mdc), Windsurf (.md), and Cline formats.
- * Translated to a canonical shape regardless of source format.
+ * Project-specific rules, translated to a canonical shape regardless of source.
  */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
@@ -392,7 +391,7 @@ export function resetActiveRulesForTests(): void {
 export const ruleCapability = defineCapability<Rule>({
 	id: "rules",
 	displayName: "Rules",
-	description: "Project-specific rules and constraints (Cursor MDC, Windsurf, Cline formats)",
+	description: "Project-specific rules and constraints",
 	key: rule => rule.name,
 	toExtensionId: rule => `rule:${rule.name}`,
 	validate: rule => {

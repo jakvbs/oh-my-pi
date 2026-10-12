@@ -5,7 +5,7 @@ This document explains how MCP server definitions become callable `mcp__*` tools
 ## Architecture at a glance
 
 ```text
-Config sources (.omp/.claude/.cursor/.vscode/mcp.json, mcp.json, etc.)
+Config sources (.omp/mcp.json, root mcp.json, plugins)
   -> discovery providers normalize to canonical MCPServer
   -> loadAllMCPConfigs supplies scope filters and user enablement suppression
   -> capability loader dedupes by server name and equivalent connection (higher priority wins)
@@ -27,8 +27,7 @@ Config sources (.omp/.claude/.cursor/.vscode/mcp.json, mcp.json, etc.)
 `timeout` is in milliseconds, defaults to 30,000, and accepts `0` to disable
 client-side timeouts. A valid `OMP_MCP_TIMEOUT_MS` environment value overrides
 the per-server timeout. `requestIdFormat` and `instructions` are OMP-specific;
-native configs, standalone MCP JSON, and OMP plugins parse them, while foreign
-tool-format providers generally do not.
+native configs, standalone MCP JSON, and OMP plugins parse them.
 
 `validateServerConfig()` (`src/mcp/config.ts`) enforces transport basics:
 

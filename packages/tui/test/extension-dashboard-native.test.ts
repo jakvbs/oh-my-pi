@@ -31,10 +31,10 @@ interface Fixture {
 function fixture(): Fixture {
 	const disabled: string[] = [];
 	const providers: ExtensionProvider[] = [
-		{ id: "native", displayName: "OMP", enabled: true, userSourceEnabled: true, foreignUserSource: false },
-		{ id: "claude", displayName: "Claude Code", enabled: true, userSourceEnabled: true, foreignUserSource: false },
+		{ id: "native", displayName: "OMP", enabled: true },
+		{ id: "agents", displayName: "Agents", enabled: true },
 	];
-	const extensions = [extension("skill", "alpha", "native"), extension("slash-command", "gamma", "claude")];
+	const extensions = [extension("skill", "alpha", "native"), extension("slash-command", "gamma", "agents")];
 	const runtime: ExtensionDashboardRuntime = {
 		getDisabledExtensions: () => disabled,
 		setDisabledExtensions: ids => {
@@ -46,7 +46,6 @@ function fixture(): Fixture {
 				ids.includes(ext.id) ? { ...ext, state: "disabled", disabledReason: "item-disabled" } : ext,
 			),
 		toggleProvider: () => true,
-		toggleUserSource: () => true,
 		persistMcpToggle: async () => {},
 		applyMcpToggle: async () => {},
 		subscribeMcpChanges: () => [],
@@ -86,9 +85,9 @@ describe("ExtensionDashboard native", () => {
 		harness.event({ ev: "activate", sf, id: sheet.node.id, item: alpha!.id });
 		expect(fx.disabled).toEqual(["skill:alpha"]);
 
-		harness.event({ ev: "action", sf, id: sheet.node.id, act: "scope", value: "claude", mods: [] });
+		harness.event({ ev: "action", sf, id: sheet.node.id, act: "scope", value: "agents", mods: [] });
 		const scoped = pickerOf(harness).props;
-		expect(scoped.scope).toBe("claude");
+		expect(scoped.scope).toBe("agents");
 		expect(scoped.items?.map(item => item.label)).toContain("gamma");
 		expect(scoped.items?.map(item => item.label)).not.toContain("alpha");
 		expect(harness.tui.nativeFallbackCount).toBe(0);

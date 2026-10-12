@@ -500,23 +500,6 @@ describe("system prompt tool inventory", () => {
 		expect(text).not.toContain("Reads files from disk.");
 	});
 
-	it("references xd://-only tools by their xd:// URL", async () => {
-		const { systemPrompt } = await buildSystemPrompt({
-			cwd: tempDir,
-			contextFiles: [],
-			skills: [],
-			rules: [],
-			toolNames: ["read", "bash"],
-			tools: TOOLS,
-			xdevTools: [{ name: "lsp", summary: "Language server." }],
-			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-		});
-		const text = systemPrompt.join("\n\n");
-		expect(text).toContain("MUST use `xd://lsp` for definitions");
-		expect(text).toContain("MUST run `xd://lsp` references first");
-		expect(text).not.toContain("`lsp`");
-	});
-
 	it("renders exactly one of the map-unknown-code and inline-first delegation rules per bias", async () => {
 		const renderDelegation = async (delegationBias: "eager" | "restrained" | "gated", eagerTasks: boolean) => {
 			const { systemPrompt } = await buildSystemPrompt({
@@ -633,7 +616,7 @@ describe("system prompt tool inventory", () => {
 	it("does not treat a custom tool named read as a skill URI reader", async () => {
 		const { systemPrompt } = await buildSdkSystemPrompt({
 			cwd: tempDir,
-			customPrompt: "Custom instructions.",
+			systemPrompt: "Custom instructions.",
 			contextFiles: [],
 			skills: [
 				{
@@ -853,7 +836,7 @@ describe("system prompt tool inventory", () => {
 	it("preserves hidden skill URL guidance with a custom prompt", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			cwd: tempDir,
-			resolvedCustomPrompt: "Custom instructions.",
+			systemPrompt: "Custom instructions.",
 			contextFiles: [],
 			skills: [
 				{
@@ -880,7 +863,7 @@ describe("system prompt tool inventory", () => {
 	it("omits skill URL guidance from a custom prompt without loaded skills", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			cwd: tempDir,
-			resolvedCustomPrompt: "Custom instructions.",
+			systemPrompt: "Custom instructions.",
 			contextFiles: [],
 			skills: [],
 			rules: [],
@@ -892,25 +875,5 @@ describe("system prompt tool inventory", () => {
 
 		expect(text).toContain("Custom instructions.");
 		expect(text).not.toContain("`skill://<name>`");
-	});
-
-	it("omits todo workflow guidance when the todo tool is absent", async () => {
-		const opts = {
-			cwd: tempDir,
-			contextFiles: [],
-			skills: [],
-			rules: [],
-			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-			tools: TOOLS,
-			nativeTools: true,
-			inlineToolDescriptors: false,
-		};
-		const withoutTodo = (await buildSystemPrompt({ ...opts, toolNames: ["read", "bash"] })).systemPrompt.join("\n\n");
-		expect(withoutTodo).not.toContain("todo-only turn");
-
-		const withTodo = (await buildSystemPrompt({ ...opts, toolNames: ["read", "bash", "todo"] })).systemPrompt.join(
-			"\n\n",
-		);
-		expect(withTodo).toContain("todo-only turn");
 	});
 });

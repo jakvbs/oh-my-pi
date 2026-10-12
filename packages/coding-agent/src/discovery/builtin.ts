@@ -20,7 +20,6 @@ import { type Rule, ruleCapability } from "../capability/rule";
 import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
@@ -94,7 +93,7 @@ export function getAncestorDirs(cwd: string, stopAt?: string | null): Array<{ di
 /**
  * Nearest `.omp/` between cwd and the repo root. The home directory is never a
  * project: `~/.omp` is the user config root, so a cwd under home (temp dirs on
- * Windows, scratch folders) must not load its SYSTEM.md/RULES.md/AGENTS.md as
+ * Windows, scratch folders) must not load its RULES.md/AGENTS.md as
  * project config — that also bypasses an overridden agent dir or profile.
  */
 async function findNearestProjectConfigDir(ctx: LoadContext): Promise<{ dir: string; depth: number } | null> {
@@ -255,42 +254,6 @@ registerProvider<MCPServer>(mcpCapability.id, {
 	load: loadMCPServers,
 });
 
-// System Prompt (SYSTEM.md, SYSTEM_TEMPLATE.md)
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-	const warnings: string[] = [];
-
-	const load = async (filePath: string, level: "user" | "project", kind: "text" | "template"): Promise<void> => {
-		const content = await readFile(filePath);
-		if (!content) return;
-		if (kind === "template" && !content.trim()) {
-			warnings.push(`Ignoring empty system prompt template at ${filePath}`);
-			return;
-		}
-		items.push({ path: filePath, content, kind, level, _source: createSourceMeta(PROVIDER_ID, filePath, level) });
-	};
-
-	// Project entries first: dedupe is first-wins, so a project literal or
-	// template claims its key before a same-scope user file can survive.
-	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx);
-	if (nearestProjectConfigDir) {
-		await load(path.join(nearestProjectConfigDir.dir, "SYSTEM.md"), "project", "text");
-		await load(path.join(nearestProjectConfigDir.dir, "SYSTEM_TEMPLATE.md"), "project", "template");
-	}
-	await load(path.join(getAgentDir(), "SYSTEM.md"), "user", "text");
-	await load(path.join(getAgentDir(), "SYSTEM_TEMPLATE.md"), "user", "template");
-
-	return { items, warnings };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Custom system prompt from SYSTEM.md and SYSTEM_TEMPLATE.md",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
-});
-
 // Skills
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	// Walk up from cwd finding .omp/skills/ in ancestors (closest first). Home is
@@ -405,12 +368,8 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// https://omp.sh/docs/context-files: its full body is carried on every
 	// request (system-prompt text, or image frames under snapcompact
 	// system-prompt imaging) so it keeps its hold across long sessions.
-	// User scope:    <agentDir>/RULES.md (~/.omp/agent/RULES.md by default)
-	// Project scope: nearest .omp/RULES.md walking up from cwd to repoRoot
-	const userRulesFile = path.join(ctx.agentDir ?? getAgentDir(), "RULES.md");
-	const userRule = await loadStickyRulesFile(userRulesFile, "user");
-	if (userRule) items.push(userRule);
-
+	// Project scope only: nearest .omp/RULES.md walking up from cwd to repoRoot.
+	// User-wide policy lives in ~/.agents/AGENTS.md, the system prompt's policy block.
 	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx);
 	if (nearestProjectConfigDir) {
 		const projectRulesFile = path.join(nearestProjectConfigDir.dir, "RULES.md");
@@ -926,17 +885,6 @@ registerProvider<Settings>(settingsCapability.id, {
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
-
-	const userPath = path.join(getAgentDir(), "AGENTS.md");
-	const userContent = await readFile(userPath);
-	if (userContent) {
-		items.push({
-			path: userPath,
-			content: userContent,
-			level: "user",
-			_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-		});
-	}
 
 	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx);
 	if (nearestProjectConfigDir) {

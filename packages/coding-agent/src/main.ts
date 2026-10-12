@@ -40,7 +40,6 @@ import { buildInitialMessage } from "./cli/initial-message";
 import { formatKeyHint } from "@oh-my-pi/pi-tui/app-keybindings";
 import type { SessionPickerOptions } from "@oh-my-pi/pi-tui/apps/session-picker";
 import { applyStartupCwd } from "./cli/startup-cwd";
-import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import { formatModelSelectorValue } from "@oh-my-pi/pi-tui/overlays/model-selector";
 import {
@@ -103,22 +102,11 @@ import type { AgentSession } from "./session/agent-session";
 import { createAuthStorageSettingsSync, describeAuthBrokerStartupError } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
 import { describePendingToolCalls } from "./session/exit-diagnostics";
-import {
-	createForeignSessionStore,
-	foreignSessionInfoToSessionInfo,
-	foreignSessionSourceName,
-	persistForeignSession,
-} from "./session/foreign-session-import";
-import type { ForeignSessionInfo, ForeignSessionSource, ForeignSessionStore } from "./session/foreign-session-store";
 import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
 import { ForkSourceNotFoundError, SessionManager, SessionMoveRefusedError } from "./session/session-manager";
+import { forkIfMovedAway } from "./session/session-transfer";
 import { shouldShowStartupSplash } from "./startup-splash";
-import {
-	discoverSystemPromptOverride,
-	discoverTitleSystemPromptFile,
-	loadSystemPromptTemplateFile,
-	resolvePromptInput,
-} from "./system-prompt";
+import { discoverTitleSystemPromptFile, resolvePromptInput, systemPromptSourceOf } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { createTelemetryExportConfig, initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { cfgTelemetryOtlpExportEnabled } from "./telemetry-settings";
@@ -224,7 +212,7 @@ async function checkForNewVersion(_currentVersion: string): Promise<string | und
 
 // Protocol hosts inherit OMP's neutral defaults for settings declaring `protocolDefault`
 // instead of the local user's interactive preferences. The pin holds only while nothing
-// configures the setting — caller `Settings.isolated` overrides, project `.claude/settings.yml`,
+// configures the setting — caller `Settings.isolated` overrides, project `.omp/config.yml`,
 // `--config` overlays, or global `config.yml` always win (#2598, #3207), including a config
 // edit the RPC file watcher picks up later and an ACP session's own project config.
 function applyProtocolDefaults(host: ProtocolHost, targetSettings: Settings = settings): void {
@@ -794,27 +782,6 @@ function exitForSessionResolutionError(error: SessionResolutionError): never {
 	process.exit(1);
 }
 
-function resolveForeignSessionSource(
-	parsed: Pick<Args, "continue" | "fork" | "fromClaude" | "fromCodex" | "noSession" | "resume">,
-): ForeignSessionSource | undefined {
-	if (parsed.fromClaude && parsed.fromCodex) {
-		throw new SessionResolutionError("--from-claude and --from-codex cannot be used together");
-	}
-	const source = parsed.fromClaude ? "claude" : parsed.fromCodex ? "codex" : undefined;
-	if (!source) return undefined;
-	if (parsed.noSession) {
-		throw new SessionResolutionError(`--from-${source} requires session persistence`);
-	}
-	if (parsed.continue || parsed.resume || parsed.fork) {
-		throw new SessionResolutionError(`--from-${source} cannot be combined with --continue, --resume, or --fork`);
-	}
-	return source;
-}
-
-function isForeignSessionImport(parsed: Pick<Args, "fromClaude" | "fromCodex">): boolean {
-	return parsed.fromClaude === true || parsed.fromCodex === true;
-}
-
 type MissingCwdMoveResult =
 	| { status: "not-needed" }
 	| { status: "declined" }
@@ -1078,7 +1045,7 @@ async function getChangelogForDisplay(
 	parsed: Args,
 	mode: SettingValueOf<typeof cfgStartupChangelogMode>,
 ): Promise<StartupChangelogSelection | undefined> {
-	if (parsed.continue || parsed.resume || isForeignSessionImport(parsed)) {
+	if (parsed.continue || parsed.resume) {
 		return undefined;
 	}
 
@@ -1179,14 +1146,17 @@ export async function createSessionManager(
 	if (typeof parsed.resume === "string") {
 		const sessionArg = parsed.resume;
 		if (sessionArg.includes("/") || sessionArg.includes("\\") || sessionArg.endsWith(".jsonl")) {
+			let manager: SessionManager;
 			try {
-				return await SessionManager.open(sessionArg, parsed.sessionDir, undefined, { throwIfMissing: true });
+				manager = await SessionManager.open(sessionArg, parsed.sessionDir, undefined, { throwIfMissing: true });
 			} catch (err) {
 				if (isEnoent(err) || isEnotdir(err)) {
 					throw new SessionResolutionError(`Session "${sessionArg}" not found.`, SESSION_NOT_FOUND_HINT);
 				}
 				throw err;
 			}
+			// A copy whose conversation moved to another machine continues as a fork.
+			return await forkIfMovedAway(manager, parsed.sessionDir);
 		}
 		const match = await resolveResumableSession(sessionArg, cwd, parsed.sessionDir);
 		if (!match) {
@@ -1201,7 +1171,7 @@ export async function createSessionManager(
 				askToMoveSession,
 			);
 			if (moveResult.status === "moved") {
-				return moveResult.manager;
+				return await forkIfMovedAway(moveResult.manager, parsed.sessionDir);
 			}
 			if (moveResult.status === "declined") {
 				return undefined;
@@ -1216,16 +1186,16 @@ export async function createSessionManager(
 				askToMoveSession,
 			);
 			if (moveResult.status === "moved") {
-				return moveResult.manager;
+				return await forkIfMovedAway(moveResult.manager, parsed.sessionDir);
 			}
 			if (moveResult.status === "declined") {
 				return undefined;
 			}
 		}
-		return await SessionManager.open(match.session.path, parsed.sessionDir);
+		return await forkIfMovedAway(await SessionManager.open(match.session.path, parsed.sessionDir), parsed.sessionDir);
 	}
 	if (parsed.continue) {
-		return await SessionManager.continueRecent(cwd, parsed.sessionDir);
+		return await forkIfMovedAway(await SessionManager.continueRecent(cwd, parsed.sessionDir), parsed.sessionDir);
 	}
 	// --resume without value is handled separately (needs picker UI)
 	// If --session-dir provided without --continue/--resume, create new session there
@@ -1238,7 +1208,10 @@ export async function createSessionManager(
 	// overriding them with CLI defaults.
 	// An explicit startup goal starts fresh even when implicit auto-resume is configured.
 	if (parsed.goal === undefined && cfgAutoResume.get(activeSettings)) {
-		const manager = await SessionManager.continueRecent(cwd, parsed.sessionDir);
+		const manager = await forkIfMovedAway(
+			await SessionManager.continueRecent(cwd, parsed.sessionDir),
+			parsed.sessionDir,
+		);
 		if (manager.getEntries().length > 0) {
 			parsed.continue = true;
 		}
@@ -1246,33 +1219,6 @@ export async function createSessionManager(
 	}
 	// Default case (new session) returns undefined, SDK will create one
 	return undefined;
-}
-
-/** Discover APPEND_SYSTEM.md file if no CLI append system prompt was provided */
-function discoverAppendSystemPromptFile(): string | undefined {
-	const projectPath = findConfigFile("APPEND_SYSTEM.md", { user: false });
-	if (projectPath) {
-		return projectPath;
-	}
-	const globalPath = findConfigFile("APPEND_SYSTEM.md", { user: true });
-	if (globalPath) {
-		return globalPath;
-	}
-	return undefined;
-}
-
-/** Apply resolved CLI/discovered prompt files without bypassing system prompt templates. */
-export function applyResolvedSystemPromptInputs(
-	options: CreateAgentSessionOptions,
-	resolvedSystemPrompt: string | undefined,
-	resolvedAppendPrompt: string | undefined,
-): void {
-	if (resolvedSystemPrompt !== undefined) {
-		options.customSystemPrompt = resolvedSystemPrompt;
-	}
-	if (resolvedAppendPrompt) {
-		options.appendSystemPrompt = resolvedAppendPrompt;
-	}
 }
 
 /** Builds startup session options from parsed CLI flags, scoped models, and resolved session lineage. */
@@ -1287,7 +1233,7 @@ export async function buildSessionOptions(
 		cwd: parsed.cwd ?? getProjectDir(),
 		autoApprove: parsed.autoApprove ?? false,
 	};
-	const restoringSession = Boolean(parsed.continue || parsed.resume || isForeignSessionImport(parsed));
+	const restoringSession = Boolean(parsed.continue || parsed.resume);
 	if (parsed.serviceTier !== undefined) {
 		options.openAIServiceTier = serviceTierSettingToTier(parsed.serviceTier) ?? null;
 	}
@@ -1300,36 +1246,11 @@ export async function buildSessionOptions(
 		options.deadline = Date.now() + parsed.maxTime * 1000;
 	}
 
-	// Explicit prompt inputs win over discovered SYSTEM_TEMPLATE.md/SYSTEM.md.
-	if (parsed.systemPrompt !== undefined && parsed.systemPromptTemplate !== undefined) {
-		throw new Error("--system-prompt and --system-prompt-template cannot be combined");
-	}
 	const cwd = options.cwd;
-	const discoveredOverride =
-		parsed.systemPrompt === undefined && parsed.systemPromptTemplate === undefined
-			? await discoverSystemPromptOverride(cwd)
-			: undefined;
-	const systemPromptSource =
-		parsed.systemPrompt ?? (discoveredOverride?.kind === "text" ? discoveredOverride.path : undefined);
-	const templatePath =
-		parsed.systemPromptTemplate ?? (discoveredOverride?.kind === "template" ? discoveredOverride.path : undefined);
-	const appendPromptSource = parsed.appendSystemPrompt ?? discoverAppendSystemPromptFile();
-	const titleSystemPromptSource = discoverTitleSystemPromptFile(cwd);
-	const [resolvedSystemPrompt, resolvedAppendPrompt, titleSystemPrompt, resolvedSystemPromptTemplate] =
-		await Promise.all([
-			discoveredOverride?.kind === "text"
-				? Promise.resolve(discoveredOverride.content)
-				: resolvePromptInput(systemPromptSource, "system prompt"),
-			resolvePromptInput(appendPromptSource, "append system prompt"),
-			resolvePromptInput(titleSystemPromptSource, "title system prompt"),
-			// Discovered templates arrive pre-loaded from the capability; only
-			// explicit CLI paths hit the strict file loader here.
-			discoveredOverride?.kind === "template" && parsed.systemPromptTemplate === undefined
-				? Promise.resolve(discoveredOverride.content)
-				: templatePath === undefined
-					? Promise.resolve(undefined)
-					: loadSystemPromptTemplateFile(templatePath),
-		]);
+	const [systemPromptSource, titleSystemPrompt] = await Promise.all([
+		parsed.systemPrompt === undefined ? undefined : systemPromptSourceOf(parsed.systemPrompt),
+		resolvePromptInput(discoverTitleSystemPromptFile(cwd), "title system prompt"),
+	]);
 
 	if (sessionManager) {
 		options.sessionManager = sessionManager;
@@ -1348,8 +1269,6 @@ export async function buildSessionOptions(
 			parsed.model !== undefined ||
 			parsed.thinking !== undefined ||
 			parsed.systemPrompt !== undefined ||
-			parsed.systemPromptTemplate !== undefined ||
-			parsed.appendSystemPrompt !== undefined ||
 			parsed.tools !== undefined ||
 			parsed.noTools === true;
 		if (!forkCacheShapeChanged && header?.providerPromptCacheKey) {
@@ -1553,10 +1472,8 @@ export async function buildSessionOptions(
 	// API key from CLI - set in authStorage
 	// (handled by caller before createAgentSession)
 
-	// System prompt
-	applyResolvedSystemPromptInputs(options, resolvedSystemPrompt, resolvedAppendPrompt);
-	if (resolvedSystemPromptTemplate !== undefined) {
-		options.systemPromptTemplate = resolvedSystemPromptTemplate;
+	if (systemPromptSource) {
+		options.systemPromptSource = systemPromptSource;
 	}
 	// Replan-driven title refresh resolves the override from this same field on
 	// `AgentSession`, so threading it through `CreateAgentSessionOptions` keeps
@@ -1628,7 +1545,6 @@ interface RunRootCommandDependencies {
 	discoverAuthStorage?: typeof discoverAuthStorage;
 	selectSession?: SessionPicker;
 	runAcpMode?: RunAcpMode;
-	createForeignSessionStore?: (source: ForeignSessionSource) => ForeignSessionStore;
 	settings?: Settings;
 	forceSetupWizard?: boolean;
 }
@@ -1914,80 +1830,18 @@ export async function runRootCommand(
 		// id from UUID-shaped values owned by later extension flags.
 		normalizeContinueSessionArgs(parsedArgs, rawArgs);
 
-		// Resolve native resume/fork flags or import one foreign transcript into a
-		// fresh persisted OMP session before constructing the AgentSession.
+		// Resolve native resume/fork flags before constructing the AgentSession.
 		let sessionManager: SessionManager | undefined;
-		let foreignSource: ForeignSessionSource | undefined;
 		try {
-			foreignSource = resolveForeignSessionSource(parsedArgs);
-			if (foreignSource) {
-				if (isProtocolMode) {
-					throw new SessionResolutionError(`--from-${foreignSource} is not supported in ${mode} mode`);
-				}
-				const sourceName = foreignSessionSourceName(foreignSource);
-				const store = (deps.createForeignSessionStore ?? createForeignSessionStore)(foreignSource);
-				let foreignSessions: ForeignSessionInfo[];
-				try {
-					foreignSessions = await logger.time(`list${sourceName}Sessions`, () => store.list());
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					throw new SessionResolutionError(`Failed to list ${sourceName} sessions: ${message}`);
-				}
-				if (foreignSessions.length === 0) {
-					writeStartupNotice(parsedArgs, `${chalk.dim(`No ${sourceName} sessions found`)}\n`);
-					stopStartupWatchdog();
-					process.exit(0);
-				}
-				const choices = foreignSessions.map(foreignSessionInfoToSessionInfo);
-				pauseStartupWatchdog();
-				let selected: SessionInfo | null;
-				try {
-					const selectSessionImpl = deps.selectSession ?? (await loadSessionPicker());
-					selected = await logger.time(`select${sourceName}Session`, selectSessionImpl, choices, {
-						title: `Import ${sourceName} Session`,
-						scopeLabel: false,
-						showCwd: true,
-						allowDelete: false,
-						allowGlobalScope: false,
-						historySearch: false,
-					});
-				} finally {
-					resumeStartupWatchdog();
-				}
-				if (!selected) {
-					writeStartupNotice(parsedArgs, `${chalk.dim(`No ${sourceName} session selected`)}\n`);
-					stopStartupWatchdog();
-					process.exit(0);
-				}
-				const foreignSession = foreignSessions.find(
-					session => session.id === selected.id && session.path === selected.path,
-				);
-				if (!foreignSession) {
-					throw new SessionResolutionError(`Selected ${sourceName} session is no longer available`);
-				}
-				try {
-					sessionManager = await logger.time(
-						`import${sourceName}Session`,
-						persistForeignSession,
-						store,
-						foreignSession,
-						{ fallbackCwd: cwd, sessionDir: parsedArgs.sessionDir },
-					);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					throw new SessionResolutionError(`Failed to import ${sourceName} session: ${message}`);
-				}
-			} else {
-				sessionManager = await logger.time(
-					"createSessionManager",
-					createSessionManager,
-					parsedArgs,
-					cwd,
-					settingsInstance,
-					promptMoveSession,
-					{ nativeFlagOwnership: "preliminary" },
-				);
-			}
+			sessionManager = await logger.time(
+				"createSessionManager",
+				createSessionManager,
+				parsedArgs,
+				cwd,
+				settingsInstance,
+				promptMoveSession,
+				{ nativeFlagOwnership: "preliminary" },
+			);
 		} catch (error: unknown) {
 			if (error instanceof SessionResolutionError) {
 				exitForSessionResolutionError(error);
@@ -1995,7 +1849,7 @@ export async function runRootCommand(
 			throw error;
 		}
 
-		if ((typeof parsedArgs.resume === "string" || foreignSource) && sessionManager && !parsedArgs.noSession) {
+		if (typeof parsedArgs.resume === "string" && sessionManager && !parsedArgs.noSession) {
 			const previousCwd = cwd;
 			const recordedCwd = sessionManager.getRecordedCwd() ?? sessionManager.getCwd();
 			const resumedProject = await switchToResumedProject(
@@ -2072,9 +1926,12 @@ export async function runRootCommand(
 				process.exit(0);
 			}
 			try {
-				sessionManager = (await SessionManager.isFromRemovedWorktree(selected, cwd, parsedArgs.sessionDir))
-					? await openRelocatedSession(selected, cwd, parsedArgs.sessionDir)
-					: await SessionManager.open(selected.path);
+				sessionManager = await forkIfMovedAway(
+					(await SessionManager.isFromRemovedWorktree(selected, cwd, parsedArgs.sessionDir))
+						? await openRelocatedSession(selected, cwd, parsedArgs.sessionDir)
+						: await SessionManager.open(selected.path),
+					parsedArgs.sessionDir,
+				);
 			} catch (error: unknown) {
 				if (error instanceof SessionResolutionError) exitForSessionResolutionError(error);
 				throw error;
@@ -2096,7 +1953,7 @@ export async function runRootCommand(
 			}
 		}
 
-		if (sessionManager && (parsedArgs.continue || parsedArgs.resume || parsedArgs.fork || foreignSource)) {
+		if (sessionManager && (parsedArgs.continue || parsedArgs.resume || parsedArgs.fork)) {
 			const pendingToolWarning = describePendingToolCalls(sessionManager.getBranch());
 			if (pendingToolWarning) {
 				logger.warn("Resumed session has pending tool calls", {
@@ -2305,7 +2162,7 @@ export async function runRootCommand(
 			const showStartupSplash = shouldShowStartupSplash({
 				configured: cfgStartupShowSplash.get(settingsInstance),
 				isInteractive,
-				resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork || foreignSource),
+				resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
 				quiet: cfgStartupQuiet.get(settingsInstance),
 				timing: Boolean($env.PI_TIMING),
 				stdinIsTTY: process.stdin.isTTY,
@@ -2495,7 +2352,7 @@ export async function runRootCommand(
 						setToolUIContext,
 						lspServers,
 						mcpManager,
-						Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork || foreignSource),
+						Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
 						deps.forceSetupWizard === true,
 						showStartupSplash,
 						eventBus,

@@ -1381,10 +1381,10 @@ describe("cold revival replays the system prompt the last request sent", () => {
 	async function reviveAndFollowUp(cwd: string, hooks?: ExtensionHooks): Promise<{ system: string[]; tools: string }> {
 		let revived: RecordingSession | undefined;
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementationOnce(async options => {
-			const build = options!.systemPrompt;
-			if (typeof build !== "function") throw new Error("Expected a system prompt builder");
-			// The SDK hands every rebuild's fresh default prompt to this builder.
-			const buildPrompt = (toolNames: string[]) => [build([`fresh default: ${toolNames.join(",")}`])].flat();
+			const fixed = options!.fixedSystemPrompt;
+			if (!fixed) throw new Error("Expected the persisted prompt blocks");
+			// The SDK replays fixed blocks verbatim on every rebuild.
+			const buildPrompt = () => [...fixed];
 			revived = createRecordingSession(options!.sessionManager!, buildPrompt, [{ content: ["follow-up"] }], hooks);
 			return { session: revived.session } as CreateAgentSessionResult;
 		});

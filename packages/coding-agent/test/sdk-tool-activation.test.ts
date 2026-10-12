@@ -1191,12 +1191,12 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
 			extensions: [replacementExtension],
-			systemPrompt: defaultPrompt => {
+			systemPrompt: () => {
 				if (rejectReplacementPrompt) {
 					replacementRefreshAttempted.resolve();
 					throw new Error("expected replacement prompt failure");
 				}
-				return defaultPrompt;
+				return "";
 			},
 		});
 		let emission: Promise<unknown> | undefined;
@@ -1429,9 +1429,9 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			}),
 			autoApprove: true,
 			extensions: [detachedRegistrationExtension],
-			systemPrompt: defaultPrompt => {
+			systemPrompt: () => {
 				if (rejectDetachedPrompt) throw new Error("expected detached registration failure");
-				return defaultPrompt;
+				return "";
 			},
 		});
 

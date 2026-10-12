@@ -95,7 +95,6 @@ describe("createAgentSession with agentDir", () => {
 			file: path.join("rules", "marker.md"),
 			body: (marker: string) => `---\nalwaysApply: true\n---\n${marker}\n`,
 		},
-		{ lane: "RULES.md", file: "RULES.md", body: (marker: string) => `${marker}\n` },
 	])("loads user rules from its agentDir's $lane, not the default agent dir", async ({ file, body }) => {
 		const marker = Bun.nanoseconds().toString(36);
 		const scopedRule = `SCOPED_RULE_${marker}`;

@@ -45,8 +45,8 @@ describe("legacy pi SettingsManager shim (issue #10397)", () => {
 	it("reads arbitrary extension-namespaced keys from the global and project layers", async () => {
 		// Keys the typed, schema-bound `get(path)` cannot reach — an extension's own block.
 		await Bun.write(path.join(agentDir, "config.yml"), YAML.stringify({ piVim: { mode: "normal" } }, null, 2));
-		fs.mkdirSync(path.join(projectDir, ".claude"), { recursive: true });
-		await Bun.write(path.join(projectDir, ".claude", "settings.json"), JSON.stringify({ piVim: { leader: "," } }));
+		fs.mkdirSync(path.join(projectDir, ".omp"), { recursive: true });
+		await Bun.write(path.join(projectDir, ".omp", "settings.json"), JSON.stringify({ piVim: { leader: "," } }));
 
 		await Settings.init({ cwd: projectDir, agentDir });
 		const s = SettingsManager.create(projectDir);
@@ -88,10 +88,10 @@ describe("legacy pi SettingsManager shim (issue #10397)", () => {
 		// project. Its cwd must win over the global singleton session A initializes.
 		const projectB = tempDir.join("project-b");
 		fs.mkdirSync(getProjectAgentDir(projectB), { recursive: true });
-		fs.mkdirSync(path.join(projectDir, ".claude"), { recursive: true });
-		fs.mkdirSync(path.join(projectB, ".claude"), { recursive: true });
-		await Bun.write(path.join(projectDir, ".claude", "settings.json"), JSON.stringify({ piVim: { session: "a" } }));
-		await Bun.write(path.join(projectB, ".claude", "settings.json"), JSON.stringify({ piVim: { session: "b" } }));
+		fs.mkdirSync(path.join(projectDir, ".omp"), { recursive: true });
+		fs.mkdirSync(path.join(projectB, ".omp"), { recursive: true });
+		await Bun.write(path.join(projectDir, ".omp", "settings.json"), JSON.stringify({ piVim: { session: "a" } }));
+		await Bun.write(path.join(projectB, ".omp", "settings.json"), JSON.stringify({ piVim: { session: "b" } }));
 
 		const singleton = await Settings.init({ cwd: projectDir, agentDir });
 		const sessionB = await Settings.loadIsolated({ cwd: projectB, agentDir });

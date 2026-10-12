@@ -91,7 +91,8 @@ Plain provider credential names come from `env` entries in `packages/catalog/src
 | `CURSOR_ACCESS_TOKEN`           | Cursor provider auth                             | Using Cursor provider                                          | `CURSOR_API_KEY` is accepted as an alias                                                            |
 | `AI_GATEWAY_API_KEY`            | Vercel AI Gateway auth                           | Using `vercel-ai-gateway` provider                             | `VERCEL_AI_GATEWAY_API_KEY` is accepted as an alias                                                 |
 | `CLOUDFLARE_AI_GATEWAY_API_KEY` | Cloudflare AI Gateway auth                       | Using `cloudflare-ai-gateway` provider                         | Gateway token with AI Gateway Run permission; `/login` stores it with the routing IDs               |
-| `CLOUDFLARE_ACCOUNT_ID`         | Cloudflare AI Gateway account routing            | Using an environment-supplied gateway token                    | Not required when the account ID was stored by `/login`                                             |
+| `CLOUDFLARE_API_TOKEN`          | Cloudflare Workers AI auth                       | Using `cloudflare-workers-ai` provider (Clef judges)            | API token with Workers AI Read and Edit permissions; `CLOUDFLARE_AUTH_TOKEN` is accepted as a fallback |
+| `CLOUDFLARE_ACCOUNT_ID`         | Cloudflare AI Gateway / Workers AI account routing | Using an environment-supplied gateway or Workers AI token    | Not required when the account ID was stored by `/login`                                             |
 | `CLOUDFLARE_GATEWAY_ID`         | Cloudflare AI Gateway selection                  | Using an environment-supplied gateway token                    | Gateway slug, commonly `default`; not required when stored by `/login`                               |
 | `SNOWFLAKE_PAT`                 | Snowflake Cortex auth                            | Using `snowflake` provider without `/login`                    | Programmatic access token; prefer short-lived and role-restricted                                   |
 | `SNOWFLAKE_ACCOUNT`             | Snowflake Cortex account routing                 | Using `SNOWFLAKE_PAT`                                          | Account identifier (`orgname-accountname`) or account URL; not required after `/login`              |
@@ -413,6 +414,8 @@ Small typed decisions the app makes about its own state (the `auto` thinking-lev
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TYPESAFE_API_KEY`       | TypeSafe API key for discovery and System One requests; alternatively use `/login typesafe`                                                                                                                                                             |
 | `TYPESAFE_BASE_URL`      | API root override (default `https://api.typesafe.ai`), used by model discovery, `/login` validation, and System One requests                                                                                                                             |
+| `OPENAI_API_KEY`         | Also authenticates the OpenAI Decisions judge `openai/gpt-6-luna-decisions` (GPT-6 Luna over `POST /v1/decisions`); assign it to the `judge` role to use it                                                                                             |
+| `CLOUDFLARE_API_TOKEN`   | Authenticates the Cloudflare Workers AI Clef judges (`cloudflare-workers-ai/@cf/cloudflare/clef`, `.../clef-flash`) with `CLOUDFLARE_ACCOUNT_ID`; alternatively use `/login cloudflare-workers-ai`                                                      |
 | `TYPESAFE_DEFAULT_MODEL` | Standalone `pi-ai` TypeSafe client default when its caller does not pass a model (default `jev-latest`). The coding-agent app passes the model selected by the `judge` role, so this variable does not override app role selection or discovered model IDs. |
 
 ---
@@ -486,7 +489,6 @@ These affect where coding-agent stores data and which process-local settings ove
 | `PI_CODING_AGENT_SESSION_DIR`                       | Initial session-directory override consumed by launch argument parsing                                                     |
 | `PI_NATIVES_DIR`                                    | Native addon extraction/staging root override, before XDG/default paths; the loader appends `<version>`. Trimmed, `~`-expanded, and normalized; empty or relative values are ignored. Also moves downloaded tree-sitter grammars (`grammars/`); does not move sessions, plugins, or other data. Must be writable only by the user(s) running `omp`: an existing addon of the expected size is reused without re-extraction, and its version is checked only after it loads |
 | `PI_CONFIG_FILES`                                   | Platform path-list of settings overlays (`:` on Unix, `;` on Windows); loaded in order before explicit `--config` overlays |
-| `CLAUDE_CONFIG_DIR` | Claude Code user-config directory override (trimmed, resolved relative to process cwd); also moves Claude's `.claude.json` to `<override>/.claude.json`. Does not relocate project `.claude` directories |
 | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` | On macOS/Linux, redirect corresponding OMP paths only when the target `omp` root (or named-profile root) already exists    |
 | `PWD`                                               | Used when matching canonical current working directory in path helpers                                                     |
 | `OMP_WORKTREE_DIR`                                  | Agent-managed worktrees directory override (default `~/.omp/wt`); must be absolute or `~`-relative, relative paths are ignored; wins over the `worktree.base` setting                      |
@@ -529,7 +531,7 @@ These are read as runtime signals; they are usually set by the terminal/OS rathe
 | `APPDATA`, `XDG_CONFIG_HOME`                                                       | lspmux config path resolution                 |
 | `HOME`                                                                             | Path shortening in MCP command UI             |
 
-`COPILOT_HOME` overrides the GitHub Copilot config home (default `~/.copilot`), and `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` supplies additional comma-separated instruction directories. `JS_DEBUG_DAP_SERVER` selects an existing JavaScript debug-adapter server; `XDG_DATA_HOME` also participates in bundled debugger discovery.
+`JS_DEBUG_DAP_SERVER` selects an existing JavaScript debug-adapter server; `XDG_DATA_HOME` also participates in bundled debugger discovery.
 
 ---
 

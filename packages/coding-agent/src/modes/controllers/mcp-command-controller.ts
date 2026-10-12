@@ -1202,9 +1202,8 @@ export class MCPCommandController {
 	 *
 	 * Unlike {@link #findConfiguredServer} (which only reads writable OMP config
 	 * files), this also recognizes runtime-discovered servers that `/mcp list`
-	 * surfaces but that live in no writable config — e.g. servers from a Claude
-	 * Code marketplace plugin (`cloudflare:cloudflare-api`), `.cursor/mcp.json`,
-	 * etc. Without this, `/mcp reauth|test|unauth` reports "not found" for a
+	 * surfaces but that live in no writable config — e.g. servers from a
+	 * marketplace plugin (`cloudflare:cloudflare-api`). Without this, `/mcp reauth|test|unauth` reports "not found" for a
 	 * server the list just showed.
 	 *
 	 * For a discovered server, any persisted change is written into the *user*
@@ -1558,7 +1557,7 @@ export class MCPCommandController {
 				lines.push("");
 			}
 
-			// Show discovered servers (from .claude.json, .cursor/mcp.json, .vscode/mcp.json, etc.)
+			// Show discovered servers (from mcp.json, plugins, etc.)
 			if (discoveredServers.length > 0) {
 				for (const { providerName, shortPath, items: entries } of groupBySource(discoveredServers, e => e.source)) {
 					lines.push(theme.fg("accent", providerName) + theme.fg("muted", ` (${shortPath}):`));

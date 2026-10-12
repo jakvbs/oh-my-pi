@@ -103,6 +103,28 @@ describe("date-cwd-reminder", () => {
 			expect(secondUser.content).toBe("second");
 		});
 
+		it("tells the model the new session ID after a fork without rewriting earlier turns", () => {
+			const injector = new DateCwdReminderInjector();
+			const firstUser: Message = { role: "user", content: "first", timestamp: 1 };
+			const first = injector.transform({ systemPrompt: ["system"], messages: [firstUser] }, "d", "/w", "parent");
+			const secondUser: Message = { role: "user", content: "second", timestamp: 2 };
+
+			const second = injector.transform(
+				{ systemPrompt: ["system"], messages: [firstUser, createAssistantMessage("done"), secondUser] },
+				"d",
+				"/w",
+				"forked",
+			);
+
+			expect(second.messages[0]).toBe(first.messages[0]);
+			expect(first.messages[0]?.content).toStartWith(
+				"<system-reminder>\nToday: d; current working directory: '/w'; OMP session ID: parent.",
+			);
+			expect(second.messages[2]?.content).toStartWith(
+				"<system-reminder>\nToday: d; current working directory: '/w'; OMP session ID: forked.",
+			);
+		});
+
 		it("reuses injected message objects on provider request replay", () => {
 			const injector = new DateCwdReminderInjector();
 			const firstUser: Message = { role: "user", content: "first", timestamp: 1 };
@@ -358,7 +380,7 @@ describe("date-cwd reminder on the provider wire", () => {
 			}
 			const reminder = JSON.stringify([
 				"developer",
-				renderDateCwdReminder("2026-08-15", normalizePromptPath(tempDir.path())),
+				renderDateCwdReminder("2026-08-15", normalizePromptPath(tempDir.path()), session.sessionId),
 			]);
 			expect(wire[2]!.at(-1)).toBe(reminder);
 			expect(wire[4]!.filter(message => message === reminder)).toHaveLength(1);

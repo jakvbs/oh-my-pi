@@ -71,7 +71,6 @@ export interface ExtensionDashboardRuntime {
 	getProviders(): readonly ExtensionProvider[];
 	loadExtensions(disabledIds: string[]): Promise<Extension[]>;
 	toggleProvider(providerId: string): boolean;
-	toggleUserSource(providerId: string): boolean;
 	persistMcpToggle(name: string, enabled: boolean, sourcePath?: string): Promise<void>;
 	applyMcpToggle(name: string, enabled: boolean): Promise<void>;
 	subscribeMcpChanges(onChange: () => void): Array<() => void>;
@@ -228,7 +227,6 @@ export class ExtensionDashboard implements Component {
 				},
 				onToggle: (extensionId, enabled) => this.#handleExtensionToggle(extensionId, enabled),
 				onMasterToggle: providerId => this.#handleProviderToggle(providerId),
-				onUserSourceToggle: providerId => this.#handleUserSourceToggle(providerId),
 				masterSwitchProvider: this.#getActiveProviderId(),
 				mcpSource: this.#runtime.mcpSource,
 				toolSource: this.#toolSource,
@@ -391,16 +389,6 @@ export class ExtensionDashboard implements Component {
 		this.#runtime.toggleProvider(providerId);
 		if (!enabling) {
 			void this.#disconnectProviderMcpServers(providerId);
-			return;
-		}
-		void this.#refreshFromState();
-	}
-
-	/** Flip the `~/` opt-in for a foreign provider; user-level MCP servers go down on opt-out. */
-	#handleUserSourceToggle(providerId: string): void {
-		const enabled = this.#runtime.toggleUserSource(providerId);
-		if (!enabled) {
-			void this.#disconnectProviderMcpServers(providerId, "user");
 			return;
 		}
 		void this.#refreshFromState();

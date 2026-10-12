@@ -206,7 +206,7 @@ describe("runSubprocess yield reminders", () => {
 		expect(createAgentSessionSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it("appends the per-spawn subagent prompt after the default blocks so the static prefix stays shared", async () => {
+	it("hands the agent definition to the subagent as its policy block", async () => {
 		let userPrompt = "";
 		const session = createMockSession(({ text, emit }) => {
 			userPrompt = text;
@@ -232,15 +232,12 @@ describe("runSubprocess yield reminders", () => {
 		const systemPromptBuilder = createAgentSessionSpy.mock.calls[0]?.[0]?.systemPrompt;
 		expect(systemPromptBuilder).toBeFunction();
 		if (typeof systemPromptBuilder !== "function") throw new Error("Expected system prompt builder");
-		const systemPrompt = systemPromptBuilder(["system", "<project-context>\ncwd\n</project-context>"]);
+		const policy = systemPromptBuilder();
 
-		expect(systemPrompt).toHaveLength(3);
-		expect(systemPrompt?.[0]).toBe("system");
-		expect(systemPrompt?.[1]).toBe("<project-context>\ncwd\n</project-context>");
-		expect(systemPrompt?.[2]).toContain(baseAgent.systemPrompt);
+		expect(policy).toContain(baseAgent.systemPrompt);
 		// The parent-conversation CONTEXT section is gone: subagents get their
 		// background inside the assignment (or a local:// file), never a dump.
-		expect(systemPrompt?.[2]).not.toMatch(/CONTEXT\n=+/);
+		expect(policy).not.toMatch(/CONTEXT\n=+/);
 		expect(userPrompt).not.toMatch(/CONTEXT\n=+/);
 	});
 	it("resets yield state after an intervening wake wins the follow-up prompt race", async () => {

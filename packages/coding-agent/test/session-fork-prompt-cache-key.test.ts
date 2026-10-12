@@ -163,7 +163,7 @@ describe("provider prompt-cache key session affinity", () => {
 			},
 			{
 				name: "system",
-				options: { customSystemPrompt: "Use a different provider prompt." },
+				options: { systemPrompt: "Use a different provider prompt." },
 			},
 			{
 				name: "tools",

@@ -56,13 +56,6 @@ import { getAvailableThemes, getSymbolTheme, previewTheme, theme } from "@oh-my-
 import type { AgentHubOpenOptions, InteractiveModeContext } from "../../modes/types";
 import type { SessionOAuthAccountList } from "../../session/agent-session-types";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../session/auth-storage";
-import {
-	createForeignSessionStore,
-	foreignSessionInfoToSessionInfo,
-	foreignSessionSourceName,
-	persistForeignSession,
-} from "../../session/foreign-session-import";
-import type { ForeignSessionInfo, ForeignSessionSource } from "../../session/foreign-session-store";
 import { previewModelCompactionPoint, setModelCompactionPoint } from "../../session/model-compaction-threshold";
 import { isTranscriptEntry, type TranscriptEntry } from "../../session/session-context";
 import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
@@ -1718,89 +1711,36 @@ export class SelectorController {
 		return result;
 	}
 
-	async showSessionSelector(source?: ForeignSessionSource): Promise<void> {
-		let sessions: SessionInfo[];
-		let onSelectSession: (session: SessionInfo) => Promise<boolean>;
-		let selectorOptions: SessionSelectorOptions<SessionInfo>;
-
-		if (source) {
-			const sourceName = foreignSessionSourceName(source);
-			const store = createForeignSessionStore(source);
-			let foreignSessions: ForeignSessionInfo[];
-			try {
-				foreignSessions = await store.list();
-			} catch (error) {
-				this.ctx.showError(
-					`Failed to list ${sourceName} sessions: ${error instanceof Error ? error.message : String(error)}`,
-				);
-				return;
-			}
-			if (foreignSessions.length === 0) {
-				this.ctx.showWarning(`No ${sourceName} sessions found`);
-				return;
-			}
-			const foreignByPath = new Map(foreignSessions.map(session => [session.path, session]));
-			sessions = foreignSessions.map(foreignSessionInfoToSessionInfo);
-			onSelectSession = async session => {
-				try {
-					await this.ctx.settings.flush();
-				} catch (error) {
-					this.ctx.showError(
-						`Failed to save pending settings: ${error instanceof Error ? error.message : String(error)}`,
-					);
+	async showSessionSelector(): Promise<void> {
+		const [sessions, pinnedIds] = await Promise.all([
+			SessionManager.listForPicker(this.ctx.sessionManager.getCwd(), this.ctx.sessionManager.getSessionDir()),
+			loadPinnedSessionIds(),
+		]);
+		const historyStorage = this.ctx.historyStorage;
+		const historyMatcher = historyStorage ? (query: string) => historyStorage.matchingSessionIds(query) : undefined;
+		const onSelectSession = (session: SessionInfo) => this.handleResumeSession(session.path);
+		const selectorOptions: SessionSelectorOptions<SessionInfo> = {
+			onDelete: async (session: SessionInfo) => {
+				if (!(await this.#detachActiveSessionBeforeDeletion(session.path))) {
 					return false;
 				}
-				const foreignSession = foreignByPath.get(session.path);
-				if (!foreignSession) throw new Error(`Selected ${sourceName} session is no longer available`);
-				const imported = await persistForeignSession(store, foreignSession, {
-					fallbackCwd: this.ctx.sessionManager.getCwd(),
-					suppressBreadcrumb: true,
-				});
-				const sessionFile = imported.getSessionFile();
-				if (!sessionFile) throw new Error(`Failed to persist ${sourceName} session`);
-				await imported.close();
-				return await this.handleResumeSession(sessionFile, { settingsFlushed: true });
-			};
-			selectorOptions = {
-				title: `Import ${sourceName} Session`,
-				scopeLabel: false,
-				showCwd: true,
-			};
-		} else {
-			const [loadedSessions, pinnedIds] = await Promise.all([
-				SessionManager.listForPicker(this.ctx.sessionManager.getCwd(), this.ctx.sessionManager.getSessionDir()),
-				loadPinnedSessionIds(),
-			]);
-			sessions = loadedSessions;
-			const historyStorage = this.ctx.historyStorage;
-			const historyMatcher = historyStorage
-				? (query: string) => historyStorage.matchingSessionIds(query)
-				: undefined;
-			onSelectSession = session => this.handleResumeSession(session.path);
-			selectorOptions = {
-				onDelete: async (session: SessionInfo) => {
-					if (!(await this.#detachActiveSessionBeforeDeletion(session.path))) {
-						return false;
-					}
-					const storage = new FileSessionStorage();
-					try {
-						await storage.deleteSessionWithArtifacts(session.path);
-						return true;
-					} catch (error) {
-						throw new Error(
-							`Failed to delete session: ${error instanceof Error ? error.message : String(error)}`,
-							{ cause: error },
-						);
-					}
-				},
-				historyMatcher,
-				loadAllSessions: () => SessionManager.listAllForPicker(),
-				pinnedIds,
-				// Live getter so detach/newSession stays accurate; tolerant of partial
-				// contexts and in-memory sessions (undefined file means no marker).
-				currentSessionPath: () => this.ctx.sessionManager.getSessionFile?.() ?? undefined,
-			};
-		}
+				const storage = new FileSessionStorage();
+				try {
+					await storage.deleteSessionWithArtifacts(session.path);
+					return true;
+				} catch (error) {
+					throw new Error(`Failed to delete session: ${error instanceof Error ? error.message : String(error)}`, {
+						cause: error,
+					});
+				}
+			},
+			historyMatcher,
+			loadAllSessions: () => SessionManager.listAllForPicker(),
+			pinnedIds,
+			// Live getter so detach/newSession stays accurate; tolerant of partial
+			// contexts and in-memory sessions (undefined file means no marker).
+			currentSessionPath: () => this.ctx.sessionManager.getSessionFile?.() ?? undefined,
+		};
 
 		// Keep the fullscreen picker on the alternate buffer while a selected
 		// session is loaded and its transcript is rebuilt.

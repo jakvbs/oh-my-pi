@@ -23,12 +23,6 @@ export function resolveExtensionState(
 	if (isShadowed) return { state: "shadowed", disabledReason: "shadowed" };
 	if (providers.find(provider => provider.id === source.provider)?.enabled === false)
 		return { state: "disabled", disabledReason: "provider-disabled" };
-	if (
-		source.level === "user" &&
-		providers.find(provider => provider.id === source.provider)?.userSourceEnabled === false
-	) {
-		return { state: "disabled", disabledReason: "user-opt-in" };
-	}
 	return { state: "active" };
 }
 

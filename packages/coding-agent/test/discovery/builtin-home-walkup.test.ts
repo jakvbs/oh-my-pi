@@ -1,7 +1,7 @@
 /**
  * The native project walk-up must never treat `~/.omp` as a project config dir.
  * A cwd under home with no closer repo root (Windows temp dirs, scratch folders)
- * otherwise loads the user's ~/.omp/SYSTEM.md, RULES.md and AGENTS.md as project
+ * otherwise loads the user's ~/.omp/RULES.md and AGENTS.md as project
  * config, even when the agent dir points elsewhere (profiles, isolated runs).
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
@@ -13,7 +13,6 @@ import { type ContextFile, contextFileCapability } from "@oh-my-pi/pi-coding-age
 import { clearCache } from "@oh-my-pi/pi-coding-agent/capability/fs";
 import { type Skill, skillCapability } from "@oh-my-pi/pi-coding-agent/capability/skill";
 import { type Rule, ruleCapability } from "@oh-my-pi/pi-coding-agent/capability/rule";
-import { type SystemPrompt, systemPromptCapability } from "@oh-my-pi/pi-coding-agent/capability/system-prompt";
 import type { LoadContext } from "@oh-my-pi/pi-coding-agent/capability/types";
 // Importing discovery registers all providers as a side effect.
 import "@oh-my-pi/pi-coding-agent/discovery";
@@ -43,7 +42,6 @@ beforeEach(() => {
 	tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-home-walkup-"));
 	home = path.join(tempDir, "home");
 	// The user config root holds operator files; the active agent dir is isolated elsewhere.
-	writeFile(path.join(home, ".omp", "SYSTEM.md"), "operator system prompt\n");
 	writeFile(path.join(home, ".omp", "RULES.md"), "operator rule\n");
 	writeFile(path.join(home, ".omp", "AGENTS.md"), "operator agents\n");
 	writeFile(
@@ -68,13 +66,11 @@ test("a cwd under home without a repo does not load ~/.omp files as project conf
 	fs.mkdirSync(cwd, { recursive: true });
 	const ctx: LoadContext = { cwd, home, repoRoot: null };
 
-	const prompts = await loadNative<SystemPrompt>(systemPromptCapability.id, ctx);
 	const rules = await loadNative<Rule>(ruleCapability.id, ctx);
 	const contexts = await loadNative<ContextFile>(contextFileCapability.id, ctx);
 	const skills = await loadNative<Skill>(skillCapability.id, ctx);
 
 	const fromHome = (p: string) => p.startsWith(path.join(home, ".omp") + path.sep);
-	expect(prompts.filter(p => fromHome(p.path))).toEqual([]);
 	expect(rules.filter(r => fromHome(r.path))).toEqual([]);
 	expect(contexts.filter(c => fromHome(c.path))).toEqual([]);
 	expect(skills.filter(s => fromHome(s.path))).toEqual([]);
@@ -84,11 +80,11 @@ test("a project .omp between cwd and home is still found", async () => {
 	const project = path.join(home, "scratch");
 	const cwd = path.join(project, "nested");
 	fs.mkdirSync(cwd, { recursive: true });
-	writeFile(path.join(project, ".omp", "SYSTEM.md"), "project system prompt\n");
+	writeFile(path.join(project, ".omp", "AGENTS.md"), "project agents\n");
 
-	const prompts = await loadNative<SystemPrompt>(systemPromptCapability.id, { cwd, home, repoRoot: null });
+	const contexts = await loadNative<ContextFile>(contextFileCapability.id, { cwd, home, repoRoot: null });
 
-	expect(prompts.map(p => [p.path, p.level])).toEqual([[path.join(project, ".omp", "SYSTEM.md"), "project"]]);
+	expect(contexts.map(c => [c.path, c.level])).toEqual([[path.join(project, ".omp", "AGENTS.md"), "project"]]);
 });
 
 test("noncanonical home never becomes a native project config root", async () => {
@@ -97,15 +93,15 @@ test("noncanonical home never becomes a native project config root", async () =>
 	const link = path.join(tempDir, "home-link");
 	fs.mkdirSync(cwd, { recursive: true });
 	fs.symlinkSync(home, link, "dir");
-	writeFile(path.join(project, ".omp", "SYSTEM.md"), "project system prompt\n");
+	writeFile(path.join(project, ".omp", "AGENTS.md"), "project agents\n");
 
 	for (const alias of [`${home}${path.sep}`, link]) {
 		const ctx: LoadContext = { cwd, home: alias, repoRoot: null };
-		const prompts = await loadNative<SystemPrompt>(systemPromptCapability.id, ctx);
+		const contexts = await loadNative<ContextFile>(contextFileCapability.id, ctx);
 		const rules = await loadNative<Rule>(ruleCapability.id, ctx);
 		const skills = await loadNative<Skill>(skillCapability.id, ctx);
 
-		expect(prompts.map(p => p.path)).toEqual([path.join(project, ".omp", "SYSTEM.md")]);
+		expect(contexts.map(c => c.path)).toEqual([path.join(project, ".omp", "AGENTS.md")]);
 		expect(rules.filter(rule => rule.path === path.join(home, ".omp", "RULES.md"))).toEqual([]);
 		expect(skills.filter(skill => skill.path === path.join(home, ".omp", "skills", "operator", "SKILL.md"))).toEqual(
 			[],

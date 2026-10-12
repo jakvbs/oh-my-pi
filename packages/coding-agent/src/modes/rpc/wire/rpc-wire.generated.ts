@@ -412,6 +412,8 @@ export interface ContextUsage {
 	tokens: number;
 	contextWindow: number;
 	percent: number;
+	/** Tokens at which auto-compaction triggers; absent when compaction is off. */
+	compactionThreshold?: number;
 }
 
 /** Displayable queue-chip text for pending user-authored messages; accepted verbatim by `remove_queued_message`. */

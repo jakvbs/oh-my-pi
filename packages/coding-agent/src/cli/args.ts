@@ -42,8 +42,6 @@ export interface Args {
 	maxTime?: number;
 	apiKey?: string;
 	systemPrompt?: string;
-	systemPromptTemplate?: string;
-	appendSystemPrompt?: string;
 	thinking?: ConfiguredThinkingLevel;
 	serviceTier?: ServiceTierOpenAISettingValue;
 	hideThinking?: boolean;
@@ -51,8 +49,6 @@ export interface Args {
 	externalThinking?: boolean;
 	continue?: boolean;
 	resume?: string | true;
-	fromClaude?: boolean;
-	fromCodex?: boolean;
 	help?: boolean;
 	version?: boolean;
 	mode?: Mode;
@@ -121,8 +117,8 @@ export function validateGoalLaunch(args: Args, interactive: boolean): void {
 	if (!interactive) {
 		throw new CliUsageError("--goal requires an interactive terminal (not --print or --mode).");
 	}
-	if (args.continue || args.resume || args.fork || args.fromClaude || args.fromCodex) {
-		throw new CliUsageError("--goal requires a fresh session (no resume, continue, fork, or import).");
+	if (args.continue || args.resume || args.fork) {
+		throw new CliUsageError("--goal requires a fresh session (no resume, continue, or fork).");
 	}
 }
 
@@ -296,10 +292,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.alias = arg.slice("--alias=".length);
 		} else if (arg === "--continue" || arg === "-c") {
 			result.continue = true;
-		} else if (arg === "--from-claude") {
-			result.fromClaude = true;
-		} else if (arg === "--from-codex") {
-			result.fromCodex = true;
 		} else if (arg === "--no-session") {
 			result.noSession = true;
 		} else if (arg === "--no-tools") {
@@ -385,9 +377,6 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 		}
 	}
 
-	if (result.systemPrompt !== undefined && result.systemPromptTemplate !== undefined) {
-		throw new CliUsageError("--system-prompt and --system-prompt-template cannot be combined");
-	}
 	return result;
 }
 

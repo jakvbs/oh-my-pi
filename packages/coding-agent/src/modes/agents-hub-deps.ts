@@ -149,7 +149,7 @@ export function createAgentsHubDeps(
 				modelRegistry,
 				settings,
 				model: selectedModel,
-				systemPrompt: [prompt.render(agentCreationArchitectPrompt, {})],
+				fixedSystemPrompt: [prompt.render(agentCreationArchitectPrompt, {})],
 				hasUI: false,
 				enableLsp: false,
 				enableMCP: false,
