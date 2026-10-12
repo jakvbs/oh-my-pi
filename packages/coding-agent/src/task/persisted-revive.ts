@@ -212,7 +212,7 @@ export function createPersistedSubagentReviverFactory(
 					outputSchemaMode: init.outputSchemaMode,
 					restrictToolNames: restrictToolNames || undefined,
 					requireYieldTool: true,
-					systemPrompt: () => [...init.systemPrompt],
+					fixedSystemPrompt: init.systemPrompt,
 					// Inherit current owner policy, never extension authority from a transcript.
 					extensionRoots: () => ctx.session.effectiveExtensionRoots,
 					preloadedPreparedExtensions: ctx.session.preparedExtensions,

@@ -171,7 +171,7 @@ export interface ConfigFileResult<T> {
 }
 
 /**
- * Find the first existing config file (for non-JSON files like SYSTEM.md).
+ * Find the first existing config file (for non-JSON files like TITLE_SYSTEM.md).
  * Returns just the path, or undefined if not found.
  */
 export function findConfigFile(subpath: string, options: GetConfigDirsOptions = {}): string | undefined {

@@ -13,7 +13,6 @@ import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
 import {
 	cfgIncludeWorkspaceTree,
 	cfgOmitThinking,
-	cfgPersonality,
 	cfgTemperature,
 	cfgTierOpenai,
 	cfgTopP,
@@ -116,21 +115,15 @@ describe("AgentSession live settings", () => {
 		await Promise.resolve();
 		await live.refreshBaseSystemPrompt();
 		expect(live.systemPrompt.join("\n")).toContain("live-settings-tree-marker/");
-
-		const beforePersonality = live.systemPrompt.join("\n");
-		cfgPersonality.set(settings, "none");
-		await Promise.resolve();
-		await live.refreshBaseSystemPrompt();
-		expect(live.systemPrompt.join("\n")).not.toBe(beforePersonality);
 	});
 
 	it("rebuilds the system prompt once for a bulk change across several prompt inputs", async () => {
 		const settings = Settings.isolated();
 		let builds = 0;
 		const live = await start(settings, {
-			systemPrompt: defaultPrompt => {
+			systemPrompt: () => {
 				builds++;
-				return defaultPrompt;
+				return "";
 			},
 		});
 		// Let startup-queued rebuilds drain before counting.
@@ -138,7 +131,6 @@ describe("AgentSession live settings", () => {
 		const before = live.systemPrompt.join("\n");
 		builds = 0;
 
-		cfgPersonality.set(settings, "none");
 		cfgIncludeWorkspaceTree.set(settings, true);
 		cfgTtsrEnabled.set(settings, false);
 		cfgToolsFormat.set(settings, "glm");

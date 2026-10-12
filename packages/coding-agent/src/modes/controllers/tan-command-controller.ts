@@ -154,7 +154,7 @@ export class TanCommandController {
 								sessionManager: cloneManager,
 								model,
 								thinkingLevel,
-								systemPrompt,
+								fixedSystemPrompt: systemPrompt,
 								toolNames,
 								providerSessionId: `${parentSessionId}:tan:${Snowflake.next()}`,
 								providerPromptCacheKey: parentPromptCacheKey,

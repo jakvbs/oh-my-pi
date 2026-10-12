@@ -24,7 +24,6 @@ import { type ExtensionModule, extensionModuleCapability } from "../capability/e
 import { readDirEntries, readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Settings, settingsCapability } from "../capability/settings";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	buildExtensionModuleItems,
@@ -128,20 +127,6 @@ async function loadMCPFromSettings(
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
-
-	// User-level: ~/.gemini/GEMINI.md
-	const userGeminiMd = getUserPath(ctx, "gemini", "GEMINI.md");
-	if (userGeminiMd) {
-		const content = await readFile(userGeminiMd);
-		if (content) {
-			items.push({
-				path: userGeminiMd,
-				content,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userGeminiMd, "user"),
-			});
-		}
-	}
 
 	// Project-level: .gemini/GEMINI.md
 	const projectGeminiMd = getProjectPath(ctx, "gemini", "GEMINI.md");
@@ -313,39 +298,6 @@ registerProvider(contextFileCapability.id, {
 	description: "Load GEMINI.md context files",
 	priority: PRIORITY,
 	load: loadContextFiles,
-});
-
-// =============================================================================
-// System Prompt
-// =============================================================================
-
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-
-	const load = async (filePath: string | null, level: "user" | "project", kind: "text" | "template") => {
-		if (!filePath) return;
-		const content = await readFile(filePath);
-		if (content) {
-			items.push({ path: filePath, content, kind, level, _source: createSourceMeta(PROVIDER_ID, filePath, level) });
-		}
-	};
-
-	// Project entries first: dedupe is first-wins, so a project file claims its
-	// key before a same-scope user file can survive.
-	await load(getProjectPath(ctx, "gemini", "SYSTEM_TEMPLATE.md"), "project", "template");
-	await load(getProjectPath(ctx, "gemini", "system.md"), "project", "text");
-	await load(getUserPath(ctx, "gemini", "SYSTEM_TEMPLATE.md"), "user", "template");
-	await load(getUserPath(ctx, "gemini", "system.md"), "user", "text");
-
-	return { items, warnings: [] };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load system.md custom system prompt files",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
 });
 
 registerProvider(extensionCapability.id, {

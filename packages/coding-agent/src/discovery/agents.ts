@@ -14,7 +14,6 @@ import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	discoverRuleFromMarkdown,
@@ -96,8 +95,8 @@ export function getWslWindowsHomeCandidate(options: UserPathCandidateOptions = {
 /**
  * Memo for the default-probe WSL home resolution, keyed by the inputs that
  * decide it (platform + WSL markers + `USERPROFILE`). Discovery calls
- * {@link getUserPathCandidates} from every loader (skills, rules, prompts,
- * commands, AGENTS.md, SYSTEM.md); the host-home probe spawns `cmd.exe` over
+ * {@link getUserPathCandidates} from every user-scope loader (skills, rules,
+ * prompts, commands); the host-home probe spawns `cmd.exe` over
  * the WSL interop pipe, so without the memo a wedged pipe costs one
  * {@link HOST_PROBE_TIMEOUT_MS} stall per loader. Keying by inputs keeps
  * test/SDK environment changes visible instead of pinning the first answer
@@ -274,19 +273,22 @@ registerProvider<SlashCommand>(slashCommandCapability.id, {
 
 // Context Files (AGENTS.md)
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
-	const load = async (filePath: string, level: "user" | "project"): Promise<ContextFile | null> => {
+	const load = async (filePath: string): Promise<ContextFile | null> => {
 		const content = await readFile(filePath);
 		if (!content) return null;
 		// filePath is <ancestor>/.agent(s)/AGENTS.md — go up past the config dir to the ancestor
 		const ancestorDir = path.dirname(path.dirname(filePath));
-		const depth = level === "project" ? calculateDepth(ctx.cwd, ancestorDir, path.sep) : undefined;
-		return { path: filePath, content, level, depth, _source: createSourceMeta(PROVIDER_ID, filePath, level) };
+		const depth = calculateDepth(ctx.cwd, ancestorDir, path.sep);
+		return {
+			path: filePath,
+			content,
+			level: "project",
+			depth,
+			_source: createSourceMeta(PROVIDER_ID, filePath, "project"),
+		};
 	};
 
-	const results = await Promise.all([
-		...getProjectPathCandidates(ctx, "AGENTS.md").map(p => load(p, "project")),
-		...getUserPathCandidates(ctx, "AGENTS.md").map(p => load(p, "user")),
-	]);
+	const results = await Promise.all(getProjectPathCandidates(ctx, "AGENTS.md").map(load));
 
 	return { items: results.filter((r): r is ContextFile => r !== null), warnings: [] };
 }
@@ -294,37 +296,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 registerProvider<ContextFile>(contextFileCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load AGENTS.md from .agent and .agents (project walk-up + user home)",
+	description: "Load AGENTS.md from .agent and .agents (project walk-up)",
 	priority: PRIORITY,
 	load: loadContextFiles,
-});
-
-// System Prompt (SYSTEM.md, SYSTEM_TEMPLATE.md)
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const load = async (
-		filePath: string,
-		level: "user" | "project",
-		kind: "text" | "template",
-	): Promise<SystemPrompt | null> => {
-		const content = await readFile(filePath);
-		if (!content) return null;
-		return { path: filePath, content, kind, level, _source: createSourceMeta(PROVIDER_ID, filePath, level) };
-	};
-
-	const results = await Promise.all([
-		...getProjectPathCandidates(ctx, "SYSTEM.md").map(p => load(p, "project", "text")),
-		...getProjectPathCandidates(ctx, "SYSTEM_TEMPLATE.md").map(p => load(p, "project", "template")),
-		...getUserPathCandidates(ctx, "SYSTEM.md").map(p => load(p, "user", "text")),
-		...getUserPathCandidates(ctx, "SYSTEM_TEMPLATE.md").map(p => load(p, "user", "template")),
-	]);
-
-	return { items: results.filter((r): r is SystemPrompt => r !== null), warnings: [] };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load SYSTEM.md and SYSTEM_TEMPLATE.md from .agent and .agents (project walk-up + user home)",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
 });

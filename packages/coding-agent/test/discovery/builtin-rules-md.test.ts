@@ -2,8 +2,9 @@
  * Regression tests for top-level `RULES.md` sticky rules.
  *
  * `RULES.md` (singular, top-level) MUST be loaded as a sticky always-apply rule
- * from both `~/.omp/agent/RULES.md` (user) and the nearest `.omp/RULES.md`
- * (project, walked up from cwd to repoRoot).
+ * from the nearest `.omp/RULES.md` (walked up from cwd to repoRoot). User-level
+ * instructions live in the policy block (`<agentDir>/AGENTS.md`), so
+ * `~/.omp/agent/RULES.md` is not a rule.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -78,50 +79,20 @@ test("project RULES.md is found walking up from a sub-package cwd", async () => 
 	expect(projectRule?.path).toBe(path.join(project, ".omp", "RULES.md"));
 });
 
-test("user and project sticky RULES.md both survive public capability dedup", async () => {
+test("user RULES.md is not a rule; project RULES.md survives public capability dedup", async () => {
 	const userRulesPath = path.join(home, ".omp", "agent", "RULES.md");
 	const projectRulesPath = path.join(project, ".omp", "RULES.md");
-	const userRuleText = "User sticky rule: keep the personal safety checklist active.\n";
-	const projectRuleText = "Project sticky rule: require repo-local release notes.\n";
-	writeFile(userRulesPath, userRuleText);
-	writeFile(projectRulesPath, projectRuleText);
+	writeFile(userRulesPath, "User sticky rule.\n");
+	writeFile(projectRulesPath, "---\nalwaysApply: false\n---\nProject sticky rule.\n");
 
 	const rules = await loadRulesCapability(project);
 
-	const stickyRules = rules.filter(rule => rule.path === userRulesPath || rule.path === projectRulesPath);
-	expect(stickyRules).toHaveLength(2);
-
-	const userRule = stickyRules.find(rule => rule._source.level === "user");
-	const projectRule = stickyRules.find(rule => rule._source.level === "project");
-
-	if (!userRule) throw new Error("user sticky rule missing");
-	expect(userRule.name).toBe("RULES");
-	expect(userRule.path).toBe(userRulesPath);
-	expect(userRule._source.path).toBe(userRulesPath);
-	expect(userRule.alwaysApply).toBe(true);
-	expect(userRule.content).toContain(userRuleText.trim());
-	expect("_shadowed" in userRule).toBe(false);
-
-	if (!projectRule) throw new Error("project sticky rule missing");
-	expect(projectRule.name).toBe("RULES@project");
-	expect(projectRule.path).toBe(projectRulesPath);
-	expect(projectRule._source.path).toBe(projectRulesPath);
-	expect(projectRule.alwaysApply).toBe(true);
-	expect(projectRule.content).toContain(projectRuleText.trim());
-	expect("_shadowed" in projectRule).toBe(false);
-
-	expect(userRule.name).not.toBe(projectRule.name);
-	expect(userRule.content).not.toBe(projectRule.content);
-});
-
-test("alwaysApply is forced even when frontmatter says false", async () => {
-	writeFile(path.join(home, ".omp", "agent", "RULES.md"), "---\nalwaysApply: false\n---\nStick around anyway.\n");
-
-	const rules = await loadNativeRules({ cwd: project, home, repoRoot: project });
-
-	const userRule = rules.find(r => r._source.level === "user" && r.name === "RULES");
-	expect(userRule?.alwaysApply).toBe(true);
-	expect(userRule?.content).toContain("Stick around anyway.");
+	expect(rules.find(rule => rule.path === userRulesPath)).toBeUndefined();
+	const projectRule = rules.find(rule => rule.path === projectRulesPath);
+	expect(projectRule?.name).toBe("RULES@project");
+	// alwaysApply is forced even when frontmatter says false.
+	expect(projectRule?.alwaysApply).toBe(true);
+	expect(projectRule?.content).toContain("Project sticky rule.");
 });
 
 test("enabled false omits a discovered rule", async () => {

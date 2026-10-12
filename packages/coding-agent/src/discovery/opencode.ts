@@ -20,7 +20,6 @@ import * as path from "node:path";
 import { isRecord, logger, parseFrontmatter } from "@oh-my-pi/pi-utils";
 import { JSONC } from "bun";
 import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
@@ -158,31 +157,6 @@ function getConfigSources(ctx: LoadContext): OpenCodeConfigSource[] {
 		if (configPath) sources.push({ path: configPath, level: "project" });
 	}
 	return sources;
-}
-
-// =============================================================================
-// Context Files (AGENTS.md)
-// =============================================================================
-
-async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
-	const items: ContextFile[] = [];
-	const warnings: string[] = [];
-
-	// User-level only: ~/.config/opencode/AGENTS.md
-	const userAgentsMd = getUserPath(ctx, "opencode", "AGENTS.md");
-	if (userAgentsMd) {
-		const content = await readFile(userAgentsMd);
-		if (content) {
-			items.push({
-				path: userAgentsMd,
-				content,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userAgentsMd, "user"),
-			});
-		}
-	}
-
-	return { items, warnings };
 }
 
 // =============================================================================
@@ -495,14 +469,6 @@ async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
 // =============================================================================
 // Provider Registration
 // =============================================================================
-
-registerProvider(contextFileCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load AGENTS.md from ~/.config/opencode/",
-	priority: PRIORITY,
-	load: loadContextFiles,
-});
 
 registerProvider(mcpCapability.id, {
 	id: PROVIDER_ID,

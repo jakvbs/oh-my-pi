@@ -75,7 +75,6 @@ Loads `.omp` rules from:
 
 - project rules: `<cwd>/.omp/rules/*.{md,mdc}` when the cwd's `.omp/` directory is non-empty
 - user rules: `<active-native-agent-dir>/rules/*.{md,mdc}`
-- sticky user rule: `<active-native-agent-dir>/RULES.md`
 - sticky project rule: `RULES.md` from the nearest non-empty `.omp/` directory selected while walking from cwd toward the repository root; OMP does not continue farther when that directory lacks the file
 
 The active native agent directory is `~/.omp/agent` by default, follows named profiles, and honors `PI_CODING_AGENT_DIR`.
@@ -86,9 +85,9 @@ Normalization:
 - frontmatter parsed via `parseFrontmatter`
 - `content` = body (frontmatter stripped)
 - `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `question`, `scope`, `agents`, and `interruptMode` are parsed by `buildRuleFromMarkdown`
-- user sticky `RULES.md` is named `RULES`; project sticky `RULES.md` is named `RULES@project`; both are forced to `alwaysApply: true`
+- project sticky `RULES.md` is named `RULES@project` and forced to `alwaysApply: true`
 
-The distinct sticky names allow user and project content to coexist. Native items are appended as project rules, user rules, user sticky `RULES.md`, then project sticky `RULES.md`; an earlier regular rule with either sticky name can still shadow that sticky file.
+Native items are appended as project rules, user rules, then project sticky `RULES.md`; an earlier regular rule named `RULES@project` can still shadow that sticky file. `<agentDir>/RULES.md` is not a rule; user-wide instructions live in the policy block (`<agentDir>/AGENTS.md`).
 
 Important caveat: `condition` values that look like file globs are converted into `tool:edit(...)` / `tool:write(...)` scope shorthands with catch-all condition `.*`.
 
@@ -203,7 +202,7 @@ Within a provider, item order comes from `loadFilesFromDir` glob result ordering
 
 Notable source-order differences:
 
-- `native` appends project `.omp/rules`, user `~/.omp/agent/rules`, user `RULES.md`, then nearest project `RULES.md`.
+- `native` appends project `.omp/rules`, user `~/.omp/agent/rules`, then nearest project `RULES.md`.
 - `omp-plugins` appends `rules/` results per configured extension package root.
 - `agents` appends project-walk `.agent`/`.agents` rule dirs before user home dirs.
 - `cursor` appends user then project results.

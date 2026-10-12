@@ -4,11 +4,11 @@
  * Built-in providers only discover fixed names and keep one file per scope.
  * These names are additive: AGENTS.local.md loads beside AGENTS.md instead of
  * taking its slot. A linked worktree also reads each name from the primary
- * checkout, which the normal walk never reaches.
+ * checkout, which the normal walk never reaches. Project-level only: user-wide
+ * instructions belong in the policy block (`<agentDir>/AGENTS.md`).
  */
 import * as path from "node:path";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
-import { getAgentDir } from "@oh-my-pi/pi-utils";
 import { boundSettings, registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { readFile } from "../capability/fs";
@@ -19,22 +19,11 @@ import { calculateDepth, createSourceMeta, loadStandaloneContextFiles } from "./
 const PROVIDER_ID = "custom-context";
 const DISPLAY_NAME = "Custom context files";
 
-interface ConfiguredNames {
-	names: string[];
-	/**
-	 * Whether names may be read from the user agent directory. Not when a project
-	 * config supplied the list: a repository must not pull files such as
-	 * `config.yml` from `~/.omp/agent` into the prompt.
-	 */
-	includeAgentDir: boolean;
-}
-
 /** Trimmed, de-duplicated names; `cfgContextFilesExtra.validate` already rejected paths and built-in names. */
-function configuredNames(): ConfiguredNames {
+function configuredNames(): string[] {
 	const settings = boundSettings();
-	if (!settings) return { names: [], includeAgentDir: false };
-	const names = [...new Set(cfgContextFilesExtra.get(settings).map(entry => entry.trim()))];
-	return { names, includeAgentDir: cfgContextFilesExtra.provenance(settings) !== "project" };
+	if (!settings) return [];
+	return [...new Set(cfgContextFilesExtra.get(settings).map(entry => entry.trim()))];
 }
 
 function pushFile(items: ContextFile[], seen: Set<string>, file: ContextFile): void {
@@ -58,7 +47,7 @@ function primaryDepth(ctx: LoadContext, primary: string): number {
 }
 
 export async function loadCustomContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
-	const { names, includeAgentDir } = configuredNames();
+	const names = configuredNames();
 	if (names.length === 0) return { items: [], warnings: [] };
 
 	const items: ContextFile[] = [];
@@ -87,22 +76,6 @@ export async function loadCustomContextFiles(ctx: LoadContext): Promise<LoadResu
 				depth,
 				additive: true,
 				_source: createSourceMeta(PROVIDER_ID, candidate, "project"),
-			});
-		}
-	}
-
-	if (includeAgentDir) {
-		const agentDir = ctx.agentDir ?? getAgentDir();
-		for (const name of names) {
-			const candidate = path.join(agentDir, name);
-			const content = await readFile(candidate);
-			if (!content) continue;
-			pushFile(items, seen, {
-				path: candidate,
-				content,
-				level: "user",
-				additive: true,
-				_source: createSourceMeta(PROVIDER_ID, candidate, "user"),
 			});
 		}
 	}

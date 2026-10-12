@@ -79,8 +79,11 @@ describe("inline tool descriptors across model switches", () => {
 			expect(back.prompt).toContain("type read = (");
 		});
 	}
-	for (const systemPrompt of ["Fixed agent instructions.", ["Fixed agent instructions."]]) {
-		it(`restores required descriptions after switching with a fixed ${typeof systemPrompt === "string" ? "string" : "array"} prompt`, async () => {
+	for (const promptOption of [
+		{ systemPrompt: "Fixed agent instructions." },
+		{ fixedSystemPrompt: ["Fixed agent instructions."] },
+	]) {
+		it(`restores required descriptions after switching with ${Object.keys(promptOption)[0]}`, async () => {
 			const { session } = await createAgentSession({
 				cwd: dir,
 				agentDir: dir,
@@ -88,7 +91,7 @@ describe("inline tool descriptors across model switches", () => {
 				sessionManager: SessionManager.inMemory(),
 				settings: Settings.isolated({ inlineToolDescriptors: "auto" }),
 				model: gemini,
-				systemPrompt,
+				...promptOption,
 				disableExtensionDiscovery: true,
 				skills: [],
 				contextFiles: [],

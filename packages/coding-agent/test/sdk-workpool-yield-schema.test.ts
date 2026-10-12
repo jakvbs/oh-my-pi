@@ -335,8 +335,7 @@ describe("SDK workpool yield schema", () => {
 					required: ["pool#1"],
 					additionalProperties: false,
 				},
-				systemPrompt: base => [
-					...base,
+				systemPrompt: () =>
 					prompt.render(subagentSystemPromptTemplate, {
 						agent: "Worker",
 						context: "",
@@ -351,7 +350,6 @@ describe("SDK workpool yield schema", () => {
 						ircOmittedCount: 0,
 						ircSelfId: "",
 					}),
-				],
 				parentTaskPrefix: "workpool-prompt-sync",
 				agentId: "workpool-prompt-sync",
 				agentName: "scout",

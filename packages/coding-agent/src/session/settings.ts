@@ -365,40 +365,6 @@ export const cfgSkillful = register({
 	},
 });
 
-/** Personality preset. */
-export type Personality = SettingValueOf<typeof cfgPersonality>;
-
-export const cfgPersonality = register({
-	id: "personality",
-	type: "enum",
-	values: ["default", "friendly", "pragmatic", "none"] as const,
-	default: "default",
-	ui: {
-		tab: "model",
-		group: "Prompt",
-		label: "Personality",
-		description: "Communication style rendered into the system prompt's personality block",
-		options: [
-			{
-				value: "default",
-				label: "Default",
-				description: "Terse, evidence-first engineer; dense, action-oriented replies",
-			},
-			{
-				value: "friendly",
-				label: "Friendly",
-				description: "Warm, encouraging collaborator focused on momentum and morale",
-			},
-			{
-				value: "pragmatic",
-				label: "Pragmatic",
-				description: "Direct, efficient engineer focused on clarity and rigor",
-			},
-			{ value: "none", label: "None", description: "Omit the personality block entirely" },
-		],
-	},
-});
-
 // Sampling
 export const cfgTemperature = register({
 	id: "temperature",

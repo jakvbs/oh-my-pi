@@ -60,7 +60,7 @@ describe("readPipedInput", () => {
 	});
 });
 
-describe("system prompt template CLI resolution", () => {
+describe("system prompt CLI resolution", () => {
 	async function buildPromptOptions(cwd: string, args: string[]): Promise<CreateAgentSessionOptions> {
 		const authStorage = await AuthStorage.create(":memory:");
 		try {
@@ -76,28 +76,15 @@ describe("system prompt template CLI resolution", () => {
 		}
 	}
 
-	it("discovers SYSTEM_TEMPLATE.md and preserves the raw template", async () => {
-		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-system-template-"));
-		cleanupDirs.push(projectDir);
-		await fs.mkdir(path.join(projectDir, ".omp"), { recursive: true });
-		await fs.writeFile(path.join(projectDir, ".omp", "SYSTEM_TEMPLATE.md"), "Hello {{model}}");
-
-		const options = await buildPromptOptions(projectDir, []);
-
-		expect(options.systemPromptTemplate).toBe("Hello {{model}}");
-		expect(options.customSystemPrompt).toBeUndefined();
-	});
-
-	it("lets an explicit literal prompt suppress discovered templates", async () => {
+	it("reads a --system-prompt file into the policy block", async () => {
 		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-system-prompt-"));
 		cleanupDirs.push(projectDir);
-		await fs.mkdir(path.join(projectDir, ".omp"), { recursive: true });
-		await fs.writeFile(path.join(projectDir, ".omp", "SYSTEM_TEMPLATE.md"), "discovered");
+		const profile = path.join(projectDir, "scout.md");
+		await fs.writeFile(profile, "You are a scout.");
 
-		const options = await buildPromptOptions(projectDir, ["--system-prompt", "inline literal"]);
+		const options = await buildPromptOptions(projectDir, ["--system-prompt", profile]);
 
-		expect(options.customSystemPrompt).toBe("inline literal");
-		expect(options.systemPromptTemplate).toBeUndefined();
+		expect(options.systemPrompt).toBe("You are a scout.");
 	});
 });
 

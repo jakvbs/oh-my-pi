@@ -173,21 +173,16 @@ describe("contextFiles.extra", () => {
 		expect(byPath.has(path.join(primary, "AGENTS.md"))).toBe(false);
 	});
 
-	test("loads a user-agent-dir extra file without shadowing user AGENTS.md", async () => {
+	test("never reads extra names from the user agent directory", async () => {
 		const agentDir = path.join(tempHome, ".omp", "agent");
 		await fs.mkdir(agentDir, { recursive: true });
-		await fs.writeFile(path.join(agentDir, "AGENTS.md"), "# user shared\n");
 		await fs.writeFile(path.join(agentDir, "AGENTS.local.md"), "# user personal\n");
-		await fs.writeFile(path.join(tempDir, "AGENTS.md"), "# project\n");
+		await fs.writeFile(path.join(tempDir, "AGENTS.local.md"), "# project personal\n");
 		await bind(["AGENTS.local.md"]);
 
 		const result = await loadCapability<ContextFile>(contextFileCapability.id, { cwd: tempDir });
-		const userLocal = result.items.find(file => file.path === path.join(agentDir, "AGENTS.local.md"));
-		const userShared = result.items.find(file => file.path === path.join(agentDir, "AGENTS.md"));
 
-		expect(userLocal?.level).toBe("user");
-		expect(userLocal?.content).toBe("# user personal\n");
-		expect(userShared?.content).toBe("# user shared\n");
+		expect(result.items.map(file => file.path)).toEqual([path.join(tempDir, "AGENTS.local.md")]);
 	});
 
 	test("a project-configured list does not read the user agent directory", async () => {

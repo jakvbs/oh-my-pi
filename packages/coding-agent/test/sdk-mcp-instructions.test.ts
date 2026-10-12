@@ -33,9 +33,8 @@ const MCP_ROUTE_SECTION = "## MCP Tool Routes";
 const CONTEXT_MODE_ROUTE = '- "ctx_execute" → `xd://mcp__context_mode_ctx_execute`';
 const CONTEXT_MODE_MCP_TOOL_NAME = "mcp__context_mode_ctx_execute";
 /** Sentinel proving the user's append prompt stays a block of its own. */
-const USER_APPEND_MARKER = "USER_APPEND_SENTINEL_7d13f2: prefer Bun APIs over Node APIs.";
+const POLICY_MARKER = "POLICY_SENTINEL_7d13f2: prefer Bun APIs over Node APIs.";
 /** Heading that opens the user's append section, asserted literally rather than imported. */
-const USER_APPEND_SECTION_HEADING = "## User Instructions";
 /** The route section's instruction to read an `xd://` path before first use. */
 const READ_FIRST_CLAUSE = "for docs + JSON schema before first use";
 
@@ -220,7 +219,7 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 		}
 	}, 20_000);
 
-	it("keeps the user append prompt out of the MCP instructions section", async () => {
+	it("keeps the policy block apart from server-controlled MCP instructions", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir: tempDir,
@@ -235,21 +234,14 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			slashCommands: [],
 			enableLsp: false,
 			enableMCP: true,
-			appendSystemPrompt: USER_APPEND_MARKER,
+			systemPrompt: POLICY_MARKER,
 		});
 		try {
-			// Without `hasUI`, MCP discovery is not deferred: the fixture connects during
-			// session creation, so the first prompt already carries both the server
-			// instructions and the user's append prompt — nothing to wait for.
-			const prompt = session.systemPrompt.join("\n");
-
-			expect(prompt).toContain(SERVER_INSTRUCTIONS);
-			// The user's append prompt is its own block, never the trailing
-			// paragraph of the server-controlled section above it.
-			const boundary = prompt.indexOf(`\n${USER_APPEND_SECTION_HEADING}\n\n`);
-			expect(boundary).toBeGreaterThan(prompt.indexOf(SERVER_INSTRUCTIONS));
-			expect(prompt.slice(prompt.indexOf("## MCP Server Instructions"), boundary)).not.toContain(USER_APPEND_MARKER);
-			expect(prompt.slice(boundary)).toContain(USER_APPEND_MARKER);
+			// Without `hasUI`, MCP discovery connects during session creation.
+			const [, policy, context] = session.systemPrompt;
+			expect(policy).toBe(POLICY_MARKER);
+			expect(context).toContain(SERVER_INSTRUCTIONS);
+			expect(context).not.toContain(POLICY_MARKER);
 		} finally {
 			await session.dispose();
 		}

@@ -9,8 +9,6 @@
 import * as path from "node:path";
 import { logger, parseFrontmatter } from "@oh-my-pi/pi-utils";
 import { isUserSourceEnabled, registerProvider } from "../capability";
-import type { ContextFile } from "../capability/context-file";
-import { contextFileCapability } from "../capability/context-file";
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readFile } from "../capability/fs";
 import type { Hook } from "../capability/hook";
@@ -25,7 +23,6 @@ import { settings as activeSettings } from "../config/settings";
 import type { Skill } from "../capability/skill";
 import { skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import { slashCommandFrontmatterDisplay } from "@oh-my-pi/pi-tui/overlays/extensions/inspector-model";
 import type { CustomTool } from "../capability/tool";
 import { toolCapability } from "../capability/tool";
@@ -68,32 +65,6 @@ function readCodexUserSkillsToggle(): boolean {
 	} catch {
 		return false;
 	}
-}
-
-// =============================================================================
-// Context Files (AGENTS.md)
-// =============================================================================
-
-async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
-	const items: ContextFile[] = [];
-	const warnings: string[] = [];
-
-	const userDir = getUserCodexDir(ctx);
-	if (!userDir) return { items, warnings };
-
-	// User level only: ~/.codex/AGENTS.md
-	const agentsMd = path.join(userDir, "AGENTS.md");
-	const agentsContent = await readFile(agentsMd);
-	if (agentsContent) {
-		items.push({
-			path: agentsMd,
-			content: agentsContent,
-			level: "user",
-			_source: createSourceMeta(PROVIDER_ID, agentsMd, "user"),
-		});
-	}
-
-	return { items, warnings };
 }
 
 // =============================================================================
@@ -529,14 +500,6 @@ async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
 // Provider Registration (executes on module import)
 // =============================================================================
 
-registerProvider<ContextFile>(contextFileCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load context files from ~/.codex/AGENTS.md (user-level only)",
-	priority: PRIORITY,
-	load: loadContextFiles,
-});
-
 registerProvider<MCPServer>(mcpCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
@@ -599,36 +562,4 @@ registerProvider<Settings>(settingsCapability.id, {
 	description: "Load settings from config.toml",
 	priority: PRIORITY,
 	load: loadSettings,
-});
-
-// System Prompt (SYSTEM.md, SYSTEM_TEMPLATE.md)
-async function loadSystemPrompt(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-
-	const load = async (filePath: string | null, level: "user" | "project", kind: "text" | "template") => {
-		if (!filePath) return;
-		const content = await readFile(filePath);
-		if (content) {
-			items.push({ path: filePath, content, kind, level, _source: createSourceMeta(PROVIDER_ID, filePath, level) });
-		}
-	};
-
-	// Project entries first: dedupe is first-wins, so a project file claims its
-	// key before a same-scope user file can survive.
-	const projectDir = getProjectCodexDir(ctx);
-	const userDir = getUserCodexDir(ctx);
-	await load(path.join(projectDir, "SYSTEM_TEMPLATE.md"), "project", "template");
-	await load(path.join(projectDir, "SYSTEM.md"), "project", "text");
-	await load(userDir ? path.join(userDir, "SYSTEM_TEMPLATE.md") : null, "user", "template");
-	await load(userDir ? path.join(userDir, "SYSTEM.md") : null, "user", "text");
-
-	return { items, warnings: [] };
-}
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load SYSTEM.md and SYSTEM_TEMPLATE.md from .codex (project cwd + user home)",
-	priority: PRIORITY,
-	load: loadSystemPrompt,
 });

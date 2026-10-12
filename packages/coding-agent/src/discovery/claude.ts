@@ -17,7 +17,6 @@ import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type SystemPrompt, systemPromptCapability } from "../capability/system-prompt";
 import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { resolveClaudePaths } from "../config/claude-paths";
@@ -159,19 +158,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
-
-	const userBase = getUserClaude(ctx);
-	const userClaudeMd = userBase ? path.join(userBase, "CLAUDE.md") : null;
-
-	const userContent = userClaudeMd ? await readFile(userClaudeMd) : null;
-	if (userContent !== null && userClaudeMd) {
-		items.push({
-			path: userClaudeMd,
-			content: userContent,
-			level: "user",
-			_source: createSourceMeta(PROVIDER_ID, userClaudeMd, "user"),
-		});
-	}
 
 	const projectBase = getProjectClaude(ctx);
 	const projectClaudeMd = path.join(projectBase, "CLAUDE.md");
@@ -475,55 +461,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 }
 
 // =============================================================================
-// System Prompts
-// =============================================================================
-
-async function loadSystemPrompts(ctx: LoadContext): Promise<LoadResult<SystemPrompt>> {
-	const items: SystemPrompt[] = [];
-	const warnings: string[] = [];
-
-	const projectBase = getProjectClaude(ctx);
-	for (const [file, kind] of [
-		["SYSTEM_TEMPLATE.md", "template"],
-		["SYSTEM.md", "text"],
-	] as const) {
-		const projectPath = path.join(projectBase, file);
-		const content = await readFile(projectPath);
-		if (content) {
-			items.push({
-				path: projectPath,
-				content,
-				kind,
-				level: "project",
-				_source: createSourceMeta(PROVIDER_ID, projectPath, "project"),
-			});
-		}
-	}
-
-	const userBase = getUserClaude(ctx);
-	if (userBase) {
-		for (const [file, kind] of [
-			["SYSTEM_TEMPLATE.md", "template"],
-			["SYSTEM.md", "text"],
-		] as const) {
-			const userPath = path.join(userBase, file);
-			const content = await readFile(userPath);
-			if (content !== null) {
-				items.push({
-					path: userPath,
-					content,
-					kind,
-					level: "user",
-					_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-				});
-			}
-		}
-	}
-
-	return { items, warnings };
-}
-
-// =============================================================================
 // Settings
 // =============================================================================
 
@@ -637,12 +574,4 @@ registerProvider<Settings>(settingsCapability.id, {
 	description: "Load settings from .claude/settings.json",
 	priority: PRIORITY,
 	load: loadSettings,
-});
-
-registerProvider<SystemPrompt>(systemPromptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load system prompt from .claude/SYSTEM.md",
-	priority: PRIORITY,
-	load: loadSystemPrompts,
 });

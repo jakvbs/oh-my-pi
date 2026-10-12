@@ -40,7 +40,6 @@ import { buildInitialMessage } from "./cli/initial-message";
 import { formatKeyHint } from "@oh-my-pi/pi-tui/app-keybindings";
 import type { SessionPickerOptions } from "@oh-my-pi/pi-tui/apps/session-picker";
 import { applyStartupCwd } from "./cli/startup-cwd";
-import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import { formatModelSelectorValue } from "@oh-my-pi/pi-tui/overlays/model-selector";
 import {
@@ -114,12 +113,7 @@ import { resolveResumableSession, type SessionInfo } from "./session/session-lis
 import { ForkSourceNotFoundError, SessionManager, SessionMoveRefusedError } from "./session/session-manager";
 import { forkIfMovedAway } from "./session/session-transfer";
 import { shouldShowStartupSplash } from "./startup-splash";
-import {
-	discoverSystemPromptOverride,
-	discoverTitleSystemPromptFile,
-	loadSystemPromptTemplateFile,
-	resolvePromptInput,
-} from "./system-prompt";
+import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { createTelemetryExportConfig, initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { cfgTelemetryOtlpExportEnabled } from "./telemetry-settings";
@@ -1255,33 +1249,6 @@ export async function createSessionManager(
 	return undefined;
 }
 
-/** Discover APPEND_SYSTEM.md file if no CLI append system prompt was provided */
-function discoverAppendSystemPromptFile(): string | undefined {
-	const projectPath = findConfigFile("APPEND_SYSTEM.md", { user: false });
-	if (projectPath) {
-		return projectPath;
-	}
-	const globalPath = findConfigFile("APPEND_SYSTEM.md", { user: true });
-	if (globalPath) {
-		return globalPath;
-	}
-	return undefined;
-}
-
-/** Apply resolved CLI/discovered prompt files without bypassing system prompt templates. */
-export function applyResolvedSystemPromptInputs(
-	options: CreateAgentSessionOptions,
-	resolvedSystemPrompt: string | undefined,
-	resolvedAppendPrompt: string | undefined,
-): void {
-	if (resolvedSystemPrompt !== undefined) {
-		options.customSystemPrompt = resolvedSystemPrompt;
-	}
-	if (resolvedAppendPrompt) {
-		options.appendSystemPrompt = resolvedAppendPrompt;
-	}
-}
-
 /** Builds startup session options from parsed CLI flags, scoped models, and resolved session lineage. */
 export async function buildSessionOptions(
 	parsed: Args,
@@ -1307,36 +1274,11 @@ export async function buildSessionOptions(
 		options.deadline = Date.now() + parsed.maxTime * 1000;
 	}
 
-	// Explicit prompt inputs win over discovered SYSTEM_TEMPLATE.md/SYSTEM.md.
-	if (parsed.systemPrompt !== undefined && parsed.systemPromptTemplate !== undefined) {
-		throw new Error("--system-prompt and --system-prompt-template cannot be combined");
-	}
 	const cwd = options.cwd;
-	const discoveredOverride =
-		parsed.systemPrompt === undefined && parsed.systemPromptTemplate === undefined
-			? await discoverSystemPromptOverride(cwd)
-			: undefined;
-	const systemPromptSource =
-		parsed.systemPrompt ?? (discoveredOverride?.kind === "text" ? discoveredOverride.path : undefined);
-	const templatePath =
-		parsed.systemPromptTemplate ?? (discoveredOverride?.kind === "template" ? discoveredOverride.path : undefined);
-	const appendPromptSource = parsed.appendSystemPrompt ?? discoverAppendSystemPromptFile();
-	const titleSystemPromptSource = discoverTitleSystemPromptFile(cwd);
-	const [resolvedSystemPrompt, resolvedAppendPrompt, titleSystemPrompt, resolvedSystemPromptTemplate] =
-		await Promise.all([
-			discoveredOverride?.kind === "text"
-				? Promise.resolve(discoveredOverride.content)
-				: resolvePromptInput(systemPromptSource, "system prompt"),
-			resolvePromptInput(appendPromptSource, "append system prompt"),
-			resolvePromptInput(titleSystemPromptSource, "title system prompt"),
-			// Discovered templates arrive pre-loaded from the capability; only
-			// explicit CLI paths hit the strict file loader here.
-			discoveredOverride?.kind === "template" && parsed.systemPromptTemplate === undefined
-				? Promise.resolve(discoveredOverride.content)
-				: templatePath === undefined
-					? Promise.resolve(undefined)
-					: loadSystemPromptTemplateFile(templatePath),
-		]);
+	const [resolvedSystemPrompt, titleSystemPrompt] = await Promise.all([
+		resolvePromptInput(parsed.systemPrompt, "system prompt"),
+		resolvePromptInput(discoverTitleSystemPromptFile(cwd), "title system prompt"),
+	]);
 
 	if (sessionManager) {
 		options.sessionManager = sessionManager;
@@ -1355,8 +1297,6 @@ export async function buildSessionOptions(
 			parsed.model !== undefined ||
 			parsed.thinking !== undefined ||
 			parsed.systemPrompt !== undefined ||
-			parsed.systemPromptTemplate !== undefined ||
-			parsed.appendSystemPrompt !== undefined ||
 			parsed.tools !== undefined ||
 			parsed.noTools === true;
 		if (!forkCacheShapeChanged && header?.providerPromptCacheKey) {
@@ -1561,9 +1501,8 @@ export async function buildSessionOptions(
 	// (handled by caller before createAgentSession)
 
 	// System prompt
-	applyResolvedSystemPromptInputs(options, resolvedSystemPrompt, resolvedAppendPrompt);
-	if (resolvedSystemPromptTemplate !== undefined) {
-		options.systemPromptTemplate = resolvedSystemPromptTemplate;
+	if (resolvedSystemPrompt !== undefined) {
+		options.systemPrompt = resolvedSystemPrompt;
 	}
 	// Replan-driven title refresh resolves the override from this same field on
 	// `AgentSession`, so threading it through `CreateAgentSessionOptions` keeps

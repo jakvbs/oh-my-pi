@@ -253,8 +253,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 
 		const promptText = (index: number): string => {
 			const prompt = spy.mock.calls[index]?.[0]?.systemPrompt;
-			const resolved = typeof prompt === "function" ? prompt(["default"]) : prompt;
-			return Array.isArray(resolved) ? resolved.join("\n") : (resolved ?? "");
+			return (typeof prompt === "function" ? prompt() : prompt) ?? "";
 		};
 		const readOnlyPrompt = promptText(0);
 		const writablePrompt = promptText(1);

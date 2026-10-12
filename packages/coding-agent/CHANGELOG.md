@@ -7,6 +7,12 @@
 - Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; task and eval spawns require an explicit agent name.
 - Removed `spawns` allowlists from agent definitions, SDK session options, and persisted session initialization. Only root sessions can spawn agents; legacy `spawns` metadata no longer controls delegation or selects a default agent.
 - Replaced SDK `taskDepth` and session-memory `memoryTaskDepth` options with boolean `isSubagent` and `memoryIsSubagent`. Child sessions, including cold-revived historical descendants, cannot delegate or start root-only memory workflows.
+- The system prompt is now three blocks, `[harness, policy, context]`. The harness (`prompts/system/harness-prompt.md`, renamed from `system-prompt.md`) carries runtime mechanics only; its role, personality, tool-policy, workflow, delivery, and critical sections are gone. The policy block is `--system-prompt`, SDK `systemPrompt`, or `<agentDir>/AGENTS.md`. The context block holds project context files, always-apply rules, and generated MCP and auto-learn notices.
+- Removed `SYSTEM.md` and `SYSTEM_TEMPLATE.md` discovery from every provider, `APPEND_SYSTEM.md`, `--system-prompt-template`, `--append-system-prompt`, and the SDK `systemPromptTemplate`, `customSystemPrompt`, and `appendSystemPrompt` options. Move their content into `<agentDir>/AGENTS.md`.
+- SDK `systemPrompt` is now the policy text (`string | () => string`) instead of a full replacement or a callback over the generated blocks. `fixedSystemPrompt: readonly string[]` replaces every block verbatim.
+- `<agentDir>/AGENTS.md` is the policy block, not a context file. User-level context files are no longer loaded from any provider (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`, `~/.agent(s)/AGENTS.md`, `contextFiles.extra` in the agent directory), and `<agentDir>/RULES.md` is no longer a sticky rule. Project `.omp/RULES.md` is unchanged.
+- Removed the `personality` setting, `PERSONALITY.md`, and the bundled personality presets.
+- Task subagents keep the harness and context blocks; their rendered agent prompt is the policy block, so the main session's `AGENTS.md` no longer reaches them.
 
 ### Added
 
@@ -17,6 +23,7 @@
 ### Changed
 
 - Maintained fork: `omp update` refuses to install upstream releases and the startup "update available" notice is disabled; `omp update --check` and `omp update --plugins` still work.
+- The working directory and git state are no longer rendered in the system prompt. The first-turn date/cwd reminder now also carries the OMP session ID.
 - `bash` jobs started with `async: true` no longer inherit the 300s default deadline; they run until they finish or are cancelled unless `timeout` is set. The foreground default is unchanged.
 
 ### Fixed

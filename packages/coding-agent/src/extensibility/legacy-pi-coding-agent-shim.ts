@@ -1432,11 +1432,10 @@ export async function createAgentSession(
 		forwarded.contextFiles = state.agentsFiles;
 	}
 
-	if (rest.systemPrompt === undefined && state.systemPrompt !== undefined) {
-		forwarded.systemPrompt = state.systemPrompt;
-	}
-	if (rest.appendSystemPrompt === undefined && state.appendSystemPrompt.length > 0) {
-		forwarded.appendSystemPrompt = state.appendSystemPrompt.join("\n\n");
+	// OMP has one policy block, so pi's replacement and append prompts both land there.
+	const legacyPolicy = [state.systemPrompt, ...state.appendSystemPrompt].filter(part => part?.trim()).join("\n\n");
+	if (rest.systemPrompt === undefined && legacyPolicy) {
+		forwarded.systemPrompt = legacyPolicy;
 	}
 
 	return ompCreateAgentSession(forwarded);

@@ -1,12 +1,7 @@
 /**
- * Regression for the GitHub Copilot user-global discovery gaps:
- *   - #1913: ~/.copilot/copilot-instructions.md (user-global instructions)
- *   - #1915: COPILOT_HOME relocation + COPILOT_CUSTOM_INSTRUCTIONS_DIRS
- *   - #1916: *.prompt.md in .github/prompts/ and ~/.copilot/prompts/
- *
- * The `github` provider previously only scanned the project `.github/` tree. These
- * tests pin the user-global surface, driven through COPILOT_HOME so they never touch
- * the developer's real ~/.copilot directory.
+ * GitHub Copilot discovery: project `.github/` context, instruction rules from
+ * COPILOT_CUSTOM_INSTRUCTIONS_DIRS, prompt files, and skills. User-global files
+ * under COPILOT_HOME are set up only to prove they never become context.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -61,45 +56,16 @@ describe("github discovery — Copilot user-global surface", () => {
 		if (tempDir) removeSyncWithRetries(tempDir);
 	});
 
-	test("loads user-global ~/.copilot/copilot-instructions.md via COPILOT_HOME (#1913)", async () => {
-		write(path.join(copilotHome, "copilot-instructions.md"), "user-global guidance");
-
-		const result = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });
-
-		const found = result.all.find(f => f.path === path.join(copilotHome, "copilot-instructions.md"));
-		expect(found).toBeDefined();
-		expect(found?.content).toBe("user-global guidance");
-		expect(found?.level).toBe("user");
-		expect(found?._source.provider).toBe("github");
-	});
-
-	test("still loads project .github/copilot-instructions.md alongside user-global", async () => {
+	test("loads only project .github/copilot-instructions.md as context; user-level files stay out", async () => {
 		write(path.join(cwd, ".github", "copilot-instructions.md"), "project guidance");
 		write(path.join(copilotHome, "copilot-instructions.md"), "user guidance");
+		const extra = path.join(tempDir, "extra");
+		write(path.join(extra, "AGENTS.md"), "extra agents");
+		process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS = extra;
 
 		const result = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });
 
-		const project = result.all.find(f => f.level === "project");
-		const user = result.all.find(f => f.level === "user");
-		expect(project?.content).toBe("project guidance");
-		expect(user?.content).toBe("user guidance");
-	});
-
-	test("loads AGENTS.md from COPILOT_CUSTOM_INSTRUCTIONS_DIRS (#1915)", async () => {
-		const extraA = path.join(tempDir, "extra-a");
-		const extraB = path.join(tempDir, "extra-b");
-		write(path.join(extraA, "AGENTS.md"), "extra A agents");
-		write(path.join(extraB, "AGENTS.md"), "extra B agents");
-		// copilot-instructions.md in a custom dir is NOT part of the spec and must be ignored.
-		write(path.join(extraA, "copilot-instructions.md"), "should be ignored");
-		process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS = `${extraA}, ${extraB}`;
-
-		const result = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });
-
-		const contents = result.all.filter(f => f.level === "user").map(f => f.content);
-		expect(contents).toContain("extra A agents");
-		expect(contents).toContain("extra B agents");
-		expect(contents).not.toContain("should be ignored");
+		expect(result.all.map(f => [f.content, f.level])).toEqual([["project guidance", "project"]]);
 	});
 
 	test("loads <dir>/.github/instructions/**/*.instructions.md from custom dirs (#1915)", async () => {

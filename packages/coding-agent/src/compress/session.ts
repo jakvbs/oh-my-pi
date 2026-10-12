@@ -54,7 +54,7 @@ export async function createCompressSession(options: {
 		// the coding-agent workflow. Every discovery source below defaults to ON when
 		// omitted, and each one would inject instruction-shaped project text into a
 		// session whose only legitimate input is the source document.
-		systemPrompt: [systemPrompt.trim()],
+		fixedSystemPrompt: [systemPrompt.trim()],
 		skills: [],
 		rules: [],
 		contextFiles: [],

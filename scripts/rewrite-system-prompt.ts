@@ -42,7 +42,7 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import STYLE_GUIDE from "./rewrite-system-prompt.style.md" with { type: "text" };
 
-const DEFAULT_INPUT = "packages/coding-agent/src/prompts/system/system-prompt.md";
+const DEFAULT_INPUT = "packages/coding-agent/src/prompts/system/harness-prompt.md";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 

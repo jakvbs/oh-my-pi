@@ -6,18 +6,17 @@
  *
  * Sources:
  * - Project: .github/ (repo-local Copilot config)
- * - User: ~/.copilot/ (user-global Copilot CLI config; relocatable via COPILOT_HOME)
  * - Extra: directories listed in COPILOT_CUSTOM_INSTRUCTIONS_DIRS
  *
  * Capabilities:
- * - context-files: copilot-instructions.md in .github/ and ~/.copilot/; AGENTS.md in each COPILOT_CUSTOM_INSTRUCTIONS_DIRS
+ * - context-files: copilot-instructions.md in .github/
  * - rules: *.instructions.md under .github/instructions/ and <dir>/.github/instructions/ for each custom dir (applyTo frontmatter)
  * - prompts: *.prompt.md in .github/prompts/ (VS Code Copilot prompt files)
  * - skills: <name>/SKILL.md in .github/skills/ (GitHub Agent Skills layout)
  */
 import * as path from "node:path";
 import { parseFrontmatter } from "@oh-my-pi/pi-utils";
-import { isUserSourceEnabled, registerProvider } from "../capability";
+import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { readFile } from "../capability/fs";
 import { type Instruction, instructionCapability } from "../capability/instruction";
@@ -33,7 +32,6 @@ import {
 	getProjectPath,
 	loadFilesFromDir,
 	parseCSV,
-	resolveCopilotHome,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -66,35 +64,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 		}
 	}
 
-	// User-global instructions (~/.copilot/copilot-instructions.md), applied across all repos.
-	if (isUserSourceEnabled("github", ctx)) {
-		const userInstructionsPath = path.join(resolveCopilotHome(ctx.home), "copilot-instructions.md");
-		const userContent = await readFile(userInstructionsPath);
-		if (userContent) {
-			items.push({
-				path: userInstructionsPath,
-				content: userContent,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userInstructionsPath, "user"),
-			});
-		}
-	}
-
-	// Each COPILOT_CUSTOM_INSTRUCTIONS_DIRS entry contributes an AGENTS.md (Copilot CLI
-	// searches these dirs for AGENTS.md + .github/instructions/**; the latter is handled
-	// by loadInstructions). copilot-instructions.md is NOT part of the custom-dir spec.
-	for (const dir of copilotCustomInstructionDirs()) {
-		const agentsMdPath = path.join(dir, "AGENTS.md");
-		const agentsMdContent = await readFile(agentsMdPath);
-		if (agentsMdContent) {
-			items.push({
-				path: agentsMdPath,
-				content: agentsMdContent,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, agentsMdPath, "user"),
-			});
-		}
-	}
 	return { items, warnings };
 }
 
@@ -302,8 +271,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 registerProvider(contextFileCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description:
-		"Load copilot-instructions.md from .github/ and ~/.copilot/; AGENTS.md from COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
+	description: "Load copilot-instructions.md from .github/",
 	priority: PRIORITY,
 	load: loadContextFiles,
 });

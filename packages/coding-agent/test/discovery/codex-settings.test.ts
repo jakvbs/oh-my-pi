@@ -9,7 +9,7 @@ import {
 } from "@oh-my-pi/pi-coding-agent/capability/settings";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { loadCapability } from "@oh-my-pi/pi-coding-agent/discovery";
-import { cfgPersonality } from "@oh-my-pi/pi-coding-agent/session/settings";
+import { cfgHideThinkingBlock } from "@oh-my-pi/pi-coding-agent/session/settings";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 describe("Codex config.toml settings", () => {
@@ -64,10 +64,10 @@ describe("Codex config.toml settings", () => {
 		const projectConfig = path.join(project, ".codex", "config.toml");
 		await fs.mkdir(agentDir, { recursive: true });
 		await fs.mkdir(path.dirname(projectConfig), { recursive: true });
-		await fs.writeFile(projectConfig, 'approval_policy = "on-request"\npersonality = "friendly"\n');
+		await fs.writeFile(projectConfig, 'approval_policy = "on-request"\nhideThinkingBlock = true\n');
 
 		const settings = await Settings.init({ cwd: project, agentDir });
 
-		expect(cfgPersonality.get(settings)).toBe("friendly");
+		expect(cfgHideThinkingBlock.get(settings)).toBe(true);
 	});
 });

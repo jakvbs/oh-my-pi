@@ -15,6 +15,14 @@ MUST follow these context files for all tasks:
 </repo-rules>
 {{/if}}
 
+{{#if alwaysApplyRules.length}}
+<generic-rules>
+{{#each alwaysApplyRules}}
+{{content}}
+{{/each}}
+</generic-rules>
+{{/if}}
+
 {{#if agentsMdSearch.files.length}}
 <dir-context>
 Some directories may have rules; deeper rules override higher ones.
@@ -51,15 +59,6 @@ Additional workspace directories. This CURRENT workspace state supersedes worksp
 {{/if}}
 </project-context>
 
-<critical>
-- Each response MUST advance the task; completion only stopping condition.
-- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.
-{{#if subagent}}
-- Changes complete → yield; verification is main agent's job. NEVER run it yourself unless your assignment explicitly instructs it.
-{{else}}
-- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.
-{{/if}}
-</critical>
 
 {{#if appendPrompt}}
 {{appendPrompt}}
