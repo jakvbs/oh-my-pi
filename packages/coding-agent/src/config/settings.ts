@@ -337,8 +337,7 @@ function settingsGroupOnlyPrefixes(): Readonly<Record<string, true>> {
 
 /**
  * Drop entries from capability-provided project settings whose non-object
- * value would shadow an entire settings group. `.claude/settings.json` is
- * shared with other tools, and a foreign leaf like `"tui": "fullscreen"`
+ * value would shadow an entire settings group: a leaf like `"tui": "fullscreen"`
  * deep-merges over omp's `tui` group, silently replacing every `tui.*`
  * setting for sessions rooted in that project. Values at schema leaves,
  * unknown keys, and well-formed nested objects pass through unchanged.
@@ -584,7 +583,7 @@ export class Settings {
 	#configFiles: string[] = [];
 	/** Global settings from config.yml/config.yaml */
 	#global: RawSettings = {};
-	/** Project settings from .claude/settings.yml etc */
+	/** Project settings from .omp/config.yml etc */
 	#project: RawSettings = {};
 	/** Last successfully loaded native .omp/config.yml contents. */
 	#projectFileSettings: RawSettings = {};
@@ -1463,7 +1462,7 @@ export class Settings {
 
 	/**
 	 * Re-scope this instance to a new working directory *in place*: reload the
-	 * project layer (`.claude/settings.yml` etc.) from `cwd`, re-resolve
+	 * project layer (`.omp/config.yml` etc.) from `cwd`, re-resolve
 	 * path-scoped settings against it, and notify listeners (and process-wide
 	 * effects: theme, symbols, …) of every value the new scope changes. Global
 	 * settings and runtime overrides are preserved.
@@ -1569,7 +1568,7 @@ export class Settings {
 	}
 
 	/**
-	 * Raw project settings layer (`.claude/settings.yml`, `.omp/config.yml`,
+	 * Raw project settings layer (`.omp/config.yml`,
 	 * etc.), deep-cloned. Companion to {@link getGlobalSettings} for the legacy
 	 * pi `SettingsManager` shim's `getProjectSettings()`; an {@link overlay}
 	 * likewise reports its parent's layer under its own.
@@ -1606,8 +1605,7 @@ export class Settings {
 	/**
 	 * Provenance of the effective `extensions` array for extension-root
 	 * sub-discovery. `"project"` only when a project settings provider owns it
-	 * (any of `.omp/config.yml`, `.omp/settings.json`, `.claude/settings.json`,
-	 * … — all merged into the project layer) and no higher user-level layer (a
+	 * (`.omp/config.yml` or `.omp/settings.json`, merged into the project layer) and no higher user-level layer (a
 	 * `--config` overlay or a runtime override) replaces it; otherwise `"user"`.
 	 * Callers pass this into {@link EffectiveExtensionRoots.configuredLevel} so
 	 * discovery labels roots by the authority that produced them rather than

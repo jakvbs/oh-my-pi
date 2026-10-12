@@ -63,7 +63,7 @@ export interface LoadSkillsResult {
  * Otherwise derived from the path so every other provider gets one without
  * plumbing: the directory owning `skills/` (a plugin or package root), else
  * the directory holding the skill (a custom skills root), else the provider.
- * Dotted homes (`~/.claude/skills`) are not meaningful names.
+ * Dotted homes (`~/.omp/skills`) are not meaningful names.
  */
 function skillNamespace(skill: Pick<CapabilitySkill, "path" | "_source">): string {
 	let root = skill._source.pluginName;

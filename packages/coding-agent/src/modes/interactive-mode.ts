@@ -2508,7 +2508,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// fails, undo the chdir so `false` reliably means "nothing committed";
 		// callers roll back their own session/manager state on false.
 		try {
-			// Re-scope project settings (`.claude/settings.yml` etc.) to the new
+			// Re-scope project settings (`.omp/config.yml` etc.) to the new
 			// directory in place so the active session and every settings reader pick
 			// up the destination project's configuration.
 			if (isSettingsInitialized()) {

@@ -212,7 +212,7 @@ async function checkForNewVersion(_currentVersion: string): Promise<string | und
 
 // Protocol hosts inherit OMP's neutral defaults for settings declaring `protocolDefault`
 // instead of the local user's interactive preferences. The pin holds only while nothing
-// configures the setting — caller `Settings.isolated` overrides, project `.claude/settings.yml`,
+// configures the setting — caller `Settings.isolated` overrides, project `.omp/config.yml`,
 // `--config` overlays, or global `config.yml` always win (#2598, #3207), including a config
 // edit the RPC file watcher picks up later and an ACP session's own project config.
 function applyProtocolDefaults(host: ProtocolHost, targetSettings: Settings = settings): void {
