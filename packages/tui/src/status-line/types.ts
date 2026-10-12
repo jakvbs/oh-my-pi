@@ -14,6 +14,8 @@ export interface ContextUsage {
 	contextWindow: number;
 	/** Context usage as percentage of context window. */
 	percent: number;
+	/** Tokens at which auto-compaction triggers for the active model; absent when compaction is off. */
+	compactionThreshold?: number;
 }
 
 /** Debounced footer snapshot a collab host broadcasts to guests. */

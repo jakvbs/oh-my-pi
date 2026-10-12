@@ -1,4 +1,7 @@
-import { resolveThresholdTokens } from "@oh-my-pi/pi-agent-core/compaction";
+import {
+	type CompactionSettings as CoreCompactionSettings,
+	resolveThresholdTokens,
+} from "@oh-my-pi/pi-agent-core/compaction";
 import type { Model } from "@oh-my-pi/pi-ai";
 import type { ModelCompactionPoint } from "@oh-my-pi/pi-tui/overlays/model-browser";
 import { isRecord } from "@oh-my-pi/pi-utils";
@@ -31,6 +34,19 @@ export function resolveModelCompactionSettings(
 		? cfgCompactionModelThresholds.get(scope)
 		: undefined;
 	return applyModelCompactionThreshold(cfgCompaction.get(scope), thresholds, model);
+}
+
+/** Token count at which auto-compaction triggers for `model`, or `undefined` when it never does. */
+export function resolveSessionCompactionThreshold(
+	scope: ScopeLike,
+	contextWindow: number,
+	model: { provider: string; id: string } | null | undefined,
+): number | undefined {
+	if (!(contextWindow > 0)) return undefined;
+	const settings: CoreCompactionSettings = resolveModelCompactionSettings(scope, model);
+	if (!settings.enabled || settings.strategy === "off") return undefined;
+	const threshold = resolveThresholdTokens(contextWindow, settings);
+	return threshold > 0 && threshold <= contextWindow ? threshold : undefined;
 }
 
 /** Where auto-compaction triggers for `model` and which setting decides it, for the model hub preview. */
