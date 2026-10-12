@@ -1,14 +1,15 @@
 import { afterAll, afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { buildSystemPrompt } from "@oh-my-pi/pi-coding-agent/system-prompt";
-import { getAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { TempDir } from "@oh-my-pi/pi-utils";
 
 const USER_POLICY = "USER-POLICY: answer in Polish.";
-const userPolicyPath = () => path.join(getAgentDir(), "AGENTS.md");
+const userPolicyPath = () => path.join(os.homedir(), ".agents", "AGENTS.md");
 
 function writeUserPolicy(): void {
-	fs.mkdirSync(getAgentDir(), { recursive: true });
+	fs.mkdirSync(path.dirname(userPolicyPath()), { recursive: true });
 	fs.writeFileSync(userPolicyPath(), USER_POLICY);
 }
 

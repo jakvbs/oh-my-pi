@@ -18,7 +18,7 @@ The provider-facing prompt is an ordered block array, most stable first:
 | Block   | Owner | Source                                                                                     | Content                                                                                                                                                                                       |
 | ------- | ----- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Harness | OMP   | `harness-prompt.md`                                                                        | Runtime mechanics only. RFC 2119 and XML-tag conventions, output rendering, the skills and rules index, internal URLs, the tool inventory, `xd://` devices, scratchpad, tool I/O, delegation. |
-| Policy  | User  | `--system-prompt`, SDK `systemPrompt`, or `<agentDir>/AGENTS.md`                           | How the agent should work. Omitted when no source is set or the text is empty.                                                                                                                |
+| Policy  | User  | `--system-prompt`, SDK `systemPrompt`, or `~/.agents/AGENTS.md`                           | How the agent should work. Omitted when no source is set or the text is empty.                                                                                                                |
 | Context | OMP   | `project-prompt.md`                                                                        | `<project-context>` with workstation data, project context files, always-apply rules, directory-context pointers, workspace tree and roots, active nested-repository context, then generated notices. |
 
 The harness carries no role, personality, workflow, or tool-preference policy. Those belong in the policy block, so the user writes them once and every session reads them from one file.
@@ -35,11 +35,11 @@ The policy block comes from exactly one source, first match wins:
 
 1. `--system-prompt <text-or-file>` on the CLI.
 2. `CreateAgentSessionOptions.systemPrompt` in the SDK, a string or a `() => string` evaluated on every prompt rebuild.
-3. `<agentDir>/AGENTS.md`, read on every rebuild with `@path` includes expanded.
+3. `~/.agents/AGENTS.md`, read on every rebuild with `@path` includes expanded.
 
-`<agentDir>` follows the session's agent directory: `~/.omp/agent` by default, `~/.omp/profiles/<name>/agent` under `omp --profile <name>`, or the SDK `agentDir` option. Editing the file and running `/new` or `/clear` picks up the change without a restart.
+The path is fixed. Profiles, `PI_CODING_AGENT_DIR`, and the SDK `agentDir` option do not change it, and `~/.omp/agent/AGENTS.md` is not read. Editing the file and running `/new` or `/clear` picks up the change without a restart.
 
-`<agentDir>/AGENTS.md` is the policy, not a context file. It is never rendered inside `<repo-rules>`.
+`~/.agents/AGENTS.md` is the policy, not a context file. It is never rendered inside `<repo-rules>`.
 
 ### Text or file resolution
 
@@ -53,13 +53,13 @@ Which automatic inputs reach each kind of session. An input applies only when it
 
 | Session type     | Policy block                                       | Project `AGENTS.md` | Project `CLAUDE.md` / `GEMINI.md` | MCP tools | MCP server instructions | `WATCHDOG.md` |
 | ---------------- | -------------------------------------------------- | ------------------- | --------------------------------- | --------- | ----------------------- | ------------- |
-| Main session     | `--system-prompt` or `<agentDir>/AGENTS.md`        | Discovered          | Discovered                        | Yes       | Yes                     | No            |
+| Main session     | `--system-prompt` or `~/.agents/AGENTS.md`        | Discovered          | Discovered                        | Yes       | Yes                     | No            |
 | Task subagent    | The agent definition rendered for this spawn       | Not inherited       | Inherited                         | Inherited | Inherited               | No            |
 | Advisor/watchdog | Dedicated advisor prompt                           | Inherited           | Inherited                         | No        | No                      | Yes           |
 
 1. A task subagent keeps the harness and the context block. Its policy is the subagent prompt rendered from the agent definition and assignment, so the main agent's user policy does not leak into it.
 2. Task spawning drops inherited context files whose basename is `agents.md` (case-insensitive). Text pulled in through `@` imports is not filtered, and additional workspace roots are discovered separately.
-3. Context discovery reads project-level files only. User-level files such as `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, and `~/.copilot/copilot-instructions.md` are not loaded. Put user-wide instructions in `<agentDir>/AGENTS.md`.
+3. Context discovery reads project-level files only. User-level files such as `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, and `~/.copilot/copilot-instructions.md` are not loaded. Put user-wide instructions in `~/.agents/AGENTS.md`.
 4. A task agent's `tools:` list does not remove MCP tools or server instructions: the tools stay available top-level or under `xd://`. Children of restricted sessions run with `restrictToolNames`, which drops both.
 
 ## Recipes
@@ -67,14 +67,8 @@ Which automatic inputs reach each kind of session. An input applies only when it
 ### Set user-wide instructions
 
 ```text
-~/.omp/agent/AGENTS.md
+~/.agents/AGENTS.md
 Prefer small diffs. Run the narrowest relevant test before handing off.
-```
-
-An existing instructions file elsewhere can be linked instead of copied:
-
-```bash
-ln -s ~/.agents/AGENTS.md ~/.omp/agent/AGENTS.md
 ```
 
 ### Use a different policy for one run
@@ -102,23 +96,23 @@ Generated title output has an enforced normalization contract even with a custom
 
 | Option                                     | Effect                                                                                                                                       |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreateAgentSessionOptions.systemPrompt`   | The policy block. A string, or a function re-evaluated on every rebuild. Replaces `<agentDir>/AGENTS.md`. Harness and context still render. |
+| `CreateAgentSessionOptions.systemPrompt`   | The policy block. A string, or a function re-evaluated on every rebuild. Replaces `~/.agents/AGENTS.md`. Harness and context still render. |
 | `CreateAgentSessionOptions.fixedSystemPrompt` | A `readonly string[]` sent verbatim as every system block. No harness, policy, or context is generated. Use it for helper sessions with their own complete contract and for replaying a persisted prompt. |
-| `buildSystemPrompt({ systemPrompt, agentDir })` | Renders the same three blocks outside a session. `systemPrompt` is the policy text; `agentDir` locates `AGENTS.md` when it is absent.      |
+| `buildSystemPrompt({ systemPrompt })` | Renders the same three blocks outside a session. `systemPrompt` is the policy text; `~/.agents/AGENTS.md` is read when it is absent. |
 
 ## Removed sources
 
-These sources no longer exist. Move their content into `<agentDir>/AGENTS.md`.
+These sources no longer exist. Move their content into `~/.agents/AGENTS.md`.
 
 | Removed                                                     | Replacement                                    |
 | ----------------------------------------------------------- | ---------------------------------------------- |
-| `SYSTEM.md`, `SYSTEM_TEMPLATE.md` (every config base)       | `<agentDir>/AGENTS.md` or `--system-prompt`    |
-| `APPEND_SYSTEM.md`, `--append-system-prompt`                | `<agentDir>/AGENTS.md`                         |
+| `SYSTEM.md`, `SYSTEM_TEMPLATE.md` (every config base)       | `~/.agents/AGENTS.md` or `--system-prompt`    |
+| `APPEND_SYSTEM.md`, `--append-system-prompt`                | `~/.agents/AGENTS.md`                         |
 | `--system-prompt-template`, SDK `systemPromptTemplate`      | `--system-prompt` or SDK `systemPrompt`        |
 | SDK `customSystemPrompt`, `appendSystemPrompt`              | SDK `systemPrompt`                             |
 | SDK `systemPrompt` callback over the generated blocks       | SDK `fixedSystemPrompt`                        |
-| `personality` setting, `PERSONALITY.md`                     | `<agentDir>/AGENTS.md`                         |
-| User `<agentDir>/RULES.md`                                  | `<agentDir>/AGENTS.md`                         |
-| User-level context files from foreign tools                 | `<agentDir>/AGENTS.md`                         |
+| `personality` setting, `PERSONALITY.md`                     | `~/.agents/AGENTS.md`                         |
+| User `~/.omp/agent/RULES.md`                                | `~/.agents/AGENTS.md`                         |
+| User-level context files from foreign tools                 | `~/.agents/AGENTS.md`                         |
 
 Project `.omp/RULES.md` remains a sticky always-apply rule in the context block. See [Context files](./context-files.md).

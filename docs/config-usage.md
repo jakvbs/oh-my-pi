@@ -281,7 +281,7 @@ Native provider (`id: native`) reads native config from:
 
 - Slash commands, directory rules, prompts, instructions, hooks, tools, extensions, extension modules, and settings use a project/user root only when the root directory exists and is non-empty.
 - Skills scan `<ancestor>/.omp/skills` for each ancestor from the current working directory up to the repo root/home boundary, plus `~/.omp/agent/skills`, without requiring the root `.omp` directory itself to be non-empty.
-- `RULES.md` and `.omp/AGENTS.md` are project-only and use the nearest non-empty ancestor `.omp` directory. `RULES.md` becomes an always-apply sticky rule. `~/.omp/agent/AGENTS.md` is the user policy block, not a context file; see [`docs/system-prompt-customization.md`](./system-prompt-customization.md).
+- `RULES.md` and `.omp/AGENTS.md` are project-only and use the nearest non-empty ancestor `.omp` directory. `RULES.md` becomes an always-apply sticky rule. `~/.agents/AGENTS.md` is the user policy block, not a context file, and `~/.omp/agent/AGENTS.md` is not read; see [`docs/system-prompt-customization.md`](./system-prompt-customization.md).
 - MCP does not use the non-empty-root admission helper. It reads project `.omp/mcp.json` then `.omp/.mcp.json`, followed by user `mcp.json` then `.mcp.json`, directly.
 
 ### Scope-specific loading

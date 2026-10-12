@@ -3,13 +3,14 @@
  * in-process session reset.
  *
  * Project `RULES.md` is a sticky always-apply rule rendered into the context
- * block; the user's `<agentDir>/AGENTS.md` is the policy block. Creating or editing either while omp runs and then
+ * block; the user's `~/.agents/AGENTS.md` is the policy block. Creating or editing either while omp runs and then
  * resetting the context (`/clear`) or starting a new session (`/new`) MUST make
  * the next prompt observe the current file — otherwise the rule set stays frozen
  * at session creation until the process restarts (issue #10940).
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import type { Api, Model, ModelSpec } from "@oh-my-pi/pi-ai";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
@@ -68,10 +69,12 @@ async function expectStickyRuleReload(
 	const marker = Bun.nanoseconds().toString(36);
 	const original = `ORIGINAL_STICKY_${marker}`;
 	const updated = `UPDATED_STICKY_${marker}`;
-	// User scope: the session agentDir's `AGENTS.md` policy.
+	// User scope: the `~/.agents/AGENTS.md` policy (hermetic test home).
 	// Project scope: nearest `.omp/RULES.md` walking up from cwd.
 	const rulesMd =
-		opts.scope === "user" ? tempDir.join("agent", "AGENTS.md") : path.join(tempDir.path(), ".omp", "RULES.md");
+		opts.scope === "user"
+			? path.join(os.homedir(), ".agents", "AGENTS.md")
+			: path.join(tempDir.path(), ".omp", "RULES.md");
 	if (opts.seedInitial) {
 		await fs.mkdir(path.dirname(rulesMd), { recursive: true });
 		await fs.writeFile(rulesMd, original);
@@ -97,6 +100,7 @@ async function expectStickyRuleReload(
 	} finally {
 		await session.dispose();
 		authStorage.close();
+		if (opts.scope === "user") await fs.rm(rulesMd, { force: true });
 	}
 }
 

@@ -160,7 +160,7 @@ See [providers](./providers.md) and [models](./models.md) for model resolution.
 
 | Flag | Description |
 | --- | --- |
-| `--system-prompt <text\|file>` | Policy block for this run, replacing `<agentDir>/AGENTS.md`. The harness and context blocks still render. See [system prompt customization](./system-prompt-customization.md). |
+| `--system-prompt <text\|file>` | Policy block for this run, replacing `~/.agents/AGENTS.md`. The harness and context blocks still render. See [system prompt customization](./system-prompt-customization.md). |
 
 #### Output mode
 

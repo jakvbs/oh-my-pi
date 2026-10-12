@@ -87,7 +87,7 @@ Normalization:
 - `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `question`, `scope`, `agents`, and `interruptMode` are parsed by `buildRuleFromMarkdown`
 - project sticky `RULES.md` is named `RULES@project` and forced to `alwaysApply: true`
 
-Native items are appended as project rules, user rules, then project sticky `RULES.md`; an earlier regular rule named `RULES@project` can still shadow that sticky file. `<agentDir>/RULES.md` is not a rule; user-wide instructions live in the policy block (`<agentDir>/AGENTS.md`).
+Native items are appended as project rules, user rules, then project sticky `RULES.md`; an earlier regular rule named `RULES@project` can still shadow that sticky file. `<agentDir>/RULES.md` is not a rule; user-wide instructions live in the policy block (`~/.agents/AGENTS.md`).
 
 Important caveat: `condition` values that look like file globs are converted into `tool:edit(...)` / `tool:write(...)` scope shorthands with catch-all condition `.*`.
 

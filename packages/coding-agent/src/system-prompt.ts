@@ -8,7 +8,7 @@ import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { ToolExample, TSchema } from "@oh-my-pi/pi-ai";
 import { renderToolInventory } from "@oh-my-pi/pi-ai/dialect";
 import type { DelegationBias } from "@oh-my-pi/pi-catalog/compat/delegation";
-import { $env, getAgentDir, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+import { $env, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
 import { contextFileCapability } from "./capability/context-file";
 import { findConfigFile } from "./config";
 import type { SkillsSettings } from "./extensibility/settings";
@@ -148,11 +148,11 @@ function getEnvironmentInfo(): Array<{ label: string; value: string }> {
 }
 
 /**
- * The user's policy block: `<agentDir>/AGENTS.md` (`~/.omp/agent/AGENTS.md` by default),
+ * The user's policy block: `~/.agents/AGENTS.md`, shared by every profile and agent dir,
  * with `@path` includes expanded. Null when the file is absent or empty.
  */
-async function loadUserPolicy(agentDir: string): Promise<string | null> {
-	const filePath = path.join(agentDir, "AGENTS.md");
+async function loadUserPolicy(): Promise<string | null> {
+	const filePath = path.join(os.homedir(), ".agents", "AGENTS.md");
 	let content: string;
 	try {
 		content = await Bun.file(filePath).text();
@@ -365,12 +365,10 @@ export function projectSystemPromptToolMetadata(
 
 export interface BuildSystemPromptOptions {
 	/**
-	 * Policy block text. Replaces the user's `<agentDir>/AGENTS.md`; the harness and
+	 * Policy block text. Replaces the user's `~/.agents/AGENTS.md`; the harness and
 	 * context blocks render either way.
 	 */
 	systemPrompt?: string;
-	/** Agent directory holding the user's `AGENTS.md` policy. Default: getAgentDir() */
-	agentDir?: string;
 	/** Tools to include in prompt. */
 	tools?: Map<string, SystemPromptToolMetadata>;
 	/** Tool names to include in prompt. */
@@ -471,7 +469,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 
 	const {
 		systemPrompt: providedPolicy,
-		agentDir = getAgentDir(),
 		appendPrompt,
 		tools,
 		inlineToolDescriptors: providedInlineToolDescriptors,
@@ -603,7 +600,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const [policy, contextFiles, skills, workspaceTree, activeRepoContext] = await Promise.all([
 		withDeadline(
 			"loadUserPolicy",
-			providedPolicy !== undefined ? Promise.resolve(providedPolicy.trim() || null) : loadUserPolicy(agentDir),
+			providedPolicy !== undefined ? Promise.resolve(providedPolicy.trim() || null) : loadUserPolicy(),
 			prepDefaults.policy,
 		),
 		withDeadline("loadProjectContextFiles", contextFilesPromise, prepDefaults.contextFiles).then(

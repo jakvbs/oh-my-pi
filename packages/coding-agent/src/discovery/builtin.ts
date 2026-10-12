@@ -369,7 +369,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// request (system-prompt text, or image frames under snapcompact
 	// system-prompt imaging) so it keeps its hold across long sessions.
 	// Project scope only: nearest .omp/RULES.md walking up from cwd to repoRoot.
-	// User-wide policy lives in <agentDir>/AGENTS.md, the system prompt's policy block.
+	// User-wide policy lives in ~/.agents/AGENTS.md, the system prompt's policy block.
 	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx);
 	if (nearestProjectConfigDir) {
 		const projectRulesFile = path.join(nearestProjectConfigDir.dir, "RULES.md");

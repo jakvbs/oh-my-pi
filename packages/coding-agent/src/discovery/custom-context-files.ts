@@ -5,7 +5,7 @@
  * These names are additive: AGENTS.local.md loads beside AGENTS.md instead of
  * taking its slot. A linked worktree also reads each name from the primary
  * checkout, which the normal walk never reaches. Project-level only: user-wide
- * instructions belong in the policy block (`<agentDir>/AGENTS.md`).
+ * instructions belong in the policy block (`~/.agents/AGENTS.md`).
  */
 import * as path from "node:path";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";

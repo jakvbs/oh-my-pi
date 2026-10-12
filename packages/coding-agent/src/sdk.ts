@@ -590,7 +590,7 @@ export interface CreateAgentSessionOptions {
 	onPrewalkWarning?: (warning: string) => void;
 
 	/**
-	 * Policy block of the system prompt, replacing the user's `<agentDir>/AGENTS.md`. The harness
+	 * Policy block of the system prompt, replacing the user's `~/.agents/AGENTS.md`. The harness
 	 * and context blocks still render. A function re-renders the policy on every prompt rebuild.
 	 */
 	systemPrompt?: string | (() => string);
@@ -1245,7 +1245,7 @@ export interface BuildSystemPromptOptions {
 	skills?: Skill[];
 	contextFiles?: Array<{ path: string; content: string }>;
 	cwd?: string;
-	/** Policy block text; replaces the user's `<agentDir>/AGENTS.md`. */
+	/** Policy block text; replaces the user's `~/.agents/AGENTS.md`. */
 	systemPrompt?: string;
 	inlineToolDescriptors?: boolean;
 	includeWorkspaceTree?: boolean;
@@ -3694,7 +3694,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				xdevTools: toolSession.xdev ? xdevEntries(toolSession.xdev) : [],
 				xdevDocs: xdevPromptDocs ? renderXdevPromptDocs(xdevPromptDocs, routedCatalogNames) : "",
 				systemPrompt: typeof options.systemPrompt === "function" ? options.systemPrompt() : options.systemPrompt,
-				agentDir,
 				skills: cfgSkillful.get(settings) ? (session?.skills ?? skills) : [],
 				skillDescriptions,
 				contextFiles,

@@ -379,7 +379,7 @@ Use these when you want partial control without recreating internal discovery lo
 - `providerSessionId` can reuse provider-side session identity while session
   persistence stays isolated; `providerPromptCacheKey` sets a separate cache key.
 - `systemPrompt` (string or `() => string`) is the policy block and replaces
-  `<agentDir>/AGENTS.md`; the harness and context blocks still render.
+  `~/.agents/AGENTS.md`; the harness and context blocks still render.
   `fixedSystemPrompt` sends a `readonly string[]` verbatim as every system
   block. See [System prompt customization](./system-prompt-customization.md).
 
