@@ -26,7 +26,6 @@ import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { CursorOptions } from "./providers/cursor";
-import { type FactoryDroidOptions, streamFactoryDroid } from "./providers/factory-droid";
 import { streamGitLabDuo } from "./providers/gitlab-duo";
 import { type GitLabDuoWorkflowOptions, streamGitLabDuoWorkflow } from "./providers/gitlab-duo-workflow";
 import type { GoogleOptions } from "./providers/google";
@@ -960,12 +959,6 @@ function streamDispatch<TApi extends Api>(
 	}
 	if (model.api === "bedrock-converse-stream") {
 		return streamBedrock(model as Model<"bedrock-converse-stream">, context, requestOptions as BedrockOptions);
-	}
-	if (model.api === "factory-droid-agent") {
-		return streamFactoryDroid(model as Model<"factory-droid-agent">, context, {
-			...(requestOptions as FactoryDroidOptions),
-			waitForTerminalDrain: limited,
-		});
 	}
 
 	const providerDefinition = getProviderDefinition(model.provider);
@@ -2293,26 +2286,6 @@ function mapOptionsForApi<TApi extends Api>(
 				onToolResult,
 				externalToolExecutor: options?.cursorExternalToolExecutor,
 				wireModelId: resolveWireModelId(cursorModel, effort),
-			});
-		}
-
-		case "factory-droid-agent": {
-			const factoryModel = model as Model<"factory-droid-agent">;
-			const reasoning =
-				options?.reasoning && !options.disableReasoning && !options.forceReasoningOff
-					? requireSupportedEffort(factoryModel, options.reasoning)
-					: undefined;
-			return castApi<"factory-droid-agent">({
-				...base,
-				// The wrapper resolves native defaults for the selected OAuth
-				// account; do not turn the discovery scope's cap into a caller cap.
-				maxTokens: options?.maxTokens,
-				reasoning,
-				disableReasoning: options?.disableReasoning || options?.forceReasoningOff,
-				hideThinkingSummary: options?.hideThinkingSummary,
-				textVerbosity: options?.textVerbosity,
-				serviceTier: options?.serviceTier,
-				toolChoice: options?.toolChoice,
 			});
 		}
 

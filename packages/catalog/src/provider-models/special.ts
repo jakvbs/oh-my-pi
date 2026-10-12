@@ -3,11 +3,6 @@ import { buildModel } from "../build";
 import { apiRouteFor } from "../compat/behavior";
 import { providerEntry, seedModels } from "../compat/providers";
 import { type CodexModelDiscoveryResult, fetchCodexModels } from "../discovery/codex";
-import {
-	type FactoryDroidModelDiscoveryOptions,
-	factoryDroidSeedModels,
-	fetchFactoryDroidModels,
-} from "../discovery/factory-droid";
 import { fetchTypeSafeModels, TYPESAFE_DEFAULT_BASE_URL } from "../discovery/typesafe";
 import { buildGitLabDuoWorkflowFallbackModel, fetchGitLabDuoWorkflowModels } from "../discovery/gitlab-duo-workflow";
 import type { ModelManagerOptions } from "../model-manager";
@@ -328,25 +323,6 @@ function gitLabDuoWorkflowModelCacheProviderId(apiKey: string, config: GitLabDuo
 	const cwd = config.cwd ?? process.cwd();
 	const scope = [config.baseUrl ?? "", namespaceId, projectId, cwd].join("\u0000");
 	return `gitlab-duo-agent:${Bun.hash(`${apiKey}\u0000${scope}`).toString(36)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Factory Droid
-// ---------------------------------------------------------------------------
-
-export function factoryDroidModelManagerOptions(
-	config: FactoryDroidModelDiscoveryOptions = {},
-): ModelManagerOptions<"factory-droid-agent"> {
-	return {
-		providerId: "factory-droid",
-		cacheProviderId: resolveModelCacheProviderId("factory-droid", config),
-		// No model-listing endpoint exists; the registry narrowed offline is the seed.
-		staticModels: factoryDroidSeedModels(config),
-		dynamicModelsAuthoritative: true,
-		fetchDynamicModels: () => fetchFactoryDroidModels(config),
-		// Refresh current policy online; cached eligibility is not current entitlement.
-		alwaysRefetchDynamicModels: true,
-	};
 }
 
 // ---------------------------------------------------------------------------

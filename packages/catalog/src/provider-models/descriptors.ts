@@ -81,7 +81,6 @@ import {
 import {
 	cloudflareWorkersAiModelManagerOptions,
 	cursorModelManagerOptions,
-	factoryDroidModelManagerOptions,
 	gitLabDuoWorkflowModelManagerOptions,
 	localModelManagerOptions,
 	typesafeModelManagerOptions,
@@ -111,7 +110,6 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	cursor: config => cursorModelManagerOptions(config),
 	deepinfra: config => deepinfraModelManagerOptions(config),
 	deepseek: config => deepseekModelManagerOptions(config),
-	"factory-droid": config => factoryDroidModelManagerOptions(config),
 	"cline-pass": config => clinePassModelManagerOptions(config),
 	firepass: config => firepassModelManagerOptions(config),
 	fireworks: config => fireworksModelManagerOptions(config),

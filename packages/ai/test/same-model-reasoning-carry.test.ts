@@ -120,12 +120,12 @@ async function responsesAssistantItems(
 
 const moonshotK3 = () => target("openai-completions", "moonshot", "kimi-k3");
 const openRouterK3 = () => target("openrouter", "openrouter", "moonshotai/kimi-k3");
-const factoryK3: Source = { provider: "factory-droid", api: "openai-completions", model: "kimi-k3" };
+const fireworksK3: Source = { provider: "fireworks", api: "openai-completions", model: "kimi-k3" };
 const fieldSignature = { thinkingSignature: "reasoning_content" };
 
 describe("same-model reasoning carry", () => {
 	it("replays another K3 host's reasoning in Moonshot's reasoning_content", () => {
-		const wire = completionsAssistant(moonshotK3(), history(priorTurn(factoryK3, fieldSignature)));
+		const wire = completionsAssistant(moonshotK3(), history(priorTurn(fireworksK3, fieldSignature)));
 
 		expect(wire.reasoning_content).toBe(TRACE);
 		expect(wire.content).toBe("Patched.");
@@ -151,7 +151,7 @@ describe("same-model reasoning carry", () => {
 	});
 
 	it("replays carried reasoning as an id-less plaintext item on a fresh OpenRouter Responses session", async () => {
-		const items = await responsesAssistantItems(openRouterK3(), history(priorTurn(factoryK3, fieldSignature)));
+		const items = await responsesAssistantItems(openRouterK3(), history(priorTurn(fireworksK3, fieldSignature)));
 
 		expect(items).toEqual([
 			{ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: TRACE }] },
@@ -165,7 +165,7 @@ describe("same-model reasoning carry", () => {
 	});
 
 	it("demotes instead of dropping when the request filters reasoning history", async () => {
-		const items = await responsesAssistantItems(openRouterK3(), history(priorTurn(factoryK3, fieldSignature)), {
+		const items = await responsesAssistantItems(openRouterK3(), history(priorTurn(fireworksK3, fieldSignature)), {
 			filterReasoningHistory: true,
 		});
 
@@ -184,7 +184,7 @@ describe("same-model reasoning carry", () => {
 			completionsAssistant(noSlot, history(priorTurn(ownSource, fieldSignature))).reasoning_content,
 		).toBeUndefined();
 
-		const carried = completionsAssistant(noSlot, history(priorTurn(factoryK3, fieldSignature)));
+		const carried = completionsAssistant(noSlot, history(priorTurn(fireworksK3, fieldSignature)));
 
 		expect(carried.reasoning_content).toBeUndefined();
 		expect(carried.content).toBe(DEMOTED);
@@ -271,7 +271,7 @@ describe("same-model reasoning carry", () => {
 	});
 
 	it("keeps an errored turn's reasoning as text on a Responses host", async () => {
-		const prior = priorTurn(factoryK3, fieldSignature);
+		const prior = priorTurn(fireworksK3, fieldSignature);
 		prior.stopReason = "error";
 
 		const items = await responsesAssistantItems(openRouterK3(), history(prior));

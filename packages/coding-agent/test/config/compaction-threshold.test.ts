@@ -327,8 +327,8 @@ describe("compaction.modelThresholds", () => {
 	});
 
 	it("shows a fixed trigger at or past the window as capped at the window less its reserve", () => {
-		// A provider capping the window below the configured trigger (Factory serves Kimi K3 with 196,608).
-		const capped = { provider: "factory-droid", id: "kimi-k3", contextWindow: 196_608 } as Model;
+		// A provider capping the window below the configured trigger (here Kimi K3 at 196,608).
+		const capped = { provider: "fireworks", id: "kimi-k3", contextWindow: 196_608 } as Model;
 		const global = Settings.isolated({ "compaction.thresholdTokens": 300_000 });
 		const point = describeModelCompactionPoint(global, capped);
 		expect(point).toMatchObject({ tokens: 167_117, source: "global" });
@@ -340,7 +340,7 @@ describe("compaction.modelThresholds", () => {
 		expect(describeModelCompactionPoint(justBelow, capped)).toMatchObject({ tokens: 196_607, basis: "fixed" });
 
 		// A prefix entry the model falls back to; an entry below the window stays exact.
-		const prefixed = Settings.isolated({ "compaction.modelThresholds": { "factory-droid/*": "f300000" } });
+		const prefixed = Settings.isolated({ "compaction.modelThresholds": { "fireworks/*": "f300000" } });
 		expect(planModelCompactionPoint(prefixed, capped, "", undefined)?.trigger).toEqual({
 			kind: "fixed",
 			tokens: 167_117,

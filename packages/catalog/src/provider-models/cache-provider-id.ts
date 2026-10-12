@@ -1,7 +1,6 @@
 import { CHARM_HYPER_API_BASE_URL, normalizeCharmHyperBaseUrl } from "../wire/charm-hyper";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION } from "../wire/codex";
 import { CURSOR_DEFAULT_BASE_URL } from "../wire/cursor";
-import { type AccountScope, factoryDroidModelCacheProviderId } from "../wire/factory-droid";
 import { PERSONAL_GITHUB_COPILOT_BASE_URL } from "../wire/github-copilot";
 import {
 	SINGULARITYAPI_DEV_API_BASE_URL,
@@ -9,7 +8,7 @@ import {
 	normalizeSingularityApiBaseUrl,
 } from "../wire/singularityapi";
 
-export interface ModelCacheProviderIdOptions extends AccountScope {
+export interface ModelCacheProviderIdOptions {
 	apiKey?: string;
 	baseUrl?: string;
 }
@@ -20,7 +19,6 @@ const CREDENTIAL_SCOPED_MODEL_CACHE_PROVIDERS: Readonly<Record<string, true>> = 
 	"github-copilot": true,
 	"muse-code": true,
 	cursor: true,
-	"factory-droid": true,
 	// Both SingularityAPI rosters are issued per key, so the namespace must be
 	// resolved with the credential (`hydrateCredentialScopedModelCaches`) rather
 	// than from the synchronous, credential-less startup read.
@@ -203,8 +201,6 @@ export function resolveModelCacheProviderId(providerId: string, options: ModelCa
 			const scope = `${options.apiKey ?? ""}\u0000${baseUrl}`;
 			return `github-copilot:models-v2:${Bun.hash(scope).toString(36)}`;
 		}
-		case "factory-droid":
-			return factoryDroidModelCacheProviderId(options);
 		case "openrouter":
 			return "openrouter:pseudo-api";
 		case "vllm": {

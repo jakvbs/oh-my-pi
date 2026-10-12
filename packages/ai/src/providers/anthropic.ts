@@ -799,8 +799,7 @@ export const claudeCodeHeaders = {
  * Cowork's fingerprint keys. Only the OAuth branch re-emits them, so only that
  * branch may enforce them: everywhere else nothing would fill the gap and
  * filtering would silently delete a client identity the caller built on
- * purpose (Factory Droid mirrors droid's Anthropic SDK fingerprint on this
- * wire, right down to the 600s client timeout).
+ * purpose.
  */
 const coworkHeaderKeys = new Set(Object.keys(claudeCodeHeaders).map(key => key.toLowerCase()));
 
@@ -2489,8 +2488,8 @@ const streamAnthropicOnce = (
 					isAdaptiveOnlyThinking(model) &&
 					(options?.thinkingEnabled === false ||
 						(model.compat.supportsForcedToolChoice && isForcedToolChoice(options?.toolChoice)));
-				// A resolved `effortBeta` (Factory Droid routes, whose Bedrock/Vertex
-				// upstreams gate the beta themselves) replaces the heuristic: the beta
+				// A resolved `effortBeta` (routes whose upstreams gate the beta
+				// themselves) replaces the heuristic: the beta
 				// rides exactly when an output effort does. Efforts the body pins
 				// without a caller effort are added per request (see below).
 				const emitsEffortBeta =
@@ -5148,8 +5147,7 @@ function wantsAnthropicFastMode(model: Model<"anthropic-messages">, options: Ant
 }
 
 /**
- * Native Factory Droid history predicate (ported from the CLI's request
- * builder): true when the conversation contains assistant turns but none of
+ * Thinking-history predicate: true when the conversation contains assistant turns but none of
  * them leads with a `thinking`/`redactedThinking` block.
  */
 function hasThinkinglessAssistantHistory(messages: readonly Message[]): boolean {
@@ -5171,7 +5169,7 @@ function hasThinkinglessAssistantHistory(messages: readonly Message[]): boolean 
 }
 
 /**
- * Native Factory Droid history predicate: true when the message after the last
+ * Thinking-history predicate: true when the message after the last
  * user turn is an assistant turn whose first block is not
  * `thinking`/`redactedThinking` (the conversation is not resuming a
  * thinking-led chain).
@@ -5196,8 +5194,7 @@ function hasNonThinkingTurnAfterLastUser(messages: readonly Message[]): boolean 
 /**
  * Whether the conversation has stopped being thinking-led, so routes with
  * `compat.stripThinkingHistory` drop the budget `thinking` config and replay
- * history without thinking blocks. Exported so the factory-droid provider can
- * gate its header-level interleaved beta on the same decision.
+ * history without thinking blocks.
  */
 export function shouldStripThinkingHistory(messages: readonly Message[]): boolean {
 	return hasThinkinglessAssistantHistory(messages) || hasNonThinkingTurnAfterLastUser(messages);
@@ -5380,7 +5377,7 @@ function buildParams(
 		}
 	}
 
-	// Factory Droid's native thinking-history rule. For non-adaptive budget
+	// Thinking-history rule (`compat.stripThinkingHistory`). For non-adaptive budget
 	// models, when the conversation is not thinking-led (an assistant turn
 	// exists but none opens with a thinking block, or the turn after the last
 	// user does not), the CLI drops the `thinking` field and replays the

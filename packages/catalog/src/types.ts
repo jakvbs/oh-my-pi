@@ -19,7 +19,6 @@ export type KnownApi =
 	| "google-vertex"
 	| "ollama-chat"
 	| "cursor-agent"
-	| "factory-droid-agent"
 	| "gitlab-duo-agent"
 	| "apple-foundation-models";
 export type Api = KnownApi | (string & {});
@@ -354,8 +353,7 @@ export interface OpenAICompat {
 	/**
 	 * Value emitted for the reasoning field on tool-call turns when the provider
 	 * requires it (`requiresReasoningContentForToolCalls`) but no reasoning was
-	 * captured. Default: "". Some upstreams validate the exact value — the droid
-	 * proxy's DeepSeek family requires a single space.
+	 * captured. Default: "". Some upstreams validate the exact value.
 	 */
 	syntheticReasoningContentFallback?: string;
 	/**
@@ -1544,14 +1542,6 @@ export interface Model<TApi extends Api = Api> {
 	cursorSupportsAgent?: boolean;
 	/** Cursor explicitly reports support for sandboxed execution. */
 	cursorSupportsSandboxing?: boolean;
-	/** Factory Droid: account-resolved upstream rotation (first entry is the default `x-api-provider`). */
-	factoryDroidApiProviders?: string[];
-	/** Factory Droid: `configured_order` when live routing chose the rotation; absent means registry order. */
-	factoryDroidRoutingSource?: "configured_order";
-	/** Factory Droid Standard Credits base rate (relative per-token weight, not dollars). */
-	factoryDroidCredits?: number;
-	/** Canonical organization resolved during Factory discovery. */
-	factoryDroidOrgId?: string;
 	cost: ModelCost;
 	/**
 	 * Prompt-cache entry lifetime per retention tier, in seconds. Populated only

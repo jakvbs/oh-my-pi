@@ -1,6 +1,6 @@
 /**
  * `alwaysRefetchDynamicModels` contract: providers whose dynamic result
- * encodes fast-changing live state (factory-droid's serving-region filtering)
+ * encodes fast-changing live state
  * must not have a TTL-fresh cache replayed at them — the fetch runs on every
  * online-eligible refresh, with the cache kept only for offline/failure
  * fallback. An explicit "offline" strategy still serves the cache untouched.

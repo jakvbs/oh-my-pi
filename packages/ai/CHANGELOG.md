@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - Removed the Devin provider (`devin`, `devin-agent` API), its login flow, model discovery and usage reporting.
+- Removed the Factory Droid provider (`factory-droid`, `factory-droid-agent` API), its login flow, model discovery, usage reporting, credits badge and routed-subscription catalog axes.
 
 ## [18.9.2] - 2026-10-11
 

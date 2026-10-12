@@ -955,7 +955,7 @@ const streamOpenAICompletionsOnce = (
 					clearTimeout(requestTimeout);
 				}
 			};
-			// droid CLI parity: cache-read details can arrive on the
+			// Fireworks-served routes: cache-read details can arrive on the
 			// `fireworks-cached-prompt-tokens` response header when the SSE body
 			// omits `cached_tokens`; captured here for the usage parser.
 			let responseHeaders: Headers | undefined;
@@ -2173,7 +2173,7 @@ function buildParams(
 	};
 }
 
-/** droid CLI parity: the Factory completions route can report prompt-cache
+/** Fireworks-served routes can report prompt-cache
  * hits via the `fireworks-cached-prompt-tokens` response header when the SSE
  * body omits `cached_tokens`. Returns a positive count or undefined. */
 function parseFireworksCachedPromptTokens(headers: Headers | undefined): number | undefined {
@@ -2211,10 +2211,9 @@ export function parseChunkUsage(
 	const completionReasoningTokens = completionTokenDetails?.reasoning_tokens;
 	const cacheWriteTokens = promptTokenDetails?.cache_write_tokens;
 	const outputTokens = typeof completionTokens === "number" ? completionTokens : 0;
-	// droid CLI parity: the Factory completions route can report prompt-cache
-	// hits only through the `fireworks-cached-prompt-tokens` response header
-	// when the body omits `cached_tokens` (the CLI's transport reads it as a
-	// fallback for exactly that case). Body fields win when present.
+	// Fireworks-served routes can report prompt-cache hits only through the
+	// `fireworks-cached-prompt-tokens` response header when the body omits
+	// `cached_tokens`. Body fields win when present.
 	const bodyCachedTokens = firstPositiveNumber(
 		cachedTokens,
 		promptCacheHitTokens,
@@ -2630,8 +2629,7 @@ export function convertMessages(
 			// thinking blocks at all (e.g. proxy stripped reasoning_content from the response),
 			// emit the configured fallback (empty string by default — the most honest
 			// representation of "no reasoning was captured"). Providers that validate
-			// the exact value opt in via `syntheticReasoningContentFallback` (the droid
-			// proxy's DeepSeek family requires a single space).
+			// the exact value opt in via `syntheticReasoningContentFallback`.
 			if (
 				needsReasoningField &&
 				!hasReasoningField &&

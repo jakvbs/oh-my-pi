@@ -536,37 +536,6 @@ describe("ModelBrowser native model metadata", () => {
 	});
 });
 
-describe("Factory Droid credits badge", () => {
-	beforeAll(async () => {
-		await initTheme(false);
-	});
-
-	/** A Factory Droid row: upstream list price as `cost`, the base Standard Credits rate as the badge. */
-	function makeDroidModel(id: string, credits: number): Model {
-		return {
-			...makeModel("factory-droid", id),
-			cost: { input: 1.25, output: 10, cacheRead: 0, cacheWrite: 0 },
-			factoryDroidCredits: credits,
-		};
-	}
-
-	test("shows list price with the credit badge and never advertises unknown list prices as free", () => {
-		const priced = makeDroidModel("claude-opus-5", 2);
-		const paid = makeDroidModel("preview-credit-model", 2);
-		paid.cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-		const browser = makeBrowser([priced, paid], []);
-		const rows = browser.render(120).map(line => Bun.stripANSI(line));
-		const pricedRow = rows.find(row => row.includes("claude-opus-5"));
-		const paidRow = rows.find(row => row.includes("preview-credit-model"));
-
-		expect(pricedRow).toContain("$1.25/10 2×");
-		expect(paidRow).toContain("2×");
-		expect(paidRow).not.toContain("free");
-		browser.setQuery("free");
-		expect(browser.visibleCount).toBe(0);
-	});
-});
-
 describe("serviceTierFor", () => {
 	beforeAll(async () => {
 		await initTheme(false);
