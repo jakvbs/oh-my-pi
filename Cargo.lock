@@ -4851,7 +4851,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "napi"
-version = "3.13.0"
+version = "3.14.2"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -4875,42 +4875,42 @@ dependencies = [
 
 [[package]]
 name = "napi-build"
-version = "2.5.0"
+version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0941983559cd62bfa7f04646a16428967a847365adeef27711e4e3927046bbed"
+checksum = "b899b545d3aa6dca985939059f258c5488d34e4ecf39c274e20009748f4b846d"
 
 [[package]]
 name = "napi-derive"
-version = "3.6.9"
+version = "3.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b1d232c24dc6754979b27efdf2047a5849efc7c92c1245de87e6bedbb9f5c3c"
+checksum = "92cec6048ac04041ac8055bdce1ec4f353416cd443ba9222bf73af790c3d4495"
 dependencies = [
  "convert_case",
  "ctor",
  "napi-derive-backend",
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.6",
 ]
 
 [[package]]
 name = "napi-derive-backend"
-version = "6.1.4"
+version = "6.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6856fe1686867da90ed0dc292d7c0c87a695eb7c578b913360f33619ee01e3"
+checksum = "fae2444f4ba7333754bb73414ff8059dec2cb23b83a95bd1a0bf08169eed1be0"
 dependencies = [
  "convert_case",
  "proc-macro2",
  "quote",
  "semver",
- "syn 2.0.119",
+ "syn 3.0.6",
 ]
 
 [[package]]
 name = "napi-sys"
-version = "3.3.2"
+version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6801fc65ba4d7035636e93635e281113f00410401a237dcd4f55b1565ead2115"
+checksum = "e22a4f25c16a5c5411d987cd6fbd48313522ae1789ade2d6dd3efdc6d40a0fc8"
 dependencies = [
  "libloading 0.9.0",
 ]
@@ -5706,7 +5706,7 @@ dependencies = [
 
 [[package]]
 name = "pi-ast"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5741,7 +5741,7 @@ dependencies = [
 
 [[package]]
 name = "pi-builtins"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "ansi-width",
  "anyhow",
@@ -5829,11 +5829,11 @@ dependencies = [
 
 [[package]]
 name = "pi-diff"
-version = "18.8.9"
+version = "18.10.1"
 
 [[package]]
 name = "pi-edit"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -5853,7 +5853,7 @@ dependencies = [
 
 [[package]]
 name = "pi-iso"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "async-trait",
  "libc",
@@ -5865,7 +5865,7 @@ dependencies = [
 
 [[package]]
 name = "pi-natives"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5892,6 +5892,7 @@ dependencies = [
  "inferno",
  "libc",
  "log",
+ "memchr",
  "napi",
  "napi-build",
  "napi-derive",
@@ -5935,7 +5936,7 @@ dependencies = [
 
 [[package]]
 name = "pi-predict"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -5953,7 +5954,7 @@ dependencies = [
 
 [[package]]
 name = "pi-shell"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5984,7 +5985,7 @@ dependencies = [
 
 [[package]]
 name = "pi-vcs"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "futures",
  "gix",
@@ -6000,7 +6001,7 @@ dependencies = [
 
 [[package]]
 name = "pi-vfs"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "async-trait",
  "libc",
@@ -6013,7 +6014,7 @@ dependencies = [
 
 [[package]]
 name = "pi-walker"
-version = "18.8.9"
+version = "18.10.1"
 dependencies = [
  "globset",
  "ignore",
