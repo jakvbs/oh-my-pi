@@ -647,15 +647,15 @@ describe("isUsageLimitOutcome", () => {
 	});
 
 	it("rotates only account-scoped cap 403s and statusless trailers", () => {
-		const devinTrailer =
-			"Devin stream error permission_denied: Reached overall message rate limit. Please try again later. Your limit will reset in 13 minutes.";
+		const capTrailer =
+			"Stream error permission_denied: Reached overall message rate limit. Please try again later. Your limit will reset in 13 minutes.";
 		// HTTP 403 with the account-scoped body rotates.
-		expect(isUsageLimitOutcome(403, devinTrailer)).toBe(true);
-		// Devin's Connect trailer carries no HTTP status (a permission_denied
+		expect(isUsageLimitOutcome(403, capTrailer)).toBe(true);
+		// A stream trailer carries no HTTP status (a permission_denied
 		// ValidationError), so it must rotate on an undefined status too —
 		// otherwise the exhausted credential is retried as a transient failure.
-		expect(isUsageLimitOutcome(undefined, devinTrailer)).toBe(true);
-		expect(isUsageLimit(devinTrailer)).toBe(true);
+		expect(isUsageLimitOutcome(undefined, capTrailer)).toBe(true);
+		expect(isUsageLimit(capTrailer)).toBe(true);
 		expect(isUsageLimitOutcome(403, "Forbidden")).toBe(false);
 	});
 

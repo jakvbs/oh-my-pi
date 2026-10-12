@@ -59,7 +59,6 @@ const KNOWN_APIS = [
 	"ollama-chat",
 	"cursor-agent",
 	"gitlab-duo-agent",
-	"devin-agent",
 	"factory-droid-agent",
 	"apple-foundation-models",
 ] as const satisfies readonly KnownApi[];

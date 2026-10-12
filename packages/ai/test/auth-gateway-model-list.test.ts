@@ -10,13 +10,13 @@ test("model listing exposes one provider-qualified route per upstream model", as
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gw-model-list-"));
 	const storage = await AuthStorage.create(path.join(dir, "auth.db"));
 	const anthropic = createMockModel({ provider: "anthropic", id: "shared-model" });
-	const devin = createMockModel({ provider: "devin", id: "shared-model" });
+	const copilot = createMockModel({ provider: "github-copilot", id: "shared-model" });
 	const handle = startAuthGateway({
 		bind: "127.0.0.1:0",
 		bearerTokens: [],
 		storage,
 		resolveModel: () => undefined,
-		listModels: () => [anthropic, anthropic, devin, devin],
+		listModels: () => [anthropic, anthropic, copilot, copilot],
 		version: "test",
 	});
 
@@ -37,9 +37,9 @@ test("model listing exposes one provider-qualified route per upstream model", as
 					input_modalities: ["text"],
 				},
 				{
-					id: "devin/shared-model",
+					id: "github-copilot/shared-model",
 					object: "model",
-					owned_by: "devin",
+					owned_by: "github-copilot",
 					api: "mock",
 					display_name: "shared-model",
 					context_length: 200_000,

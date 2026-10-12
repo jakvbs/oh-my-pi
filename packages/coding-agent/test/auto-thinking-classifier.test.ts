@@ -387,17 +387,16 @@ describe("auto thinking classifier helpers", () => {
 		expect(clampAutoThinkingEffort(xhighCeilingModel, Effort.Max)).toBe(Effort.XHigh);
 	});
 
-	it("returns undefined for reasoning models without controllable efforts (devin-agent shape)", () => {
-		// Repro for https://github.com/can1357/oh-my-pi/issues/3356 — Devin
-		// models report `reasoning: true` but expose no `thinking.efforts` (Cascade
-		// selects effort by routing to sibling model ids). `auto` must not invent
+	it("returns undefined for reasoning models without controllable efforts ", () => {
+		// Repro for https://github.com/can1357/oh-my-pi/issues/3356: models that
+		// report `reasoning: true` but expose no `thinking.efforts`. `auto` must not invent
 		// a concrete effort here, or `requireSupportedEffort` throws in stream.ts.
-		const devinModel = {
+		const effortlessModel = {
 			id: "glm-5-2",
 			name: "GLM-5.2",
-			api: "devin-agent",
-			provider: "devin",
-			baseUrl: "https://server.codeium.com",
+			api: "openai-completions",
+			provider: "mock",
+			baseUrl: "https://example.test",
 			reasoning: true,
 			input: ["text"],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -405,10 +404,10 @@ describe("auto thinking classifier helpers", () => {
 			maxTokens: 4096,
 		} as Model;
 
-		expect(clampAutoThinkingEffort(devinModel, Effort.Low)).toBeUndefined();
-		expect(clampAutoThinkingEffort(devinModel, Effort.XHigh)).toBeUndefined();
-		expect(clampAutoThinkingEffort(devinModel, Effort.Max)).toBeUndefined();
-		expect(resolveProvisionalAutoLevel(devinModel)).toBeUndefined();
+		expect(clampAutoThinkingEffort(effortlessModel, Effort.Low)).toBeUndefined();
+		expect(clampAutoThinkingEffort(effortlessModel, Effort.XHigh)).toBeUndefined();
+		expect(clampAutoThinkingEffort(effortlessModel, Effort.Max)).toBeUndefined();
+		expect(resolveProvisionalAutoLevel(effortlessModel)).toBeUndefined();
 	});
 
 	it("parses max as a real thinking level", () => {
@@ -461,21 +460,21 @@ describe("auto thinking classifier helpers", () => {
 			"mock/mock-high-only has no supported thinking effort at or below task.maxEffort=low",
 		);
 
-		// No controllable effort surface (devin-agent shape) → undefined, so the
+		// No controllable effort surface → undefined, so the
 		// spawn falls back to its default selector instead of forcing an effort.
-		const devinModel = {
+		const effortlessModel = {
 			id: "glm-5-2",
 			name: "GLM-5.2",
-			api: "devin-agent",
-			provider: "devin",
-			baseUrl: "https://server.codeium.com",
+			api: "openai-completions",
+			provider: "mock",
+			baseUrl: "https://example.test",
 			reasoning: true,
 			input: ["text"],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 128_000,
 			maxTokens: 4096,
 		} as Model;
-		expect(resolveTaskEffortLevel(devinModel, "hi")).toBeUndefined();
+		expect(resolveTaskEffortLevel(effortlessModel, "hi")).toBeUndefined();
 
 		// No model at all → full canonical range.
 		expect(resolveTaskEffortLevel(undefined, "lo")).toBe(Effort.Minimal);

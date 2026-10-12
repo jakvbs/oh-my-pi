@@ -618,9 +618,8 @@ export class ModelControls {
 	async applyAutoThinkingLevel(promptText: string, generation: number, solutionSpace?: string): Promise<void> {
 		const model = this.#model;
 		if (!model?.reasoning) return;
-		// Models with reasoning but no controllable effort surface (devin-agent
-		// Cascade routes effort via sibling model ids, not a wire param) have
-		// nothing to pick — skip classification rather than discard its result.
+		// Models with reasoning but no controllable effort surface have nothing
+		// to pick — skip classification rather than discard its result.
 		if (getSupportedEfforts(model).length === 0) return;
 
 		let resolved: Effort | undefined;

@@ -20,7 +20,7 @@ test("excluded providers stay out of usage and credential health", async () => {
 	});
 	const reports: UsageReport[] = [
 		{ provider: "anthropic", fetchedAt: now, limits: [], metadata: { email: "friend@example.com" } },
-		{ provider: "devin", fetchedAt: now, limits: [], metadata: { email: "owner@example.com" } },
+		{ provider: "github-copilot", fetchedAt: now, limits: [], metadata: { email: "owner@example.com" } },
 	];
 	vi.spyOn(brokerClient, "fetchUsage").mockResolvedValue({ generatedAt: now, reports });
 	const store = new RemoteAuthCredentialStore({
@@ -41,7 +41,7 @@ test("excluded providers stay out of usage and credential health", async () => {
 				},
 				{
 					id: 2,
-					provider: "devin",
+					provider: "github-copilot",
 					credential: oauth("owner@example.com"),
 					identityKey: "email:owner@example.com",
 					rotatesInMs: null,
@@ -63,7 +63,7 @@ test("excluded providers stay out of usage and credential health", async () => {
 		bearerTokens: [],
 		storage,
 		resolveModel: () => undefined,
-		excludeProviders: new Set(["devin", "openrouter"]),
+		excludeProviders: new Set(["github-copilot", "openrouter"]),
 		version: "test",
 	});
 

@@ -1878,15 +1878,15 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		// Regression: with no configured model, the provider-default fallback kept
 		// the settings default thinking level (`high`) unresolved, so a reasoning
 		// model without an effort ladder failed its first turn with
-		// "Thinking effort high is not supported by devin/swe-1-6".
-		const fallbackModel = getBundledModel("devin", "swe-1-6");
+		// "Thinking effort high is not supported by <model>".
+		const fallbackModel = getBundledModel("xai", "grok-4");
 		if (!fallbackModel?.reasoning || fallbackModel.thinking) {
-			throw new Error("Expected bundled devin/swe-1-6 as a reasoning model without an effort ladder");
+			throw new Error("Expected bundled xai/grok-4 as a reasoning model without an effort ladder");
 		}
 
 		const authStorage = createInMemoryAuthStorage();
 		authStoragesToClose.push(authStorage);
-		authStorage.keys.setRuntime("devin", "test-key");
+		authStorage.keys.setRuntime("xai", "test-key");
 		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir, "models.yml"));
 
 		const { session } = await createAgentSession({
@@ -1894,7 +1894,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			agentDir: tempDir,
 			authStorage,
 			modelRegistry,
-			settings: Settings.isolated({ enabledModels: ["devin/swe-1-6"], defaultThinkingLevel: Effort.High }),
+			settings: Settings.isolated({ enabledModels: ["xai/grok-4"], defaultThinkingLevel: Effort.High }),
 			sessionManager: SessionManager.inMemory(),
 			disableExtensionDiscovery: true,
 			skills: [],
@@ -1909,8 +1909,8 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		});
 
 		try {
-			expect(session.model?.provider).toBe("devin");
-			expect(session.model?.id).toBe("swe-1-6");
+			expect(session.model?.provider).toBe("xai");
+			expect(session.model?.id).toBe("grok-4");
 			expect(session.thinkingLevel).toBeUndefined();
 		} finally {
 			await session.dispose();

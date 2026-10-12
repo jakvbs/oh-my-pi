@@ -172,7 +172,7 @@ export function getReferenceCandidateIds(modelId: string): string[] {
 /**
  * Inherit bundled reference thinking only for same-provider matches. Wire routing
  * (`effortRouting`) is provider-specific; cross-provider inheritance can rewrite
- * gateway ids (e.g. Portkey `@modal/GLM-5-2-FP8` → devin `glm-5-2`).
+ * gateway ids (e.g. Portkey `@modal/GLM-5-2-FP8` → another provider's `glm-5-2`).
  */
 export function inheritReferenceThinking(
 	modelThinking: ThinkingConfig | undefined,
@@ -188,7 +188,7 @@ export function inheritReferenceThinking(
 /** Resolve a (possibly proxied/affixed) model id to its bundled upstream reference. */
 export function resolveModelReference(modelId: string, index: ModelReferenceIndex): Model<Api> | undefined {
 	// Portkey/gateway wire ids (`@provider/model`) are opaque; fuzzy matching would
-	// map them to unrelated bundled entries (e.g. `@modal/GLM-5-2-FP8` → devin/glm-5-2).
+	// map them to unrelated bundled entries (e.g. `@modal/GLM-5-2-FP8` → an unrelated `glm-5-2`).
 	if (modelId.startsWith("@")) return undefined;
 	for (const candidate of getReferenceCandidateIds(modelId)) {
 		const key = normalizeReferenceKey(candidate);

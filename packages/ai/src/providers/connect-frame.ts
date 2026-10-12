@@ -1,6 +1,5 @@
 /**
- * Connect-protocol streaming envelope shared by the Cursor and Devin
- * transports: 1 flag byte + 4-byte big-endian payload length + payload.
+ * Connect-protocol streaming envelope used by the Cursor transport: 1 flag byte + 4-byte big-endian payload length + payload.
  */
 
 /** Flag bit: payload is compressed with the negotiated encoding (gzip). */

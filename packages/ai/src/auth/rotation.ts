@@ -409,8 +409,8 @@ export class RateLimits implements LimitsApi {
 		const exactCursorModelPolicy = AIError.isCursorPlanAccountPolicyError(error, provider);
 		const accountPolicy = exactCursorModelPolicy || AIError.isAccountPolicyError(error);
 		if (!accountPolicy && (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message))) {
-			// Thread the provider-specified reset window (e.g. Devin "Your limit
-			// will reset in 13 minutes") into the block duration so the credential
+			// Thread the provider-specified reset window ("Your limit will reset
+			// in 13 minutes") into the block duration so the credential
 			// is not reselected and hammered while the cap remains active.
 			const retryAfterMs = extractProviderRetryHint(provider, message);
 			const mark = await this.markReached(provider, sessionId, {

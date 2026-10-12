@@ -20,7 +20,7 @@ export type AxisShape = "scalar" | "array" | "object";
 export type AxisSet = "wire" | "thinking" | "catalog";
 
 /** Resolved compat record families a wire axis may be assigned onto. */
-export type CompatRecordName = "openai" | "openai-responses" | "anthropic" | "bedrock" | "devin" | "google" | "request";
+export type CompatRecordName = "openai" | "openai-responses" | "anthropic" | "bedrock" | "google" | "request";
 
 /** One axis definition: resolved key, namespace, shape, and applicability. */
 export interface AxisDef {
@@ -268,10 +268,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 	"prompt-cache-minimum-tokens": wire("promptCacheMinimumTokens", ["bedrock"]),
 	"prompt-cache-mode": wire("promptCacheMode", ["bedrock"], "scalar", ["none", "automatic", "explicit"]),
 
-	// ── wire: devin-agent ──
-	"model-router": wire("modelRouter", ["devin"]),
-	"supports-parallel-tool-calls": wire("supportsParallelToolCalls", ["devin"]),
-	"trust-explicit-thinking-only": wire("trustExplicitThinkingOnly", [...OAI, "devin"]),
+	"trust-explicit-thinking-only": wire("trustExplicitThinkingOnly", [...OAI]),
 
 	// ── wire: google APIs ──
 	"antigravity-claude-tool-mode": wire("antigravityClaudeToolMode", ["google"]),
@@ -305,7 +302,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 	"stream-idle-timeout-ms": wire("streamIdleTimeoutMs", [...OAI, "anthropic", "bedrock", "google"]),
 	"strip-image-input": wire("stripImageInput", [...OAI, "anthropic", "google"]),
 	"supports-forced-tool-choice": wire("supportsForcedToolChoice", [...OAI, "anthropic", "bedrock"]),
-	"supports-sampling-params": wire("supportsSamplingParams", [...OAI, "anthropic", "bedrock", "devin", "google"]),
+	"supports-sampling-params": wire("supportsSamplingParams", [...OAI, "anthropic", "bedrock", "google"]),
 	"thinking-loop-guard": wire("thinkingLoopGuard", [...OAI, "anthropic", "google"], "scalar", [
 		"gemini",
 		"deepseek",
@@ -539,7 +536,6 @@ export const API_COMPAT_RECORDS: Readonly<Record<string, readonly CompatRecordNa
 	"openai-codex-responses": ["openai-responses"],
 	"anthropic-messages": ["anthropic"],
 	"bedrock-converse-stream": ["bedrock"],
-	"devin-agent": ["devin"],
 	"google-generative-ai": ["google"],
 	"google-vertex": ["google"],
 	"google-gemini-cli": ["google"],

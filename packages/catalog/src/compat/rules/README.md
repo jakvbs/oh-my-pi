@@ -119,9 +119,9 @@ collapse {
     effort-lane-suffix "-fast" "cursor" bare-prefix="cursor-grok"
     effort-family "cursor" "gpt-5.6-luna"
     routing-variant-suffix "-wm" "openai-codex" "openai-codex-device"
-    variant-family "devin" "claude-opus-5" name="Claude Opus 5" { /* reviewed routing */ }
+    variant-family "cursor" "claude-opus-5" name="Claude Opus 5" { /* reviewed routing */ }
     variant-family "google-antigravity" "gemini-{rev}-flash" name="Gemini {rev} Flash" revision=">=3.6" { /* per-revision template */ }
-    provider-alias "devin" "opus" "claude-opus-5"
+    provider-alias "cursor" "opus" "claude-opus-5"
 }
 ```
 

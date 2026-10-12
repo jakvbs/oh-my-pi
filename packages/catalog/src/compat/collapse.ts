@@ -92,7 +92,7 @@ export interface EffortVariantFamily {
 	/**
 	 * Explicit capability surface for the collapsed spec — no inference. Omit
 	 * for single-wire-id renames on providers where effort is encoded in the
-	 * upstream id itself (Devin): with one member and no routing there is no
+	 * upstream id itself: with one member and no routing there is no
 	 * controllable surface, and the collapsed spec must carry no thinking
 	 * rather than an effort ladder whose every tier resolves to one wire id.
 	 */
@@ -148,8 +148,8 @@ type TierRoutes = Partial<Record<"off" | "minimal" | "low" | "medium" | "high" |
 /**
  * Build one effort-tier family from a tier→wire-id map: routing keeps only the
  * listed efforts, `members` dedupes the targets in tier order, and thinking is
- * `mode: "effort"` (mandatory when the family has no `off` route). Shared by the
- * Devin and Cursor tables, whose per-effort siblings follow the same shape.
+ * `mode: "effort"` (mandatory when the family has no `off` route). Used by the
+ * Cursor table, whose per-effort siblings follow the same shape.
  */
 function tierFamily(
 	id: string,

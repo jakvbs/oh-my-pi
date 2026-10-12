@@ -41,7 +41,6 @@ function requireReviewedTable(provider: string): VariantCollapseTable {
 
 const antigravityTable = requireReviewedTable("google-antigravity");
 const cursorTable = requireReviewedTable("cursor");
-const devinTable = requireReviewedTable("devin");
 const geminiCliTable = requireReviewedTable("google-gemini-cli");
 
 function memberSpec(
@@ -98,22 +97,6 @@ function cursorMemberSpec(id: string, overrides: Partial<ModelSpec<"cursor-agent
 	};
 }
 
-function devinMemberSpec(id: string, overrides: Partial<ModelSpec<"devin-agent">> = {}): ModelSpec<"devin-agent"> {
-	return {
-		id,
-		name: id,
-		api: "devin-agent",
-		provider: "devin",
-		baseUrl: "https://server.codeium.com",
-		reasoning: true,
-		input: ["text"],
-		supportsTools: true,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 200_000,
-		maxTokens: 64_000,
-		...overrides,
-	};
-}
 const PAIR_THINKING = {
 	mode: "budget",
 	efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
@@ -717,180 +700,6 @@ describe("collapseVariants across providers", () => {
 	});
 });
 
-describe("Devin tier routing", () => {
-	const family = (id: string) => {
-		const found = devinTable.families.find(f => f.id === id);
-		if (!found) throw new Error(`Devin family ${id} missing`);
-		return found;
-	};
-
-	it("routes user efforts 1:1 onto per-tier siblings including max", () => {
-		const opus = family("claude-opus-4-8");
-		expect(opus.routing).toEqual({
-			[Effort.Low]: "claude-opus-4-8-low",
-			[Effort.Medium]: "claude-opus-4-8-medium",
-			[Effort.High]: "claude-opus-4-8-high",
-			[Effort.XHigh]: "claude-opus-4-8-xhigh",
-			[Effort.Max]: "claude-opus-4-8-max",
-		});
-		expect(opus.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max]);
-		expect(opus.thinking?.requiresEffort).toBe(true);
-
-		const sol = family("gpt-5-6-sol");
-		expect(sol.routing[Effort.Max]).toBe("gpt-5-6-sol-max");
-		expect(sol.routing[Effort.Low]).toBe("gpt-5-6-sol-low");
-		expect(sol.routing.off).toBe("gpt-5-6-sol-none");
-		expect(sol.routing[Effort.Minimal]).toBeUndefined();
-
-		const solFast = family("gpt-5-6-sol-fast");
-		expect(solFast.routing[Effort.Max]).toBe("gpt-5-6-sol-max-priority");
-		expect(solFast.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max]);
-	});
-
-	it("keeps pre-5.6 families without a -max sibling on the xhigh ceiling", () => {
-		const gpt55 = family("gpt-5-5");
-		expect(gpt55.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
-		expect(gpt55.routing[Effort.Minimal]).toBeUndefined();
-		expect(gpt55.routing[Effort.Max]).toBeUndefined();
-	});
-
-	it("routes current Devin families onto their account-visible wire variants", () => {
-		const fable = family("claude-fable-5");
-		expect(fable.routing[Effort.Low]).toBe("claude-5-fable-low");
-		expect(fable.routing[Effort.Max]).toBe("claude-5-fable-max");
-
-		const swe = family("swe-1-7");
-		expect(swe.thinking?.efforts).toEqual([Effort.Medium, Effort.Max]);
-		expect(swe.routing[Effort.Medium]).toBe("swe-1-7-medium");
-		expect(swe.routing[Effort.Max]).toBe("swe-1-7");
-
-		const gemini = family("gemini-3-6-flash");
-		expect(gemini.routing[Effort.Minimal]).toBe("gemini-3-6-flash-minimal");
-		expect(gemini.routing[Effort.High]).toBe("gemini-3-6-flash-high");
-
-		const inkling = family("inkling");
-		expect(inkling.routing.off).toBe("inkling-none");
-		expect(inkling.routing[Effort.Max]).toBe("inkling-max");
-	});
-
-	it("collapses entitled current variants and resolves the selected effort to the wire UID", () => {
-		const rawIds = [
-			"claude-5-fable-low",
-			"claude-5-fable-medium",
-			"claude-5-fable-high",
-			"claude-5-fable-xhigh",
-			"claude-5-fable-max",
-			"swe-1-7-medium",
-			"swe-1-7",
-		];
-		const specs = rawIds.map((id): ModelSpec<"devin-agent"> => ({
-			id,
-			name: id,
-			api: "devin-agent",
-			provider: "devin",
-			baseUrl: "https://server.codeium.com",
-			reasoning: true,
-			input: ["text"],
-			supportsTools: true,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: 200_000,
-			maxTokens: 64_000,
-		}));
-
-		const collapsed = collapseVariants(specs, { table: devinTable });
-		expect(collapsed.map(model => model.id).sort()).toEqual(["claude-fable-5", "swe-1-7"]);
-
-		const fable = collapsed.find(model => model.id === "claude-fable-5");
-		const swe = collapsed.find(model => model.id === "swe-1-7");
-		if (!fable || !swe) throw new Error("Current Devin families did not collapse");
-		expect(resolveWireModelId(buildModel(fable), Effort.XHigh)).toBe("claude-5-fable-xhigh");
-		expect(resolveWireModelId(buildModel(swe), Effort.Medium)).toBe("swe-1-7-medium");
-		expect(resolveWireModelId(buildModel(swe), Effort.Max)).toBe("swe-1-7");
-	});
-
-	it("routes the added fallback families onto their native tiers and default wire UIDs", () => {
-		const gemini = family("gemini-3-7-flash");
-		expect(gemini.routing).toEqual({
-			[Effort.Minimal]: "gemini-3-7-flash-minimal",
-			[Effort.Low]: "gemini-3-7-flash-low",
-			[Effort.Medium]: "gemini-3-7-flash-medium",
-			[Effort.High]: "gemini-3-7-flash-high",
-		});
-		// The native default tier leads `members`, so it is also the collapsed
-		// spec's `requestModelId`.
-		expect(gemini.members[0]).toBe("gemini-3-7-flash-medium");
-		expect(gemini.thinking?.defaultLevel).toBe(Effort.Medium);
-
-		const lightning = family("swe-1-7-lightning");
-		expect(lightning.routing).toEqual({
-			[Effort.Medium]: "swe-1-7-lightning-medium",
-			[Effort.Max]: "swe-1-7-lightning",
-		});
-		expect(lightning.members[0]).toBe("swe-1-7-lightning-medium");
-
-		const grok = family("grok-4-6");
-		expect(grok.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
-		expect(grok.routing[Effort.XHigh]).toBe("grok-4-6-xhigh");
-		expect(grok.members[0]).toBe("grok-4-6-medium");
-
-		for (const id of ["deepseek-v4-flash", "deepseek-v4-pro"]) {
-			const deepseek = family(id);
-			expect(deepseek.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.Max]);
-			expect(deepseek.routing[Effort.Max]).toBe(`${id}-max`);
-			expect(deepseek.members[0]).toBe(`${id}-high`);
-		}
-
-		const nemotron = family("nemotron-3-ultra");
-		expect(nemotron.routing.off).toBe("nemotron-3-ultra-none");
-		expect(nemotron.thinking?.efforts).toEqual([Effort.Medium, Effort.High]);
-		expect(nemotron.thinking?.requiresEffort).toBeUndefined();
-		expect(nemotron.members[0]).toBe("nemotron-3-ultra-high");
-	});
-
-	it("renames the single-uid Haiku config without inventing an effort surface", () => {
-		const haiku = family("claude-haiku-4-5");
-		expect(haiku.members).toEqual(["MODEL_PRIVATE_11"]);
-		expect(haiku.thinking).toBeUndefined();
-
-		const collapsed = collapseVariants([devinMemberSpec("MODEL_PRIVATE_11")], { table: devinTable });
-		const spec = collapsed[0];
-		if (!spec) throw new Error("Haiku did not collapse");
-		expect(spec.id).toBe("claude-haiku-4-5");
-		expect(spec.requestModelId).toBe("MODEL_PRIVATE_11");
-		// Devin encodes effort in the uid: one uid means no controllable
-		// surface, but the model still reasons.
-		expect(spec.reasoning).toBe(true);
-		expect(spec.thinking).toBeUndefined();
-		expect(buildModel(spec).thinking).toBeUndefined();
-	});
-
-	it("collapses the added families and defaults the wire UID to the native tier", () => {
-		const collapsed = collapseVariants(
-			[
-				"gemini-3-7-flash-minimal",
-				"gemini-3-7-flash-low",
-				"gemini-3-7-flash-medium",
-				"gemini-3-7-flash-high",
-				"swe-1-7-lightning-medium",
-				"swe-1-7-lightning",
-			].map(id => devinMemberSpec(id)),
-			{ table: devinTable },
-		);
-		expect(collapsed.map(spec => spec.id).sort()).toEqual(["gemini-3-7-flash", "swe-1-7-lightning"]);
-
-		const gemini = collapsed.find(spec => spec.id === "gemini-3-7-flash");
-		const lightning = collapsed.find(spec => spec.id === "swe-1-7-lightning");
-		if (!gemini || !lightning) throw new Error("Added Devin families did not collapse");
-		expect(gemini.requestModelId).toBe("gemini-3-7-flash-medium");
-		const geminiModel = buildModel(gemini);
-		expect(geminiModel.thinking?.defaultLevel).toBe(Effort.Medium);
-		expect(resolveWireModelId(geminiModel, Effort.High)).toBe("gemini-3-7-flash-high");
-		// No `off` route: thinking-off falls back to the default wire uid.
-		expect(resolveWireModelId(geminiModel, undefined)).toBe("gemini-3-7-flash-medium");
-		expect(resolveWireModelId(buildModel(lightning), Effort.Max)).toBe("swe-1-7-lightning");
-	});
-});
-
 describe("Cursor Grok tier routing (issue #8803)", () => {
 	const RAW_SIBLINGS = [
 		"cursor-grok-4.5-high",
@@ -1382,39 +1191,12 @@ describe("variant aliases", () => {
 		]);
 	});
 
-	it("keeps provider-scoped aliases out of bare-id and reverse lookups", () => {
-		expect(resolveVariantSelector("devin", "opus")).toBe("claude-opus-5");
-		expect(resolveVariantSelector("devin", "claude")).toBe("claude-sonnet-5");
-		expect(resolveVariantSelector("devin", "sonnet")).toBe("claude-sonnet-5");
-		expect(resolveVariantSelector("devin", "haiku")).toBe("claude-haiku-4-5");
-		expect(resolveVariantSelector("devin", "gemini")).toBe("gemini-3-7-flash");
-		expect(resolveVariantSelector("devin", "gpt")).toBe("gpt-5-6-terra");
-		expect(resolveVariantSelector("devin", "codex")).toBe("gpt-5-3-codex");
-		expect(resolveVariantSelector("devin", "SWE")).toBe("swe-1-7-lightning");
-
-		// Generic labels must stay meaningless without a provider.
-		for (const alias of ["opus", "claude", "sonnet", "haiku", "gemini", "gpt", "codex", "swe"]) {
-			expect(resolveBareVariantSelector(alias)).toBeUndefined();
-			expect(resolveVariantSelector("google-antigravity", alias)).toBeUndefined();
-		}
-		// ...and must never re-key config off the collapsed model.
-		expect(getVariantAliasSources("devin", "claude-opus-5")).not.toContain("opus");
+	it("keeps provider-scoped aliases out of bare-id lookups", () => {
+		expect(resolveVariantSelector("openai-codex", "gpt-image-1")).toBe("gpt-image-2");
+		expect(resolveBareVariantSelector("gpt-image-1")).toBeUndefined();
+		expect(resolveVariantSelector("openai", "gpt-image-1")).toBeUndefined();
 	});
 
-	it("resolves the dotted native Devin spellings to hyphenated logical ids", () => {
-		expect(resolveVariantSelector("devin", "gpt-5.6-terra")).toBe("gpt-5-6-terra");
-		expect(resolveVariantSelector("devin", "gpt-5.6-sol")).toBe("gpt-5-6-sol");
-		expect(resolveVariantSelector("devin", "gpt-5.6-luna")).toBe("gpt-5-6-luna");
-		expect(resolveVariantSelector("devin", "gemini-3.7-flash")).toBe("gemini-3-7-flash");
-		expect(resolveVariantSelector("devin", "swe-1.7")).toBe("swe-1-7");
-		expect(resolveVariantSelector("devin", "swe-1.7-lightning")).toBe("swe-1-7-lightning");
-		expect(resolveVariantSelector("devin", "grok-4.6")).toBe("grok-4-6");
-		expect(resolveVariantSelector("devin", "glm-5.2")).toBe("glm-5-2");
-		expect(resolveVariantSelector("devin", "claude-haiku-4.5")).toBe("claude-haiku-4-5");
-		// Members still win over provider aliases and stay bare-resolvable.
-		expect(resolveVariantSelector("devin", "claude-opus-5-max")).toBe("claude-opus-5");
-		expect(resolveBareVariantSelector("claude-opus-5-max")?.id).toBe("claude-opus-5");
-	});
 	it("scopes collapsed-spec detection to routing and hand-table families", () => {
 		const collapsed = collapseVariants([memberSpec("gemini-3.5-flash-low")], { table: antigravityTable })[0];
 		expect(collapsed && isCollapsedVariantSpec(collapsed)).toBe(true);
@@ -1764,47 +1546,5 @@ describe("antigravity discovery collapsing", () => {
 		});
 		const result = await resolveProviderModels({ ...options, cacheDbPath: path.join(dir, "models.db") }, "online");
 		expect(result.models.some(model => model.id === "claude-opus-5-5")).toBe(true);
-	});
-});
-
-describe("Devin GLM-5.2 collapse", () => {
-	it("collapses the three 200K GLM-5.2 variants into one logical entry routing all efforts to the free glm-5-2 wire UID", () => {
-		const out = collapseVariants(
-			[
-				devinMemberSpec("glm-5-2"),
-				devinMemberSpec("glm-5-2-max"),
-				devinMemberSpec("glm-5-2-none", { reasoning: false }),
-			],
-			{ table: devinTable },
-		);
-
-		expect(out).toHaveLength(1);
-		const spec = out[0];
-		expect(spec?.id).toBe("glm-5-2");
-		expect(spec?.thinking?.effortRouting).toEqual({
-			high: "glm-5-2",
-			xhigh: "glm-5-2",
-		});
-	});
-
-	it("collapses the three 1M GLM-5.2 variants into one paid entry with proper effort routing", () => {
-		const out = collapseVariants(
-			[
-				devinMemberSpec("glm-5-2-1m", { contextWindow: 1_000_000 }),
-				devinMemberSpec("glm-5-2-max-1m", { contextWindow: 1_000_000 }),
-				devinMemberSpec("glm-5-2-none-1m", { contextWindow: 1_000_000, reasoning: false }),
-			],
-			{ table: devinTable },
-		);
-
-		expect(out).toHaveLength(1);
-		const spec = out[0];
-		expect(spec?.id).toBe("glm-5-2-1m");
-		expect(spec?.contextWindow).toBe(1_000_000);
-		expect(spec?.thinking?.effortRouting).toEqual({
-			off: "glm-5-2-none-1m",
-			high: "glm-5-2-1m",
-			xhigh: "glm-5-2-max-1m",
-		});
 	});
 });

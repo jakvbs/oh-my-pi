@@ -256,7 +256,6 @@ describe("AgentSession retry fallback", () => {
 		authStorage.keys.setRuntime("google", "google-test-key");
 		authStorage.keys.setRuntime("google-vertex", "google-vertex-test-key");
 		authStorage.keys.setRuntime("openrouter", "openrouter-test-key");
-		authStorage.keys.setRuntime("devin", "devin-test-key");
 		authStorage.keys.setRuntime("openai-codex", "openai-codex-test-key");
 		sharedRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
 	});
@@ -628,8 +627,8 @@ describe("AgentSession retry fallback", () => {
 
 		const requestedModels: string[] = [];
 		const agent = createFallbackAgent(primaryModel, requestedModels, {
-			firstError: new AIError.ProviderResponseError("Devin API error: empty response body", {
-				provider: "devin",
+			firstError: new AIError.ProviderResponseError("Anthropic API error: empty response body", {
+				provider: "anthropic",
 				kind: "empty-body",
 			}),
 		});
@@ -671,8 +670,8 @@ describe("AgentSession retry fallback", () => {
 
 		const requestedModels: string[] = [];
 		const agent = createFallbackAgent(primaryModel, requestedModels, {
-			firstError: new AIError.ProviderResponseError("Devin API error: empty response body", {
-				provider: "devin",
+			firstError: new AIError.ProviderResponseError("Anthropic API error: empty response body", {
+				provider: "anthropic",
 				kind: "empty-body",
 			}),
 		});
@@ -1966,7 +1965,7 @@ describe("AgentSession retry fallback", () => {
 				requestedAdvisorModels.push(selector);
 				if (selector === advisorPrimarySelector && advisorPrimaryAttempts++ === 0) {
 					advisorMock.push({
-						throw: "Devin stream error failed_precondition: Your daily usage quota has been exhausted. Your quota will reset after 1s.",
+						throw: "Stream error failed_precondition: Your daily usage quota has been exhausted. Your quota will reset after 1s.",
 					});
 				} else if (selector === advisorPrimarySelector) {
 					advisorMock.push({ content: ["Advisor primary restored"] });

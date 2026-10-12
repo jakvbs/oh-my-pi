@@ -24,7 +24,6 @@ import type {
 	OpenAICompat,
 	ResolvedAnthropicCompat,
 	ResolvedBedrockCompat,
-	ResolvedDevinCompat,
 	ResolvedGoogleCompat,
 	ResolvedOpenAICompat,
 	ResolvedOpenAIResponsesCompat,
@@ -953,17 +952,6 @@ function resolveBedrockPolicy(spec: ModelSpec<"bedrock-converse-stream">, axes: 
 	return compat;
 }
 
-function resolveDevinPolicy(spec: ModelSpec<"devin-agent">, axes: ResolvedAxes): ResolvedDevinCompat {
-	const compat: ResolvedDevinCompat = {
-		trustExplicitThinkingOnly: true,
-		modelRouter: false,
-		supportsParallelToolCalls: false,
-	};
-	applyWireAxes(compat, axes.wire, "devin-agent");
-	applyCompatOverrides(compat, spec.compat);
-	return compat;
-}
-
 function resolveGooglePolicy(
 	spec: ModelSpec<"google-generative-ai" | "google-vertex" | "google-gemini-cli">,
 	axes: ResolvedAxes,
@@ -1338,8 +1326,6 @@ export function resolveModelPolicy(spec: ModelSpec<Api>, route?: ResolveRoute): 
 		compat = resolveAnthropicPolicy(spec, facts, axes);
 	} else if (specUsesApi(spec, "bedrock-converse-stream")) {
 		compat = resolveBedrockPolicy(spec, axes);
-	} else if (specUsesApi(spec, "devin-agent")) {
-		compat = resolveDevinPolicy(spec, axes);
 	} else if (
 		specUsesApi(spec, "google-generative-ai") ||
 		specUsesApi(spec, "google-vertex") ||

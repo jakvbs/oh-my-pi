@@ -11,20 +11,11 @@
  * Models are built from specs so the KDL rules, not baked rows, decide.
  */
 import { describe, expect, it } from "bun:test";
-import { gunzipSync } from "node:zlib";
-import { streamDevin } from "@oh-my-pi/pi-ai/providers/devin";
 import { convertMessages } from "@oh-my-pi/pi-ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@oh-my-pi/pi-ai/providers/openai-responses";
 import { stream } from "@oh-my-pi/pi-ai/stream";
 import type { Api, AssistantMessage, Message, Model, ModelSpec } from "@oh-my-pi/pi-ai/types";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import {
-	GetChatMessageRequestSchema,
-	GetChatMessageResponseSchema,
-	GetUserJwtResponseSchema,
-} from "@oh-my-pi/pi-catalog/discovery/devin-proto";
-import { create, fromBinary, toBinary } from "@oh-my-pi/pi-catalog/discovery/protobuf";
-
 const TRACE = "Earlier reasoning: read foo.ts, then patch bar().";
 const THINK = `<think>\n${TRACE}\n</think>`;
 const DEMOTED = `${THINK}\nPatched.`;
@@ -127,22 +118,6 @@ async function responsesAssistantItems(
 	);
 }
 
-/** Captures the Cascade request omp's Devin provider sends, without a model call. */
-async function devinRequest(model: Model<"devin-agent">, messages: Message[]) {
-	const authPayload = toBinary(GetUserJwtResponseSchema, create(GetUserJwtResponseSchema, { userJwt: "jwt" }));
-	let requestPayload: Uint8Array | undefined;
-	const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
-		if (String(input).includes("GetUserJwt")) return new Response(authPayload);
-		requestPayload = new Uint8Array(init?.body as ArrayBuffer);
-		return new Response(new Uint8Array());
-	}) as typeof fetch;
-	await streamDevin(model, { messages }, { apiKey: "token", fetch: fetchImpl }).result();
-	if (!requestPayload) throw new Error("Devin chat request was not captured");
-	const view = new DataView(requestPayload.buffer, requestPayload.byteOffset, requestPayload.byteLength);
-	const compressed = requestPayload.subarray(5, 5 + view.getUint32(1, false));
-	return fromBinary(GetChatMessageRequestSchema, gunzipSync(compressed));
-}
-
 const moonshotK3 = () => target("openai-completions", "moonshot", "kimi-k3");
 const openRouterK3 = () => target("openrouter", "openrouter", "moonshotai/kimi-k3");
 const factoryK3: Source = { provider: "factory-droid", api: "openai-completions", model: "kimi-k3" };
@@ -195,15 +170,6 @@ describe("same-model reasoning carry", () => {
 		});
 
 		expect(JSON.stringify(items)).toContain(`"text":${JSON.stringify(THINK)}`);
-	});
-
-	it("sends carried reasoning in Devin's thinking field", async () => {
-		const request = await devinRequest(
-			target("devin-agent", "devin", "kimi-k3"),
-			history(priorTurn(factoryK3, fieldSignature)),
-		);
-
-		expect(request.chatMessagePrompts[1]).toMatchObject({ prompt: "Patched.", thinking: TRACE, signature: "" });
 	});
 
 	it("still demotes on a host whose encoder drops its own reasoning", () => {
@@ -314,9 +280,9 @@ describe("same-model reasoning carry", () => {
 	});
 
 	it("judges a routed turn by the model that actually served it", () => {
-		const devinK3: Source = { provider: "devin", api: "devin-agent", model: "kimi-k3" };
-		const servedElsewhere = { ...priorTurn(devinK3), upstreamModel: "MODEL_GOOGLE_GEMINI_3_PRO" };
-		const servedByK3 = { ...priorTurn(devinK3), upstreamModel: "kimi-k3" };
+		const routedK3: Source = { provider: "openrouter", api: "openrouter", model: "kimi-k3" };
+		const servedElsewhere = { ...priorTurn(routedK3), upstreamModel: "MODEL_GOOGLE_GEMINI_3_PRO" };
+		const servedByK3 = { ...priorTurn(routedK3), upstreamModel: "kimi-k3" };
 
 		expect(completionsAssistant(moonshotK3(), history(servedElsewhere)).content).toBe(DEMOTED);
 		expect(completionsAssistant(moonshotK3(), history(servedByK3)).reasoning_content).toBe(TRACE);
@@ -458,7 +424,7 @@ describe("Responses reasoning provenance is recorded at parse time", () => {
 	});
 });
 
-describe("chat-completions and Devin parsers confirm their reasoning as the trace", () => {
+describe("chat-completions parsers confirm their reasoning as the trace", () => {
 	it("carries a Moonshot reasoning_content turn to OpenRouter", async () => {
 		const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
 			`data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 0, model: "kimi-k3", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
@@ -477,30 +443,5 @@ describe("chat-completions and Devin parsers confirm their reasoning as the trac
 		expect(prior.content[0]).toMatchObject({ type: "thinking", thinking: TRACE, summary: false });
 		const items = await responsesAssistantItems(openRouterK3(), history(prior));
 		expect(items[0]).toEqual({ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: TRACE }] });
-	});
-
-	it("carries a Devin thinking turn to Moonshot", async () => {
-		const authPayload = toBinary(GetUserJwtResponseSchema, create(GetUserJwtResponseSchema, { userJwt: "jwt" }));
-		const frame = (fields: { deltaThinking?: string; deltaText?: string }) => {
-			const payload = toBinary(
-				GetChatMessageResponseSchema,
-				create(GetChatMessageResponseSchema, { messageId: "m1", ...fields }),
-			);
-			const out = new Uint8Array(5 + payload.length);
-			new DataView(out.buffer).setUint32(1, payload.length, false);
-			out.set(payload, 5);
-			return out;
-		};
-		const body = new Uint8Array([...frame({ deltaThinking: TRACE }), ...frame({ deltaText: "Patched." })]);
-		const fetchImpl = (async (input: string | URL | Request) =>
-			new Response(String(input).includes("GetUserJwt") ? authPayload : body)) as typeof fetch;
-		const prior = await streamDevin(
-			target("devin-agent", "devin", "kimi-k3"),
-			{ messages: [{ role: "user", content: "fix the bug", timestamp: 0 }] },
-			{ apiKey: "token", fetch: fetchImpl },
-		).result();
-
-		expect(prior.content[0]).toMatchObject({ type: "thinking", thinking: TRACE, summary: false });
-		expect(completionsAssistant(moonshotK3(), history(prior)).reasoning_content).toBe(TRACE);
 	});
 });

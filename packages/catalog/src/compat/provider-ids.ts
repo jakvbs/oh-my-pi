@@ -24,7 +24,6 @@ export type KnownProvider =
 	| "cursor"
 	| "deepinfra"
 	| "deepseek"
-	| "devin"
 	| "factory-droid"
 	| "firepass"
 	| "fireworks"

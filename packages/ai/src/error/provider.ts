@@ -48,11 +48,6 @@ export class ProviderResponseError extends Error {
 	}
 }
 
-/** Non-2xx response from the Devin API. */
-export class DevinApiError extends ProviderHttpError {
-	override readonly name = "DevinApiError";
-}
-
 /** Non-2xx response from the GitLab Duo direct-access API. */
 export class GitLabDuoApiError extends ProviderHttpError {
 	override readonly name = "GitLabDuoApiError";

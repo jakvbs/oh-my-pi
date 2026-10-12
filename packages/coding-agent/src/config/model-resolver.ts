@@ -396,7 +396,7 @@ type ModelsWithWireRouteIndex = readonly Model<Api>[] & {
 /**
  * Reverse index over collapsed models' `thinking.effortRouting`:
  * `provider\0wireId` → the logical model that routes to it. Families collapsed
- * at discovery time (Devin's dynamic catalog) carry no hand-table alias, so
+ * at discovery time carry no hand-table alias, so
  * their raw upstream uids would otherwise be unselectable. Ambiguous wire ids
  * (two logical models routing to one uid) map to the `null` sentinel and
  * resolve to nothing, exactly like the exact-id index.

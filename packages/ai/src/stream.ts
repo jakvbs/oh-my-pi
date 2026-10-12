@@ -26,7 +26,6 @@ import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { CursorOptions } from "./providers/cursor";
-import type { DevinOptions } from "./providers/devin";
 import { type FactoryDroidOptions, streamFactoryDroid } from "./providers/factory-droid";
 import { streamGitLabDuo } from "./providers/gitlab-duo";
 import { type GitLabDuoWorkflowOptions, streamGitLabDuoWorkflow } from "./providers/gitlab-duo-workflow";
@@ -45,7 +44,6 @@ import {
 	streamAzureOpenAIResponses,
 	streamBedrock,
 	streamCursor,
-	streamDevin,
 	streamGoogle,
 	streamGoogleGeminiCli,
 	streamGoogleVertex,
@@ -1047,9 +1045,6 @@ function streamDispatch<TApi extends Api>(
 
 		case "cursor-agent":
 			return streamCursor(providerModel as Model<"cursor-agent">, context, providerOptions as CursorOptions);
-
-		case "devin-agent":
-			return streamDevin(providerModel as Model<"devin-agent">, context, providerOptions as DevinOptions);
 
 		case "apple-foundation-models":
 			return streamAppleFoundationModels(
@@ -2333,17 +2328,6 @@ function mapOptionsForApi<TApi extends Api>(
 				toolChoice: options?.toolChoice,
 				reasoning: options?.disableReasoning || options?.forceReasoningOff ? undefined : options?.reasoning,
 			});
-		case "devin-agent": {
-			const devinModel = model as Model<"devin-agent">;
-			const effort =
-				options?.reasoning && !options.disableReasoning
-					? requireSupportedEffort(devinModel, options.reasoning)
-					: undefined;
-			return castApi<"devin-agent">({
-				...base,
-				chatModelUid: resolveWireModelId(devinModel, effort),
-			});
-		}
 		default:
 			throw new AIError.ConfigurationError(`Unhandled API in mapOptionsForApi: ${model.api}`);
 	}

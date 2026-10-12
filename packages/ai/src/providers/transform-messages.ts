@@ -490,14 +490,12 @@ function targetReadsForeignThinking(model: Model, compat: Model["compat"]): bool
  *   hosts that require reasoning replay already receive id-less plaintext
  *   items from omp (the `requiresReasoningContent*` safety net). OpenRouter's
  *   chat fallback shares the tool-call flag.
- * - Devin sends every turn's thinking in the prompt's `thinking` field.
  * Anthropic-format targets that accept unsigned thinking already read it via
  * `targetReadsForeignThinking`; Bedrock and Google reject or ignore unsigned
  * reasoning, and Codex hosts no portable family.
  */
 function targetReplaysPlaintextReasoning(model: Model, compat: Model["compat"]): boolean {
 	if (!model.reasoning || compat === undefined) return false;
-	if (model.api === "devin-agent") return true;
 	if (!("requiresReasoningContentForToolCalls" in compat)) return false;
 	switch (model.api) {
 		case "openai-completions":

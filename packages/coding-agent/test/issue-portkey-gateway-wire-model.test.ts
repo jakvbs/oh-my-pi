@@ -30,7 +30,7 @@ describe("Portkey gateway custom models", () => {
 		}
 	});
 
-	test("gateway @modal/GLM-5-2-FP8 keeps full wire id (not devin glm-5-2)", () => {
+	test("gateway @modal/GLM-5-2-FP8 keeps full wire id (not a bare glm-5-2)", () => {
 		fs.writeFileSync(
 			modelsPath,
 			`providers:

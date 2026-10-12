@@ -72,8 +72,8 @@ const CONCURRENT_LIMIT_PATTERN =
 const ACCOUNT_SCOPED_403_PATTERN =
 	// The bare "limit will reset" / "will reset in" phrasing also appears on
 	// statusless per-minute transients ("Rate limit will reset in 30 seconds"),
-	// so gate the reset-window alternative on account-specific wording (Devin's
-	// "Your limit will reset in …"); the overall/account qualifiers arm above
+	// so gate the reset-window alternative on account-specific wording
+	// ("Your limit will reset in …"); the overall/account qualifiers arm above
 	// already covers the rest.
 	/\b(?:overall|account|organization|team|workspace)\b[^\n]{0,40}\b(?:message |request )?rate.?limit\b|\byour\b[^\n]{0,30}\b(?:limit )?will reset\b/i;
 // Simplified Chinese account-quota exhaustion phrasing. Zhipu Coding Plan
@@ -386,10 +386,8 @@ export function isUsageLimitOutcome(status: number | undefined, message: string 
 	if (isConcurrencyCapExclusion(status, message)) return false;
 	if (message && matchesUsageLimitText(message)) return true;
 	// A 403 is normally an auth failure, but several providers deliver an
-	// account-scoped cap with it (Devin/Codeium Connect `permission_denied`,
-	// GitHub Copilot). Devin's end-of-stream Connect trailer carries no HTTP
-	// status at all (it arrives as a `permission_denied` ValidationError), so
-	// accept an undefined status too — but only when the body names a cap that
+	// account-scoped cap with it (GitHub Copilot). A cap surfaced without an
+	// HTTP status (a stream trailer or ValidationError) is accepted too — but only when the body names a cap that
 	// resets, never on a bare 403, which stays an auth failure.
 	if ((status === 403 || status === undefined) && message && isAccountScopedCapText(message)) return true;
 	if (status === 402 && is402BillingCapBody(message)) return true;

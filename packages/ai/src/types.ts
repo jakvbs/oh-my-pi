@@ -44,7 +44,6 @@ import type { FallbackParam, StopDetails } from "./providers/anthropic-wire";
 import type { AzureOpenAIResponsesOptions } from "./providers/azure-openai-responses";
 import type { CursorOptions } from "./providers/cursor";
 import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
-import type { DevinOptions } from "./providers/devin";
 import type { FactoryDroidOptions } from "./providers/factory-droid";
 import type { GitLabDuoWorkflowOptions } from "./providers/gitlab-duo-workflow";
 import type { GoogleOptions } from "./providers/google";
@@ -87,7 +86,6 @@ export interface ApiOptionsMap {
 	"cursor-agent": CursorOptions;
 	"factory-droid-agent": FactoryDroidOptions;
 	"gitlab-duo-agent": GitLabDuoWorkflowOptions;
-	"devin-agent": DevinOptions;
 	"apple-foundation-models": AppleFoundationModelsOptions;
 }
 // Compile-time exhaustiveness check - this will fail if ApiOptionsMap doesn't have all KnownApi keys
@@ -886,8 +884,8 @@ export interface ThinkingContent {
 	 * `true`: `thinking` is a provider-written summary of the model's reasoning
 	 * (OpenAI Responses `summary_text`, Gemini thought summaries). `false`: the
 	 * wire delivered it as the reasoning itself, not marked as a summary
-	 * (chat-completions reasoning fields, Responses `reasoning_text`, Devin
-	 * `thinking`); whether that is the full trace is vouched for per family by
+	 * (chat-completions reasoning fields, Responses `reasoning_text`);
+	 * whether that is the full trace is vouched for per family by
 	 * the catalog's `portable-reasoning`. Unset when provenance is unknown,
 	 * including turns recorded before parsers set it. Only `false` blocks
 	 * replay natively on another host.

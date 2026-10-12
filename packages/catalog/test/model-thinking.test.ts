@@ -1185,7 +1185,7 @@ describe("model thinking derivation", () => {
 		});
 	});
 
-	it("keeps pre-5.6 and Devin-routed GPT models on their own effort surfaces", () => {
+	it("keeps pre-5.6 GPT models on their own effort surface", () => {
 		const gpt55 = createModel({
 			id: "gpt-5.5",
 			api: "openai-responses",
@@ -1197,30 +1197,6 @@ describe("model thinking derivation", () => {
 			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
 		});
 		expect(gpt55.thinking?.effortMap).toBeUndefined();
-
-		// Devin selects effort by routing to per-tier sibling model ids, never
-		// via a wire reasoning.effort field — no effort map may attach.
-		const devin = createModel({
-			id: "gpt-5-6-sol",
-			api: "devin-agent",
-			provider: "devin",
-			baseUrl: "https://server.codeium.com",
-			thinking: {
-				mode: "effort",
-				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
-				effortRouting: {
-					off: "gpt-5-6-sol-none",
-					low: "gpt-5-6-sol-low",
-					medium: "gpt-5-6-sol-medium",
-					high: "gpt-5-6-sol-high",
-					xhigh: "gpt-5-6-sol-xhigh",
-					max: "gpt-5-6-sol-max",
-				},
-			},
-		});
-
-		expect(devin.thinking?.effortMap).toBeUndefined();
-		expect(devin.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max]);
 	});
 	it("classifies Z.ai GLM-5.2 on the anthropic-messages coding endpoint as budget-effort with high/max", () => {
 		// Z.ai's anthropic-messages proxy (api.z.ai/api/anthropic) serves

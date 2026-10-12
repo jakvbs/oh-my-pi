@@ -1161,13 +1161,12 @@ export class SessionAdvisors {
 			// Clamp the effort against the resolved model. Historically we defaulted
 			// to `ThinkingLevel.Medium` unconditionally, which threw at first stream
 			// on reasoning models that expose no controllable effort surface
-			// (e.g. `devin-agent`: Cascade routes by sibling model id, not a wire
-			// param; `getSupportedEfforts` returns `[]`). `resolveThinkingLevelForModel`
+			// (`getSupportedEfforts` returns `[]`). `resolveThinkingLevelForModel`
 			// preserves an explicit `off`, clamps a concrete effort into the model's
 			// supported range, and returns `undefined` for reasoning models without
 			// controllable efforts — for that case we forward `Inherit` so no effort
-			// is sent and reasoning stays enabled (matching the `auto`-path fix for
-			// Devin models via `clampAutoThinkingEffort`). See #4579.
+			// is sent and reasoning stays enabled (matching
+			// `clampAutoThinkingEffort` on the `auto` path). See #4579.
 			const requestedLevel = autoThinking
 				? this.#autoAdvisorThinkingLevel()
 				: (thinkingLevel ?? ThinkingLevel.Medium);

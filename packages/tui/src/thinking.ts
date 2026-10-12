@@ -241,8 +241,7 @@ export function parseCliThinkingLevel(value: string | null | undefined): Configu
  * to a sub-Low tier the model happens to expose.
  *
  * Returns `undefined` for reasoning-capable models without a controllable
- * effort surface (`thinking.efforts` empty — e.g. devin-agent models, where
- * Cascade selects effort by routing to sibling model ids). Matches
+ * effort surface (`thinking.efforts` empty). Matches
  * {@link clampThinkingLevelForModel}: with no effort to pick, `auto` must not
  * forward a concrete effort that would then trip {@link requireSupportedEffort}
  * downstream.

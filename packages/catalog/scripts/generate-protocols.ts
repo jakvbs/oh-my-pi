@@ -4,7 +4,6 @@ import { generateProtoTs, ProtoContext, parseProto } from "./proto-parser";
 const PACKAGES_DIR = path.resolve(import.meta.dir, "../..");
 const CURSOR_PROTO = path.join(PACKAGES_DIR, "ai/src/providers/cursor/proto/agent.proto");
 const CURSOR_MODELS_PROTO = path.join(PACKAGES_DIR, "catalog/src/discovery/cursor-models.proto");
-const DEVIN_PROTO_DIR = path.join(PACKAGES_DIR, "ai/src/providers/devin/proto");
 const DISCOVERY_DIR = path.resolve(import.meta.dir, "../src/discovery");
 
 const CURSOR_CONSUMER_DIRS = [
@@ -22,40 +21,6 @@ const CURSOR_ENUMS = [
 	"ForceBackgroundSubagentStatus",
 	"ModelVendorId",
 ];
-const DEVIN_MESSAGES = [
-	"exa.api_server_pb.AssignModelRequest",
-	"exa.api_server_pb.AssignModelResponse",
-	"exa.chat_pb.ChatMessagePrompt",
-	"exa.codeium_common_pb.ChatToolCall",
-	"exa.chat_pb.ChatToolChoice",
-	"exa.chat_pb.ChatToolDefinition",
-	"exa.codeium_common_pb.ClientModelConfig",
-	"exa.codeium_common_pb.CompletionConfiguration",
-	"exa.api_server_pb.GetChatMessageRequest",
-	"exa.api_server_pb.GetChatMessageResponse",
-	"exa.api_server_pb.GetCliModelConfigsRequest",
-	"exa.api_server_pb.GetCliModelConfigsResponse",
-	"exa.auth_pb.GetUserJwtRequest",
-	"exa.auth_pb.GetUserJwtResponse",
-	"exa.seat_management_pb.GetUserStatusRequest",
-	"exa.seat_management_pb.GetUserStatusResponse",
-	"exa.codeium_common_pb.ImageData",
-	"exa.codeium_common_pb.Metadata",
-	"exa.codeium_common_pb.ModelUsageStats",
-	"exa.chat_pb.PromptCacheOptions",
-	"exa.codeium_common_pb.ModelInfo",
-	"exa.codeium_common_pb.ModelFeatures",
-];
-const DEVIN_ENUMS = [
-	"BillingStrategy",
-	"CacheControlType",
-	"ChatMessageRequestType",
-	"ChatMessageSource",
-	"ConversationalPlannerMode",
-	"StopReason",
-	"TeamsTier",
-];
-
 async function collectCursorMessages(): Promise<string[]> {
 	const symbols = new Set<string>();
 	const importPattern = /import(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']([^"']+)["'];/g;
@@ -93,19 +58,6 @@ async function collectTypeScriptFiles(directories: string[]): Promise<string[]> 
 	return files.sort();
 }
 
-async function parseProtoDirectory(directory: string): Promise<ProtoContext> {
-	const context = new ProtoContext();
-	const paths: string[] = [];
-	const glob = new Bun.Glob("**/*.proto");
-	for await (const relativePath of glob.scan({ cwd: directory, onlyFiles: true })) paths.push(relativePath);
-
-	for (const relativePath of paths.sort()) {
-		const source = await Bun.file(path.join(directory, relativePath)).text();
-		context.addFile(parseProto(source, relativePath));
-	}
-	return context;
-}
-
 async function generateProtocols(): Promise<void> {
 	const cursorSource = await Bun.file(CURSOR_PROTO).text();
 	const cursorModelsSource = await Bun.file(CURSOR_MODELS_PROTO).text();
@@ -120,16 +72,8 @@ async function generateProtocols(): Promise<void> {
 		packagePrefix: "Cursor agent",
 		protobufImportPath: "./protobuf",
 	});
-	const devin = generateProtoTs(await parseProtoDirectory(DEVIN_PROTO_DIR), {
-		includeMessages: DEVIN_MESSAGES,
-		includeEnums: DEVIN_ENUMS,
-		includeDependencies: true,
-		packagePrefix: "Devin",
-		protobufImportPath: "./protobuf",
-	});
 
 	await Bun.write(path.join(DISCOVERY_DIR, "cursor-proto.ts"), `${cursor}\n`);
-	await Bun.write(path.join(DISCOVERY_DIR, "devin-proto.ts"), `${devin}\n`);
 }
 
 await generateProtocols();

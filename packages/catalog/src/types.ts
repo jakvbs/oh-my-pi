@@ -21,7 +21,6 @@ export type KnownApi =
 	| "cursor-agent"
 	| "factory-droid-agent"
 	| "gitlab-duo-agent"
-	| "devin-agent"
 	| "apple-foundation-models";
 export type Api = KnownApi | (string & {});
 
@@ -1215,35 +1214,6 @@ export type ResolvedAnthropicCompat = Required<
 };
 
 /**
- * Compatibility settings for the devin-agent (Codeium Cascade) API. Cascade
- * selects reasoning effort only by routing to a sibling model id (the
- * `thinking.effortRouting` baked by the compat collapse engine), never by a wire
- * reasoning/effort field, so the model-thinking deriver must not invent an
- * effort ladder from identity for these models.
- */
-export interface DevinCompat {
-	/**
-	 * Trust only explicit `thinking` metadata; never derive a thinking surface
-	 * from model identity. A reasoning model with no explicit routed thinking
-	 * resolves to `thinking: undefined` (`reasoning: true`, no controllable
-	 * effort) instead of a fabricated minimal/low/medium/high ladder.
-	 */
-	trustExplicitThinkingOnly?: boolean;
-	/**
-	 * Server-side router model. Providers must resolve the router through
-	 * `AssignModel` and send the returned assignment JWT with the chat request.
-	 */
-	modelRouter?: boolean;
-	/** Whether the upstream model supports native parallel tool calls. */
-	supportsParallelToolCalls?: boolean;
-	/** See {@link BedrockCompat.supportsSamplingParams}. */
-	supportsSamplingParams?: boolean;
-}
-
-/** Fully-resolved devin-agent compat view. */
-export type ResolvedDevinCompat = Required<Omit<DevinCompat, "supportsSamplingParams">> &
-	Pick<DevinCompat, "supportsSamplingParams">;
-/**
  * Compatibility settings for the Google API family (google-generative-ai,
  * google-vertex, google-gemini-cli). Class-driven defaults come from the
  * compat cascade; sparse overrides follow the same shape.
@@ -1311,11 +1281,9 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 		? AnthropicCompat
 		: TApi extends "bedrock-converse-stream"
 			? BedrockCompat
-			: TApi extends "devin-agent"
-				? DevinCompat
-				: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
-					? GoogleCompat
-					: undefined;
+			: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+				? GoogleCompat
+				: undefined;
 
 /** Resolved compat for a given API: complete record, materialized once by `buildModel`. */
 export type CompatOf<TApi extends Api> = TApi extends "openrouter"
@@ -1328,11 +1296,9 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 				? ResolvedAnthropicCompat
 				: TApi extends "bedrock-converse-stream"
 					? ResolvedBedrockCompat
-					: TApi extends "devin-agent"
-						? ResolvedDevinCompat
-						: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
-							? ResolvedGoogleCompat
-							: undefined;
+					: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+						? ResolvedGoogleCompat
+						: undefined;
 
 /** Provider-native compaction endpoint configuration for one model. */
 export interface RemoteCompactionConfig<TApi extends Api = Api> {
@@ -1676,7 +1642,7 @@ export interface Model<TApi extends Api = Api> {
 	serviceTierCost?: Readonly<Partial<Record<"flex" | "priority" | "ultrafast", number>>>;
 	/**
 	 * Provider-supplied one-line blurb for this model. Set only when an upstream
-	 * ships one (Devin's `GetCliModelConfigs`); never synthesized locally.
+	 * ships one; never synthesized locally.
 	 */
 	description?: string;
 	/** Upstream marks this model as newly released. */

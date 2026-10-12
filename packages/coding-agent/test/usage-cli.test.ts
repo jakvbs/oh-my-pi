@@ -284,7 +284,7 @@ describe("computeProviderWindowStats", () => {
 	});
 
 	it("does not split one window by subscription plan", () => {
-		// Copilot, Devin, and Muse Code carry the plan name in `scope.tier`; accounts on different
+		// Copilot and Muse Code carry the plan name in `scope.tier`; accounts on different
 		// plans still burn the same window, so they stay one capacity bucket.
 		const monthly = 30 * 24 * HOUR;
 		const reports = [
@@ -761,7 +761,7 @@ describe("formatUsageBreakdown", () => {
 	});
 
 	it("keeps other providers' live plan tier in the account header", () => {
-		const report = makeReport("devin", "user@example.test", []);
+		const report = makeReport("muse-code", "user@example.test", []);
 		report.metadata = { email: "user@example.test", planType: "team" };
 		const text = stripVTControlCharacters(formatUsageBreakdown([report], [], Date.now()));
 		expect(text).toContain("user@example.test · plan: team");
@@ -897,13 +897,13 @@ describe("formatUsageBreakdown", () => {
 
 	it("keeps one row per window for accounts on different plans", () => {
 		const dailyQuota = (tier: string, usedFraction: number) => ({
-			...makeLimit({ id: "devin:quota:daily", label: "Daily Quota", provider: "devin", usedFraction }),
+			...makeLimit({ id: "muse-code:quota:daily", label: "Daily Quota", provider: "muse-code", usedFraction }),
 			window: { id: "1d", label: "Daily Quota", durationMs: 24 * HOUR },
-			scope: { provider: "devin", windowId: "1d", tier },
+			scope: { provider: "muse-code", windowId: "1d", tier },
 		});
 		const providerReports = [
-			makeReport("devin", "free@example.test", [dailyQuota("Free", 0.1)]),
-			makeReport("devin", "pro@example.test", [dailyQuota("Pro", 0.2)]),
+			makeReport("muse-code", "free@example.test", [dailyQuota("Free", 0.1)]),
+			makeReport("muse-code", "pro@example.test", [dailyQuota("Pro", 0.2)]),
 		];
 
 		const text = stripVTControlCharacters(formatUsageBreakdown(providerReports, [], Date.now()));

@@ -74,18 +74,6 @@ const packageRoot = path.join(import.meta.dir, "..");
  */
 const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litellm"]);
 /**
- * Credential-scoped catalogs (Devin's Cascade roster is gated per account/team
- * via `allowed_model_uids`). Fetching them during generation would bake one
- * private account's entitlements into the shared bundle, and those rows then
- * survive forever as previous-snapshot zombies: a later regen without that
- * credential can never mark the provider authoritative to prune them. These
- * providers are never fetched at generation time and their previous-snapshot
- * rows are dropped — the curated static seed is the only bundled surface, and
- * runtime discovery is authoritative per credential (mirrors the GitLab Duo
- * fallback-only policy below).
- */
-const CREDENTIAL_SCOPED_PROVIDERS = new Set(["devin"]);
-/**
  * Providers whose authored seed is the complete documented fallback
  * catalog: their previous-snapshot rows are never resurrected, so an id
  * the host retired (e.g. CoralBricks' GLM 5.3 Flash, 2026-10-07) cannot
@@ -155,7 +143,6 @@ export function mergePreviousSnapshotModels(
 			if (
 				!fetchedKeys.has(`${model.provider}/${model.id}`) &&
 				!DISCOVERY_ONLY_PROVIDERS.has(model.provider) &&
-				!CREDENTIAL_SCOPED_PROVIDERS.has(model.provider) &&
 				!STATIC_SEED_COMPLETE_PROVIDERS.has(model.provider) &&
 				!isRetiredProvider(model.provider) &&
 				!excludedProviders.has(model.provider)
@@ -296,7 +283,6 @@ function applyGlobalModelsDevFallback(
 	return models.map(model => {
 		if (
 			providerScopedKeys.has(`${model.provider}/${model.id}`) ||
-			model.provider === "devin" ||
 			model.provider === "baseten" ||
 			// Meta's first-party rows come from the reviewed seed; a same-id
 			// gateway row would overwrite their display names.
@@ -570,7 +556,6 @@ async function generateModels(selectedProvider?: string) {
 		(descriptor): descriptor is CatalogProviderDescriptor =>
 			isCatalogDescriptor(descriptor) &&
 			!DISCOVERY_ONLY_PROVIDERS.has(descriptor.providerId) &&
-			!CREDENTIAL_SCOPED_PROVIDERS.has(descriptor.providerId) &&
 			(selectedProvider === undefined || descriptor.providerId === selectedProvider),
 	);
 	const catalogProviderModelBatches = await Promise.all(

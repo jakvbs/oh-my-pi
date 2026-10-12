@@ -177,7 +177,7 @@ describe("advisor auto thinking level", () => {
 				if (m.id === model.id && !quotaFailed) {
 					quotaFailed = true;
 					advisorMock.push({
-						throw: "Devin stream error failed_precondition: Your daily usage quota has been exhausted. Your quota will reset after 60s.",
+						throw: "Stream error failed_precondition: Your daily usage quota has been exhausted. Your quota will reset after 60s.",
 					});
 				} else {
 					advisorMock.push({ content: ["advisor ok"] });

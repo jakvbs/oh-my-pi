@@ -3,7 +3,6 @@ import { buildModel } from "../build";
 import { apiRouteFor } from "../compat/behavior";
 import { providerEntry, seedModels } from "../compat/providers";
 import { type CodexModelDiscoveryResult, fetchCodexModels } from "../discovery/codex";
-import type { DevinModelDiscoveryOptions } from "../discovery/devin";
 import {
 	type FactoryDroidModelDiscoveryOptions,
 	factoryDroidSeedModels,
@@ -14,7 +13,6 @@ import { buildGitLabDuoWorkflowFallbackModel, fetchGitLabDuoWorkflowModels } fro
 import type { ModelManagerOptions } from "../model-manager";
 import { getBundledModel } from "../models";
 import type { Api, FetchImpl, Model, ModelSpec } from "../types";
-import { DEVIN_DEFAULT_BASE_URL } from "../wire/devin";
 import { unionAccountCatalogs } from "./account-access";
 import { toModelSpec } from "./bundled-references";
 import { resolveModelCacheProviderId } from "./cache-provider-id";
@@ -331,40 +329,6 @@ function gitLabDuoWorkflowModelCacheProviderId(apiKey: string, config: GitLabDuo
 	const scope = [config.baseUrl ?? "", namespaceId, projectId, cwd].join("\u0000");
 	return `gitlab-duo-agent:${Bun.hash(`${apiKey}\u0000${scope}`).toString(36)}`;
 }
-
-// Devin (Codeium Cascade)
-// ---------------------------------------------------------------------------
-
-export interface DevinModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: DevinModelDiscoveryOptions["fetch"];
-}
-
-export function devinModelManagerOptions(config: DevinModelManagerConfig = {}): ModelManagerOptions<"devin-agent"> {
-	const { apiKey, baseUrl, fetch } = config;
-	const staticModels = seedModels<"devin-agent">("devin");
-	return {
-		providerId: "devin",
-		cacheProviderId: resolveModelCacheProviderId("devin"),
-		// A configured host serves its own Cascade deployment; keep the seed on it.
-		staticModels:
-			baseUrl === undefined || baseUrl === DEVIN_DEFAULT_BASE_URL
-				? staticModels
-				: staticModels.map(model => ({ ...model, baseUrl })),
-		...(apiKey ? { dynamicModelsAuthoritative: true } : undefined),
-		...(apiKey
-			? {
-					fetchDynamicModels: async () => {
-						const { fetchDevinModels } = await devinDiscovery();
-						return fetchDevinModels({ apiKey, baseUrl, fetch });
-					},
-				}
-			: undefined),
-	};
-}
-
-const devinDiscovery = once(() => import("../discovery/devin"));
 
 // ---------------------------------------------------------------------------
 // Factory Droid

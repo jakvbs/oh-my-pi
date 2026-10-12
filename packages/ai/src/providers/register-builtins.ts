@@ -19,7 +19,6 @@ import * as AzureOpenAIResponsesProvider from "./azure-openai-responses";
 import * as BedrockProvider from "./amazon-bedrock";
 import * as CursorProvider from "./cursor";
 import * as AppleFoundationModelsProvider from "./apple-foundation-models";
-import * as DevinProvider from "./devin";
 import * as GoogleProvider from "./google";
 import * as GoogleGeminiCliProvider from "./google-gemini-cli";
 import * as GoogleVertexProvider from "./google-vertex";
@@ -282,11 +281,6 @@ export const streamOpenAIResponses = createProviderStream<"openai-responses">(
 /** Stream through the host Cursor transport when installed, otherwise the built-in transport. */
 export const streamCursor = createProviderStream<"cursor-agent">((model, context, options) =>
 	(cursorStreamOverride ?? CursorProvider.streamCursor)(model, context, options),
-);
-
-/** Stream Devin through the shared watchdog. */
-export const streamDevin = createProviderStream<"devin-agent">((model, context, options) =>
-	DevinProvider.streamDevin(model, context, options),
 );
 
 /** Stream Apple's on-device Foundation Model through the shared watchdog. */

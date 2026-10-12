@@ -5,7 +5,16 @@ crates/pi-natives/src/desktop
 crates/pi-natives/tools/cache
 crates/pi-voice
 infra
+packages/ai/src/providers/devin
+packages/ai/src/providers/devin.ts
+packages/ai/src/usage/devin.ts
 packages/browser-relay
+packages/catalog/src/compat/rules/auth/devin.kdl
+packages/catalog/src/compat/rules/providers/devin.kdl
+packages/catalog/src/discovery/devin-proto.ts
+packages/catalog/src/discovery/devin.ts
+packages/catalog/src/wire/devin-proto.ts
+packages/catalog/src/wire/devin.ts
 packages/coding-agent/src/archive
 packages/coding-agent/src/autoresearch
 packages/coding-agent/src/capability/system-prompt.ts

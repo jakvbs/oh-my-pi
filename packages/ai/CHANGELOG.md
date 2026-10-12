@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Removed the Devin provider (`devin`, `devin-agent` API), its login flow, model discovery and usage reporting.
+
 ## [18.9.2] - 2026-10-11
 
 ### Breaking Changes

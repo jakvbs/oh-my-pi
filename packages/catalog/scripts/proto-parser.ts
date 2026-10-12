@@ -1660,7 +1660,7 @@ if (import.meta.main) {
 
 Options:
   --out <file>             Output TypeScript file path (defaults to stdout)
-  --prefix <prefix>        Package prefix for comments (e.g. "Cursor agent", "Devin")
+  --prefix <prefix>        Package prefix for comments (e.g. "Cursor agent")
   --import-path <path>     Import path for discovery/protobuf (default: "./protobuf")
   --include <msg1,msg2>    Comma-separated message names to include (with transitive deps)
   --exclude <msg1,msg2>    Comma-separated message names to exclude
