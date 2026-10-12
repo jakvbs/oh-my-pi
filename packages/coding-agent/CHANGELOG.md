@@ -10,12 +10,14 @@
 
 ### Added
 
+- SDK embedders can drive a session they own to its structured result with `runSessionToYield` (`@oh-my-pi/pi-coding-agent/task/executor`): it uses the same reminder ladder as subagents and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
 - `pi.sendMessage(..., { deliverAs: "displayOnly" })` persists and paints a custom message in the transcript without ever adding it to the model context; `CustomMessageEntry.excludeFromContext` marks such entries on reload.
 - Every user turn now carries its local send time with UTC offset (`<system-reminder>Local time of this message: 2026-10-04 19:26 +02:00.</system-reminder>`), so the model can tell the current time, elapsed time between turns and convert UTC log timestamps; the bytes derive from the message's own timestamp, so the prompt cache is unaffected.
 - Added an optional `cwd` to `grep` and to `edit` in the `replace` and `patch` modes: relative paths (and patch renames) resolve against it, so a session can edit another worktree without falling back to shell edits. It only rebases relative paths; approvals and the plan-mode sandbox judge the resolved target. The `hashline`, `apply_patch` and `sloppy` payloads carry paths inside their text and are unchanged.
 
 ### Changed
 
+- `createAgentSession` with `restrictToolNames: true` now fails on a tool name that matches no tool instead of starting the session without it.
 - `bash` results now carry a common execution status and captured-output reference across foreground, background, PTY, and client-terminal execution. Empty, short, and long captures use the same storage path; minimization changes only presentation, and incomplete or unavailable captures are explicit without changing the command's exit status.
 - Maintained fork: `omp update` refuses to install upstream releases and the startup "update available" notice is disabled; `omp update --check` and `omp update --plugins` still work.
 - `bash` jobs started with `async: true` no longer inherit the 300s default deadline; they run until they finish or are cancelled unless `timeout` is set. The foreground default is unchanged.

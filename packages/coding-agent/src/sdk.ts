@@ -3792,6 +3792,11 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		}
 		const requestedToolNames = explicitlyRequestedToolNames ?? toolNamesFromRegistry;
 		const normalizedRequested = requestedToolNames.filter(name => toolRegistry.has(name));
+		// A restricted caller owns the exact list, so a name that matches no tool is a typo, not an optional extra.
+		const unknownToolNames = restrictToolNames ? requestedToolNames.filter(name => !toolRegistry.has(name)) : [];
+		if (unknownToolNames.length > 0) {
+			throw new Error(`Unknown tool names: ${unknownToolNames.join(", ")}`);
+		}
 		const defaultInactiveToolNames = new Set(
 			toolNamesFromRegistry.filter(name => {
 				const tool = toolRegistry.get(name);
