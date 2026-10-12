@@ -188,6 +188,10 @@ jobs:
               PR_BASE: ${{ github.event.pull_request.base.sha }}
            run: |
               base="${PR_BASE:-$BEFORE}"
+              # workflow_dispatch has no `before`; sync/main is verified against the last green main.
+              if [ -z "$base" ] && [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+                base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
+              fi
               if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
                 echo "changed=true" >> "$GITHUB_OUTPUT"
               elif git diff --quiet "$base" HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml .cargo bun.lock package.json packages/natives scripts/bazel-natives.ts scripts/host-detect.ts scripts/stamp-native-version.ts .github/workflows/ci.yml; then
