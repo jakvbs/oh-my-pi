@@ -1845,8 +1845,12 @@ export class AgentSession implements SettingsScope {
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
 			// that flips a todo just before this poll suppresses the nudge.
 			thunks.push(() => this.#todo.takeMidRunNudge());
+			// Only after a tool batch: an aside at the stop boundary keeps the loop
+			// running, so a reminder there would buy an extra model turn.
 			thunks.push(() =>
-				cfgCompactionBudgetReminders.get(this.settings) ? this.#contextBudget.take(this.getContextUsage()) : null,
+				cfgCompactionBudgetReminders.get(this.settings) && this.agent.state.messages.at(-1)?.role === "toolResult"
+					? this.#contextBudget.take(this.getContextUsage())
+					: null,
 			);
 			const contextNotesReminder = this.#experimentalContextNotesReminder;
 			if (contextNotesReminder) {
