@@ -25,6 +25,7 @@ import { normalizeConcurrencyLimit } from "./task/parallel";
 import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
 import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
 import { resolveActiveRepoContext } from "./utils/active-repo-context";
+import type { SystemPromptSource } from "./session/session-entries";
 import { normalizePromptPath } from "./utils/prompt-path";
 import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 import { combine } from "./config/registry";
@@ -192,6 +193,24 @@ export async function resolvePromptInput(input: string | undefined, description:
 			logger.warn(`Could not read ${description} file`, { path: input, error: String(error) });
 		}
 		return input;
+	}
+}
+
+/** `--system-prompt` value: a readable file stays a reference so a resume re-reads it; anything else is the text. */
+export async function systemPromptSourceOf(input: string): Promise<SystemPromptSource> {
+	if (input.includes("\n") || !(await Bun.file(input).exists())) return { text: input };
+	return { path: path.resolve(input) };
+}
+
+/** Policy text of a recorded source; a recorded file that is gone fails instead of silently dropping the override. */
+export async function readSystemPromptSource(source: SystemPromptSource): Promise<string> {
+	if ("text" in source) return source.text;
+	try {
+		return await Bun.file(source.path).text();
+	} catch (error) {
+		throw new Error(
+			`Cannot read the system prompt file ${source.path} recorded by this session: ${String(error)}. Pass --system-prompt to replace it.`,
+		);
 	}
 }
 

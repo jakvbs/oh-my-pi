@@ -58,6 +58,8 @@ import {
 	type NewSessionOptions,
 	type ResetBoundaryEntry,
 	type ServiceTierChangeEntry,
+	type SystemPromptChangeEntry,
+	type SystemPromptSource,
 	type SessionEntry,
 	type SessionHeader,
 	type SessionInitEntry,
@@ -490,6 +492,7 @@ function isDraftOnlyMetadataEntry(entry: SessionEntry): boolean {
 		case "model_change":
 		case "thinking_level_change":
 		case "service_tier_change":
+		case "system_prompt_change":
 		case "mode_change":
 		case "credential_pin":
 			return true;
@@ -3447,6 +3450,12 @@ export class SessionManager {
 
 	appendServiceTierChange(serviceTier: ServiceTierByFamily | null): string {
 		const entry: ServiceTierChangeEntry = { type: "service_tier_change", ...this.#freshEntryFields(), serviceTier };
+		this.#recordEntry(entry);
+		return entry.id;
+	}
+
+	appendSystemPromptChange(source: SystemPromptSource): string {
+		const entry: SystemPromptChangeEntry = { type: "system_prompt_change", ...this.#freshEntryFields(), source };
 		this.#recordEntry(entry);
 		return entry.id;
 	}

@@ -36,6 +36,7 @@ export type SessionTreeEntry = { id: string; parentId: string | null } & (
 	| { type: "custom"; customType: string }
 	| { type: "label"; label?: string }
 	| { type: "service_tier_change"; serviceTier: Partial<Record<string, string>> | null }
+	| { type: "system_prompt_change"; source: { path: string } | { text: string } }
 	| { type: "title_change"; title: string }
 	| { type: "mode_change"; mode: string }
 	| { type: "credential_pin"; provider: string }
@@ -409,6 +410,7 @@ class TreeList implements Component {
 				entry.type === "model_usage" ||
 				entry.type === "thinking_level_change" ||
 				entry.type === "service_tier_change" ||
+				entry.type === "system_prompt_change" ||
 				entry.type === "title_change" ||
 				entry.type === "credential_pin" ||
 				entry.type === "session_init" ||
@@ -530,6 +532,9 @@ class TreeList implements Component {
 						if (tier) parts.push(family, tier);
 					}
 				}
+				break;
+			case "system_prompt_change":
+				parts.push("system prompt", "path" in entry.source ? entry.source.path : "text");
 				break;
 			case "title_change":
 				parts.push("title", entry.title);
@@ -1040,6 +1045,8 @@ class TreeList implements Component {
 					: "(default)";
 				return [{ t: `[service tier: ${tiers}]`, s: "dim" }];
 			}
+			case "system_prompt_change":
+				return [{ t: `[system prompt: ${"path" in entry.source ? entry.source.path : "text"}]`, s: "dim" }];
 			case "title_change":
 				return [{ t: `[title: ${normalize(entry.title)}]`, s: "dim" }];
 			case "mode_change":

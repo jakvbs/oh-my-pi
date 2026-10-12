@@ -250,7 +250,7 @@ The match is on level and file name only, so one entry covers every provider tha
 
 Disabling is not the same as shadowing, and the difference is visible: a disabled file is dropped before deduplication, so it does not claim its scope. **The file it used to shadow is loaded in its place.** Because every built-in provider contributes the same basename, `context-file:project:AGENTS.md` leaves the scope with no built-in file at all.
 
-A run driven by another program that needs different user instructions passes `--system-prompt`, which replaces the policy block for that run.
+A run driven by another program that needs different user instructions passes `--system-prompt`, which replaces the policy block for that session, including later resumes.
 
 `disabledExtensions` is not path-scoped: only `enabledModels` and `disabledProviders` accept the `path:` form. Like every array setting it is replaced, not merged, by a higher-precedence layer.
 

@@ -33,7 +33,7 @@ The working directory, calendar date, and session ID are not in the system promp
 
 The policy block comes from exactly one source, first match wins:
 
-1. `--system-prompt <text-or-file>` on the CLI.
+1. `--system-prompt <text-or-file>` on the CLI, or the latest one recorded in a resumed session.
 2. `CreateAgentSessionOptions.systemPrompt` in the SDK, a string or a `() => string` evaluated on every prompt rebuild.
 3. `~/.agents/AGENTS.md`, read on every rebuild with `@path` includes expanded.
 
@@ -43,7 +43,7 @@ The path is fixed. Profiles, `PI_CODING_AGENT_DIR`, and the SDK `agentDir` optio
 
 ### Text or file resolution
 
-For a single-line `--system-prompt` value, OMP first tries to read that value as a file path. If the path does not exist (or is too long to be a path), the value is used literally. A value containing a newline is used literally without a file read. Other read failures are logged and the value is used literally.
+A single-line `--system-prompt` value that names an existing file is a file source; any other value, and every value containing a newline, is the policy text itself. The session records the source, so `--resume` or `--continue` without the flag keeps it. A file source is recorded as its absolute path and read at every start, so edits reach the session on its next resume; if the recorded file is gone or unreadable, startup fails instead of falling back to `~/.agents/AGENTS.md`. Passing `--system-prompt` on resume replaces the recorded source.
 
 The policy text is plain text. It is inserted verbatim and never compiled as Handlebars, so `{{cwd}}` reaches the model as those characters.
 

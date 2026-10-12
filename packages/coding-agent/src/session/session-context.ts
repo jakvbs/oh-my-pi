@@ -24,6 +24,7 @@ import {
 	EPHEMERAL_MODEL_CHANGE_ROLE,
 	type SessionEntry,
 	type SessionMessageEntry,
+	type SystemPromptSource,
 } from "./session-entries";
 
 // #4470 crash artifacts had legacy frames (no shape metadata) with 17 frames,
@@ -110,6 +111,7 @@ export interface SessionContext {
 	/** Configured thinking selector (`"auto"` or a concrete level) from the latest change. */
 	configuredThinkingLevel?: string;
 	serviceTier?: ServiceTierByFamily;
+	systemPromptSource?: SystemPromptSource;
 	/** Model roles: { default: "provider/modelId", small: "provider/modelId", ... } */
 	models: Record<string, string>;
 	/** Names of TTSR rules that have been injected this session */
@@ -292,6 +294,7 @@ export function buildSessionContext(
 	let thinkingLevel: string | undefined = "off";
 	let configuredThinkingLevel: string | undefined;
 	let serviceTier: ServiceTierByFamily | undefined;
+	let systemPromptSource: SystemPromptSource | undefined;
 	const models: Record<string, string> = {};
 	let compaction: CompactionEntry | null = null;
 	const injectedTtsrRulesSet = new Set<string>();
@@ -321,6 +324,8 @@ export function buildSessionContext(
 			}
 		} else if (entry.type === "service_tier_change") {
 			serviceTier = coerceServiceTierByFamily(entry.serviceTier);
+		} else if (entry.type === "system_prompt_change") {
+			systemPromptSource = entry.source;
 		} else if (entry.type === "message" && entry.message.role === "assistant") {
 			// Legacy fallback: infer default model from assistant messages only
 			// when no explicit `model_change` (role=default) entry has been
@@ -767,6 +772,7 @@ export function buildSessionContext(
 		thinkingLevel,
 		configuredThinkingLevel,
 		serviceTier,
+		systemPromptSource,
 		models,
 		injectedTtsrRules,
 		mode,

@@ -119,6 +119,14 @@ export interface ServiceTierChangeEntry extends SessionEntryBase {
 	serviceTier: ServiceTierByFamily | null;
 }
 
+/** Where the policy block replacing `~/.agents/AGENTS.md` comes from: a file re-read on every start, or literal text. */
+export type SystemPromptSource = { readonly path: string } | { readonly text: string };
+
+export interface SystemPromptChangeEntry extends SessionEntryBase {
+	type: "system_prompt_change";
+	source: SystemPromptSource;
+}
+
 export interface CompactionEntry<T = unknown> extends SessionEntryBase {
 	type: "compaction";
 	summary: string;
@@ -204,6 +212,7 @@ declare module "@oh-my-pi/pi-agent-core/compaction/entries" {
 		titleChange: TitleChangeEntry;
 		credentialPin: CredentialPinEntry;
 		modelUsage: ModelUsageEntry;
+		systemPromptChange: SystemPromptChangeEntry;
 	}
 }
 
@@ -313,6 +322,7 @@ export type SessionEntry =
 	| ThinkingLevelChangeEntry
 	| ModelChangeEntry
 	| ServiceTierChangeEntry
+	| SystemPromptChangeEntry
 	| CompactionEntry
 	| BranchSummaryEntry
 	| CustomEntry

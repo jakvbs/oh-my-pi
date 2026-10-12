@@ -106,7 +106,7 @@ import { resolveResumableSession, type SessionInfo } from "./session/session-lis
 import { ForkSourceNotFoundError, SessionManager, SessionMoveRefusedError } from "./session/session-manager";
 import { forkIfMovedAway } from "./session/session-transfer";
 import { shouldShowStartupSplash } from "./startup-splash";
-import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
+import { discoverTitleSystemPromptFile, resolvePromptInput, systemPromptSourceOf } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { createTelemetryExportConfig, initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { cfgTelemetryOtlpExportEnabled } from "./telemetry-settings";
@@ -1247,8 +1247,8 @@ export async function buildSessionOptions(
 	}
 
 	const cwd = options.cwd;
-	const [resolvedSystemPrompt, titleSystemPrompt] = await Promise.all([
-		resolvePromptInput(parsed.systemPrompt, "system prompt"),
+	const [systemPromptSource, titleSystemPrompt] = await Promise.all([
+		parsed.systemPrompt === undefined ? undefined : systemPromptSourceOf(parsed.systemPrompt),
 		resolvePromptInput(discoverTitleSystemPromptFile(cwd), "title system prompt"),
 	]);
 
@@ -1472,9 +1472,8 @@ export async function buildSessionOptions(
 	// API key from CLI - set in authStorage
 	// (handled by caller before createAgentSession)
 
-	// System prompt
-	if (resolvedSystemPrompt !== undefined) {
-		options.systemPrompt = resolvedSystemPrompt;
+	if (systemPromptSource) {
+		options.systemPromptSource = systemPromptSource;
 	}
 	// Replan-driven title refresh resolves the override from this same field on
 	// `AgentSession`, so threading it through `CreateAgentSessionOptions` keeps

@@ -76,7 +76,7 @@ describe("system prompt CLI resolution", () => {
 		}
 	}
 
-	it("reads a --system-prompt file into the policy block", async () => {
+	it("keeps an existing --system-prompt file as a source the session reads", async () => {
 		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-system-prompt-"));
 		cleanupDirs.push(projectDir);
 		const profile = path.join(projectDir, "scout.md");
@@ -84,7 +84,7 @@ describe("system prompt CLI resolution", () => {
 
 		const options = await buildPromptOptions(projectDir, ["--system-prompt", profile]);
 
-		expect(options.systemPrompt).toBe("You are a scout.");
+		expect(options.systemPromptSource).toEqual({ path: profile });
 	});
 });
 

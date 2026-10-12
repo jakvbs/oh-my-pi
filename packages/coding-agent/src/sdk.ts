@@ -211,6 +211,7 @@ import { anthropicSlowModeHasNoSiblingHeadroom } from "./session/anthropic-slow-
 import { CacheWarmer } from "./session/cache-warmer";
 import { createSettingsAwareStreamFn, resolveOpenAIWebsocketPreference } from "./session/settings-stream-fn";
 import { SnapcompactInlineTransformer } from "./session/snapcompact-inline";
+import type { SystemPromptSource } from "./session/session-entries";
 import { createSnapcompactSavingsRecorder } from "./session/snapcompact-savings-journal";
 import { createSpeculativeToolExecutionConfig } from "./speculation/host";
 import { closeAllConnections } from "./ssh/connection-manager";
@@ -220,6 +221,7 @@ import {
 	cfgSystemPromptInputs,
 	loadProjectContextFiles as loadContextFilesInternal,
 	projectSystemPromptToolMetadata,
+	readSystemPromptSource,
 } from "./system-prompt";
 import type { AgentDefinition } from "./task/types";
 import { AgentOutputManager } from "./task/output-manager";
@@ -580,6 +582,11 @@ export interface CreateAgentSessionOptions {
 	 * and context blocks still render. A function re-renders the policy on every prompt rebuild.
 	 */
 	systemPrompt?: string | (() => string);
+	/**
+	 * Policy source given on the command line. Recorded in the session, so a resume without one
+	 * restores the latest recorded source; ignored when `systemPrompt` is set.
+	 */
+	systemPromptSource?: SystemPromptSource;
 	/**
 	 * Provider-facing blocks used verbatim; nothing renders. For helper sessions with their own
 	 * contract (compressor, tan) and for replaying a persisted subagent prompt.
@@ -1799,6 +1806,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		options.modelPattern !== undefined ||
 		options.thinkingLevel !== undefined ||
 		options.systemPrompt !== undefined ||
+		options.systemPromptSource !== undefined ||
 		options.fixedSystemPrompt !== undefined ||
 		options.toolNames !== undefined ||
 		options.customTools !== undefined ||
@@ -1845,6 +1853,11 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
 	);
 	const hasExistingSession = existingBranch.length > 0;
+	const systemPromptSource =
+		options.systemPrompt === undefined
+			? (options.systemPromptSource ?? existingSession.systemPromptSource)
+			: undefined;
+	const sourcedPolicy = systemPromptSource ? await readSystemPromptSource(systemPromptSource) : undefined;
 	const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
 	const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
 
@@ -3679,7 +3692,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				additionalWorkspaceRoots: sessionManager.getAdditionalDirectories(),
 				xdevTools: toolSession.xdev ? xdevEntries(toolSession.xdev) : [],
 				xdevDocs: xdevPromptDocs ? renderXdevPromptDocs(xdevPromptDocs, routedCatalogNames) : "",
-				systemPrompt: typeof options.systemPrompt === "function" ? options.systemPrompt() : options.systemPrompt,
+				systemPrompt:
+					typeof options.systemPrompt === "function"
+						? options.systemPrompt()
+						: (options.systemPrompt ?? sourcedPolicy),
 				skills: cfgSkillful.get(settings) ? (session?.skills ?? skills) : [],
 				skillDescriptions,
 				contextFiles,
@@ -4198,6 +4214,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					Object.keys(initialServiceTierByFamily).length > 0 ? initialServiceTierByFamily : null,
 				);
 			}
+		}
+		if (
+			options.systemPromptSource &&
+			!Bun.deepEquals(options.systemPromptSource, existingSession.systemPromptSource)
+		) {
+			sessionManager.appendSystemPromptChange(options.systemPromptSource);
 		}
 
 		// Advisors share this session's extension runner (for the approval gate

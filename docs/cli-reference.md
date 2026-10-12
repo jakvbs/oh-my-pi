@@ -156,7 +156,7 @@ See [providers](./providers.md) and [models](./models.md) for model resolution.
 
 | Flag | Description |
 | --- | --- |
-| `--system-prompt <text\|file>` | Policy block for this run, replacing `~/.agents/AGENTS.md`. The harness and context blocks still render. See [system prompt customization](./system-prompt-customization.md). |
+| `--system-prompt <text\|file>` | Policy block replacing `~/.agents/AGENTS.md`, recorded in the session so a resume without the flag keeps it; a file is re-read on every start. The harness and context blocks still render. See [system prompt customization](./system-prompt-customization.md). |
 
 #### Output mode
 
