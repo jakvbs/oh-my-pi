@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `getAsideMessages` and `setAsideMessageProvider` callbacks receive the `AsideBoundary` (`"mid-work"` or `"stop"`), so passive asides can skip the stop poll, where any aside buys another model turn.
+
 ## [18.9.2] - 2026-10-11
 
 ### Changed
