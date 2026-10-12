@@ -463,11 +463,13 @@ import {
 } from "../modes/settings";
 import {
 	cfgBranchSummaryReserveTokens,
+	cfgCompactionBudgetReminders,
 	cfgCompactionModelThresholds,
 	cfgCompactionModelThresholdsEnabled,
 	cfgExtendedContext,
 	cfgWorkspaceAdditionalDirectories,
 } from "./context-settings";
+import { ContextBudgetReminder } from "./context-budget-reminder";
 import { cfgTitleGenerator, cfgTitleIcons, cfgTitleRefreshOnReplan, type TitleIcons } from "../utils/title-settings";
 import { cfgDevAutoqa, cfgDevAutoqaConsent, cfgTodoEnabled, cfgToolsApproval } from "../tools/settings";
 import { cfgTtsrJudge } from "../export/ttsr-settings";
@@ -848,6 +850,7 @@ export class AgentSession implements SettingsScope {
 	#textOutputCommitted = true;
 	#stopTimeTodoRemindersEnabled = true;
 	readonly #todo: TodoTracker;
+	readonly #contextBudget = new ContextBudgetReminder();
 	readonly #modelMentions: ModelMentionRegistry;
 	#workPoolYieldItems: readonly WorkPoolYieldItem[] = [];
 	/** Item set matching the last successfully rebuilt provider prompt. The base
@@ -1842,6 +1845,9 @@ export class AgentSession implements SettingsScope {
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
 			// that flips a todo just before this poll suppresses the nudge.
 			thunks.push(() => this.#todo.takeMidRunNudge());
+			thunks.push(() =>
+				cfgCompactionBudgetReminders.get(this.settings) ? this.#contextBudget.take(this.getContextUsage()) : null,
+			);
 			const contextNotesReminder = this.#experimentalContextNotesReminder;
 			if (contextNotesReminder) {
 				this.#experimentalContextNotesReminder = undefined;

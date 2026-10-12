@@ -111,6 +111,18 @@ export const cfgCompactionEnabled = register({
 	},
 });
 
+export const cfgCompactionBudgetReminders = register({
+	id: "compaction.budgetReminders",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "context",
+		group: "Compaction",
+		label: "Context Budget Reminders",
+		description: "Tell the agent when context reaches 25/50/70/85% of the auto-compaction threshold",
+	},
+});
+
 export const cfgCompactionExperimentalContextManagement = register({
 	id: "compaction.experimentalContextManagement",
 	type: "boolean",

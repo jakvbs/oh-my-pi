@@ -76,6 +76,8 @@ Compaction/context maintenance can run in six ways:
 5. **Mid-turn threshold maintenance**: before the next provider request when a tool-loop turn crosses the threshold and `compaction.midTurnEnabled !== false`. Subagent sessions always run this check: `createSubagentSettings` pins `compaction.midTurnEnabled` on for the child because a whole assignment is one turn, so post-turn maintenance would only fire after the run already ended.
 6. **Idle maintenance**: `runIdleCompaction()` can invoke the same auto-maintenance path with reason `"idle"`.
 
+Before the threshold is reached, `compaction.budgetReminders` (default on) tells the agent how full its context is. `ContextBudgetReminder` (`session/context-budget-reminder.ts`) injects one hidden `context-budget-reminder` aside when usage first reaches 25, 50, 70 or 85% of `ContextUsage.compactionThreshold`, or of the model window when compaction is off. The aside is persisted like any other message, so the request prefix stays stable; usage that falls below the announced band (after compaction or a model switch) lets the band repeat.
+
 ### Compaction shape (visual)
 
 ```text
