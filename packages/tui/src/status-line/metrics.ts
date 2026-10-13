@@ -10,7 +10,7 @@ export interface BillingSummaryOptions {
 	readonly premiumRequests: number;
 	readonly fractionDigits: number;
 	readonly pricingPeriod?: "peak" | "off-peak";
-	/** Subagent-tree spend, rendered `(+…)` after the session's own spend; `cost` excludes it. */
+	/** Spend of nested subagent sessions, rendered `(+…)` after the session's own spend; `cost` excludes it. */
 	readonly subagentCost?: number;
 	readonly advisor?: {
 		readonly cost: number;

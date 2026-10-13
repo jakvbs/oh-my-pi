@@ -56,7 +56,6 @@ function createHarness(
 		sessionManager: {
 			putBlob: vi.fn(async () => ({ displayPath: "file:///replacement.png" })),
 		},
-		focusedAgentId: undefined,
 		ui: { requestRender: vi.fn() },
 		compactionQueuedMessages: [],
 		updatePendingMessagesDisplay: vi.fn(),

@@ -73,7 +73,7 @@ describe("AgentSession concurrent disposal", () => {
 		const started = Promise.withResolvers<void>();
 		let abortReason: unknown;
 		owned.register(
-			"task",
+			"bash",
 			"running subagent",
 			async ({ signal }) => {
 				const aborted = Promise.withResolvers<void>();
@@ -89,7 +89,7 @@ describe("AgentSession concurrent disposal", () => {
 				await aborted.promise;
 				return "stopped";
 			},
-			{ ownerId: "Main", agentId: "Sub" },
+			{ ownerId: "Main" },
 		);
 		const current = createSession(owned);
 
@@ -109,7 +109,7 @@ describe("AgentSession concurrent disposal", () => {
 		const started = Promise.withResolvers<void>();
 		let abortReason: unknown;
 		shared.register(
-			"task",
+			"bash",
 			"nested child",
 			async ({ signal }) => {
 				const aborted = Promise.withResolvers<void>();
@@ -125,7 +125,7 @@ describe("AgentSession concurrent disposal", () => {
 				await aborted.promise;
 				return "stopped";
 			},
-			{ ownerId: "Sub", agentId: "NestedChild" },
+			{ ownerId: "Sub" },
 		);
 		const current = createSession(undefined, { agentId: "Sub", asyncJobManager: shared });
 

@@ -981,19 +981,9 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		return this.#subagentCount;
 	}
 
-	/**
-	 * Running background jobs outside the subagent badge. Task jobs count only
-	 * until their AgentRegistry ref appears; once it is running, the subagent
-	 * badge represents that same agent. Bash and eval jobs always count.
-	 */
+	/** Running background jobs (bash and eval). */
 	runningBackgroundJobCount(): number {
-		return (
-			this.session
-				.getAsyncJobSnapshot()
-				?.running.filter(
-					job => job.type !== "task" || job.agentId === undefined || !this.#runningSubagentIds.has(job.agentId),
-				).length ?? 0
-		);
+		return this.session.getAsyncJobSnapshot()?.running.length ?? 0;
 	}
 
 	/**

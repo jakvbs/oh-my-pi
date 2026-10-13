@@ -137,7 +137,6 @@ export const eventDefs = {
 		maxAttempts: "number.integer",
 	},
 	TodoAutoClearEvent: { type: "'todo_auto_clear'" },
-	IrcMessageEvent: { type: "'irc_message'", message: "CustomMessage" },
 	NoticeEvent: { type: "'notice'", level: "NotifyType", message: "string", "source?": "string" },
 	ThinkingLevelChangedEvent: doc(
 		{
@@ -196,7 +195,6 @@ export const eventDefs = {
 			"TtsrTriggeredEvent",
 			"TodoReminderEvent",
 			"TodoAutoClearEvent",
-			"IrcMessageEvent",
 			"NoticeEvent",
 			"ThinkingLevelChangedEvent",
 			"GoalUpdatedEvent",

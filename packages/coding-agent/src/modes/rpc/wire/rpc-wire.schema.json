@@ -3855,21 +3855,6 @@
 				"type"
 			]
 		},
-		"IrcMessageEvent": {
-			"type": "object",
-			"properties": {
-				"type": {
-					"const": "irc_message"
-				},
-				"message": {
-					"$ref": "#/$defs/CustomMessage"
-				}
-			},
-			"required": [
-				"type",
-				"message"
-			]
-		},
 		"NoticeEvent": {
 			"type": "object",
 			"properties": {
@@ -4051,9 +4036,6 @@
 				},
 				{
 					"$ref": "#/$defs/TodoAutoClearEvent"
-				},
-				{
-					"$ref": "#/$defs/IrcMessageEvent"
 				},
 				{
 					"$ref": "#/$defs/NoticeEvent"

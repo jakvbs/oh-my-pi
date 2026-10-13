@@ -136,11 +136,6 @@ function writeTargetSpec(toolName: string, args: unknown): SchemeSpec | undefine
 	return scheme && router.canHandle(path) ? router.spec(scheme) : undefined;
 }
 
-/** Peer-to-peer messages (coordination-scoped writes) stay off the external ACP session stream. */
-function isInternalAgentMessageTool(toolName: string, args: unknown): boolean {
-	return writeTargetSpec(toolName, args)?.write?.scope === "coordination";
-}
-
 export function mapToolKind(toolName: string, args?: unknown): ToolKind {
 	// A device write (xd:// tool dispatch, proc:// control) executes something —
 	// "edit" would make ACP clients render it as a file modification to a
@@ -184,7 +179,6 @@ export function mapAgentSessionEventToAcpSessionUpdates(
 		case "message_end":
 			return mapAssistantMessageEnd(event, sessionId, options);
 		case "tool_execution_start": {
-			if (isInternalAgentMessageTool(event.toolName, event.args)) return [];
 			const update = buildToolCallStartUpdate({
 				toolCallId: event.toolCallId,
 				toolName: event.toolName,
@@ -195,7 +189,6 @@ export function mapAgentSessionEventToAcpSessionUpdates(
 			return [toSessionNotification(sessionId, update)];
 		}
 		case "tool_execution_update": {
-			if (isInternalAgentMessageTool(event.toolName, event.args)) return [];
 			const content = mergeToolUpdateContent(
 				buildToolStartContent(event.toolName, event.args),
 				extractToolCallContent(event.partialResult, options),
@@ -217,7 +210,6 @@ export function mapAgentSessionEventToAcpSessionUpdates(
 		}
 		case "tool_execution_end": {
 			const args = getToolExecutionEndArgs(event, options);
-			if (isInternalAgentMessageTool(event.toolName, args)) return [];
 			const resultContent = [
 				...extractDiffToolCallContent(event.result),
 				...extractToolCallContent(event.result, options),
@@ -565,7 +557,7 @@ function toAcpLocationPath(value: string, cwd?: string): string {
 }
 
 /**
- * Scheme-qualified subjects (`xd://`, `skill://`, `agent://`, `https://`, …)
+ * Scheme-qualified subjects (`xd://`, `skill://`, `https://`, …)
  * are not local files: resolving them against cwd fabricates paths like
  * `/repo/xd:/github` and makes editors focus nonexistent files.
  */

@@ -1147,12 +1147,7 @@ describe("Coding Agent Tools", () => {
 			};
 
 			try {
-				for (const url of [
-					"skill://demo/ref.md",
-					"agent://Worker/report",
-					"local://big.md:1-3000",
-					"agent://Lines:1-3000",
-				]) {
+				for (const url of ["skill://demo/ref.md", "local://big.md:1-3000"]) {
 					const result = await spillReadTool.execute(`spill-${url}`, { path: url }, undefined, undefined, context);
 					const output = getTextOutput(result);
 					expect(result.details?.meta?.truncation?.artifactId).toBeDefined();

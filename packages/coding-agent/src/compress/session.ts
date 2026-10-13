@@ -66,7 +66,6 @@ export async function createCompressSession(options: {
 		hasUI: false,
 		autoApprove: true,
 		agentId: options.agentId ?? "Compress",
-		agentDisplayName: "compress",
 	});
 	const active = resolved?.model ?? session.model;
 	return { session, model: active ? formatModelString(active) : "session default" };

@@ -141,8 +141,7 @@ import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } fr
 import { resolveMCPToolAlias } from "./mcp/tool-bridge";
 import mcpXdevGuidanceTemplate from "./prompts/system/mcp-xdev-guidance.md" with { type: "text" };
 import lateDiagnosticTemplate from "./prompts/tools/lsp-late-diagnostic.md" with { type: "text" };
-import { AgentLifecycleManager } from "./registry/agent-lifecycle";
-import { type AgentKind, type AgentRef, AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
+import { type AgentRef, AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
 import {
 	buildSecretObfuscator,
 	deobfuscateSessionContext,
@@ -723,27 +722,12 @@ export interface CreateAgentSessionOptions {
 	 * `false`. Default: true.
 	 */
 	bindProcessState?: boolean;
-	/** Pre-allocated agent identity for IRC routing. Default: "Main". */
+	/** Pre-allocated agent identity that owns background jobs. Default: "Main". */
 	agentId?: string;
-	/** Display name for the agent in IRC. Default: "main" or "sub". */
-	agentDisplayName?: string;
 	/**
-	 * Agent definition name used to evaluate rule `agents` scoping. Defaults to
-	 * "main" for a top-level session / "sub" for a subagent.
+	 * Agent definition name used to evaluate rule `agents` scoping. Defaults to "main".
 	 */
 	agentName?: string;
-	/**
-	 * Optional shared agent registry for IRC routing. Default: AgentRegistry.global(), or a
-	 * private registry for a top-level session with `bindProcessState: false`.
-	 */
-	agentRegistry?: AgentRegistry;
-	/**
-	 * Registry generation authorized for this creation. `null` requires the id
-	 * to be absent; an AgentRef allows a parked revival to reuse only that ref.
-	 * Undefined preserves legacy unconditional registration for external SDK callers.
-	 * @internal
-	 */
-	expectedAgentRef?: AgentRef | null;
 
 	/** Session manager. Default: session stored under the configured agentDir sessions root */
 	sessionManager?: SessionManager;
@@ -1994,7 +1978,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 
 	// Agent identity must resolve before rule discovery: `agents` frontmatter decides
 	// which rules are bucketed into this session at all.
-	const agentKind: AgentKind = MAIN_AGENT_RULE_NAME;
+	const agentKind = MAIN_AGENT_RULE_NAME;
 	// Visuals (Mermaid, SVG figures, table charts) are drawn only in the top-level TUI transcript.
 	const tuiTranscript = options.tuiTranscript === true;
 	const resolvedAgentName = (options.agentName ?? agentKind).trim().toLowerCase();
@@ -2084,25 +2068,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	// A helper session does not own the process, so it must not claim the host's id
 	// ("Main") in the process-global registry: that would replace the host's ref, and
 	// concurrent helpers would replace each other mid-construction.
-	const agentRegistry = options.agentRegistry ?? (bindsProcessState ? AgentRegistry.global() : new AgentRegistry());
+	const agentRegistry = bindsProcessState ? AgentRegistry.global() : new AgentRegistry();
 	const resolvedAgentId = options.agentId ?? MAIN_AGENT_ID;
-	const resolvedAgentDisplayName = options.agentDisplayName ?? agentKind;
 	let registeredAgentRef: AgentRef | undefined;
-	/**
-	 * Forget the agent ref on teardown — unless it is a retained terminal ref.
-	 * Parking disposes the session but keeps the ref addressable (history://,
-	 * revive); a hard kill leaves it as a terminal `aborted` tombstone. Both are
-	 * detached (session === null) by the time dispose runs, per the AgentRef
-	 * invariant, so preserving them never keeps a disposed session reachable — an
-	 * aborted ref that still holds a live session is a bug and is unregistered
-	 * rather than handed to ensureLive. Only process teardown / a plain release
-	 * unregisters.
-	 */
-	const unregisterUnlessParked = (): void => {
+	/** Forget the agent ref on teardown. */
+	const unregisterAgentRef = (): void => {
 		const ref = registeredAgentRef;
 		if (!ref || agentRegistry.get(resolvedAgentId) !== ref) return;
-		if (ref.status === "parked" || (ref.status === "aborted" && !ref.session)) return;
-		if (AgentLifecycleManager.global().isParking(resolvedAgentId, ref)) return;
 		agentRegistry.unregister(resolvedAgentId, ref);
 	};
 
@@ -2182,12 +2154,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getAgentId: () => resolvedAgentId,
 			getToolByName: name => session?.getToolByName(name),
 
-			agentRegistry,
-			// The global lifecycle releases through AgentRegistry.global(); wiring it
-			// onto any other registry would report a cancel while releasing an
-			// unrelated global ref. With no lifecycle, explicit cancellation falls back to
-			// dispose + unregister on the session's own registry.
-			agentLifecycle: agentRegistry === AgentRegistry.global() ? () => AgentLifecycleManager.global() : undefined,
 			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),
 			getActiveModelString,
 			getActiveModel: () => agent?.state.model ?? model,
@@ -3673,42 +3639,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			}
 		}
 
-		// Pre-register in the global agent registry BEFORE building the system prompt,
-		// so that subagents launched in the same parallel batch can see each other in
-		// their initial `# IRC Peers` block (rendered inside `rebuildSystemPrompt`).
-		// The session reference is attached after construction below.
-		const registrationInput = {
+		// Register before the session exists so URL handlers resolving by agent id
+		// find this root while the session is still being constructed; the session
+		// reference is attached after construction below.
+		registeredAgentRef = agentRegistry.register({
 			id: resolvedAgentId,
-			displayName: resolvedAgentDisplayName,
-			kind: agentKind,
 			session: null,
 			sessionFile: sessionManager.getSessionFile() ?? null,
-			status: "running" as const,
-		};
-		registeredAgentRef =
-			options.expectedAgentRef === undefined
-				? agentRegistry.register(registrationInput)
-				: agentRegistry.registerIfAvailable(registrationInput, options.expectedAgentRef);
-		if (!registeredAgentRef && options.expectedAgentRef === null) {
-			// A fresh spawn collided with an existing id. If that id is held by a
-			// provably-dead parked corpse — no live session, no reviver — reclaim it
-			// so this new generation can take the id instead of failing forever at
-			// construction. Without this, one such corpse (isolated-run park,
-			// interrupted construction) poisons the id for the whole process (#8490).
-			// The reclaim is gated by the lifecycle owner and only touches the
-			// registry it manages; the corpse's transcript stays at history://.
-			const stale = agentRegistry.get(resolvedAgentId);
-			const lifecycle = AgentLifecycleManager.global();
-			if (stale && lifecycle.manages(agentRegistry) && (await lifecycle.reclaimDeadCorpse(resolvedAgentId, stale))) {
-				registeredAgentRef = agentRegistry.registerIfAvailable(registrationInput, null);
-			}
-		}
-		if (!registeredAgentRef) {
-			throw new Error(`Agent "${resolvedAgentId}" is already owned by another session generation.`);
-		}
-		// A reused parked ref remains parked until the new AgentSession is fully
-		// constructed and attached. Startup failure therefore leaves it revivable.
-		hasRegistered = options.expectedAgentRef === undefined || options.expectedAgentRef === null;
+		});
+		hasRegistered = true;
 
 		// Partition the initial enabled set for the xd:// transport. Tool instances
 		// remain in the canonical map; only presentation names move between layers.
@@ -4531,9 +4470,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			isStale: entry => entry.isStale(),
 		});
 
-		// Attach the live session to the pre-registered ref so peers can route IRC
-		// messages here. Refresh sessionFile in case it was unavailable at pre-register
-		// time. The dispose wrapper below unregisters on teardown (unless parked).
+		// Attach the live session to the pre-registered ref. Refresh sessionFile in
+		// case it was unavailable at pre-register time. The dispose wrapper below
+		// unregisters on teardown.
 		if (
 			!registeredAgentRef ||
 			!agentRegistry.attachSession(
@@ -4541,12 +4480,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				session,
 				sessionManager.getSessionFile() ?? null,
 				registeredAgentRef,
-			) ||
-			!agentRegistry.setStatus(resolvedAgentId, "running", registeredAgentRef)
+			)
 		) {
 			throw new Error(`Agent "${resolvedAgentId}" was replaced during session initialization.`);
 		}
-		hasRegistered = true;
 		// MCP notification bridge cleanup — assigned when the bridge is wired below,
 		// invoked from the dispose wrapper AND registered as a postmortem so both
 		// explicit-dispose (SDK embedders that reuse the process across sessions) and
@@ -4561,17 +4498,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			let tinyClientReleased = false;
 			session.dispose = async () => {
 				try {
-					// Reject new session work the moment disposal
-					// begins — the lifecycle await below opens an async gap before
-					// AgentSession.dispose() would otherwise set its guards.
 					session.beginDispose();
-					if (agentKind === "main") {
-						// Top-level teardown owns the global agent lifecycle: park timers,
-						// adopted subagent sessions, revivers. Tear it down while shared
-						// resources (kernels, MCP, LSP) are still live. Subagent disposal
-						// must NOT touch the global lifecycle.
-						await AgentLifecycleManager.global().dispose();
-					}
 					await originalDispose();
 				} finally {
 					// The tiny-model client is a process singleton shared by every session.
@@ -4586,7 +4513,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 							logger.warn("Session dispose: tiny-model client shutdown failed", { error: String(error) });
 						}
 					}
-					unregisterUnlessParked();
+					unregisterAgentRef();
 					unsubscribeCredentialDisabled();
 					unbindSessionEffects?.();
 					restoreProviderToggles?.();
@@ -4904,9 +4831,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		try {
 			if (hasSession) {
 				await session.dispose();
-				if (hasRegistered) unregisterUnlessParked();
+				if (hasRegistered) unregisterAgentRef();
 			} else {
-				if (hasRegistered) unregisterUnlessParked();
+				if (hasRegistered) unregisterAgentRef();
 				if (asyncJobManager) {
 					if (AsyncJobManager.instance() === asyncJobManager) {
 						AsyncJobManager.setInstance(undefined);

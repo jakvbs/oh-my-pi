@@ -23,8 +23,6 @@ export interface JobsPanelJob {
 	readonly label: string;
 	readonly startTime: number;
 	readonly endTime?: number;
-	/** Registry id of the subagent a task job runs. */
-	readonly agentId?: string;
 }
 
 /** Running and recently settled jobs. */
@@ -277,7 +275,7 @@ function describeJobItem(job: JobsPanelJob, nowMs: number): NativeNode {
 	const status = STATUS_LABEL[job.status];
 	const age = formatDuration(jobAge(job, nowMs));
 	return item(job.id, {
-		label: [job.type === "task" ? span(job.label) : span(collapseCommand(job.label), "mono")],
+		label: [span(collapseCommand(job.label), "mono")],
 		value: [span(age, "mono")],
 		icon: TYPE_ICON[job.type] ?? "job",
 		tone: STATUS_TONE[job.status],
@@ -321,10 +319,9 @@ function describeDetail(job: JobsPanelJob, detail: JobsPanelDetail | undefined, 
 	const settled = job.status !== "running";
 	const exit = detail?.exitCode;
 	const age = Math.round(jobAge(job, nowMs));
-	const command = detail?.command ?? (job.type === "task" ? undefined : job.label);
+	const command = detail?.command ?? job.label;
 	const pids = detail?.pids ?? [];
 	const facts = compact([
-		job.agentId ? { k: "Agent", v: [span(job.agentId, "mono")] } : undefined,
 		detail?.cwd ? { k: "Directory", v: [span(detail.cwd, "path")] } : undefined,
 		pids.length > 0 && { k: pids.length > 1 ? "PIDs" : "PID", v: [span(pids.join(", "), "num")] },
 		exit !== undefined && { k: "Exit code", v: [span(String(exit), exit === 0 ? "success" : "error")] },

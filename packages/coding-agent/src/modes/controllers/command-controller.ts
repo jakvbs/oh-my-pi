@@ -329,7 +329,7 @@ export class CommandController {
 
 			// The viewed session: the focused subagent's transcript (plus its own
 			// subagents) from a focused view, otherwise the main session.
-			const filePath = await this.ctx.viewSession.exportToHtml(outputPath, useUserThemes);
+			const filePath = await this.ctx.session.exportToHtml(outputPath, useUserThemes);
 			this.ctx.showStatus(`Session exported to: ${filePath}`);
 			this.openInBrowser(filePath);
 		} catch (error: unknown) {
@@ -936,13 +936,9 @@ export class CommandController {
 			}
 		}
 		if (!(await this.ctx.session.newSession(options))) return;
-		// A focused subagent view keeps its own history: return to the main session
-		// first so the transcript below cannot rebuild from the subagent's surviving
-		// conversation, then drop any turn-scoped anchors (coalescing timers,
-		// in-flight dispatches) the session boundary orphaned.
-		if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
+		// Drop any turn-scoped anchors (coalescing timers, in-flight dispatches)
+		// the session boundary orphaned.
 		this.ctx.eventController.resetTranscriptAnchors();
-		this.ctx.resetObserverRegistry();
 		setSessionTerminalTitle(this.ctx.sessionManager.getSessionName(), this.ctx.sessionManager.getCwd());
 
 		this.ctx.statusLine.invalidate();

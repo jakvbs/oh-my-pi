@@ -147,6 +147,10 @@ function createContext(): {
 			isStreaming: false,
 			isCompacting: false,
 			isGeneratingHandoff: false,
+			isRetrying: false,
+			abortCompaction: vi.fn(),
+			abortHandoff,
+			abortRetry: vi.fn(),
 			isBashRunning: false,
 			isEvalRunning: false,
 			queuedMessageCount: 0,
@@ -167,14 +171,6 @@ function createContext(): {
 				};
 			}),
 		} as unknown as InteractiveModeContext["session"],
-		viewSession: {
-			isCompacting: false,
-			isGeneratingHandoff: false,
-			isRetrying: false,
-			abortCompaction: vi.fn(),
-			abortHandoff,
-			abortRetry: vi.fn(),
-		} as unknown as InteractiveModeContext["viewSession"],
 		sessionManager: {
 			getSessionName: () => "existing session",
 			flushSync: vi.fn(),
@@ -201,8 +197,6 @@ function createContext(): {
 		updateEditorBorderColor: vi.fn(),
 		showDebugSelector: vi.fn(),
 		toggleTodoExpansion: vi.fn(),
-		showAgentHub: vi.fn(),
-		unfocusSession: vi.fn(async () => {}),
 		focusParentSession: vi.fn(async () => {}),
 		handleBtwEscape,
 		handleBtwCommand,
@@ -263,7 +257,7 @@ type AbortViewSession = {
 function abortViewSession(ctx: InteractiveModeContext): AbortViewSession {
 	// Test harness installs a mutable fake AgentSession; keep the unchecked cast named
 	// so property access is explicit.
-	return ctx.viewSession as unknown as AbortViewSession;
+	return ctx.session as unknown as AbortViewSession;
 }
 
 type MutableSessionState = InteractiveModeContext["session"] & {
@@ -416,7 +410,7 @@ describe("InputController escape behavior", () => {
 
 	it("aborts active handoff generation before default Esc handling", () => {
 		const { ctx, editor, spies } = createContext();
-		(ctx.viewSession as { isGeneratingHandoff: boolean }).isGeneratingHandoff = true;
+		(ctx.session as { isGeneratingHandoff: boolean }).isGeneratingHandoff = true;
 		const controller = new InputController(ctx);
 
 		controller.setupKeyHandlers();
@@ -571,57 +565,22 @@ describe("InputController escape behavior", () => {
 		expect(spies.showStatus).not.toHaveBeenCalledWith("Press Esc again within 2s to cancel streaming.");
 	});
 
-	it("returns focused subagent view to main on Esc instead of aborting", () => {
+	it("aborts maintenance on Esc", () => {
 		const { ctx, editor, spies } = createContext();
-		Object.defineProperty(ctx, "focusedAgentId", { value: "Worker", configurable: true });
+		(ctx.session as { isCompacting: boolean }).isCompacting = true;
+		(ctx.session as { isGeneratingHandoff: boolean }).isGeneratingHandoff = true;
+		(ctx.session as { isRetrying: boolean }).isRetrying = true;
+		(ctx.session as unknown as { abortCompaction: Spy }).abortCompaction = vi.fn();
+		(ctx.session as unknown as { abortHandoff: Spy }).abortHandoff = spies.abortHandoff;
+		(ctx.session as unknown as { abortRetry: Spy }).abortRetry = vi.fn();
 		const controller = new InputController(ctx);
 
 		controller.setupKeyHandlers();
 		editor.onEscape?.();
 
-		expect(ctx.unfocusSession).toHaveBeenCalledTimes(1);
-		expect(spies.abort).not.toHaveBeenCalled();
-	});
-
-	it("returns focused subagent view to main on Esc without aborting its active maintenance (#2819)", () => {
-		const { ctx, editor, spies } = createContext();
-		Object.defineProperty(ctx, "focusedAgentId", { value: "Worker", configurable: true });
-		(ctx.viewSession as { isCompacting: boolean }).isCompacting = true;
-		(ctx.viewSession as { isGeneratingHandoff: boolean }).isGeneratingHandoff = true;
-		(ctx.viewSession as { isRetrying: boolean }).isRetrying = true;
-		(ctx.viewSession as unknown as { abortCompaction: Spy }).abortCompaction = vi.fn();
-		(ctx.viewSession as unknown as { abortHandoff: Spy }).abortHandoff = spies.abortHandoff;
-		(ctx.viewSession as unknown as { abortRetry: Spy }).abortRetry = vi.fn();
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-		editor.onEscape?.();
-
-		expect(ctx.unfocusSession).toHaveBeenCalledTimes(1);
-		expect(ctx.viewSession.abortCompaction as unknown as Spy).not.toHaveBeenCalled();
-		expect(spies.abortHandoff).not.toHaveBeenCalled();
-		expect(ctx.viewSession.abortRetry as unknown as Spy).not.toHaveBeenCalled();
-	});
-
-	it("aborts main-view maintenance on Esc normally", () => {
-		const { ctx, editor, spies } = createContext();
-		// Not focused:
-		expect(ctx.focusedAgentId).toBeUndefined();
-		(ctx.viewSession as { isCompacting: boolean }).isCompacting = true;
-		(ctx.viewSession as { isGeneratingHandoff: boolean }).isGeneratingHandoff = true;
-		(ctx.viewSession as { isRetrying: boolean }).isRetrying = true;
-		(ctx.viewSession as unknown as { abortCompaction: Spy }).abortCompaction = vi.fn();
-		(ctx.viewSession as unknown as { abortHandoff: Spy }).abortHandoff = spies.abortHandoff;
-		(ctx.viewSession as unknown as { abortRetry: Spy }).abortRetry = vi.fn();
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-		editor.onEscape?.();
-
-		expect(ctx.unfocusSession).not.toHaveBeenCalled();
-		expect(ctx.viewSession.abortCompaction as unknown as Spy).toHaveBeenCalledTimes(1);
+		expect(ctx.session.abortCompaction as unknown as Spy).toHaveBeenCalledTimes(1);
 		expect(spies.abortHandoff).toHaveBeenCalledTimes(1);
-		expect(ctx.viewSession.abortRetry as unknown as Spy).toHaveBeenCalledTimes(1);
+		expect(ctx.session.abortRetry as unknown as Spy).toHaveBeenCalledTimes(1);
 	});
 
 	it("logs abort failures while treating maintenance Esc as handled", () => {
@@ -654,25 +613,6 @@ describe("InputController escape behavior", () => {
 		expect(spies.abort).not.toHaveBeenCalled();
 	});
 
-	it("routes a focused double-← through the global input listener like Esc", () => {
-		const now = vi.spyOn(Date, "now");
-		const { ctx, inputListeners } = createContext();
-		Object.defineProperty(ctx, "focusedAgentId", { value: "Worker", configurable: true });
-		ctx.lastLeftTapTime = 0;
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-		now.mockReturnValue(2_000);
-		const first = inputListeners[0]("\x1b[D");
-		now.mockReturnValue(2_200); // 200ms later — a deliberate second tap
-		const second = inputListeners[0]("\x1b[D");
-
-		// Both taps are consumed; only the second completes the gesture.
-		expect(first).toEqual({ consume: true });
-		expect(second).toEqual({ consume: true });
-		expect(ctx.unfocusSession).toHaveBeenCalledTimes(1);
-		expect(ctx.focusParentSession).not.toHaveBeenCalled();
-	});
 	it("opens the rewind selector and forces a viewport repaint on default double-Esc", () => {
 		const { ctx, editor, spies } = createContext();
 		const controller = new InputController(ctx);
@@ -779,62 +719,5 @@ describe("InputController Ctrl+C behavior", () => {
 		// guarantee that the JSONL is on disk even if the user closes the
 		// terminal before the second press.
 		expect(spies.flushSync).toHaveBeenCalledTimes(2);
-	});
-});
-
-describe("InputController double-tap ← gesture", () => {
-	function setup(focusedAgentId?: string) {
-		const { ctx, editor } = createContext();
-		(ctx as { lastLeftTapTime: number }).lastLeftTapTime = 0;
-		(ctx as { focusedAgentId?: string }).focusedAgentId = focusedAgentId;
-		const controller = new InputController(ctx);
-		controller.setupKeyHandlers();
-		return {
-			ctx,
-			showAgentHub: ctx.showAgentHub as Spy,
-			unfocusSession: ctx.unfocusSession as Spy,
-			tap: () => editor.onLeftAtStart?.(),
-		};
-	}
-
-	it("opens the Agent Hub on a deliberate double-tap", () => {
-		const now = vi.spyOn(Date, "now");
-		const { showAgentHub, tap } = setup();
-		now.mockReturnValue(1_000);
-		tap();
-		now.mockReturnValue(1_200); // 200ms later — a human double-tap
-		tap();
-		expect(showAgentHub).toHaveBeenCalledTimes(1);
-	});
-
-	it("ignores a terminal-synthesized burst of ← arrows arriving together", () => {
-		const now = vi.spyOn(Date, "now");
-		const { showAgentHub, tap } = setup();
-		// A "click to move cursor" burst delivers every arrow in one stdin read,
-		// so all taps share the same millisecond timestamp.
-		now.mockReturnValue(1_000);
-		for (let i = 0; i < 6; i++) tap();
-		expect(showAgentHub).not.toHaveBeenCalled();
-	});
-
-	it("ignores a second tap closer than the human-plausible minimum gap", () => {
-		const now = vi.spyOn(Date, "now");
-		const { showAgentHub, tap } = setup();
-		now.mockReturnValue(1_000);
-		tap();
-		now.mockReturnValue(1_010); // 10ms later — too fast to be deliberate
-		tap();
-		expect(showAgentHub).not.toHaveBeenCalled();
-	});
-
-	it("returns a focused subagent view to the main session on a deliberate double-tap", () => {
-		const now = vi.spyOn(Date, "now");
-		const { showAgentHub, unfocusSession, tap } = setup("Agent1");
-		now.mockReturnValue(1_000);
-		tap();
-		now.mockReturnValue(1_200);
-		tap();
-		expect(unfocusSession).toHaveBeenCalledTimes(1);
-		expect(showAgentHub).not.toHaveBeenCalled();
 	});
 });

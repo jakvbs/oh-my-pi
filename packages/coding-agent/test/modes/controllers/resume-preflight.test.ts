@@ -46,7 +46,6 @@ function createResumeContext(opts: { flushFails?: boolean; sourceCwd?: string; p
 		},
 		settings: { flush },
 		prepareSessionSwitch: vi.fn(async () => {}),
-		resetObserverRegistry: vi.fn(),
 		clearTransientSessionUi: vi.fn(),
 		applyCwdChange,
 		updateEditorBorderColor: vi.fn(),
@@ -91,7 +90,6 @@ describe("SelectorController.handleResumeSession preflight flush", () => {
 		expect(result).toBe(false);
 		expect(ctx.showError).toHaveBeenCalledWith(expect.stringContaining("disk full"));
 		expect(ctx.prepareSessionSwitch).not.toHaveBeenCalled();
-		expect(ctx.resetObserverRegistry).not.toHaveBeenCalled();
 		expect(ctx.clearTransientSessionUi).not.toHaveBeenCalled();
 		expect(switchSession).not.toHaveBeenCalled();
 		expect(applyCwdChange).not.toHaveBeenCalled();

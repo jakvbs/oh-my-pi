@@ -14,7 +14,7 @@ import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../uti
 
 interface JobSnapshotLike {
 	id: string;
-	/** "bash" | "task" upstream; untrusted, so plain string. */
+	/** "bash" | "eval" upstream; untrusted, so plain string. */
 	type: string;
 	/** "running" | "completed" | "failed" | "cancelled" upstream. */
 	status: string;
@@ -125,24 +125,13 @@ function formatDuration(ms: number): string {
 	return `${m}m ${Math.round(s % 60)}s`;
 }
 
-/**
- * Task job results arrive in the model-facing `<task-result>` envelope; the
- * wrapper markup is noise to a human — preview the inner body instead.
- */
-function stripTaskResultEnvelope(text: string): string {
-	if (!text.startsWith("<task-result")) return text;
-	const body = /<(output|preview)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>/.exec(text)?.[2];
-	return body?.trim() || text;
-}
-
 function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 	const tone = statusTone(job.status);
 	const label = normalizeWs(job.label) || "(no label)";
-	// Task jobs label themselves with their agent id — drop the id column
-	// instead of stuttering it twice.
+	// Drop the id column when the label repeats it instead of stuttering it twice.
 	const showId = label !== job.id;
 	const rawPreview = job.errorText.trim() || job.resultText.trim();
-	const preview = rawPreview ? truncate(normalizeWs(stripTaskResultEnvelope(rawPreview)), 160) : "";
+	const preview = rawPreview ? truncate(normalizeWs(rawPreview), 160) : "";
 	return (
 		<Row k={<Badge tone={tone}>{job.status || "?"}</Badge>}>
 			{job.type && <Badge tone={tone}>{job.type}</Badge>}

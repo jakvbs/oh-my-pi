@@ -589,7 +589,7 @@ export class InternalUrlFilesystem {
 		const redirected = await this.#urlSymlinkTarget(route, target);
 		if (redirected !== undefined) return this.#node(redirected, follow, create, hops + 1);
 		if (create) throw this.#readOnly({ url, spec });
-		// No backing file (agent://<id>/<json-path>) or a missing entry: the handler renders it or reports why not.
+		// No backing file or a missing entry: the handler renders it or reports why not.
 		return this.#virtualNode(route, target, url);
 	}
 

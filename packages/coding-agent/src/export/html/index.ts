@@ -5,7 +5,6 @@ import { APP_NAME, isEnoent } from "@oh-my-pi/pi-utils";
 import { getResolvedThemeColors, getThemeExportColors } from "@oh-my-pi/pi-tui/theme";
 import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { SessionManager } from "../../session/session-manager";
-import { collectSubSessions, type SubSession } from "../../session/sub-sessions";
 import type { ExportThemeNames } from "./args";
 import templateCssPath from "./template.css" with { type: "file" };
 import templateHtmlPath from "./template.html" with { type: "file" };
@@ -59,8 +58,6 @@ export interface ExportOptions {
 	themeName?: string;
 	/** Dark and light TUI themes to bundle when `palette` is `"theme"`. */
 	themeNames?: ExportThemeNames;
-	/** Embed subagent session transcripts found next to the session file (default true). */
-	includeSubSessions?: boolean;
 }
 
 /** Parse a color string to RGB values. */
@@ -173,7 +170,6 @@ export interface SessionData {
 	leafId: string | null;
 	systemPrompt?: string;
 	tools?: { name: string; description: string }[];
-	subSessions?: Record<string, SubSession>;
 }
 
 function sessionHeaderForExport(header: SessionHeader | null): SessionHeader | null {
@@ -194,13 +190,6 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
 		systemPrompt: state?.systemPrompt.join("\n\n"),
 		tools: state?.tools?.map(t => ({ name: t.name, description: t.description })),
 	};
-}
-
-/** Subagent transcripts next to `sessionFile`, with export-only header fields stripped. */
-async function collectExportSubSessions(sessionFile: string): Promise<Record<string, SubSession>> {
-	const subSessions = await collectSubSessions(sessionFile);
-	for (const sub of Object.values(subSessions)) sub.header = sessionHeaderForExport(sub.header);
-	return subSessions;
 }
 
 /** Generate HTML from bundled template with runtime substitutions. */
@@ -232,10 +221,6 @@ export async function exportSessionToHtml(
 	if (!sessionFile) throw new Error("Cannot export in-memory session to HTML");
 
 	const sessionData = buildSessionData(sm, state);
-	if (opts.includeSubSessions !== false) {
-		const subSessions = await collectExportSubSessions(sessionFile);
-		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
-	}
 
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
 	const html = await generateHtml(sessionData, palette, opts.themeNames, opts.themeName);
@@ -265,10 +250,6 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 		entries: sm.getEntries(),
 		leafId: sm.getLeafId(),
 	};
-	if (opts.includeSubSessions !== false) {
-		const subSessions = await collectExportSubSessions(inputPath);
-		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
-	}
 
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
 	const html = await generateHtml(sessionData, palette, opts.themeNames, opts.themeName);

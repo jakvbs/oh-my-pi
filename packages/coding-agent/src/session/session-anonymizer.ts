@@ -10,13 +10,11 @@
  *
  * One instance carries a single token table, so equal originals map to equal tokens across every
  * line and file it processes. Path segments and placeholders share the index space:
- * `name: "Probe"` → `PLACEHOLDER_7` and `agent://Probe` → `agent://seg7`.
+ * `name: "Probe"` → `PLACEHOLDER_7` and the path segment `Probe` → `seg7`.
  */
-import { logger } from "@oh-my-pi/pi-utils";
 import { BUILTIN_TOOL_NAMES, isMCPToolName } from "../tools/builtin-names";
 import { lexShellCommand } from "../tools/shell-tokenize";
 import type { SessionEntry, SessionHeader } from "./session-entries";
-import { collectSubSessions, type SubSession } from "./sub-sessions";
 
 type JsonObject = Record<string, unknown>;
 
@@ -31,7 +29,7 @@ export const ANONYMIZED_REVIEW_NOTE =
  * - `time`: ISO timestamp or epoch ms.
  * - `enum`/`identity`: omp- or provider-written identifier (stop reason, model id); other shapes are tokenized.
  * - `agent`/`spawns`: agent names tokenized (every agent is user-defined).
- * - `id`: machine-minted ids kept; named ids mapped like the `agent://` segment they mirror.
+ * - `id`: machine-minted ids kept; named ids mapped like a path segment.
  * - `path`/`cmd`: mock paths / shell rewrite. `text`: redaction marker. `label`: placeholder.
  * - `error`: redacted except a leading HTTP status.
  * - `tool`/`name`/`customType`: code-chosen identifiers kept; MCP (user-configured) names tokenized.
@@ -519,7 +517,7 @@ const TOOL_ENUM_VALUES: Record<string, ReadonlySet<string>> = {
 	direction: new Set(["head", "middle", "tail"]),
 	truncatedBy: new Set(["lines", "bytes", "middle"]),
 	unit: new Set(["bytes", "chars", "lines"]),
-	type: new Set(["path", "internal", "url", "file", "directory", "task", "bash"]),
+	type: new Set(["path", "internal", "url", "file", "directory", "bash"]),
 	state: new Set(["running", "ready", "exited", "starting", "failed", "stopped"]),
 	kind: new Set(["url", "file", "directory"]),
 	method: new Set([
@@ -1306,7 +1304,7 @@ export class SessionAnonymizer {
 		const match = EXTENSION.exec(value);
 		// Only real file extensions survive; `customer.alice` is a name, not a `.alice` file.
 		if (match && !/^\d+$/.test(match[1]) && isKnownExtension(match[2])) {
-			// Index the whole name so `Probe.v2` shares its token with `PLACEHOLDER_N` and `agent://`.
+			// Index the whole name so `Probe.v2` shares its token with `PLACEHOLDER_N` and path segments.
 			return `${KEEP_SEGMENTS[match[1]] === true ? match[1] : `seg${this.#index(value)}`}${match[2]}`;
 		}
 		return `seg${this.#index(value)}`;
@@ -1512,7 +1510,7 @@ export class SessionAnonymizer {
 							.join(",");
 			case "id":
 				// Machine-minted ids omp writes stay joinable with provider logs; tool-written and named
-				// ids (subagent names) are mapped like the `agent://` segment they mirror.
+				// ids (agent names) are mapped like a path segment.
 				return !fromTool && RANDOM_ID.test(value) ? value : this.segment(value);
 			case "path":
 				return this.path(value);
@@ -1712,62 +1710,28 @@ export class SessionAnonymizer {
 	}
 }
 
-/** A session transcript to anonymize: its header, entries, and file (for subagent discovery). */
+/** A session transcript to anonymize: its header and entries. */
 export interface AnonymizeSessionInput {
 	header: SessionHeader | null;
 	entries: readonly SessionEntry[];
-	sessionFile?: string;
-	/** Malformed records the caller skipped while loading the main transcript. */
+	/** Malformed records the caller skipped while loading the transcript. */
 	malformedRecords?: number;
 }
 
-/** Anonymized JSONL bodies for a session and its persisted subagents. */
+/** Anonymized JSONL body for a session. */
 export interface AnonymizedTranscripts {
-	/** `[member path, JSONL body]`: `session.jsonl`, then `subagents/<mapped agent path>.jsonl`. */
+	/** `[member path, JSONL body]`: `session.jsonl`. */
 	files: Array<readonly [string, string]>;
-	subagentCount: number;
-	/** Why subagent discovery failed; the main transcript is anonymized regardless. */
-	subagentError?: string;
 	/** `[member path, count]` for transcripts whose malformed JSONL records were skipped. */
 	malformed: Array<readonly [string, number]>;
-	/** Subagent transcripts (mapped member paths) skipped because no session header could be read. */
-	unreadable: string[];
 }
 
-/**
- * Anonymize a session and every subagent transcript stored next to it with one
- * shared token table, so names, paths, and literals correlate across files.
- */
-export async function anonymizeSessionTranscripts(session: AnonymizeSessionInput): Promise<AnonymizedTranscripts> {
+/** Anonymize a session transcript with one token table, so names, paths, and literals correlate across records. */
+export function anonymizeSessionTranscripts(session: AnonymizeSessionInput): AnonymizedTranscripts {
 	const anonymizer = new SessionAnonymizer();
-	const toJsonl = (header: SessionHeader | null, entries: readonly SessionEntry[]): string => {
-		const records: unknown[] = header ? [header, ...entries] : [...entries];
-		return `${records.map(record => JSON.stringify(anonymizer.entry(record))).join("\n")}\n`;
-	};
-	const files: Array<readonly [string, string]> = [["session.jsonl", toJsonl(session.header, session.entries)]];
+	const records: unknown[] = session.header ? [session.header, ...session.entries] : [...session.entries];
+	const body = `${records.map(record => JSON.stringify(anonymizer.entry(record))).join("\n")}\n`;
 	const malformed: Array<readonly [string, number]> = [];
 	if (session.malformedRecords) malformed.push(["session.jsonl", session.malformedRecords]);
-	const unreadable: string[] = [];
-	// Agent ids map through the same table as `agent://<id>` path segments.
-	const memberFor = (key: string): string =>
-		`subagents/${key
-			.split("/")
-			.map(part => anonymizer.segment(part))
-			.join("/")}.jsonl`;
-	let subSessions: Record<string, SubSession> = {};
-	let subagentError: string | undefined;
-	try {
-		if (session.sessionFile) {
-			subSessions = await collectSubSessions(session.sessionFile, key => unreadable.push(memberFor(key)));
-		}
-	} catch (error) {
-		subagentError = error instanceof Error ? error.message : String(error);
-		logger.warn("Failed to collect subagent transcripts for anonymization", { error: subagentError });
-	}
-	for (const [key, sub] of Object.entries(subSessions)) {
-		const member = memberFor(key);
-		files.push([member, toJsonl(sub.header, sub.entries)]);
-		if (sub.malformedRecords > 0) malformed.push([member, sub.malformedRecords]);
-	}
-	return { files, subagentCount: files.length - 1, subagentError, malformed, unreadable };
+	return { files: [["session.jsonl", body]], malformed };
 }

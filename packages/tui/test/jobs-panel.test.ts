@@ -42,10 +42,9 @@ const JOBS = {
 	running: [
 		{
 			id: "task-1",
-			type: "task",
+			type: "bash",
 			status: "running",
 			label: "Audit credits",
-			agentId: "CreditAudit",
 			startTime: NOW - 5_000,
 		},
 		{ id: "bash-1", type: "bash", status: "running", label: "cargo test --workspace", startTime: NOW - 2_000 },
@@ -80,10 +79,6 @@ describe("JobsSheet", () => {
 		expect(prop(list(root), "selected")).toBe("task-1");
 		const detail = byRole(root, "omp.jobs.detail")[0]!;
 		expect(texts(detail)).toContain("Audit credits");
-		expect(prop(byRole(root, "omp.jobs.facts")[0], "items")).toContainEqual({
-			k: "Agent",
-			v: [{ t: "CreditAudit", s: "mono" }],
-		});
 		expect(texts(detail)).toContain("No output yet");
 		expect(prop(byRole(root, "omp.jobs.summary")[0], "text")).toBe("2 running · 1 recent");
 	});

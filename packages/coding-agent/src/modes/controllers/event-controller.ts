@@ -80,17 +80,6 @@ import { cfgReadToolResultPreview, cfgToolsApproval, cfgToolsApprovalMode } from
 
 type AgentSessionEventKind = AgentSessionEvent["type"];
 
-const IRC_MESSAGE_VISIBLE_TTL_MS = 10_000;
-/**
- * Concurrent IRC cards allowed in the transcript's live region. Cards land
- * below a still-live block (a running task), where they cannot commit to
- * native scrollback (commits are prefix-only) — every visible card inflates
- * the live region and pushes the live block's uncommitted rows above the
- * window top, where they are neither on screen nor in history. A swarm burst
- * (several agents coordinating at once) must therefore stay bounded: the
- * oldest live-region card retires as soon as a new one would exceed the cap.
- */
-const MAX_LIVE_IRC_CARDS = 4;
 const IDLE_RECAP_MIN_SECONDS = 1;
 const IDLE_RECAP_MAX_SECONDS = 3600;
 
@@ -257,10 +246,6 @@ export class EventController {
 	#idleRecapAbort?: AbortController;
 	/** Next-message prediction offered as composer ghost text after a completed turn. */
 	readonly composerPrediction: ComposerPredictionController;
-	#ircExpiryTimers = new Map<string, NodeJS.Timeout>();
-	// Insertion-ordered IRC cards not yet retired; values are the transcript
-	// components each card contributed (see #retireIrcCard for the guard).
-	#liveIrcCards = new Map<string, Component[]>();
 	// Most recent `wait` tool block whose result still had every watched job
 	// running. Kept un-finalized (live) so the next `wait` call displaces it —
 	// one persistent poll instead of a stack of "waiting on N jobs" frames —
@@ -350,7 +335,6 @@ export class EventController {
 			ttsr_triggered: e => this.#handleTtsrTriggered(e),
 			todo_reminder: e => this.#handleTodoReminder(e),
 			todo_auto_clear: e => this.#handleTodoAutoClear(e),
-			irc_message: e => this.#handleIrcMessage(e),
 			notice: e => this.#handleNotice(e),
 			model_changed: async () => {
 				this.ctx.statusLine.invalidate();
@@ -405,7 +389,7 @@ export class EventController {
 
 	/** Rearm idle compaction after a live idle setting changes. */
 	refreshIdleCompactionTimer(): void {
-		if (this.ctx.viewSession.isStreaming) {
+		if (this.ctx.session.isStreaming) {
 			this.#cancelIdleCompaction();
 			return;
 		}
@@ -414,7 +398,7 @@ export class EventController {
 
 	/** Rearm (or cancel) the idle recap after a live `recap.*` setting change. */
 	refreshIdleRecapTimer(): void {
-		if (!this.#idleRecapPending || this.ctx.viewSession.isStreaming) return;
+		if (!this.#idleRecapPending || this.ctx.session.isStreaming) return;
 		this.#scheduleIdleRecap();
 	}
 
@@ -433,11 +417,6 @@ export class EventController {
 		this.#cancelIdleRecap();
 		this.composerPrediction.cancel();
 		this.#setTerminalProgress(false);
-		for (const timer of this.#ircExpiryTimers.values()) {
-			clearTimeout(timer);
-		}
-		this.#ircExpiryTimers.clear();
-		this.#liveIrcCards.clear();
 	}
 
 	#resetReadGroup(): void {
@@ -904,15 +883,10 @@ export class EventController {
 		this.#pinnedErrorComponent = undefined;
 		this.#pinnedErrorMessage = undefined;
 		this.#restorePinnedErrorInline = true;
-		this.#retryPending = this.ctx.viewSession.isRetrying;
+		this.#retryPending = this.ctx.session.isRetrying;
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
 		this.composerPrediction.cancel();
-		for (const timer of this.#ircExpiryTimers.values()) {
-			clearTimeout(timer);
-		}
-		this.#ircExpiryTimers.clear();
-		this.#liveIrcCards.clear();
 		this.#displaceablePollComponent = undefined;
 		this.#displaceableTodoComponent = undefined;
 		this.#lastTtsrNotification = undefined;
@@ -1060,7 +1034,7 @@ export class EventController {
 	async #handleMessageStart(event: Extract<AgentSessionEvent, { type: "message_start" }>): Promise<void> {
 		this.#ensureWorkingLoaderWhileStreaming();
 		if (event.message.role === "hookMessage" || event.message.role === "custom") {
-			if (event.message.role === "custom" && !this.ctx.initialChatRendered && !this.ctx.viewSession.isStreaming) {
+			if (event.message.role === "custom" && !this.ctx.initialChatRendered && !this.ctx.session.isStreaming) {
 				// Idle custom append while no transcript render has committed (e.g. a startup
 				// display:true sendMessage before renderInitialMessages): AgentSession persists the
 				// entry before emitting this event, so the replay owns the paint — a render not yet
@@ -1198,62 +1172,6 @@ export class EventController {
 			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
 			this.#streamingReveal.begin(this.ctx.streamingComponent, timeline.beforeTools, timeline.hasToolCalls);
 			this.ctx.ui.requestRender();
-		}
-	}
-
-	async #handleIrcMessage(event: Extract<AgentSessionEvent, { type: "irc_message" }>): Promise<void> {
-		const signature = `${event.message.role}:${event.message.customType}:${event.message.timestamp}`;
-		if (this.#renderedCustomMessages.has(signature)) {
-			return;
-		}
-		this.#renderedCustomMessages.add(signature);
-		this.#resetReadGroup();
-		const components = this.ctx.addMessageToChat(event.message);
-		this.#scheduleIrcExpiry(signature, components);
-		this.#enforceIrcCardCap(signature);
-		this.ctx.ui.requestRender();
-	}
-
-	#scheduleIrcExpiry(signature: string, components: Component[]): void {
-		if (components.length === 0 || this.#ircExpiryTimers.has(signature)) return;
-		const timer = setTimeout(() => {
-			this.#ircExpiryTimers.delete(signature);
-			this.#retireIrcCard(signature);
-		}, IRC_MESSAGE_VISIBLE_TTL_MS);
-		timer.unref?.();
-		this.#ircExpiryTimers.set(signature, timer);
-		this.#liveIrcCards.set(signature, components);
-	}
-
-	/**
-	 * Remove an expired/evicted IRC card only while its transcript entry remains
-	 * active. Pending or committed entries already belong to an immutable
-	 * ordered history batch and remain as final history.
-	 */
-	#retireIrcCard(signature: string): void {
-		const components = this.#liveIrcCards.get(signature);
-		this.#liveIrcCards.delete(signature);
-		if (!components) return;
-		let removed = false;
-		for (const component of components) {
-			if (!this.ctx.chatContainer.canRemoveBlock(component)) continue;
-			this.ctx.chatContainer.removeChild(component);
-			removed = true;
-		}
-		if (removed) this.ctx.ui.requestRender();
-	}
-
-	/** Evict oldest live-region cards beyond {@link MAX_LIVE_IRC_CARDS}. */
-	#enforceIrcCardCap(latestSignature: string): void {
-		while (this.#liveIrcCards.size > MAX_LIVE_IRC_CARDS) {
-			const oldest = this.#liveIrcCards.keys().next().value;
-			if (oldest === undefined || oldest === latestSignature) return;
-			const timer = this.#ircExpiryTimers.get(oldest);
-			if (timer) {
-				clearTimeout(timer);
-				this.#ircExpiryTimers.delete(oldest);
-			}
-			this.#retireIrcCard(oldest);
 		}
 	}
 
@@ -1417,7 +1335,7 @@ export class EventController {
 			for (let contentIndex = 0; contentIndex < this.ctx.streamingMessage.content.length; contentIndex++) {
 				const content = this.ctx.streamingMessage.content[contentIndex]!;
 				if (content.type !== "toolCall") continue;
-				const tool = this.ctx.viewSession.getToolByName(content.name);
+				const tool = this.ctx.session.getToolByName(content.name);
 				const renderToolName = toolRenderName(content.name, tool);
 				if (renderToolName === "read") {
 					if (!readArgsHaveTarget(content.arguments)) {
@@ -1479,7 +1397,7 @@ export class EventController {
 						renderToolName,
 						renderArgs,
 						{
-							useBuiltInRenderer: this.ctx.viewSession.hasBuiltInTool(renderToolName),
+							useBuiltInRenderer: this.ctx.session.hasBuiltInTool(renderToolName),
 							showImages: cfgTerminalShowImages.get(settings),
 						},
 						tool,
@@ -1535,7 +1453,7 @@ export class EventController {
 				if (INTENT_FIELD in args) {
 					intent = normalizeIntent(args[INTENT_FIELD]);
 				} else {
-					const tool = this.ctx.viewSession.getToolByName(block.name);
+					const tool = this.ctx.session.getToolByName(block.name);
 					if (typeof tool?.intent !== "function") continue;
 					try {
 						intent = normalizeIntent(tool.intent(args as never));
@@ -1558,12 +1476,12 @@ export class EventController {
 		if (event.message.role === "toolResult" && event.message.toolName === "todo" && !event.message.isError) {
 			const details = event.message.details as { op?: string; phases?: TodoPhase[] } | undefined;
 			if (details?.op !== "view" && details?.phases) {
-				const owner = this.ctx.viewSession;
+				const owner = this.ctx.session;
 				const sessionId = owner.sessionManager.getSessionId();
 				const sessionFile = owner.sessionManager.getSessionFile();
 				await owner.settleInFlightMessagePersistence();
 				if (
-					this.ctx.viewSession === owner &&
+					this.ctx.session === owner &&
 					owner.sessionManager.getSessionId() === sessionId &&
 					owner.sessionManager.getSessionFile() === sessionFile
 				) {
@@ -1599,7 +1517,7 @@ export class EventController {
 				// for expected internal transitions (plan-compact, TTSR rule
 				// interruption) before this controller ran, so reaching this branch
 				// implies the abort was NOT a silent internal transition.
-				errorMessage = resolveAbortLabel(this.ctx.streamingMessage, this.ctx.viewSession.retryAttempt);
+				errorMessage = resolveAbortLabel(this.ctx.streamingMessage, this.ctx.session.retryAttempt);
 				this.ctx.streamingMessage.errorMessage = errorMessage;
 			}
 			const displayMessage: AssistantMessage = silentlyAborted
@@ -1646,7 +1564,7 @@ export class EventController {
 				//     failure stays visible; `#handleAutoRetryStart` removes them only
 				//     if a retry actually supersedes them (Codex review on #6881).
 				const supersededByRewind =
-					this.ctx.streamingMessage.stopReason === "aborted" && this.ctx.viewSession.isTtsrAbortPending;
+					this.ctx.streamingMessage.stopReason === "aborted" && this.ctx.session.isTtsrAbortPending;
 				if (supersededByRewind) {
 					this.ctx.streamingComponent.markRewound();
 					for (const [toolCallId, component] of Array.from(this.ctx.pendingTools.entries())) {
@@ -1753,7 +1671,7 @@ export class EventController {
 		if (this.#retractedToolCallIds.has(event.toolCallId)) return;
 		this.#ensureWorkingLoaderWhileStreaming();
 		this.#updateWorkingMessageFromIntent(event.intent);
-		const tool = this.ctx.viewSession.getToolByName(event.toolName);
+		const tool = this.ctx.session.getToolByName(event.toolName);
 		const renderToolName = toolRenderName(event.toolName, tool);
 		const blocked = this.#blockingPrompt(renderToolName, event.args);
 		if (blocked) {
@@ -1789,7 +1707,7 @@ export class EventController {
 				renderToolName,
 				event.args,
 				{
-					useBuiltInRenderer: this.ctx.viewSession.hasBuiltInTool(renderToolName),
+					useBuiltInRenderer: this.ctx.session.hasBuiltInTool(renderToolName),
 					showImages: cfgTerminalShowImages.get(settings),
 				},
 				tool,
@@ -1854,7 +1772,7 @@ export class EventController {
 			const questions = recoverAskQuestions(args)?.map(question => question.question);
 			return { state: "blocked", kind: "question", msg: questions?.join(" ") };
 		}
-		const tool = this.ctx.viewSession.getToolByName(toolName);
+		const tool = this.ctx.session.getToolByName(toolName);
 		if (!tool) return undefined;
 		const mode = cfgToolsApprovalMode.get(settings);
 		const userPolicies: Record<string, unknown> = cfgToolsApproval.get(settings);
@@ -2096,7 +2014,7 @@ export class EventController {
 		if (this.ctx.session.isStreaming) return;
 		// A non-terminal settle (`isTerminal: false`) is a scheduling pause, not the
 		// end of the run: the agent's own continuation (reminder, retry, queued
-		// steer/follow-up, IRC wake) follows, or background work may re-wake it.
+		// steer/follow-up, aside wake) follows, or background work may re-wake it.
 		// Skip the idle title/loader teardown; the continuation's terminal
 		// `agent_end` performs it, or the settle watch does when that continuation
 		// never starts (an abort cancels it, background work ends without a wake).
@@ -2246,24 +2164,17 @@ export class EventController {
 
 	/**
 	 * Restore the live "Working…" loader when a streaming event lands after a
-	 * transient status overlay cleared the container. Focus mode dispatches events
-	 * for `viewSession`, so key the reconciler on that session, not the main one.
+	 * transient status overlay cleared the container.
 	 */
 	#ensureWorkingLoaderWhileStreaming(): void {
-		if (!this.ctx.viewSession.isStreaming) return;
+		if (!this.ctx.session.isStreaming) return;
 		if (this.ctx.autoCompactionLoader || this.ctx.retryLoader) return;
 		this.ctx.ensureLoadingAnimation();
 	}
 
-	/**
-	 * Trailing Esc hint for live maintenance loaders. While a subagent is
-	 * focused, Esc returns to main instead of cancelling its maintenance
-	 * (#2819), so the loader drops the hint entirely rather than advertise a
-	 * cancel that no longer happens. Includes the leading space so the focused
-	 * label carries no dangling whitespace.
-	 */
+	/** Trailing Esc hint for live maintenance loaders; includes the leading space. */
 	#maintenanceEscHint(): string {
-		return this.ctx.focusedAgentId ? "" : ` (${appKey(this.ctx.keybindings, "app.interrupt")} to cancel)`;
+		return ` (${appKey(this.ctx.keybindings, "app.interrupt")} to cancel)`;
 	}
 
 	async #handleAutoCompactionStart(
@@ -2577,7 +2488,7 @@ export class EventController {
 		this.#cancelIdleCompaction();
 		// Don't schedule idle work while context maintenance is already running; the
 		// maintenance flow may reset the session before this timer fires.
-		if (this.ctx.viewSession.isCompacting) return;
+		if (this.ctx.session.isCompacting) return;
 
 		const idleSettings = cfgCompaction.get(this.ctx.settings);
 		if (!idleSettings.idleEnabled) return;
@@ -2594,18 +2505,18 @@ export class EventController {
 			this.#idleCompactionTimer = undefined;
 			// Re-check conditions before firing. Pruning may have run between arming
 			// the timer and now, dropping usage back below the idle threshold.
-			if (this.ctx.viewSession.isStreaming) return;
-			if (this.ctx.viewSession.isCompacting) return;
+			if (this.ctx.session.isStreaming) return;
+			if (this.ctx.session.isCompacting) return;
 			if (this.ctx.editor.getText().trim()) return;
 			if (this.#currentContextTokens() < threshold) return;
-			void this.ctx.viewSession.runIdleCompaction();
+			void this.ctx.session.runIdleCompaction();
 		}, timeoutMs);
 		this.#idleCompactionTimer.unref?.();
 	}
 
 	#scheduleIdleRecap(): void {
 		this.#cancelIdleRecap();
-		if (this.ctx.viewSession.isCompacting) return;
+		if (this.ctx.session.isCompacting) return;
 
 		const recapSettings = cfgRecap.get(this.ctx.settings);
 		if (!recapSettings.enabled) return;
@@ -2633,8 +2544,8 @@ export class EventController {
 	 */
 	async #runIdleRecap(): Promise<void> {
 		if (!this.#idleConditionsHold()) return;
-		if (!this.ctx.viewSession.model) return;
-		if (this.ctx.viewSession.messages.length === 0) return;
+		if (!this.ctx.session.model) return;
+		if (this.ctx.session.messages.length === 0) return;
 
 		const promptText = prompt.render(idleRecapPrompt, {
 			goal: this.#idleRecapGoalText() ?? "",
@@ -2644,7 +2555,7 @@ export class EventController {
 		const abort = new AbortController();
 		this.#idleRecapAbort = abort;
 		try {
-			const session = this.ctx.viewSession;
+			const session = this.ctx.session;
 			const { replyText } = await session.runEphemeralTurn({ promptText, signal: abort.signal });
 			if (this.#idleRecapAbort !== abort || abort.signal.aborted || !this.#idleConditionsHold()) return;
 			const recap = previewLine(replyText, TRUNCATE_LENGTHS.RECAP);
@@ -2660,21 +2571,21 @@ export class EventController {
 
 	/** Idle gate shared by the recap timer fire and its post-reply re-check. */
 	#idleConditionsHold(): boolean {
-		if (this.ctx.viewSession.isStreaming) return false;
-		if (this.ctx.viewSession.isCompacting) return false;
+		if (this.ctx.session.isStreaming) return false;
+		if (this.ctx.session.isCompacting) return false;
 		if (this.ctx.editor.getText().trim()) return false;
 		return true;
 	}
 
 	#idleRecapGoalText(): string | undefined {
-		const goal = this.ctx.viewSession.getGoalModeState?.()?.goal.objective.trim();
+		const goal = this.ctx.session.getGoalModeState?.()?.goal.objective.trim();
 		if (goal) return goal;
 		const title = this.ctx.sessionManager.getSessionName()?.trim();
 		return title || undefined;
 	}
 
 	#currentContextTokens(): number {
-		return this.ctx.viewSession.getContextUsage()?.tokens ?? 0;
+		return this.ctx.session.getContextUsage()?.tokens ?? 0;
 	}
 
 	sendErrorNotification(event: Extract<AgentSessionEvent, { type: "agent_end" }>): void {
@@ -2705,7 +2616,7 @@ export class EventController {
 
 		// Read the turn's own outcome from `agent_end.messages`, not the mutable
 		// active context: a classifier-refusal failure is final (stopReason ===
-		// "error") but gets pruned from `viewSession`'s active context before this
+		// "error") but gets pruned from the session's active context before this
 		// handler runs (see `#removeAssistantMessageFromActiveContext` in
 		// agent-session.ts), so `getLastAssistantMessage()` would see a stale or
 		// absent assistant and silently drop the notification.
@@ -2730,7 +2641,7 @@ export class EventController {
 		if (isWarpCliAgentProtocolActive()) return;
 
 		// Read the turn's own outcome from `agent_end.messages`, not the mutable
-		// active context (see `sendErrorNotification` above for why `viewSession`'s
+		// active context (see `sendErrorNotification` above for why the
 		// snapshot can be stale): an aborted or errored turn is not "Task
 		// complete", and using the same event `sendErrorNotification` just read
 		// keeps the two notifications mutually exclusive for one settled turn.

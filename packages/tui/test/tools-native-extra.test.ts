@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import type { TspAgentProps, TspChecklistProps } from "@oh-my-pi/pi-wire";
+import type { TspChecklistProps } from "@oh-my-pi/pi-wire";
 import type { NativeChild, NativeNode } from "../src/native/node";
 import { setNativeRendering } from "../src/native/state";
-import type { AgentProgress, TaskToolDetails } from "../src/tools/task";
-import { taskToolRenderer } from "../src/tools/task";
 import type { TodoToolDetails } from "../src/tools/todo";
 import { todoToolRenderer } from "../src/tools/todo";
 import type { CoordinationDetails } from "../src/tools/wait";
@@ -60,85 +58,6 @@ describe("native todo", () => {
 	});
 });
 
-function progress(id: string, extra: Partial<AgentProgress> = {}): AgentProgress {
-	return {
-		index: 0,
-		id,
-		agent: "task",
-		agentSource: "bundled",
-		status: "running",
-		task: "do things",
-		recentTools: [],
-		recentOutput: [],
-		toolCount: 0,
-		requests: 0,
-		tokens: 0,
-		cost: 0,
-		durationMs: 1000,
-		...extra,
-	};
-}
-
-describe("native task", () => {
-	it("renders one agent node per subagent, no cards, with the assignment prefix stripped", () => {
-		const details: TaskToolDetails = {
-			projectAgentsDir: null,
-			results: [],
-			totalDurationMs: 0,
-			progress: [
-				progress("Alpha", {
-					task: "Complete assignment thoroughly:\n\n# Target\nFix the lexer",
-					currentTool: "read",
-					// `lastIntent` is an earlier call's; the running call carries its own.
-					lastIntent: "Searching the lexer",
-					currentToolIntent: "Reading lexer",
-					currentToolStartMs: 1000,
-					contextTokens: 19_000,
-					contextWindow: 200_000,
-				}),
-				progress("Beta", { index: 1, status: "pending" }),
-			],
-		};
-		const view = taskToolRenderer.describeResult(
-			{ content: [], details },
-			{ ...opts, isPartial: true, renderContext: { nowMs: 4000 } },
-			{ context: "Shared\ngoal", tasks: [] },
-		);
-		expect(view?.tool).toMatchObject({ title: "Task", target: "2 agents" });
-		const all = nodes(view?.body);
-		expect(all.some(n => n.k === "card")).toBe(false);
-		expect(view?.body?.[0]).toMatchObject({ k: "text", p: { role: "omp.tool.context" } });
-		const agents = all.filter(n => n.k === "agent");
-		expect(agents.map(n => n.key)).toEqual(["Alpha", "Beta"]);
-		const alpha = agents[0]!.p as TspAgentProps;
-		expect(alpha.task).toBe("# Target Fix the lexer");
-		expect(alpha.status).toBe("running");
-		expect(alpha.tool).toEqual({ name: "read", intent: "Reading lexer", age: 3000 });
-		expect(alpha.stats).toMatchObject({ context: 0.095, contextLabel: "19K / 200K" });
-		expect((agents[1]!.p as TspAgentProps).status).toBe("pending");
-	});
-
-	it("nests a subagent's in-flight children as agent nodes inside its node", () => {
-		const child: TaskToolDetails = {
-			projectAgentsDir: null,
-			results: [],
-			totalDurationMs: 0,
-			progress: [progress("Child")],
-		};
-		const details: TaskToolDetails = {
-			projectAgentsDir: null,
-			results: [],
-			totalDurationMs: 0,
-			progress: [progress("Parent", { inflightTaskDetails: child })],
-		};
-		const view = taskToolRenderer.describeResult({ content: [], details }, { ...opts, isPartial: true });
-		const parent = view?.body?.find(n => "k" in n && n.k === "agent" && n.key === "Parent") as NativeNode;
-		expect(parent).toBeDefined();
-		const nested = nodes(parent.c).find(n => n.k === "agent" && n.key === "Child");
-		expect(nested?.p).toMatchObject({ status: "running", depth: 1 });
-	});
-});
-
 describe("native wait", () => {
 	afterEach(() => setNativeRendering(false));
 
@@ -151,7 +70,7 @@ describe("native wait", () => {
 				op: "wait",
 				jobs: [
 					{ id: "job-1", type: "bash", status: "running", label: "sleep", durationMs: 4200 },
-					{ id: "job-2", type: "task", status: "completed", label: "x", durationMs: 900 },
+					{ id: "job-2", type: "eval", status: "completed", label: "x", durationMs: 900 },
 				],
 			};
 			const view = waitToolRenderer.describeResult({ content: [], details }, { ...opts, isPartial: true });

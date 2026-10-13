@@ -20,7 +20,6 @@ import { chatTranscriptDisplayPreferences as displayPreferences } from "./displa
 import type { MessageRenderer } from "./extension-types";
 import { LAUNCH_COMPLETION_MESSAGE_TYPE } from "./messages";
 import {
-	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,
 	type CustomMessage,
 	isUserTurnInitiator,
 	LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
@@ -39,7 +38,6 @@ import {
 	assistantUsageIsBilled,
 	buildAsyncResultBlock,
 	buildFileMentionBlock,
-	buildIrcMessageCard,
 	buildLaunchCompletionBlock,
 	normalizeToolArgs,
 	resolveAssistantErrorPresentation,
@@ -47,7 +45,6 @@ import {
 } from "./transcript-render-helpers";
 import { createAdvisorMessageCard } from "./advisor-message";
 import { AssistantMessageComponent } from "./assistant-message";
-import { createBackgroundTanDispatchBlock } from "./background-tan-message";
 import { BashExecutionComponent } from "./bash-execution";
 import { detectCacheInvalidation } from "./cache-invalidation-marker";
 import { ServedModelTracker } from "./served-model-marker";
@@ -585,15 +582,6 @@ export class ChatTranscriptBuilder {
 			this.container.addChild(component);
 			return;
 		}
-		if (
-			message.customType === "irc:incoming" ||
-			message.customType === "irc:autoreply" ||
-			message.customType === "irc:relay" ||
-			message.customType === "irc:workpool"
-		) {
-			this.container.addChild(buildIrcMessageCard(message, () => this.#expanded));
-			return;
-		}
 		if (message.customType === "advisor") {
 			const details = (message as CustomMessage<AdvisorMessageDetails>).details;
 			const card = createAdvisorMessageCard(details, () => this.#expanded, theme);
@@ -604,10 +592,6 @@ export class ChatTranscriptBuilder {
 		}
 		if (message.customType === LAUNCH_COMPLETION_MESSAGE_TYPE) {
 			this.container.addChild(buildLaunchCompletionBlock(message));
-			return;
-		}
-		if (message.customType === BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE) {
-			this.container.addChild(createBackgroundTanDispatchBlock(message as CustomMessage<unknown>));
 			return;
 		}
 		const handoffComponent = createHandoffSummaryMessageComponent(message as CustomMessage<unknown>, this.#expanded);

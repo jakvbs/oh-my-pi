@@ -124,12 +124,10 @@ function createHarness(): Harness {
 		statusLine: { invalidate: vi.fn() },
 		updateEditorBorderColor: vi.fn(),
 		settings: { get: () => false },
-		session: sessionMock,
-		viewSession: {
+		session: Object.assign(sessionMock, {
 			buildTranscriptSessionContext: () => buildSessionContext(entries),
 			sessionManager: { getEntries: () => entries },
-		},
-		focusedAgentId: undefined,
+		}),
 		sessionManager: {
 			buildSessionContext: () => buildSessionContext(entries),
 			getEntries: () => entries,

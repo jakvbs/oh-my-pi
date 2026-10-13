@@ -36,16 +36,6 @@ const LEGACY_SNAPCOMPACT_TRUNCATED_CHARS_GUARD = 1_000_000;
 const SUPERSEDED_COMPACTION_SUMMARY = "[Superseded compaction summary elided after a newer compaction]";
 const SUPERSEDED_COMPACTION_SHORT_SUMMARY = "Superseded compaction elided";
 
-function isRolloverRequestEntry(entry: SessionEntry): boolean {
-	return (
-		isUserRequestEntry(entry) ||
-		(entry.type === "custom_message" &&
-			entry.customType === "irc:incoming" &&
-			isRecord(entry.details) &&
-			entry.details.fromParent === true)
-	);
-}
-
 function hasLegacySnapcompactFrames(archive: snapcompact.Archive): boolean {
 	return archive.frames.some(frame => frame.font === undefined && frame.variant === undefined);
 }
@@ -559,7 +549,7 @@ export function buildSessionContext(
 			const firstKeptIdx = path.findIndex(entry => entry.id === compaction.firstKeptEntryId);
 			for (let i = compactionIdx - 1; i > resetBoundaryIdx; i--) {
 				const entry = path[i];
-				if (!isRolloverRequestEntry(entry)) continue;
+				if (!isUserRequestEntry(entry)) continue;
 				if (i < firstKeptIdx) appendMessage(entry);
 				break;
 			}

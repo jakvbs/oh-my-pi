@@ -63,7 +63,6 @@ function makeCtx(isStreaming = false, messages: AgentMessage[] = []) {
 			steer,
 			prompt,
 		},
-		focusedAgentId: undefined,
 		shutdown,
 		locallySubmittedUserSignatures,
 		flushPendingBashComponents: vi.fn(),

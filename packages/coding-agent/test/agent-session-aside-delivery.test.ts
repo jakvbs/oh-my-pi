@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { type } from "@oh-my-pi/omptype";
-import { Agent, type AgentMessage, type AgentTool } from "@oh-my-pi/pi-agent-core";
+import { Agent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async";
 import type { AssistantMessage, Context, ImageContent } from "@oh-my-pi/pi-ai";
 import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
@@ -14,16 +14,14 @@ import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensi
 import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { IrcBridge, type IrcBridgeHost } from "@oh-my-pi/pi-coding-agent/session/irc-bridge";
 import { convertToLlm, USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionAdvisors } from "@oh-my-pi/pi-coding-agent/session/session-advisors";
-import type { IrcMessage } from "@oh-my-pi/pi-tui/tools/irc";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { WaitTool } from "@oh-my-pi/pi-coding-agent/tools/wait";
 import * as imageLoading from "@oh-my-pi/pi-coding-agent/utils/image-loading";
-import { TempDir, untilAborted } from "@oh-my-pi/pi-utils";
+import { TempDir } from "@oh-my-pi/pi-utils";
 
 const zeroUsage = {
 	input: 0,
@@ -338,63 +336,6 @@ describe("AgentSession aside delivery", () => {
 		expect(userAsides).toHaveLength(1);
 	});
 
-	it("a user aside stranded past run completion resumes as a wake turn carrying the user text", async () => {
-		const modelRegistry = new ModelRegistry(authStorage);
-		const started = Promise.withResolvers<void>();
-		const mock = createMockModel({
-			provider: "openai",
-			id: "gpt-test",
-			responses: [
-				() => {
-					started.resolve();
-					return { content: ["working"], delayMs: 60_000 };
-				},
-				{ content: ["peer reply"] },
-			],
-		});
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [], messages: [] },
-			convertToLlm,
-			streamFn: mock.stream,
-		});
-		const settings = Settings.isolated({ "compaction.enabled": false, "todo.enabled": false });
-		settings.setModelRole("default", `${mock.model.provider}/${mock.model.id}`);
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(tempDir.path()),
-			settings,
-			modelRegistry,
-			toolRegistry: new Map(),
-		});
-
-		let observedRecords: unknown[] | undefined;
-		session.setIrcWakeTurnObserver(records => {
-			observedRecords = records;
-			return undefined;
-		});
-
-		const run = session.prompt("go");
-		await started.promise;
-		await session.sendUserMessage("STRANDED_USER_ASIDE", { deliverAs: "aside" });
-
-		// A non-user abort (e.g. an internal mode transition) does not suppress auto-resume like
-		// a user Esc does; it just skips the loop's final aside poll on the way out, stranding the
-		// aside with no loop left to drain it — exactly the settle race #resumeStrandedIrcAsides /
-		// #queueUserMessage's post-queueAside call cover.
-		await session.abort({ reason: "internal" });
-		await session.waitForIdle();
-		await run.catch(() => {});
-
-		expect(observedRecords).toBeDefined();
-		expect(JSON.stringify(observedRecords)).toContain("STRANDED_USER_ASIDE");
-		const persisted = session.agent.state.messages.some(
-			message => message.role === "user" && JSON.stringify(message.content).includes("STRANDED_USER_ASIDE"),
-		);
-		expect(persisted).toBe(true);
-		expect(mock.calls.length).toBe(2);
-	});
-
 	it("an idle session receiving an aside starts a turn", async () => {
 		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
 		const modelRegistry = new ModelRegistry(authStorage);
@@ -443,62 +384,6 @@ describe("AgentSession aside delivery", () => {
 		expect(startedTurn).toBe(true);
 		expect(contexts).toHaveLength(1);
 		expect(JSON.stringify(contexts[0]!.messages)).toContain("IDLE_ASIDE_BODY");
-	});
-
-	it("a stranded aside queued during an aborted turn does not leak into a fresh session (newSession)", async () => {
-		const modelRegistry = new ModelRegistry(authStorage);
-		const started = Promise.withResolvers<void>();
-		const contexts: Context[] = [];
-		const mock = createMockModel({
-			provider: "openai",
-			id: "gpt-test",
-			responses: [
-				() => {
-					started.resolve();
-					return { content: ["working"], delayMs: 60_000 };
-				},
-				context => {
-					contexts.push(context);
-					return { content: ["fresh reply"] };
-				},
-			],
-		});
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [], messages: [] },
-			convertToLlm,
-			streamFn: mock.stream,
-		});
-		const settings = Settings.isolated({ "compaction.enabled": false, "todo.enabled": false });
-		settings.setModelRole("default", `${mock.model.provider}/${mock.model.id}`);
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(tempDir.path()),
-			settings,
-			modelRegistry,
-			toolRegistry: new Map(),
-		});
-
-		const run = session.prompt("go");
-		await started.promise;
-		await session.sendUserMessage("LEAK_CANDIDATE_ASIDE", { deliverAs: "aside" });
-
-		// newSession() aborts the run first; the abort skips the loop's final aside poll, so
-		// without a clear the queued aside would still be sitting in IrcBridge and would flush
-		// into the new session's transcript at the first ordinary prompt below.
-		expect(await session.newSession()).toBe(true);
-		await run.catch(() => {});
-		await session.waitForIdle();
-
-		expect(
-			session.agent.state.messages.some(message => JSON.stringify(message).includes("LEAK_CANDIDATE_ASIDE")),
-		).toBe(false);
-
-		await session.prompt("ping");
-		await session.waitForIdle();
-
-		expect(contexts).toHaveLength(1);
-		expect(JSON.stringify(contexts[0]!.messages)).not.toContain("LEAK_CANDIDATE_ASIDE");
 	});
 
 	it("a stranded aside queued during an aborted turn does not leak into the target session (switchSession)", async () => {
@@ -661,70 +546,6 @@ describe("AgentSession aside delivery", () => {
 		expect(JSON.stringify(contexts[1]!.messages)).toContain("RACE_ASIDE_TEXT");
 	});
 
-	it("#queueCustomMessage resumes a stranded aside instead of leaving it queued with no loop to drain it", async () => {
-		// Regression for the race Codex flagged in #queueCustomMessage: it awaits image
-		// normalization before calling IrcBridge.queueAside, so the active run can settle to
-		// idle during that await. If the queueAside call doesn't also resume stranded asides
-		// (as #queueUserMessage's aside branch already does), the record sits in the queue with
-		// no loop left to drain it until an unrelated prompt happens to flush it. Exercising
-		// promptCustomMessage's queueOnly path (used by main.ts's synthetic-continue queue) on an
-		// already-idle session hits the exact same #queueCustomMessage code path this covers.
-		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
-		const modelRegistry = new ModelRegistry(authStorage);
-		const contexts: Context[] = [];
-
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
-			convertToLlm,
-			streamFn: (_model, context) => {
-				contexts.push(context);
-				const message: AssistantMessage = {
-					role: "assistant",
-					content: [{ type: "text", text: "Acknowledged." }],
-					api: model.api,
-					provider: model.provider,
-					model: model.id,
-					usage: zeroUsage,
-					stopReason: "stop",
-					timestamp: Date.now(),
-				};
-				const stream = new AssistantMessageEventStream();
-				queueMicrotask(() => {
-					stream.push({ type: "start", partial: message });
-					stream.push({ type: "done", reason: "stop", message });
-				});
-				return stream;
-			},
-		});
-		const settings = Settings.isolated({ "compaction.enabled": false, "todo.enabled": false });
-		settings.setModelRole("default", `${model.provider}/${model.id}`);
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(tempDir.path()),
-			settings,
-			modelRegistry,
-			toolRegistry: new Map(),
-		});
-
-		let observedRecords: unknown[] | undefined;
-		session.setIrcWakeTurnObserver(records => {
-			observedRecords = records;
-			return undefined;
-		});
-
-		await session.promptCustomMessage(
-			{ customType: "ext-aside", content: "SETTLED_RACE_ASIDE", display: false, attribution: "agent" },
-			{ streamingBehavior: "aside", queueOnly: true },
-		);
-		await session.waitForIdle();
-
-		expect(observedRecords).toBeDefined();
-		expect(JSON.stringify(observedRecords)).toContain("SETTLED_RACE_ASIDE");
-		expect(contexts).toHaveLength(1);
-		expect(JSON.stringify(contexts[0]!.messages)).toContain("SETTLED_RACE_ASIDE");
-	});
-
 	it("sendCustomMessage(deliverAs: 'aside') folds into context instead of starting a turn when a user interrupt outlasted normalization", async () => {
 		// Regression: this branch is only reached once isStreaming reads false — which can happen
 		// either because the session was already idle, or because image normalization above
@@ -867,170 +688,6 @@ describe("AgentSession aside delivery", () => {
 		expect(await dispatchedPromise).toBe(false);
 		await session.waitForIdle();
 		expect(contexts).toHaveLength(0);
-	});
-
-	it("marks parent IRC but not peer IRC on idle wake", async () => {
-		const wakeRecords: AgentMessage[] = [];
-		const host: IrcBridgeHost = {
-			agent: {} as Agent,
-			isDisposed: () => false,
-			isStreaming: () => false,
-			emitSessionEvent: async () => {},
-			wakeForIrc: records => wakeRecords.push(...records),
-		};
-		const registry = AgentRegistry.global();
-		const recipient = "ParentMarkerRecipient";
-		registry.register({
-			id: recipient,
-			displayName: "task",
-			kind: "sub",
-			parentId: "ParentMarkerSender",
-			session: null,
-		});
-		try {
-			const irc = new IrcBridge(host);
-			await irc.deliver({
-				id: "parent-wake",
-				from: "ParentMarkerSender",
-				to: recipient,
-				body: "parent assignment",
-				ts: 1,
-			});
-			await irc.deliver({
-				id: "peer-wake",
-				from: "PeerMarkerSender",
-				to: recipient,
-				body: "peer note",
-				ts: 2,
-			});
-
-			expect(wakeRecords[0]).toMatchObject({
-				role: "custom",
-				customType: "irc:incoming",
-				details: { from: "ParentMarkerSender", fromParent: true },
-			});
-			const peerWake = wakeRecords[1];
-			expect(peerWake).toMatchObject({
-				role: "custom",
-				customType: "irc:incoming",
-				details: { from: "PeerMarkerSender" },
-			});
-			if (peerWake?.role !== "custom") throw new Error("Expected peer IRC wake record");
-			expect(peerWake.details).not.toHaveProperty("fromParent");
-		} finally {
-			registry.unregister(recipient);
-		}
-	});
-
-	it("IrcBridge.restorePending merges a rolled-back snapshot ahead of records queued during the rollback instead of discarding them", () => {
-		// Regression: restorePending used to overwrite the queues wholesale, silently dropping any
-		// record queued between clearPending() and restorePending() (e.g. an in-flight IRC
-		// auto-reply appending while a rolled-back switchSession's async load/hooks were still
-		// running). Exercise the bridge directly with a minimal host stub — the queue ops under
-		// test never touch the host.
-		const host: IrcBridgeHost = {
-			agent: {} as Agent,
-			isDisposed: () => false,
-			isStreaming: () => false,
-			emitSessionEvent: async () => {},
-			wakeForIrc: () => {},
-		};
-		const irc = new IrcBridge(host);
-
-		const original: AgentMessage = {
-			role: "user",
-			content: [{ type: "text", text: "ORIGINAL" }],
-			attribution: "user",
-			timestamp: Date.now(),
-		};
-		irc.queueAside([original]);
-		const snapshot = irc.clearPending();
-		expect(irc.hasPending()).toBe(false);
-
-		// Simulates a record arriving while the rolled-back transition's async work was in flight.
-		const duringRollback: AgentMessage = {
-			role: "user",
-			content: [{ type: "text", text: "DURING_ROLLBACK" }],
-			attribution: "user",
-			timestamp: Date.now(),
-		};
-		irc.queueAside([duringRollback]);
-
-		irc.restorePending(snapshot);
-
-		const drained = irc.drainPending();
-		expect(drained).toHaveLength(2);
-		expect(drained[0]).toBe(original);
-		expect(drained[1]).toBe(duringRollback);
-	});
-	it("IrcBridge boundary snapshots carry deferred wakes with the other queues", () => {
-		// A parked wake must not survive a session switch while ordinary asides
-		// are discarded: the later contract clear would otherwise wake the new
-		// transcript with a peer message belonging to the previous session.
-		// Rollback restores the same ordering guarantee as the other queues.
-		const host: IrcBridgeHost = {
-			agent: {} as Agent,
-			isDisposed: () => false,
-			isStreaming: () => false,
-			emitSessionEvent: async () => {},
-			wakeForIrc: () => {},
-		};
-		const irc = new IrcBridge(host);
-		const wake: AgentMessage = {
-			role: "custom",
-			customType: "irc:incoming",
-			content: "peer ping",
-			display: true,
-			details: { id: "w1", from: "peer", message: "peer ping" },
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-		irc.queueDeferredWake([wake]);
-		const snapshot = irc.clearPending();
-		expect(irc.hasPending()).toBe(false);
-		expect(irc.drainDeferredWakes()).toEqual([]);
-		irc.restorePending(snapshot);
-		expect(irc.drainDeferredWakes()).toEqual([wake]);
-		expect(irc.hasPending()).toBe(false);
-	});
-	it("IrcBridge parks deferred wakes where turn injection cannot flush them", () => {
-		// A wake deferred while pooled must survive the next pooled turn's
-		// pre-dispatch flush and loop aside poll: with no observer attached,
-		// flushing it as an ordinary aside would answer the sender never.
-		const emitted: AgentMessage[] = [];
-		const host: IrcBridgeHost = {
-			agent: {
-				emitExternalEvent: (event: { message: AgentMessage }) => emitted.push(event.message),
-			} as unknown as Agent,
-			isDisposed: () => false,
-			isStreaming: () => false,
-			emitSessionEvent: async () => {},
-			wakeForIrc: () => {},
-		};
-		const irc = new IrcBridge(host);
-		const wake: AgentMessage = {
-			role: "custom",
-			customType: "irc:incoming",
-			content: "peer ping",
-			display: true,
-			details: { id: "w1", from: "peer", message: "peer ping" },
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-		const aside: AgentMessage = {
-			role: "user",
-			content: [{ type: "text", text: "NOTE" }],
-			attribution: "user",
-			timestamp: Date.now(),
-		};
-		irc.queueDeferredWake([wake]);
-		irc.queueAside([aside]);
-		expect(irc.hasPending()).toBe(true);
-		irc.flushPending();
-		expect(emitted).toEqual([aside, aside]);
-		expect(irc.drainPending()).toEqual([]);
-		expect(irc.drainDeferredWakes()).toEqual([wake]);
-		expect(irc.hasPending()).toBe(false);
 	});
 
 	it("drops a queued aside before a committed newSession() hook finishes", async () => {
@@ -1391,169 +1048,5 @@ describe("AgentSession aside delivery", () => {
 			normalizeSpy.mockRestore();
 			setSessionFileSpy.mockRestore();
 		}
-	});
-
-	it("holds the wake observer across the async-result continuation so a late yield still registers (#11564)", async () => {
-		const modelRegistry = new ModelRegistry(authStorage);
-		const started = Promise.withResolvers<void>();
-		const wakeModelCalled = Promise.withResolvers<void>();
-		const observerFinished = Promise.withResolvers<void>();
-		const gate = Promise.withResolvers<string>();
-		const events: string[] = [];
-		const mock = createMockModel({
-			provider: "openai",
-			id: "gpt-test",
-			responses: [
-				() => {
-					started.resolve();
-					return { content: ["go turn"], delayMs: 60_000 };
-				},
-				() => {
-					wakeModelCalled.resolve();
-					return { content: ["started the rebuild"] };
-				},
-				() => {
-					events.push("continuation-ran");
-					return { content: ["rebuild finished"] };
-				},
-			],
-		});
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [], messages: [] },
-			convertToLlm,
-			streamFn: mock.stream,
-		});
-		const settings = Settings.isolated({ "compaction.enabled": false, "todo.enabled": false });
-		settings.setModelRole("default", `${mock.model.provider}/${mock.model.id}`);
-		const manager = new AsyncJobManager({});
-		AsyncJobManager.setInstance(manager);
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(tempDir.path()),
-			settings,
-			modelRegistry,
-			toolRegistry: new Map(),
-			agentId: "SubAgent",
-			ownedAsyncJobManager: manager,
-		});
-
-		session.setIrcWakeTurnObserver(_records => {
-			events.push("observer-start");
-			// The agent auto-backgrounded a build during the wake turn: the job
-			// outlives the turn and its async-result continuation is where the
-			// agent would finally yield.
-			manager.register(
-				"bash",
-				"wake rebuild",
-				({ signal }) => untilAborted(signal, gate.promise).then(() => "build ok"),
-				{ id: "wake-job", ownerId: "SubAgent" },
-			);
-			return async () => {
-				events.push("observer-finish");
-				observerFinished.resolve();
-			};
-		});
-
-		// The subagent's own run is executor-driven (agent-attributed), so only the
-		// aside wake turn starts an observation; a user prompt would open its own.
-		const run = session.prompt("go", { attribution: "agent" });
-		await started.promise;
-		await session.sendUserMessage("WAKE_BG_ASIDE", { deliverAs: "aside" });
-		await session.abort({ reason: "internal" });
-		await session.waitForIdle();
-		await run.catch(() => {});
-		await wakeModelCalled.promise;
-
-		// The wake turn ended in prose and the gated job is still running: the
-		// observer finish must wait for the job's continuation, not race it.
-		gate.resolve("BUILD GREEN");
-		await observerFinished.promise;
-		await session.waitForIdle();
-
-		expect(events).toContain("observer-start");
-		expect(mock.calls.length).toBe(3);
-		expect(events.indexOf("continuation-ran")).toBeGreaterThanOrEqual(0);
-		expect(events.indexOf("observer-finish")).toBeGreaterThan(events.indexOf("continuation-ran"));
-		// The continuation turn received the job result through the delivery
-		// (injected as the background-completion system notice).
-		expect(JSON.stringify(mock.calls[2]!.context.messages)).toContain("build ok");
-	});
-
-	it("a plain idle IRC wake holds its observer through a background job's continuation (#11564)", async () => {
-		const modelRegistry = new ModelRegistry(authStorage);
-		const wakeModelCalled = Promise.withResolvers<void>();
-		const observerFinished = Promise.withResolvers<void>();
-		const gate = Promise.withResolvers<string>();
-		const events: string[] = [];
-		const mock = createMockModel({
-			provider: "openai",
-			id: "gpt-test",
-			responses: [
-				() => {
-					wakeModelCalled.resolve();
-					return { content: ["started the rebuild"] };
-				},
-				() => {
-					events.push("continuation-ran");
-					return { content: ["rebuild finished"] };
-				},
-			],
-		});
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [], messages: [] },
-			convertToLlm,
-			streamFn: mock.stream,
-		});
-		const settings = Settings.isolated({ "compaction.enabled": false, "todo.enabled": false });
-		settings.setModelRole("default", `${mock.model.provider}/${mock.model.id}`);
-		const manager = new AsyncJobManager({});
-		AsyncJobManager.setInstance(manager);
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(tempDir.path()),
-			settings,
-			modelRegistry,
-			toolRegistry: new Map(),
-			agentId: "SubAgent",
-			ownedAsyncJobManager: manager,
-		});
-
-		session.setIrcWakeTurnObserver(_records => {
-			events.push("observer-start");
-			// The agent auto-backgrounded a build during the plain wake turn.
-			manager.register(
-				"bash",
-				"wake rebuild",
-				({ signal }) => untilAborted(signal, gate.promise).then(() => "build ok"),
-				{ id: "wake-job", ownerId: "SubAgent" },
-			);
-			return async () => {
-				events.push("observer-finish");
-				observerFinished.resolve();
-			};
-		});
-
-		await session.deliverIrcMessage({
-			id: "m1",
-			from: "peer",
-			to: "SubAgent",
-			body: "status?",
-			ts: Date.now(),
-		} as IrcMessage);
-		await wakeModelCalled.promise;
-
-		// The wake turn ended in prose with the gated job still running: the
-		// observer finish must wait for the job's continuation — without
-		// deadlocking the delivery by holding the in-flight bracket.
-		gate.resolve("BUILD GREEN");
-		await observerFinished.promise;
-		await session.waitForIdle();
-
-		expect(events).toContain("observer-start");
-		expect(mock.calls.length).toBe(2);
-		expect(events.indexOf("observer-finish")).toBeGreaterThan(events.indexOf("continuation-ran"));
-		expect(JSON.stringify(mock.calls[1]!.context.messages)).toContain("build ok");
 	});
 });

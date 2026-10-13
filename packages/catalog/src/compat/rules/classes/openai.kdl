@@ -36,17 +36,9 @@ class "openai" {
 		thinking-efforts "low" "medium" "high" "xhigh" "max"
 		requires-reasoning-off-juice-instruction #true
 	}
-	// Delegation appetite is a lineage trait. GPT-5.6 was trained on Codex's
-	// "no subagents unless asked" developer message; GPT-6 fans out on its own
-	// and over-delegates under Claude-calibrated prompts (reflexive scouts,
-	// single-agent babysitting), so it gets the restrained tier instead.
-	revision "=5.6" {
-		delegation-bias "gated"
-	}
 	// GPT-6 accepts `response.steer` over the Responses WebSocket: user input
 	// joins the in-flight response instead of waiting for the next request.
 	revision ">=6" {
-		delegation-bias "restrained"
 		supports-steering #true
 	}
 	// The GPT-6 family changes reasoning effort mid-conversation through a

@@ -516,7 +516,7 @@ describe("ACP builtin slash commands", () => {
 		const { output, runtime } = createRuntime();
 		runtime.session.getAsyncJobSnapshot = () => ({
 			running: [{ id: "j1", type: "bash", status: "running", label: "npm install", startTime: Date.now() - 5000 }],
-			recent: [{ id: "j2", type: "task", status: "completed", label: "build done", startTime: Date.now() - 60_000 }],
+			recent: [{ id: "j2", type: "eval", status: "completed", label: "build done", startTime: Date.now() - 60_000 }],
 			delivery: { queued: 0, delivering: false, pendingJobIds: [] },
 		});
 
@@ -536,7 +536,7 @@ describe("ACP builtin slash commands", () => {
 			running: [
 				{ id: "j1", type: "bash", status: "running", label: "pytest tests/a...", command, startTime: Date.now() },
 			],
-			recent: [{ id: "j2", type: "task", status: "completed", label: "build done", startTime: Date.now() - 60_000 }],
+			recent: [{ id: "j2", type: "eval", status: "completed", label: "build done", startTime: Date.now() - 60_000 }],
 			delivery: { queued: 0, delivering: false, pendingJobIds: [] },
 		});
 
@@ -645,14 +645,12 @@ describe("ACP builtin slash commands", () => {
 		expect(output[0]).toContain("No messages");
 	});
 
-	it("dump all: reports the archive and reaches subagents only via the all argument", async () => {
+	it("dump all: reports the archive only via the all argument", async () => {
 		const { output, runtime } = createRuntime();
 		runtime.session.formatSessionAsText = () => "Session content here";
 		runtime.session.dumpSessionArchiveToTmpDir = async () => ({
 			path: "/tmp/omp-dump-test.zip",
-			files: ["session.md", "llm-request.json", "subagents/Scout.md"],
-			subagentCount: 1,
-			subagentError: "EACCES: permission denied",
+			files: ["session.md", "llm-request.json"],
 		});
 
 		await executeAcpBuiltinSlashCommand("/dump all", runtime);
@@ -660,8 +658,7 @@ describe("ACP builtin slash commands", () => {
 		await executeAcpBuiltinSlashCommand("/dump everything", runtime);
 
 		expect(output[0]).toContain("Session dump archive: /tmp/omp-dump-test.zip");
-		expect(output[0]).toContain("  subagents/Scout.md");
-		expect(output[0]).toContain("Subagent transcripts unavailable: EACCES: permission denied");
+		expect(output[0]).toContain("  llm-request.json");
 		expect(output[1]).toBe("Session content here");
 		expect(output[2]).toContain("Usage: /dump [all|anon]");
 	});

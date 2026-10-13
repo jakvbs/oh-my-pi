@@ -24,7 +24,6 @@ import {
 	stringifyJson,
 	toError,
 } from "@oh-my-pi/pi-utils";
-import { isTaskToolDetails } from "@oh-my-pi/pi-tui/tools/task";
 import * as snapcompact from "@oh-my-pi/snapcompact";
 import { moveFileAcrossDevices } from "../utils/atomic-file";
 import { ArtifactManager } from "./artifacts";
@@ -399,14 +398,7 @@ function emptyUsageStatistics(): UsageStatistics {
 		orchestrationCacheRead: 0,
 		premiumRequests: 0,
 		cost: 0,
-		subagentCost: 0,
 	};
-}
-
-function taskUsageFrom(details: unknown): Usage | undefined {
-	if (details === null || typeof details !== "object") return undefined;
-	const maybeUsage = (details as Record<string, unknown>).usage;
-	return maybeUsage !== null && typeof maybeUsage === "object" ? (maybeUsage as Usage) : undefined;
 }
 
 function entryUsage(entry: SessionEntry): Usage | undefined {
@@ -414,7 +406,6 @@ function entryUsage(entry: SessionEntry): Usage | undefined {
 	if (entry.type !== "message") return undefined;
 	const message = entry.message;
 	if (message.role === "assistant") return message.usage;
-	if (message.role === "toolResult" && message.toolName === "task") return taskUsageFrom(message.details);
 	return undefined;
 }
 
@@ -454,33 +445,6 @@ function resetUsageCost(usage: Usage | undefined): void {
 	usage.cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 	usage.credits = undefined;
 	usage.premiumRequests = undefined;
-}
-
-/** Clear child billing kept in task results without discarding their token counts. */
-function resetTaskResultBilling(details: unknown): void {
-	if (!isTaskToolDetails(details)) return;
-	resetUsageCost(taskUsageFrom(details));
-	for (const result of details.results) {
-		if (result === null || typeof result !== "object") continue;
-		resetUsageCost(taskUsageFrom(result));
-		resetNestedTaskBilling(result.extractedToolData);
-	}
-	const progress = details.progress;
-	if (Array.isArray(progress)) {
-		for (const item of progress) {
-			if (item === null || typeof item !== "object") continue;
-			if (typeof item.cost === "number") item.cost = 0;
-			resetTaskResultBilling(item.inflightTaskDetails);
-			resetNestedTaskBilling(item.extractedToolData);
-		}
-	}
-}
-
-/** Recurse only through task snapshots extracted from the task subprocess tool. */
-function resetNestedTaskBilling(extractedToolData: Record<string, unknown[]> | undefined): void {
-	const tasks = extractedToolData?.task;
-	if (!Array.isArray(tasks)) return;
-	for (const task of tasks) resetTaskResultBilling(task);
 }
 
 function isAssistantEntry(entry: SessionEntry): boolean {
@@ -581,11 +545,6 @@ class SessionEntryIndex {
 
 		const usage = entryUsage(entry);
 		addUsage(this.#usage, usage);
-		// Completed `task` results carry the child's spend; tracked apart so the
-		// status line can split the session's own cost from its subagents'.
-		if (usage && entry.type === "message" && entry.message.role === "toolResult") {
-			this.#usage.subagentCost += usage.cost.total;
-		}
 	}
 
 	has(id: string): boolean {
@@ -4080,9 +4039,6 @@ export class SessionManager {
 	static #resetInheritedUsageCost(history: SessionEntry[]): void {
 		for (const entry of history) {
 			resetUsageCost(entryUsage(entry));
-			if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "task") {
-				resetTaskResultBilling(entry.message.details);
-			}
 		}
 	}
 

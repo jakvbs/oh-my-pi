@@ -71,10 +71,9 @@ async function createMode(opts: { flushFails?: boolean } = {}): Promise<{
 }
 
 describe("InteractiveMode.handleResumeSession outer preflight flush", () => {
-	it("aborts before disposing controllers or resetting observers when flush fails", async () => {
+	it("aborts before disposing controllers when flush fails", async () => {
 		const { mode, cleanup } = await createMode({ flushFails: true });
 		try {
-			const resetSpy = vi.spyOn(mode, "resetObserverRegistry");
 			const switchSpy = vi.spyOn(mode.session, "switchSession").mockResolvedValue(true);
 			const showErrorSpy = vi.spyOn(mode, "showError");
 
@@ -82,7 +81,6 @@ describe("InteractiveMode.handleResumeSession outer preflight flush", () => {
 
 			expect(mode.settings.flush).toHaveBeenCalled();
 			expect(showErrorSpy).toHaveBeenCalledWith(expect.stringContaining("disk full"));
-			expect(resetSpy).not.toHaveBeenCalled();
 			expect(switchSpy).not.toHaveBeenCalled();
 		} finally {
 			await cleanup();

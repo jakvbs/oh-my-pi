@@ -64,7 +64,6 @@ async function createHarness(factory: ExtensionFactory) {
 	const ctx = {
 		editor,
 		session,
-		viewSession: session,
 		sessionManager,
 		settings: Settings.isolated({}),
 		keybindings: KeybindingsManager.inMemory(),
@@ -569,30 +568,6 @@ describe("interactive native input ingress", () => {
 			expect(h.editor.pendingImages).toEqual([]);
 			expect(h.editor.pendingImageLinks).toEqual([]);
 			expect(h.editor.imageLinks).toBeUndefined();
-		});
-
-		it(`${label} excludes focused chat and its command restrictions from main-session hooks`, async () => {
-			const input = vi.fn(() => ({ handled: true }));
-			const h = await createHarness(pi => pi.on("input", input));
-			const focusedPrompt = vi.fn(async () => true);
-			Object.defineProperties(h.ctx, {
-				focusedAgentId: { value: "focused-task" },
-				viewSession: { value: { isStreaming: true, prompt: focusedPrompt } },
-			});
-			h.editor.setText("focused chat");
-			await h.pressSubmit(key);
-			expect(focusedPrompt).toHaveBeenCalledWith("focused chat", {
-				streamingBehavior: key === ENTER ? "steer" : "followUp",
-				images: undefined,
-			});
-			for (const text of ["/clear", "!echo blocked"]) {
-				h.editor.setText(text);
-				await h.pressSubmit(key);
-			}
-			expect(focusedPrompt).toHaveBeenCalledTimes(1);
-			expect(input).not.toHaveBeenCalled();
-			expect(h.prompt).not.toHaveBeenCalled();
-			expect(h.ctx.handleClearCommand).not.toHaveBeenCalled();
 		});
 	}
 

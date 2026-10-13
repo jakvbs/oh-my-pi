@@ -8,23 +8,20 @@ import {
 	formatStatusIcon,
 	PREVIEW_LIMITS,
 	TRUNCATE_LENGTHS,
-	type ToolUIColor,
 } from "../render/render-utils";
 import type { Theme } from "../theme/theme";
 import type { NativeToolView, RenderResultOptions } from "./renderer";
-import type { TspSpan, TspTone } from "@oh-my-pi/pi-wire";
+import type { TspTone } from "@oh-my-pi/pi-wire";
 import { ansi, compact, node, span, text } from "../native/describe";
 import type { NativeChild, NativeNode } from "../native/node";
-import { errorText, noteText, toolHead } from "./native-view";
-import type { AgentActivitySnapshot, CoordinationDetails, JobSnapshot } from "./wait";
-import type { IrcDeliveryReceipt } from "./irc";
+import { errorText, toolHead } from "./native-view";
+import type { CoordinationDetails, JobSnapshot } from "./wait";
 import type { DaemonSnapshot } from "./daemon";
 import { styleTerminalRow } from "./terminal-output";
 import { card, type CardToolResult as ToolResult, firstText, safe } from "./result-card";
 
 export interface ProcReadDetails {
 	jobs?: JobSnapshot[];
-	agents?: AgentActivitySnapshot[];
 	daemons?: DaemonSnapshot[];
 	job?: JobSnapshot;
 	daemon?: DaemonSnapshot;
@@ -53,64 +50,6 @@ function preview(body: string, expanded: boolean, theme: Theme, tone: "dim" | "t
 	);
 	if (shown.hidden) lines.push(`  ${quote} ${theme.fg("dim", `… +${shown.hidden} more lines`)}`);
 	return lines;
-}
-
-function receiptColor(outcome: IrcDeliveryReceipt["outcome"]): ToolUIColor {
-	return outcome === "failed" ? "error" : outcome === "revived" ? "warning" : "success";
-}
-
-export function renderAgentWrite(
-	to: string,
-	body: string,
-	result: ToolResult | undefined,
-	details: CoordinationDetails | undefined,
-	options: RenderResultOptions,
-	theme: Theme,
-): Component {
-	return card((width, expanded) => {
-		const recipient = safe(details?.to || to || "…");
-		const title = `IRC ${theme.nav.selected} ${recipient}`;
-		const receipts = details?.receipts ?? [];
-		const delivered = receipts.filter(receipt => receipt.outcome !== "failed").length;
-		const failed = receipts.length - delivered;
-		const error = result?.isError || (failed > 0 && delivered === 0);
-		const meta: string[] = [];
-		if (recipient === "all") meta.push("broadcast");
-		if (receipts.length === 1) meta.push(theme.fg(receiptColor(receipts[0]!.outcome), receipts[0]!.outcome));
-		else if (receipts.length > 1) {
-			if (delivered) meta.push(theme.fg("success", `${delivered} delivered`));
-			if (failed) meta.push(theme.fg("error", `${failed} failed`));
-		}
-		const header = renderStatusLine(
-			result === undefined
-				? { icon: "pending", title, meta }
-				: error
-					? { icon: "error", title, meta }
-					: { iconOverride: theme.styledSymbol("tool.irc", "accent"), title, meta },
-			theme,
-		);
-		if (result?.isError && receipts.length === 0)
-			return [header, formatErrorDetail(firstText(result) || "Message delivery failed.", theme)];
-		const lines = [header, ...preview(body, expanded, theme)];
-		if (result && receipts.length === 0)
-			lines.push(theme.fg("muted", firstText(result) || "No live peers to broadcast to."));
-		if (receipts.length > 1 || failed > 0) {
-			lines.push(
-				...renderTreeList(
-					{
-						items: receipts,
-						expanded,
-						maxCollapsed: PREVIEW_LIMITS.COLLAPSED_ITEMS,
-						itemType: "recipient",
-						renderItem: receipt =>
-							`${theme.fg("toolOutput", safe(receipt.to))} ${formatBadge(receipt.outcome, receiptColor(receipt.outcome), theme)}${receipt.error ? ` ${theme.fg("error", `${theme.format.dash} ${safe(receipt.error)}`)}` : ""}`,
-					},
-					theme,
-				),
-			);
-		}
-		return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
-	}, options);
 }
 
 function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
@@ -235,25 +174,17 @@ export function renderProcRead(
 			if (output.length > limit) visible.unshift(theme.fg("dim", `  … ${output.length - limit} earlier lines`));
 			return [header, ...visible];
 		}
-		if (id && !details?.jobs && !details?.daemons && !details?.agents) {
+		if (id && !details?.jobs && !details?.daemons) {
 			return [header, ...preview(firstText(result), expanded, theme, "toolOutput")];
 		}
 		const jobs = details?.jobs ?? [];
 		const services = details?.daemons ?? [];
-		const agents = details?.agents ?? [];
-		const meta = [
-			`${jobs.length} jobs`,
-			`${services.length} services`,
-			...(agents.length ? [`${agents.length} agents`] : []),
-		];
+		const meta = [`${jobs.length} jobs`, `${services.length} services`];
 		const listHeader = renderStatusLine({ icon: "info", title, meta }, theme);
 		const items = [
 			...jobs.map(job => ({ label: jobRow(job, theme) })),
 			...services.map(service => ({
 				label: `${formatBadge("service", "accent", theme)} ${theme.fg("toolOutput", safe(service.name))} ${formatBadge(service.state, service.state === "failed" ? "error" : service.state === "ready" || service.state === "running" ? "success" : "warning", theme)} ${daemonMeta(service, theme).slice(1).join(theme.sep.dot)}`,
-			})),
-			...agents.map(agent => ({
-				label: `${formatBadge("agent", agent.live ? "accent" : "warning", theme)} ${theme.fg("toolOutput", safe(agent.id))} ${theme.fg("dim", formatDuration(agent.ageMs))}`,
 			})),
 		];
 		return [
@@ -315,61 +246,6 @@ function jobItem(job: JobSnapshot, badge?: { text: string; tone: TspTone }): Nat
 function quotedPreview(body: string, tone = "muted"): NativeNode | undefined {
 	if (!body.trim()) return undefined;
 	return text([span(body, tone)], { wrap: "word", role: "omp.tool.proc.preview" });
-}
-
-const RECEIPT_TONE: Record<IrcDeliveryReceipt["outcome"], TspTone> = {
-	injected: "success",
-	woken: "success",
-	revived: "warning",
-	failed: "error",
-};
-
-/** TSP view of an `agent://` write (IRC message). */
-export function describeAgentWrite(
-	to: string,
-	body: string,
-	result: ToolResult | undefined,
-	details: CoordinationDetails | undefined,
-): NativeToolView {
-	const recipient = safe(details?.to || to || "…");
-	const receipts = details?.receipts ?? [];
-	const delivered = receipts.filter(receipt => receipt.outcome !== "failed").length;
-	const failed = receipts.length - delivered;
-	const meta: TspSpan[] = [];
-	if (recipient === "all") meta.push(span("broadcast", "muted"));
-	if (receipts.length === 1) meta.push(span(receipts[0]!.outcome, RECEIPT_TONE[receipts[0]!.outcome]));
-	else if (receipts.length > 1) {
-		if (delivered) meta.push(span(`${delivered} delivered`, "success"));
-		if (failed) meta.push(span(`${failed} failed`, "error"));
-	}
-	const head = toolHead("IRC", span(recipient, "accent"), ...meta);
-	const error = result?.isError === true || (failed > 0 && delivered === 0);
-	if (result?.isError && receipts.length === 0) {
-		return { head, tone: "error", body: [errorText(firstText(result) || "Message delivery failed.")] };
-	}
-	const children = compact<NativeChild>([
-		quotedPreview(body),
-		result !== undefined && receipts.length === 0 && noteText(firstText(result) || "No live peers to broadcast to."),
-		(receipts.length > 1 || failed > 0) &&
-			node(
-				"list",
-				{ role: "omp.tool.irc.receipts" },
-				receipts.map(receipt =>
-					node(
-						"item",
-						{
-							label: [span(safe(receipt.to), "toolOutput")],
-							value: [span(receipt.outcome, RECEIPT_TONE[receipt.outcome])],
-							detail: receipt.error ? [span(safe(receipt.error), "error")] : undefined,
-							tone: RECEIPT_TONE[receipt.outcome],
-						},
-						undefined,
-						receipt.to,
-					),
-				),
-			),
-	]);
-	return { head, tone: error ? "error" : undefined, body: children };
 }
 
 /** TSP view of a `proc://` write (stdin, mode change, kill). */
@@ -444,12 +320,11 @@ export function describeProcRead(
 		const output = details.terminalRows?.join("\n") ?? details.log ?? "";
 		return { head, body: [ansi(output, { follow: daemon.exitedAt === undefined, role: "omp.tool.proc.log" })] };
 	}
-	if (id && !details?.jobs && !details?.daemons && !details?.agents) {
+	if (id && !details?.jobs && !details?.daemons) {
 		return { head, body: compact<NativeChild>([quotedPreview(firstText(result), "toolOutput")]) };
 	}
 	const jobs = details?.jobs ?? [];
 	const services = details?.daemons ?? [];
-	const agents = details?.agents ?? [];
 	const items: NativeNode[] = [
 		...jobs.map(job => jobItem(job)),
 		...services.map(service =>
@@ -469,20 +344,8 @@ export function describeProcRead(
 				`service:${service.name}`,
 			),
 		),
-		...agents.map(agent =>
-			node(
-				"item",
-				{
-					label: [span("agent", agent.live ? "accent" : "warning"), span(" "), span(safe(agent.id), "toolOutput")],
-					value: [span(formatDuration(agent.ageMs), "muted")],
-				},
-				undefined,
-				`agent:${agent.id}`,
-			),
-		),
 	];
 	const counts = [`${jobs.length} jobs`, `${services.length} services`];
-	if (agents.length) counts.push(`${agents.length} agents`);
 	return {
 		head: toolHead(title, id ? span(safe(id), "accent") : undefined, counts.join(" · ")),
 		body: [node("list", { empty: "No background jobs or services.", role: "omp.tool.proc.table" }, items)],

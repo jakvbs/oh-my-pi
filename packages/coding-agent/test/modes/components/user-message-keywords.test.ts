@@ -159,7 +159,7 @@ describe("UserMessageComponent magic-keyword highlighting", () => {
 		const helpers = new UiHelpers({
 			chatContainer,
 			sessionManager: sessionManagerMock,
-			viewSession: { sessionManager: sessionManagerMock },
+			session: { sessionManager: sessionManagerMock },
 			transcriptMessageComponents: new WeakMap(),
 		} as unknown as InteractiveModeContext);
 		const message: AgentMessage = {

@@ -35,7 +35,6 @@ import type { FileDiagnosticsResult } from "../tools/lsp";
 import { NativeImageCache, readMediaPath, shownMedia } from "../native/blobs";
 import { Memo } from "../native/memo";
 import { type EditMode, type PerFileDiffPreview, renderStreamingFallback } from "../tools/edit";
-import { taskCardAgentIds } from "../tools/task";
 import { TODO_STRIKE_TOTAL_FRAMES, type TodoToolDetails } from "../tools/todo";
 import { isNativeRendering } from "../native/state";
 import { isWaitingPollDetails } from "../tools/wait";
@@ -240,19 +239,18 @@ export interface ToolExecutionHandle extends Component {
 }
 
 /** Tools whose returned call hands its card to the background job it started (see {@link parksAsBackground}). */
-const JOB_CARD_TOOLS: Record<string, "always" | "native"> = { task: "always", bash: "native", eval: "native" };
+const JOB_CARD_TOOLS: ReadonlySet<string> = new Set(["bash", "eval"]);
 
 /**
  * Whether a call that returned with `details.async.state === "running"` stays
  * parked ({@link ToolExecutionHandle.parkAsBackground}) so its job's later
  * frames keep filling the card until a `completed`/`failed` frame settles it.
- * Detached `task` spawns always do; backgrounded `bash`/`eval` jobs only under
- * native rendering, where the terminal transcript keeps them frozen instead.
+ * Only backgrounded `bash`/`eval` jobs, and only under native rendering, where
+ * the terminal transcript keeps them frozen instead.
  * Shared by the live event controller and the transcript rebuild.
  */
 export function parksAsBackground(toolName: string, details: unknown): boolean {
-	const mode = JOB_CARD_TOOLS[toolName];
-	if (mode === undefined || (mode === "native" && !isNativeRendering())) return false;
+	if (!JOB_CARD_TOOLS.has(toolName) || !isNativeRendering()) return false;
 	return asyncJobState(details) === "running";
 }
 
@@ -300,7 +298,7 @@ export function sharedSpinnerFrame(frameCount: number, now: number = performance
 
 /** Live tool blocks currently driving a spinner. A single shared ticker (below)
  * advances and repaints every registered block per glyph step, so N concurrent
- * live/streaming blocks — e.g. parallel `task` subagents — cost one 80ms timer
+ * live/streaming blocks — e.g. parallel tool calls — cost one 80ms timer
  * and one coalesced render frame per tick instead of N unsynchronized timers
  * each independently waking the render scheduler (issue #8731). */
 const liveSpinnerBlocks = new Set<ToolExecutionComponent>();
@@ -456,8 +454,6 @@ export class ToolExecutionComponent extends Container {
 	// LSP diagnostics that arrived after the result (native only), shown in the frame.
 	#lateDiagnostics: readonly FileDiagnosticsResult[] | undefined;
 	readonly #nativeImages = new NativeImageCache();
-	// Wall clock captured whenever a task card is rebuilt.
-	#taskRenderNowMs = Date.now();
 	// Set on each `render()` when the last painted pending shape must be
 	// replayed wholesale when the first result arrives. Reset gates key off
 	// these so a topology-changing update that lands before the shape reaches
@@ -836,16 +832,6 @@ export class ToolExecutionComponent extends Container {
 		// while it is still live keep updating it, but it must not gate history.
 		if (this.#parkedBackground) return true;
 		return !this.#isPartial;
-	}
-
-	/**
-	 * Subagent ids visible on this card for click-to-focus hit-testing. Empty
-	 * unless this is a task card whose details already name spawned agents.
-	 * Callers intersect with the live registry, which decides focusability.
-	 */
-	getClickFocusAgentIds(): string[] {
-		if (this.#toolName !== "task") return [];
-		return taskCardAgentIds(this.#result?.details);
 	}
 
 	getTranscriptBlockVersion(): number {
@@ -1451,10 +1437,7 @@ export class ToolExecutionComponent extends Container {
 			// Custom tools use Box for flexible component rendering
 			this.#contentBox.setBgFn(undefined);
 			this.#contentBox.clear();
-			// Mirror the built-in renderer branch so custom renderers (notably the
-			// task tool, whose live instance routes through here) receive the same
-			// render context — e.g. the `hasResult` flag that suppresses the task
-			// call preview once result lines exist.
+			// Mirror the built-in renderer branch so custom renderers receive the same render context.
 			this.#renderState.renderContext = this.#buildRenderContext();
 
 			// Render call component. The fallback label only stands in for a
@@ -1531,7 +1514,7 @@ export class ToolExecutionComponent extends Container {
 					this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
 				}
 			}
-			// Custom tools that draw their own frame (task) render flush; plain
+			// Custom tools that draw their own frame render flush; plain
 			// extension renderers get the padded, state-tinted block back.
 			const customFramed = this.#contentBox.children.some(isFramedBlockComponent);
 			this.#contentBox.setPaddingX(customFramed ? 0 : 1);
@@ -1815,13 +1798,6 @@ export class ToolExecutionComponent extends Container {
 			context.output = output;
 			context.expanded = this.#expanded;
 			context.previewLines = DEFAULT_TERMINAL_PREVIEW_LINES;
-		} else if (this.#toolName === "task") {
-			// Once a result snapshot exists the task renderer's `renderResult`
-			// draws every dispatched agent as a progress/result line, so tell
-			// `renderCall` to drop its duplicate streaming preview list.
-			context.hasResult = Boolean(this.#result);
-			this.#taskRenderNowMs = Date.now();
-			context.nowMs = this.#taskRenderNowMs;
 		} else if (isEditLikeToolName(this.#toolName)) {
 			context.editMode = this.#editMode;
 			const previews = this.#editDiffPreview;

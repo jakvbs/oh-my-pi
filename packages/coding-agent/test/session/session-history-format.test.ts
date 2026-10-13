@@ -5,7 +5,7 @@
  * - Thinking blocks are elided entirely.
  * - Each toolCall collapses with its toolResult into ONE `→ name(…) ⇒ …`
  *   line (ok and error variants); result bodies are never dumped.
- * - Custom messages render as one-liners (`[irc] from → me: …`).
+
  * - No system prompt / tool catalog sections.
  */
 import { describe, expect, it } from "bun:test";
@@ -46,13 +46,6 @@ function buildMessages(): unknown[] {
 			isError: true,
 			timestamp: 4,
 		},
-		{
-			role: "custom",
-			customType: "irc:incoming",
-			content: "full rendered irc prompt that must not appear",
-			details: { from: "Main", message: "status update please" },
-			timestamp: 5,
-		},
 	];
 }
 
@@ -78,10 +71,6 @@ describe("formatSessionHistoryMarkdown", () => {
 		// Consumed toolResults do not render a second orphan line.
 		const toolLines = output.split("\n").filter(line => line.startsWith("→ "));
 		expect(toolLines).toHaveLength(2);
-
-		// Custom messages are one-liners; the rendered prompt body is dropped.
-		expect(output).toContain("[irc] Main → me: status update please");
-		expect(output).not.toContain("full rendered irc prompt");
 
 		// Concise transcript: no prompt/tool-catalog sections.
 		expect(output).not.toContain("System Prompt");

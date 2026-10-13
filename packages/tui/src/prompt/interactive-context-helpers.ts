@@ -13,7 +13,7 @@ export interface AssistantMessageSession {
 
 /** Host state required to construct and refresh assistant transcript segments. */
 export interface AssistantMessageHost {
-	readonly viewSession: AssistantMessageSession;
+	readonly session: AssistantMessageSession;
 	readonly effectiveHideThinkingBlock: boolean;
 	readonly proseOnlyThinking: boolean;
 	readonly expandThinkingBlocks: boolean;
@@ -64,7 +64,7 @@ export async function refreshAssistantMessageLinkTargets(
 	ctx: AssistantMessageHost,
 	messages: readonly AssistantMessage[],
 ): Promise<ReadonlyMap<string, string>> {
-	const session: SessionWithMarkdownLinkTargets = ctx.viewSession;
+	const session: SessionWithMarkdownLinkTargets = ctx.session;
 	const previous = session[kMarkdownLinkTargets] ?? EMPTY_LINK_TARGETS;
 	const hrefs = new Set<string>();
 	for (const message of messages) {
@@ -89,7 +89,7 @@ export async function refreshAssistantMessageLinkTargets(
 
 /** Current resolved destinations for synchronous component construction. */
 export function getAssistantMessageLinkTargets(ctx: AssistantMessageHost): ReadonlyMap<string, string> {
-	const session: SessionWithMarkdownLinkTargets = ctx.viewSession;
+	const session: SessionWithMarkdownLinkTargets = ctx.session;
 	return session[kMarkdownLinkTargets] ?? EMPTY_LINK_TARGETS;
 }
 
@@ -120,7 +120,7 @@ export function createAssistantMessageComponent(
 		message,
 		ctx.effectiveHideThinkingBlock,
 		() => ctx.ui.requestRender(),
-		ctx.viewSession.extensionRunner?.getAssistantThinkingRenderers(),
+		ctx.session.extensionRunner?.getAssistantThinkingRenderers(),
 		ctx.ui.imageBudget,
 		ctx.proseOnlyThinking,
 		linkTargets,
@@ -133,7 +133,7 @@ export function createAssistantMessageComponent(
 	// A wire the `stream-revision` axis marks `possible` can rewrite text it has
 	// already streamed; published rows are unrecoverable once they reach native
 	// scrollback, so those wires keep finished lines in the live viewport.
-	const compat = ctx.viewSession.model?.compat;
+	const compat = ctx.session.model?.compat;
 	const wireRevisable = compat !== undefined && "streamRevision" in compat && compat.streamRevision === "possible";
 	component.setMidStreamPublication(!wireRevisable);
 	return component;

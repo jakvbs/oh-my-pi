@@ -7,7 +7,6 @@ import {
 	type Agent,
 	AgentBusyError,
 	type AgentMessage,
-	agentPauseGate,
 	EventLoopKeepalive,
 	ThinkingLevel,
 } from "@oh-my-pi/pi-agent-core";
@@ -27,8 +26,6 @@ import {
 	Container,
 	clearRenderCache,
 	getComposerStyle,
-	getPaddingX,
-	getWidthConfigEpoch,
 	Loader,
 	Markdown,
 	Spacer,
@@ -38,7 +35,6 @@ import {
 	Text,
 	type TUI,
 	visibleWidth,
-	wrapTextWithAnsi,
 } from "@oh-my-pi/pi-tui";
 import type { TerminalAppearanceRequestToken } from "@oh-my-pi/pi-tui/terminal";
 import type { DescribeContext, NativeChild, NativeNode, NativeUiEvent } from "@oh-my-pi/pi-tui/native/node";
@@ -46,7 +42,6 @@ import { col, kbd, node, row, span, text } from "@oh-my-pi/pi-tui/native/describ
 import { sameItems } from "@oh-my-pi/pi-tui/native/memo";
 import { describeSegmentTrack, renderSegmentTrack, type TrackSegment } from "@oh-my-pi/pi-tui/chrome/segment-track";
 import type { WorkingRowSpec } from "@oh-my-pi/pi-tui/components/loader";
-import { formatDoubleTap } from "@oh-my-pi/pi-tui/key-hint-format";
 import { thinkingLevelWord } from "@oh-my-pi/pi-tui/status-line/segments";
 import type { TspChecklistItem, TspChecklistPhase, TspSpan, TspText, TspTreeNode } from "@oh-my-pi/pi-wire";
 import { isInsideTerminalMultiplexer } from "@oh-my-pi/pi-tui/terminal-capabilities";
@@ -95,10 +90,6 @@ import {
 import { onDownloadActivity } from "../downloads/activity";
 import { DownloadActivityHud } from "./progress-hud";
 import guidedGoalInterviewPrompt from "../prompts/goals/guided-goal-interview.md" with { type: "text" };
-import type { AgentHubRegistry } from "@oh-my-pi/pi-tui/overlays/agent-hub-types";
-import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { registerPersistedSubagents } from "../registry/persisted-agents";
-import type { AgentMetrics } from "@oh-my-pi/pi-tui/overlays/agent-hub-projection";
 import { type AgentSession, type AgentSessionEvent, type DroppedPrompt } from "../session/agent-session";
 import type { CompactMode } from "../session/compact-modes";
 import { HistoryStorage } from "../session/history-storage";
@@ -107,7 +98,6 @@ import { setWordPredictionHost } from "@oh-my-pi/pi-tui/prompt/word-completion";
 import { resolveMarkdownLinkHrefs } from "../internal-urls/hyperlink-targets";
 import type { ResolveContext } from "../internal-urls/index";
 import { shiftImageMarkers } from "@oh-my-pi/pi-tui/prompt/composer-attachments";
-import { sumSubagentTreeCost } from "./agent-hub-runtime";
 import type { SessionContext } from "../session/session-context";
 import type { SessionManager } from "../session/session-manager";
 import {
@@ -123,24 +113,12 @@ import { buildStaticInlineHint } from "../slash-commands/builtin-completions";
 import { formatCoarseDuration } from "@oh-my-pi/pi-tui/chrome/format";
 import { resolveCliEntryCmd } from "../subprocess/worker-client";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
-import { agentTypeBadge, formatTaskId } from "@oh-my-pi/pi-tui/tools/task";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import type { LspStartupServerInfo } from "../tools";
 import { StreamPublisher } from "../stream/publisher";
 import { newRecordingPath, SessionRecorder } from "../stream/recording";
 import { StreamRedactor } from "../stream/redactor";
-import {
-	FEED_MODEL_BADGE_WIDTH,
-	formatFeedModelBadge,
-	formatMoreItems,
-	isFeedModelBadgeEnabled,
-	previewLine,
-	replaceTabs,
-	shortenEmbeddedPaths,
-	shortenToolArgumentPaths,
-	TRUNCATE_LENGTHS,
-	truncateToWidth,
-} from "@oh-my-pi/pi-tui/render/render-utils";
+import { formatMoreItems, replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { setAutoQaConsentHandler } from "../tools/report-tool-issue";
 import { type CfgApproval, type CfgChangeRequest, setCfgApprovalHost } from "../internal-urls/cfg-protocol";
 import {
@@ -148,16 +126,9 @@ import {
 	getTodoHudVisibility,
 	nextActionableTask,
 	TODO_HUD_STATE_CUSTOM_TYPE,
-	USER_TODO_EDIT_CUSTOM_TYPE,
 	type TodoHudStateEntryData,
 } from "../tools/todo";
-import {
-	formatPhaseDisplayName,
-	isClosedTodo,
-	selectCollapsedTodos,
-	setActiveTodoDescriptionsProvider,
-	todoMatchesAnyDescription,
-} from "@oh-my-pi/pi-tui/tools/todo";
+import { formatPhaseDisplayName, isClosedTodo, selectCollapsedTodos } from "@oh-my-pi/pi-tui/tools/todo";
 import { applyHyperlinkSetting, fileHyperlink } from "@oh-my-pi/pi-tui/render/hyperlink";
 import { renderTreeList } from "@oh-my-pi/pi-tui/render/tree-list";
 import { formatStartupChangelogSummary, type StartupChangelogSelection } from "../utils/changelog";
@@ -207,12 +178,7 @@ import { StatusLineComponent } from "@oh-my-pi/pi-tui/status-line";
 import { statusLineHost } from "./status-line-host";
 import { stopSharedSpinnerTicker, type ToolExecutionHandle } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
-import {
-	Composer,
-	type ComposerPreferences,
-	type ComposerStatusCache,
-	PINNED_HUD_TOGGLE_ID,
-} from "@oh-my-pi/pi-tui/prompt/composer";
+import { Composer, type ComposerPreferences, type ComposerStatusCache } from "@oh-my-pi/pi-tui/prompt/composer";
 import { setMagicKeywords } from "@oh-my-pi/pi-tui/prompt/magic-keywords";
 import { MAGIC_KEYWORDS } from "./magic-keywords";
 import { sharedComposerCache } from "@oh-my-pi/pi-tui/prompt/composer-cache";
@@ -224,7 +190,6 @@ import { InputController } from "./controllers/input-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
 import { SelectorController } from "./controllers/selector-controller";
-import { SessionFocusController } from "./controllers/session-focus-controller";
 import { SSHCommandController } from "./controllers/ssh-command-controller";
 import { TodoCommandController } from "./controllers/todo-command-controller";
 import { imageReferenceHyperlink } from "@oh-my-pi/pi-tui/prompt/image-references";
@@ -243,12 +208,6 @@ import { OAuthManualInputManager } from "./oauth-manual-input";
 import { formatPersistenceNotice } from "./persistence-failure";
 import { resolveComposerHint } from "@oh-my-pi/pi-tui/prompt/composer-hints";
 import { hintUsage } from "../utils/usage-counter";
-import { getRunningSubagentBadgeAgentIds } from "@oh-my-pi/pi-tui/overlays/running-subagent-badge";
-import {
-	type ObservableSession,
-	type SessionObserverChangeKind,
-	SessionObserverRegistry,
-} from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
 import { sanitizeStatusText } from "@oh-my-pi/pi-tui/chrome/shared";
 import { isKnownSkillCommand } from "./skill-command";
@@ -268,7 +227,6 @@ import {
 } from "@oh-my-pi/pi-tui/theme";
 import { getSlashCommandTypeIcon } from "@oh-my-pi/pi-tui/theme/tui-adapters";
 import type {
-	AgentHubOpenOptions,
 	CompactionQueuedMessage,
 	InteractiveModeContext,
 	InteractiveModeInitOptions,
@@ -289,10 +247,8 @@ import {
 	cfgDisplayCacheMissMarker,
 	cfgDisplayCollapseCompacted,
 	cfgDisplayHideToolActivity,
-	cfgDisplayPinnedAgents,
 	cfgDisplayShowTokenUsage,
 	cfgDisplayShowTurnTime,
-	cfgDisplaySubagentLivePreview,
 	cfgGitEnabled,
 	cfgLoopConditionTimeoutMs,
 	cfgLoopMode,
@@ -367,8 +323,6 @@ const cfgLiveUiSettings = combine({
 	"composer.shape": cfgComposerShape,
 	"tui.vimMode": cfgTuiVimMode,
 	"tui.vimModeDisplay": cfgTuiVimModeDisplay,
-	"display.pinnedAgents": cfgDisplayPinnedAgents,
-	"display.subagentLivePreview": cfgDisplaySubagentLivePreview,
 	"compaction.idleEnabled": cfgCompactionIdleEnabled,
 	"compaction.idleThresholdTokens": cfgCompactionIdleThresholdTokens,
 	"compaction.idleTimeoutSeconds": cfgCompactionIdleTimeoutSeconds,
@@ -595,11 +549,10 @@ class HudPillsRow implements Component {
 		return this.mode.describeHudPills();
 	}
 
-	/** A click on the agents segment opens the agent hub; one on the jobs segment, the jobs sheet. */
+	/** A click on the jobs segment opens the jobs sheet. */
 	handleNativeEvent(event: NativeUiEvent): void {
 		if (event.type !== "action") return;
-		if (event.act === "agents.open") this.mode.showAgentHub();
-		else if (event.act === "jobs.open") this.mode.showJobsSheet();
+		if (event.act === "jobs.open") this.mode.showJobsSheet();
 	}
 }
 
@@ -746,328 +699,6 @@ const DEFERRED_PREVIEW_VIEWPORT_FRACTION = 0.4;
  *  before it auto-clears, mirroring the todo HUD's auto-clear timer. */
 const MODEL_CYCLE_TRACK_CLEAR_MS = 4000;
 
-/** Active subagent sessions the anchored HUD jump-lists, sync or detached. Slots follow registry order. */
-function isHudSubagent(session: ObservableSession): boolean {
-	return session.kind === "subagent" && session.status === "active";
-}
-
-/**
- * Anchored subagent HUD block with its visible session order, so click-to-focus
- * can map a rendered row back to its agent. Row 0 is the leading blank, row 1
- * the title; item rows follow in `order`; the overflow summary maps nowhere.
- * The expander row (when `layoutPinnedHud` shows one) resolves to the toggle
- * sentinel, which the click router handles before any registry lookup.
- * Rendering delegates to the same `Text` mount as before, so output bytes are
- * unchanged — only the row map is new. Long rows wrap inside `Text` (content
- * is two cells narrower than the terminal), so the map is built on the first
- * click after rendering at a new width or width configuration: continuation
- * rows belong to the agent (or toggle) whose logical row started them.
- */
-export class SubagentHudComponent implements Component {
-	readonly #text: Text;
-	#lines: readonly string[];
-	#order: readonly string[];
-	#toggleLine: number | undefined;
-	#physicalOwner?: (string | undefined)[];
-	#renderedWidth?: number;
-	#renderedRows = 0;
-	#renderedWidthConfigEpoch?: number;
-	constructor(lines: readonly string[], order: readonly string[], toggleRow?: number) {
-		this.#text = new Text(lines.join("\n"), 1, 0);
-		this.#lines = lines;
-		this.#order = order;
-		this.#toggleLine = toggleRow;
-	}
-
-	/** Repaint in place with a new view; the click map rebuilds lazily. */
-	update(lines: readonly string[], order: readonly string[], toggleRow: number | undefined): void {
-		this.#order = order;
-		this.#toggleLine = toggleRow;
-		this.#text.setText(lines.join("\n"));
-		this.#lines = lines;
-		this.#physicalOwner = undefined;
-	}
-	render(width: number): readonly string[] {
-		const rows = this.#text.render(width);
-		const widthConfigEpoch = getWidthConfigEpoch();
-		if (
-			this.#renderedWidth !== width ||
-			this.#renderedRows !== rows.length ||
-			this.#renderedWidthConfigEpoch !== widthConfigEpoch
-		) {
-			this.#physicalOwner = undefined;
-		}
-		this.#renderedWidth = width;
-		this.#renderedRows = rows.length;
-		this.#renderedWidthConfigEpoch = widthConfigEpoch;
-		return rows;
-	}
-	getClickAgentAtRow(row: number): string | undefined {
-		if (row < 0 || row >= this.#renderedRows || this.#renderedWidth === undefined) return undefined;
-		if (!this.#physicalOwner) {
-			if (this.#renderedWidthConfigEpoch !== getWidthConfigEpoch()) return undefined;
-			this.#rebuildHitMap(this.#renderedWidth, this.#renderedRows);
-		}
-		return this.#physicalOwner?.[row];
-	}
-	// Native wrap splits paragraphs independently, so per-line wrapped
-	// heights compose exactly to the rendered row count. A length mismatch
-	// means the wrap contract drifted: fall back to one row per line (the
-	// old mapping) rather than misrouting clicks.
-	#rebuildHitMap(width: number, renderedRows: number): void {
-		const contentWidth = Math.max(1, width - getPaddingX(1) * 2);
-		const owner: (string | undefined)[] = [];
-		for (let index = 0; index < this.#lines.length; index++) {
-			const height = wrapTextWithAnsi(replaceTabs(this.#lines[index]!), contentWidth).length;
-			let id: string | undefined;
-			if (this.#toggleLine !== undefined && index === this.#toggleLine) id = PINNED_HUD_TOGGLE_ID;
-			else {
-				const orderIndex = index - 2;
-				id = orderIndex >= 0 && orderIndex < this.#order.length ? this.#order[orderIndex] : undefined;
-			}
-			for (let row = 0; row < height; row++) owner.push(id);
-		}
-		if (owner.length !== renderedRows) {
-			this.#physicalOwner = this.#lines.map((_line, index) => {
-				if (this.#toggleLine !== undefined && index === this.#toggleLine) return PINNED_HUD_TOGGLE_ID;
-				const orderIndex = index - 2;
-				return orderIndex >= 0 && orderIndex < this.#order.length ? this.#order[orderIndex] : undefined;
-			});
-			return;
-		}
-		this.#physicalOwner = owner;
-	}
-}
-
-const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
-
-/** Repaint cadence for live-preview elapsed markers while a subagent tool call runs. */
-const SUBAGENT_PREVIEW_TICK_MS = 1000;
-
-/** Item rows a collapsed jump list shows before the expander. */
-const SUBAGENT_HUD_COLLAPSED_LIMIT = 3;
-
-/** Pinned jump-list layout: painted item rows plus the expander row. */
-export interface PinnedHudLayout {
-	/** Item rows painted, in registry order. */
-	itemRows: number;
-	/** Expander direction, or undefined when the list fits without one. */
-	toggle: "expand" | "collapse" | undefined;
-	/** Viewport row of the expander within HUD lines (2 header rows + items). */
-	toggleRow: number | undefined;
-}
-
-/**
- * Pinned jump-list layout for `runningTotal` live agents. Collapsed shows a
- * few rows plus an expander; expanded shows every row plus a collapse row.
- * Single source of truth for the renderer and the click row map, so painted
- * rows and hit-testing can never disagree.
- */
-export function layoutPinnedHud(runningTotal: number, expanded: boolean): PinnedHudLayout {
-	if (runningTotal <= SUBAGENT_HUD_COLLAPSED_LIMIT) {
-		return { itemRows: runningTotal, toggle: undefined, toggleRow: undefined };
-	}
-	if (!expanded) {
-		return {
-			itemRows: SUBAGENT_HUD_COLLAPSED_LIMIT,
-			toggle: "expand",
-			toggleRow: 2 + SUBAGENT_HUD_COLLAPSED_LIMIT,
-		};
-	}
-	return {
-		itemRows: runningTotal,
-		toggle: "collapse",
-		toggleRow: 2 + runningTotal,
-	};
-}
-
-/** A running tool call earns an elapsed marker in the live preview once it outlasts this. */
-const SUBAGENT_PREVIEW_ELAPSED_MIN_MS = 5000;
-
-/** Narrowest detail worth showing after the tool name in the live preview. */
-const SUBAGENT_PREVIEW_MIN_DETAIL_WIDTH = 8;
-
-/**
- * Delay until the live preview next needs a repaint with no progress event to
- * trigger it: when the first listed in-flight call crosses the elapsed-marker
- * threshold, then once a second while any marker is showing. Undefined when no
- * listed agent is mid-call, so an idle or thinking agent never arms a timer.
- */
-export function nextSubagentPreviewTickMs(sessions: readonly ObservableSession[], now: number): number | undefined {
-	let delay: number | undefined;
-	for (const session of sessions) {
-		const progress = session.progress;
-		if (progress?.status !== "running" || !progress.currentTool || progress.currentToolStartMs === undefined)
-			continue;
-		const untilMarker = progress.currentToolStartMs + SUBAGENT_PREVIEW_ELAPSED_MIN_MS + 1 - now;
-		const next = untilMarker > 0 ? untilMarker : SUBAGENT_PREVIEW_TICK_MS;
-		delay = delay === undefined ? next : Math.min(delay, next);
-	}
-	return delay;
-}
-
-/**
- * Live-preview row for a running subagent: its current (or, between calls,
- * most recent) tool call with a one-line detail and, once the call has run a
- * while, an elapsed marker. The detail is that call's own intent, else its
- * args — never an earlier call's intent. Undefined when the agent has not
- * called a tool yet. The row never overflows `width`.
- */
-function renderSubagentToolPreview(session: ObservableSession, width: number): string | undefined {
-	const progress = session.progress;
-	if (progress?.status !== "running") return undefined;
-	const currentTool = progress.currentTool;
-	const recent = progress.recentTools[0];
-	const tool = currentTool ?? recent?.tool;
-	if (!tool) return undefined;
-	const intent = currentTool ? progress.currentToolIntent : recent?.intent;
-	const args = currentTool ? progress.currentToolArgs : recent?.args;
-	const argsKey = currentTool ? progress.currentToolArgsKey : recent?.argsKey;
-	// A model-written intent is prose, so home paths inside it are shortened as they stand. An argument is
-	// shortened by its key, so a literal search pattern that names a home path still shows what was searched.
-	const detail = intent
-		? shortenEmbeddedPaths(replaceTabs(intent))
-		: args
-			? shortenToolArgumentPaths(replaceTabs(args), argsKey)
-			: undefined;
-	const elapsed = currentTool && progress.currentToolStartMs ? Date.now() - progress.currentToolStartMs : 0;
-	const elapsedLabel =
-		elapsed > SUBAGENT_PREVIEW_ELAPSED_MIN_MS
-			? `${theme.sep.dot}${theme.fg("warning", formatDuration(elapsed))}`
-			: "";
-	const elapsedWidth = visibleWidth(elapsedLabel);
-	const hook = `${theme.fg("dim", theme.tree.hook)} `;
-	// Between calls the row keeps the last call, marked with how it ended.
-	const status =
-		!currentTool && recent
-			? `${theme.styledSymbol(recent.isError ? "status.error" : "status.success", recent.isError ? "error" : "success")} `
-			: "";
-	const prefixWidth = visibleWidth(hook) + visibleWidth(status);
-	// Reserve the elapsed marker first, then cap the tool name; the detail gets whatever is left.
-	const shortTool = truncateToWidth(replaceTabs(tool), Math.max(0, width - prefixWidth - elapsedWidth), "");
-	let line = `${hook}${status}${theme.fg(currentTool ? "muted" : "dim", shortTool)}`;
-	const detailBudget = width - prefixWidth - visibleWidth(shortTool) - elapsedWidth - visibleWidth(": ");
-	if (detail && detailBudget >= SUBAGENT_PREVIEW_MIN_DETAIL_WIDTH) {
-		line += `: ${theme.fg("dim", previewLine(detail, Math.min(TRUNCATE_LENGTHS.SHORT, detailBudget)))}`;
-	}
-	return truncateToWidth(`${line}${elapsedLabel}`, width, "");
-}
-
-/**
- * Build the anchored subagent HUD block: a bold accent "Subagents" header plus
- * a bounded set of running-agent rows in the same `Id ⟨role⟩: description` shape
- * the inline task rows use (muted task preview when no description was given).
- * Layout mirrors the Todos HUD exactly: unindented header, then
- * `renderTreeList` rows (dim connectors) shifted right by one space.
- * Every active subagent is listed — detached background spawns and sync task
- * calls alike — so the pinned block doubles as a click jump list.
- * With `livePreview` (`display.subagentLivePreview`), a row that has called a
- * tool carries a second physical row showing that call; both rows share one
- * returned line (joined by a newline) so line N still maps to agent N - 2.
- * Returns an empty array when nothing is running so the container can clear.
- */
-export function renderSubagentHudLines(
-	sessions: ObservableSession[],
-	columns: number,
-	expanded = false,
-	livePreview = false,
-): string[] {
-	const running = sessions.filter(isHudSubagent);
-	if (running.length === 0) return [];
-	// `SubagentHudComponent` paints through `Text` with horizontal padding, so
-	// rows budgeted to the full terminal width would wrap.
-	const contentColumns = Math.max(0, columns - getPaddingX(1) * 2);
-	const layout = layoutPinnedHud(running.length, expanded);
-	const dot = theme.styledSymbol("status.done", "accent");
-	const items = running.slice(0, layout.itemRows);
-	const showModelBadge = isFeedModelBadgeEnabled();
-	const outerIndent = " ";
-	const itemLineCounts = new Map<ObservableSession, number>();
-	const rows = renderTreeList(
-		{
-			items,
-			expanded: true,
-			renderItem: (session, context) => {
-				const rowWidth = Math.max(0, contentColumns - visibleWidth(outerIndent) - (context.prefixWidth ?? 0));
-				const role = session.agent ?? session.progress?.agent;
-				const displayId = truncateToWidth(
-					formatTaskId(session.id),
-					Math.max(0, rowWidth - visibleWidth(`${dot} `)),
-				);
-				const badge = truncateToWidth(
-					agentTypeBadge(role, theme),
-					Math.max(0, rowWidth - visibleWidth(`${dot} ${displayId}`)),
-				);
-				const titleBudget = Math.max(0, rowWidth - visibleWidth(`${dot} ${displayId}${badge}`));
-				const modelBadge = showModelBadge
-					? formatFeedModelBadge(
-							session.progress?.resolvedModelIdentity ?? session.progress?.resolvedModel,
-							session.progress?.resolvedThinkingLevel,
-							session.progress?.advisor,
-							theme,
-							Math.min(FEED_MODEL_BADGE_WIDTH, Math.max(0, titleBudget - 1)),
-						)
-					: "";
-				const modelLead = modelBadge ? `${modelBadge} ` : "";
-				let line = `${dot} ${modelLead}${theme.fg("accent", theme.bold(displayId))}${badge}`;
-				const description = session.description?.trim() || session.progress?.description?.trim();
-				if (description) {
-					const budget = Math.max(0, rowWidth - visibleWidth(line) - visibleWidth(": "));
-					const formatted = replaceTabs(description).replace(/\s*[\r\n]+\s*/g, " ↵ ");
-					if (budget > 0) {
-						line += `${theme.fg("accent", ":")} ${theme.fg("accent", truncateToWidth(formatted, budget))}`;
-					}
-				} else {
-					// No spawn description: fall back to a muted task preview, same as
-					// the inline task rows when a row has no label.
-					const taskPreview = session.progress?.task?.trim();
-					if (taskPreview) {
-						const formatted = replaceTabs(taskPreview).replace(/\s*[\r\n]+\s*/g, " ↵ ");
-						const budget = Math.min(TRUNCATE_LENGTHS.SHORT, Math.max(0, rowWidth - visibleWidth(line) - 1));
-						if (budget > 0) line += ` ${theme.fg("muted", truncateToWidth(formatted, budget))}`;
-					}
-				}
-				const head = truncateToWidth(line, rowWidth, "");
-				const preview = livePreview ? renderSubagentToolPreview(session, rowWidth) : undefined;
-				itemLineCounts.set(session, preview ? 2 : 1);
-				return preview ? [head, preview] : head;
-			},
-		},
-		theme,
-	);
-	const toggleRow =
-		layout.toggle === undefined
-			? []
-			: [
-					truncateToWidth(
-						`${outerIndent}${theme.fg(
-							"dim",
-							layout.toggle === "expand" ? `… ${running.length - layout.itemRows} more — expand` : "… show less",
-						)}`,
-						contentColumns,
-						"",
-					),
-				];
-	const itemLines: string[] = [];
-	let cursor = 0;
-	for (const session of items) {
-		const count = itemLineCounts.get(session) ?? 1;
-		itemLines.push(
-			rows
-				.slice(cursor, cursor + count)
-				.map(row => truncateToWidth(`${outerIndent}${row}`, contentColumns, ""))
-				.join("\n"),
-		);
-		cursor += count;
-	}
-	return [
-		"",
-		truncateToWidth(theme.bold(theme.fg("accent", "Subagents")), contentColumns),
-		...itemLines,
-		...toggleRow,
-	];
-}
-
 const CTRL_L_APPEARANCE_RESPONSE_DEADLINE_MS = 2000;
 
 /** Repaint cadence of the open jobs sheet: output tails, pids and list ages are polled, not pushed. */
@@ -1093,7 +724,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Whether {@link statusContainer} rendered lines in the latest frame; the band composer's editor top gap collapses only then. */
 	statusRowOccupied = false;
 	todoContainer: Container;
-	subagentContainer: Container;
 	btwContainer: Container;
 	omfgContainer: Container;
 	errorBannerContainer: Container;
@@ -1139,10 +769,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	#appearanceRefreshRequest: { token: TerminalAppearanceRequestToken; deadline: number } | undefined;
 	todoPhases: TodoPhase[] = [];
 	/**
-	 * Session that owns the plan currently in {@link todoPhases}. Subagent
-	 * reconciliation persists to this session, not blindly to `viewSession`,
-	 * which flips to the destination before `reloadTodos` refreshes during
-	 * focus attach.
+	 * Session that owns the plan currently in {@link todoPhases}; deferred todo
+	 * persistence checks it so a session switch cannot write into the wrong session.
 	 */
 	#todoPhasesOwner?: AgentSession;
 	#todoHudHidden = false;
@@ -1150,14 +778,14 @@ export class InteractiveMode implements InteractiveModeContext {
 	#sessionsWithDisplayableThinkingContent = new WeakSet<AgentSession>();
 	/** Whether the visible session has produced thinking content the user can reveal. */
 	get hasDisplayableThinkingContent(): boolean {
-		return this.#sessionsWithDisplayableThinkingContent.has(this.viewSession);
+		return this.#sessionsWithDisplayableThinkingContent.has(this.session);
 	}
 	/** Record received reasoning content so Ctrl+T can reveal it even when model metadata says thinking is off. */
 	noteDisplayableThinkingContent(message: AgentMessage): boolean {
 		if (this.hasDisplayableThinkingContent || !messageHasDisplayableThinking(message, this.proseOnlyThinking)) {
 			return false;
 		}
-		this.#sessionsWithDisplayableThinkingContent.add(this.viewSession);
+		this.#sessionsWithDisplayableThinkingContent.add(this.session);
 		return true;
 	}
 	/**
@@ -1168,7 +796,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * toggle.
 	 */
 	get effectiveHideThinkingBlock(): boolean {
-		const thinkingOff = (this.viewSession?.thinkingLevel ?? ThinkingLevel.Off) === ThinkingLevel.Off;
+		const thinkingOff = (this.session?.thinkingLevel ?? ThinkingLevel.Off) === ThinkingLevel.Off;
 		return this.hideThinkingBlock || (thinkingOff && !this.hasDisplayableThinkingContent);
 	}
 	proseOnlyThinking = true;
@@ -1202,7 +830,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * focused subagent shows its own reading and the main session's survives
 	 * focus round-trips. */
 	get tokenRate(): TokenRateMeter {
-		return this.viewSession.tokenRate;
+		return this.session.tokenRate;
 	}
 	/** Generation tok/s: live while streaming, the last reading between
 	 * turns, blank until a run has produced enough tokens to measure. */
@@ -1242,7 +870,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#todoHudNative: { checklist: NativeNode; fallback: NativeNode } | undefined;
 	#hudPillsNative: { children: readonly NativeChild[]; node: NativeNode } | undefined;
-	#agentsSegment: RunningSegment | undefined;
 	#jobsSegment: RunningSegment | undefined;
 	/** Gen tok/s for the native composer bar, one decimal (a steadier `rate` target): live while running, else the last reading. */
 	#nativeTokenRate(): number | undefined {
@@ -1252,7 +879,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	/** The key that interrupts (the working row's stop control), or undefined when Esc would not cancel. */
 	maintenanceInterruptKey(): KeyId | undefined {
-		if (this.focusedAgentId) return undefined;
 		return this.keybindings.getKeys("app.interrupt")[0] ?? "escape";
 	}
 	/** The running turn's working row (§8.1): its elapsed time, the intent and the stop control. */
@@ -1270,26 +896,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.onEscape?.();
 	}
 	/**
-	 * The native HUD pills row: one running-work counter (`omp.hud.pill`) with
-	 * an agents segment, then a jobs segment, each present only while its
-	 * count is non-zero; the row is hidden while both are absent.
+	 * The native HUD pills row: a running-work counter (`omp.hud.pill`) with a
+	 * jobs segment, present only while jobs run; the row is hidden otherwise.
 	 */
 	describeHudPills(): NativeNode {
-		// Agents count as the status-line badge counts them, from the agent
-		// registry: the observer registry only hears task-executor lifecycles,
-		// so an agent a peer message woke or revived would run without a segment.
-		const agents = cfgDisplayPinnedAgents.get(settings) === "off" ? 0 : this.#runningSubagentCount;
-		this.#agentsSegment = runningSegment(this.#agentsSegment, agents, {
-			key: "agents",
-			icon: "users",
-			tone: "accent",
-			noun: "agent",
-			shortcut: formatDoubleTap("left"),
-			act: "agents.open",
-		});
 		this.#jobsSegment = runningSegment(this.#jobsSegment, this.statusLine.runningBackgroundJobCount(), JOBS_SEGMENT);
 		const segments: NativeChild[] = [];
-		if (this.#agentsSegment) segments.push(this.#agentsSegment.node);
 		if (this.#jobsSegment) segments.push(this.#jobsSegment.node);
 		const memo = this.#hudPillsNative;
 		if (memo && sameItems(memo.children, segments)) return memo.node;
@@ -1339,7 +951,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	lastEscapeTime = 0;
 	/** Owns Esc for every `/mcp test` that is active or whose cancellation hint may still be visible. */
 	mcpTestEscapeHandlers = new Set<() => void>();
-	lastLeftTapTime = 0;
 	shutdownRequested = false;
 	#isShuttingDown = false;
 	/**
@@ -1437,21 +1048,17 @@ export class InteractiveMode implements InteractiveModeContext {
 	#dialogLifetime = new AbortController();
 	readonly #inputController: InputController;
 	readonly #selectorController: SelectorController;
-	readonly #focusController: SessionFocusController;
-	get viewSession(): AgentSession {
-		return this.#focusController.target ?? this.session;
-	}
 	get assistantImagesVisible(): boolean {
 		return cfgTerminalShowImages.get(this.settings);
 	}
 	get tableChartsVisible(): boolean {
-		return this.#focusController.target === undefined;
+		return true;
 	}
 	resolveAssistantMessageLinkHrefs(hrefs: readonly string[]): Promise<ReadonlyMap<string, string>> {
 		return resolveMarkdownLinkHrefs(hrefs, this.#linkResolveContext());
 	}
 	#linkResolveContext(): ResolveContext {
-		const session = this.viewSession;
+		const session = this.session;
 		return {
 			cwd: session.sessionManager.getCwd(),
 			sessionFile: session.sessionFile,
@@ -1464,49 +1071,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			rules: session.ttsrManager?.getRules(),
 		};
 	}
-	get focusedAgentId(): string | undefined {
-		return this.#focusController.focusedAgentId;
-	}
 	get sessionName(): string | undefined {
 		return this.session.sessionName;
-	}
-	focusAgentSession(id: string): Promise<void> {
-		return this.#focusController.focusAgent(id);
-	}
-	focusParentSession(): Promise<void> {
-		return this.#focusController.focusParent();
-	}
-	unfocusSession(): Promise<void> {
-		return this.#focusController.unfocus();
-	}
-	invalidatePendingFocus(): void {
-		this.#focusController.invalidatePendingFocus();
-	}
-
-	resolveViewportClickCandidates(index: number): string[] {
-		return this.composer.viewportClickCandidates(index);
-	}
-
-	/** Flip the pinned jump list between its collapsed few and the full list, overriding the setting. */
-	togglePinnedHudExpanded(): void {
-		const mode = cfgDisplayPinnedAgents.get(settings);
-		const expanded = this.#pinnedHudOverride ?? mode === "full";
-		this.#pinnedHudOverride = !expanded;
-		this.#renderSubagentList();
-		this.ui.requestRender();
-	}
-
-	/** Rebuild the pinned jump list for a `display.pinnedAgents` change. */
-	applyPinnedAgentsSetting(): void {
-		// An explicit settings change wins over click state: without the reset,
-		// reselecting the current value would keep showing the old override.
-		this.#pinnedHudOverride = undefined;
-		this.#renderSubagentList();
-		this.ui.requestRender();
-	}
-
-	setClickHoverId(id: string | undefined): void {
-		this.composer.setHoveredClickId(id);
 	}
 
 	clearTransientSessionUi(): void {
@@ -1540,24 +1106,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	readonly #uiHelpers: UiHelpers;
 	#resizeHandler?: () => void;
-	#observerRegistry: SessionObserverRegistry;
-	/** Click override for the pinned jump-list density; undefined follows `display.pinnedAgents`. */
-	#pinnedHudOverride: boolean | undefined;
 	#eventBus?: EventBus;
 	#eventBusUnsubscribers: Array<() => void> = [];
 	/** Mirror of `tui.mouse`, read by the TUI's per-frame inline mouse tracking probe. */
 	#mouseCapture = false;
-	#observerUiSyncTimer?: NodeJS.Timeout;
-	/** Repaints the subagent HUD so live-preview elapsed markers advance between progress events. */
-	#subagentPreviewTickTimer?: NodeJS.Timeout;
-	#observerUiSyncNeedsTodoReconcile = false;
-	/** Active subagent descriptions the todo HUD last rendered with (joined); see #flushObserverUiSync. */
-	#todoHudSubagentKey: string | undefined;
-	#runningSubagentCount = 0;
-	#agentRegistryUnsubscribe?: () => void;
-	#agentRegistrySubscriptionTarget?: AgentHubRegistry;
-	#subagentSessionMetrics = new WeakMap<object, { metrics: AgentMetrics | undefined }>();
-	#subagentCostHydratedRoot?: string;
 	#mcpStatusOrder: string[] = [];
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
@@ -1648,14 +1200,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventBusUnsubscribers.push(
 			cfgTuiMouse.listen(this.settings, on => {
 				this.#mouseCapture = on;
-				// Dropping capture must also drop the band: with reporting off no
-				// motion event will ever arrive to clear a mid-hover highlight.
-				// The controller cache goes too, or a re-enable plus motion over
-				// the same card would look unchanged and skip restoring the band.
-				if (!on) {
-					this.composer.setHoveredClickId(undefined);
-					this.#inputController?.clearHoverHighlight();
-				}
 				this.ui.requestRender();
 			}),
 		);
@@ -1667,7 +1211,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventBusUnsubscribers.push(onDownloadActivity(activity => this.#downloadActivityHud.update(activity)));
 		this.statusContainer = new StatusHudContainer(this);
 		this.todoContainer = new TodoHudContainer(this);
-		this.subagentContainer = new AnchoredLiveContainer();
 		this.btwContainer = new AnchoredLiveContainer();
 		this.omfgContainer = new AnchoredLiveContainer();
 		this.errorBannerContainer = new AnchoredLiveContainer();
@@ -1761,10 +1304,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#commandController = new CommandController(this);
 		this.#todoCommandController = new TodoCommandController(this);
 		this.#selectorController = new SelectorController(this);
-		this.#focusController = new SessionFocusController(this);
 		this.#inputController = new InputController(this);
 		this.session.setPromptDropped?.(prompt => this.#restoreDroppedPrompt(prompt));
-		this.#observerRegistry = new SessionObserverRegistry();
 	}
 
 	#handleMcpConnectionStatusEvent(event: McpConnectionStatusEvent): void {
@@ -1928,7 +1469,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.chatContainer,
 				this.pendingMessagesContainer,
 				this.todoContainer,
-				this.subagentContainer,
 				this.btwContainer,
 				this.reportContainer,
 				this.omfgContainer,
@@ -2000,28 +1540,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			}
 		});
 
-		// Wire observer registry to EventBus
-		if (this.#eventBus) {
-			this.#observerRegistry.subscribeToEventBus(this.#eventBus, this.#eventBus);
-		}
-		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
-		this.syncRunningSubagentBadge();
-		this.#observerRegistry.onChange(kind => {
-			this.#scheduleObserverUiSync(kind);
-		});
-		// `/pause` stops the live-preview tick (the fullscreen pause screen covers
-		// the HUD); resuming repaints so elapsed markers catch up immediately.
-		this.#eventBusUnsubscribers.push(
-			agentPauseGate.onChange(paused => {
-				if (!cfgDisplaySubagentLivePreview.get(settings)) return;
-				this.#renderSubagentList();
-				if (!paused) this.ui.requestRender();
-			}),
-		);
-		// Let the transient todo tool result light up pending todos executed by a
-		// live subagent, matching the sticky HUD's active set (#5873).
-		setActiveTodoDescriptionsProvider(() => this.#getActiveSubagentDescriptions());
-
 		// Load initial todos
 		await logger.time("InteractiveMode.init:todos", () => this.#loadTodoList());
 
@@ -2052,8 +1570,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
 		// Seeds the border, the status-line `vim` segment, and the cursor shape in one call.
-		// Deliberately here rather than beside #applyVimMode in the constructor: that runs before
-		// #focusController exists, which updateEditorBorderColor dereferences.
 		this.#syncVimStatus(this.editor);
 		// Single side-effect point for title changes: every setSessionName caller
 		// (first-input titling, /rename, extension renames, replan refresh) gets the
@@ -3200,11 +2716,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (any("composer.shape")) this.syncComposerShape();
 		if (any("tui.vimMode", "tui.vimModeDisplay")) this.#applyVimModeSetting();
-		if (any("display.pinnedAgents")) this.applyPinnedAgentsSetting();
-		if (any("display.subagentLivePreview")) {
-			this.#renderSubagentList();
-			this.ui.requestRender();
-		}
 		if (any("compaction.idleEnabled", "compaction.idleThresholdTokens", "compaction.idleTimeoutSeconds")) {
 			this.#eventController.refreshIdleCompactionTimer();
 		}
@@ -3446,58 +2957,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.editor.borderColor = theme.getThinkingBorderColor(level);
 			}
 		}
-		if (this.focusedAgentId) {
-			// Focused subagent view: faint the outline so the borrowed session is
-			// visually distinct from the main one.
-			const base = this.editor.borderColor;
-			this.editor.borderColor = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
-		}
 		this.ui.requestRender();
-	}
-
-	/**
-	 * Refresh the running-subagents status badge and the cost segment's
-	 * subagent-tree spend from the local registry.
-	 */
-	syncRunningSubagentBadge(options: { requestRender?: boolean } = {}): void {
-		const registry = AgentRegistry.global();
-		if (this.#agentRegistrySubscriptionTarget !== registry) {
-			this.#agentRegistryUnsubscribe?.();
-			this.#agentRegistrySubscriptionTarget = registry;
-			this.#agentRegistryUnsubscribe = registry.onChange(() => {
-				this.syncRunningSubagentBadge();
-			});
-		}
-		const agentIds = getRunningSubagentBadgeAgentIds(registry);
-		this.#runningSubagentCount = agentIds.length;
-		this.statusLine.setRunningSubagents(agentIds);
-		const rootSessionFile = this.sessionManager.getSessionFile() ?? undefined;
-		this.#hydratePersistedSubagentCosts(rootSessionFile);
-		this.statusLine.setSubagentTreeCost(
-			sumSubagentTreeCost({
-				refs: registry.list(),
-				observers: this.#observerRegistry,
-				rootSessionFile,
-				sessionMetrics: this.#subagentSessionMetrics,
-			}),
-		);
-		if (options.requestRender !== false) this.ui.requestRender();
-	}
-
-	/**
-	 * Register a resumed session's persisted subagent transcripts (with usage
-	 * history) so the status line's tree cost matches the Agent Hub without it
-	 * being opened first. Once per on-disk root; registry changes re-sync the cost.
-	 */
-	#hydratePersistedSubagentCosts(rootSessionFile: string | undefined): void {
-		if (!rootSessionFile || this.#subagentCostHydratedRoot === rootSessionFile) return;
-		if (!this.sessionManager.isSessionOnDisk()) return;
-		this.#subagentCostHydratedRoot = rootSessionFile;
-		registerPersistedSubagents(AgentRegistry.global(), rootSessionFile, {
-			shouldContinue: () => this.sessionManager.getSessionFile() === rootSessionFile,
-		}).catch(error => {
-			logger.warn("Persisted subagent cost hydration failed", { rootSessionFile, error: String(error) });
-		});
 	}
 
 	/**
@@ -3510,37 +2970,18 @@ export class InteractiveMode implements InteractiveModeContext {
 		const draft = this.editor.getText().trimStart();
 		return {
 			shell: this.isBashMode ? { kind: "bash", excluded: draft.startsWith("!!") } : undefined,
-			thinking: thinkingLevelWord(this.viewSession),
+			thinking: thinkingLevelWord(this.session),
 			thinkingInModel: cfgStatusLineCompactThinkingLevel.get(settings),
 			rate: this.#nativeTokenRate(),
 			running: this.loadingAnimation !== undefined || this.session.isStreaming,
-			viewing: this.#viewingLineage(),
 			title: this.sessionManager.getSessionName(),
 		};
-	}
-
-	/** The focused subagent and its live ancestors below main, outermost first; undefined on the main session. */
-	#viewingLineage(): string[] | undefined {
-		const id = this.focusedAgentId;
-		if (!id) return undefined;
-		const registry = AgentRegistry.global();
-		const lineage = [id];
-		for (
-			let parent = registry.get(id)?.parentId;
-			parent && parent !== MAIN_AGENT_ID && !lineage.includes(parent) && registry.get(parent);
-			parent = registry.get(parent)?.parentId
-		) {
-			lineage.unshift(parent);
-		}
-		return lineage;
 	}
 
 	/** Placeholder for the empty composer; see `COMPOSER_HINTS` for the registered hints. */
 	#composerHint(): string | undefined {
 		return resolveComposerHint({
-			runningAgents: this.#runningSubagentCount,
-			focusedOnAgent: this.focusedAgentId !== undefined,
-			conversationStarted: this.viewSession.messages.length > 0,
+			conversationStarted: this.session.messages.length > 0,
 			keybindings: this.keybindings,
 			uses: id => hintUsage.get(id),
 		});
@@ -3559,7 +3000,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// and restore the `pendingTools` map so streaming routes back into them.
 		const liveComponents: Component[] = [];
 		const livePendingTools = new Map<string, ToolExecutionHandle>();
-		if (this.viewSession?.isStreaming) {
+		if (this.session?.isStreaming) {
 			const liveSet = new Set<Component>();
 			if (this.streamingComponent) liveSet.add(this.streamingComponent);
 			for (const [id, component] of this.pendingTools) {
@@ -3576,7 +3017,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Live display collapses to the compacted transcript tail unless the
 		// user opted into the full inline history; export/resume callers choose
 		// their own mode.
-		const context = this.viewSession.buildTranscriptSessionContext({
+		const context = this.session.buildTranscriptSessionContext({
 			collapseCompactedHistory: cfgDisplayCollapseCompacted.get(settings),
 		});
 		const preservedLiveToolCallIds = new Set<string>();
@@ -3687,7 +3128,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 	}
 
-	#formatTodoLine(todo: TodoItem, prefix: string, matched: boolean): string {
+	#formatTodoLine(todo: TodoItem, prefix: string): string {
 		const checkbox = theme.checkbox;
 		const marker = formatHudNoteMarker(todo.notes?.length ?? 0);
 		switch (todo.status) {
@@ -3700,76 +3141,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			case "blocked":
 				return theme.fg("warning", `${prefix}${checkbox.unchecked} ${todo.content} (blocked)`) + marker;
 			default:
-				if (matched) return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
 				return theme.fg("dim", `${prefix}${checkbox.unchecked} ${todo.content}`) + marker;
 		}
-	}
-
-	#getActiveSubagentDescriptions(): string[] {
-		const out: string[] = [];
-		for (const session of this.#observerRegistry.getSessions()) {
-			if (session.kind !== "subagent") continue;
-			if (session.status !== "active") continue;
-			const candidate =
-				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
-			if (candidate) out.push(candidate);
-		}
-		return out;
-	}
-
-	/**
-	 * Auto-complete any open todo (pending/in_progress/blocked) whose content
-	 * matches a subagent that has finished successfully. Fires on every observer
-	 * `onChange` so the visual state stays in sync with subagent lifecycle
-	 * without requiring the agent to issue a follow-up `todo`. A todo `block`ed
-	 * while waiting on a detached subagent is included: that subagent completing
-	 * is exactly the unblock signal, and blocked todos are excluded from the stop
-	 * reminder, so leaving it blocked would strand it silently. Failed and aborted
-	 * subagents are intentionally NOT auto-completed — those stay open so the user
-	 * (or the next agent turn) can decide what to do.
-	 *
-	 * Idempotent: only flips open tasks, never re-touches completed ones.
-	 */
-	#reconcileTodosWithSubagents(): void {
-		const completedDescs: string[] = [];
-		for (const session of this.#observerRegistry.getSessions()) {
-			if (session.kind !== "subagent") continue;
-			if (session.status !== "completed") continue;
-			const candidate =
-				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
-			if (candidate) completedDescs.push(candidate);
-		}
-		if (completedDescs.length === 0) return;
-
-		let mutated = false;
-		const next: TodoPhase[] = this.todoPhases.map(phase => ({
-			name: phase.name,
-			tasks: phase.tasks.map(task => {
-				if (task.status !== "pending" && task.status !== "in_progress" && task.status !== "blocked") {
-					return task;
-				}
-				if (!todoMatchesAnyDescription(task.content, completedDescs)) return task;
-				mutated = true;
-				// Drop any blocker note along with the blocked status — the wait the
-				// note described is over.
-				return { content: task.content, status: "completed" as const };
-			}),
-		}));
-		if (!mutated) return;
-		// Persist into the session that owns the snapshot we derived `next` from,
-		// not `viewSession`: the two diverge mid focus-attach, and writing to the
-		// destination there would clobber its canonical plan. Leaving the owner
-		// bound (rather than routing through `setTodos`, which rebinds it to
-		// `viewSession`) keeps a follow-up reconcile in the same window correct.
-		const owner = this.#todoPhasesOwner ?? this.session;
-		owner.sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, {
-			phases: next,
-		});
-		owner.setTodoPhases(next);
-		this.todoPhases = next;
-		this.#syncTodoHudState(owner);
-		this.#renderTodoList();
-		this.ui.requestRender();
 	}
 
 	#cancelTodoAutoClearTimer(): void {
@@ -3869,51 +3242,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		return active ?? nonEmpty[nonEmpty.length - 1];
 	}
 
-	#scheduleObserverUiSync(kind: SessionObserverChangeKind): void {
-		if (kind !== "progress") {
-			this.#observerUiSyncNeedsTodoReconcile = true;
-		}
-		if (this.#observerUiSyncTimer) return;
-		this.#observerUiSyncTimer = setTimeout(() => {
-			this.#observerUiSyncTimer = undefined;
-			this.#flushObserverUiSync();
-		}, SUBAGENT_OBSERVER_UI_COALESCE_MS);
-		this.#observerUiSyncTimer.unref?.();
-	}
-
-	#flushObserverUiSync(): void {
-		this.syncRunningSubagentBadge({ requestRender: false });
-		if (this.#observerUiSyncNeedsTodoReconcile) {
-			this.#observerUiSyncNeedsTodoReconcile = false;
-			this.#reconcileTodosWithSubagents();
-			this.#syncTodoHudState(this.#todoPhasesOwner ?? this.session);
-			this.#renderTodoList();
-		} else if (this.#getActiveSubagentDescriptions().join("\n") !== this.#todoHudSubagentKey) {
-			// Progress-only ticks (10 Hz while subagents run) cannot change the
-			// todo phases or their persisted visibility — re-syncing would also
-			// re-arm the auto-clear timer so it could never fire. Only the HUD's
-			// subagent highlight depends on them, so repaint just when the active
-			// descriptions change.
-			this.#renderTodoList();
-		}
-		this.#renderSubagentList();
-		this.ui.requestRender();
-	}
-
-	#cancelObserverUiSyncTimer(): void {
-		if (this.#observerUiSyncTimer) {
-			clearTimeout(this.#observerUiSyncTimer);
-			this.#observerUiSyncTimer = undefined;
-		}
-		this.#observerUiSyncNeedsTodoReconcile = false;
-		this.#cancelSubagentPreviewTick();
-	}
-
 	#renderTodoList(): void {
 		this.todoContainer.clear();
 		this.#todoHudNative = undefined;
-		const activeDescs = this.#getActiveSubagentDescriptions();
-		this.#todoHudSubagentKey = activeDescs.join("\n");
 		if (this.#todoHudHidden) return;
 		const phases = this.todoPhases.filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return;
@@ -3923,11 +3254,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Fixed budgets keep the HUD bounded regardless of plan size / progress.
 		const subsequentStageCap = 4; // stages shown after the active one (a trailing summary row covers the rest)
 		const activeTaskCap = 5; // open tasks previewed for the active stage
-
-		// A pending todo "lights up" (accent) when an in-flight subagent is doing
-		// its work, matched by normalized content overlap.
-		const isMatched = (todo: TodoItem): boolean =>
-			activeDescs.length > 0 && todoMatchesAnyDescription(todo.content, activeDescs);
 
 		// Task subtree for a phase. Collapsed runs the shared walking-viewport
 		// policy (completed/abandoned omitted, active work pulled to the head,
@@ -3939,18 +3265,18 @@ export class InteractiveMode implements InteractiveModeContext {
 					{
 						items: phase.tasks,
 						expanded: true,
-						renderItem: todo => this.#formatTodoLine(todo, "", isMatched(todo)),
+						renderItem: todo => this.#formatTodoLine(todo, ""),
 					},
 					theme,
 				);
 			}
-			const selection = selectCollapsedTodos(phase.tasks, isMatched, activeTaskCap);
+			const selection = selectCollapsedTodos(phase.tasks, () => false, activeTaskCap);
 			return renderTreeList(
 				{
 					items: selection.items,
 					itemType: "task",
 					trailingSummary: selection.summary,
-					renderItem: todo => this.#formatTodoLine(todo, "", isMatched(todo)),
+					renderItem: todo => this.#formatTodoLine(todo, ""),
 				},
 				theme,
 			);
@@ -4037,7 +3363,7 @@ export class InteractiveMode implements InteractiveModeContext {
 						? "error del"
 						: todo.status === "blocked"
 							? "warning"
-							: todo.status === "in_progress" || isMatched(todo)
+							: todo.status === "in_progress"
 								? "accent"
 								: "dim";
 			const label: TspSpan[] = [span(todo.status === "blocked" ? `${todo.content} (blocked)` : todo.content, token)];
@@ -4048,7 +3374,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		const describeTasks = (phase: TodoPhase, phaseIndex: number): TspTreeNode[] => {
 			const index = (todo: TodoItem): string => `${phaseIndex}.${phase.tasks.indexOf(todo)}`;
 			if (expanded) return phase.tasks.map(todo => describeTask(todo, index(todo)));
-			const selection = selectCollapsedTodos(phase.tasks, isMatched, activeTaskCap);
+			const selection = selectCollapsedTodos(phase.tasks, () => false, activeTaskCap);
 			const nodes = selection.items.map(todo => describeTask(todo, index(todo)));
 			if (selection.summary) nodes.push({ id: `${phaseIndex}.more`, label: [span(selection.summary, "muted")] });
 			return nodes;
@@ -4101,7 +3427,7 @@ export class InteractiveMode implements InteractiveModeContext {
 								? "dropped"
 								: todo.status === "blocked"
 									? "blocked"
-									: todo.status === "in_progress" || isMatched(todo)
+									: todo.status === "in_progress"
 										? "active"
 										: "pending",
 					note,
@@ -4128,17 +3454,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		const phases = this.todoPhases.filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return childLines;
 
-		const activeDescs = this.#getActiveSubagentDescriptions();
-		const isMatched = (todo: TodoItem): boolean =>
-			activeDescs.length > 0 && todoMatchesAnyDescription(todo.content, activeDescs);
-
 		const totalTasks = phases.reduce((sum, phase) => sum + phase.tasks.length, 0);
 		const closedTasks = phases.reduce((sum, phase) => sum + phase.tasks.filter(isClosedTodo).length, 0);
 		const activeTask = nextActionableTask(phases);
 
 		const header = `${theme.bold(theme.fg("accent", "TODO"))} ${theme.fg("dim", `${closedTasks}/${totalTasks}`)}`;
 		const taskStr = activeTask
-			? this.#formatTodoLine(activeTask, "", isMatched(activeTask))
+			? this.#formatTodoLine(activeTask, "")
 			: theme.fg("success", `${theme.checkbox.checked} done`);
 		const rightLine = `${header} ${theme.fg("dim", "·")} ${taskStr}`;
 
@@ -4188,70 +3510,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#todoPhasesOwner = source;
 		this.#syncTodoHudState(source);
 		this.#renderTodoList();
-	}
-
-	/**
-	 * Anchored HUD of in-flight subagents, mirroring the Todos block above the
-	 * editor. Driven entirely by observer-registry change events, so rows appear
-	 * on spawn and the whole block clears itself once the last subagent leaves
-	 * the "active" state. With the live preview on, a tool call running without
-	 * progress events (a long quiet bash) still needs its elapsed marker to
-	 * appear and advance, so a repaint is armed for when the marker first shows
-	 * and then once a second while a listed agent stays mid-call.
-	 */
-	#renderSubagentList(): void {
-		this.#cancelSubagentPreviewTick();
-		const view = this.#buildSubagentHudView();
-		if (!view) {
-			this.subagentContainer.clear();
-			return;
-		}
-		const hud = this.subagentContainer.children[0];
-		if (hud instanceof SubagentHudComponent) hud.update(view.lines, view.order, view.toggleRow);
-		else this.subagentContainer.addChild(new SubagentHudComponent(view.lines, view.order, view.toggleRow));
-		this.#armSubagentPreviewTick(view.tickMs);
-	}
-
-	/** Inputs for one HUD paint; undefined when the HUD is off or nothing is running. */
-	#buildSubagentHudView():
-		| {
-				lines: string[];
-				order: string[];
-				toggleRow: number | undefined;
-				tickMs: number | undefined;
-		  }
-		| undefined {
-		const mode = cfgDisplayPinnedAgents.get(settings);
-		if (mode === "off") return undefined;
-		const sessions = this.#observerRegistry.getSessions();
-		const running = sessions.filter(isHudSubagent);
-		const expanded = this.#pinnedHudOverride ?? mode === "full";
-		const livePreview = cfgDisplaySubagentLivePreview.get(settings);
-		const lines = renderSubagentHudLines(sessions, this.ui.terminal.columns, expanded, livePreview);
-		if (lines.length === 0) return undefined;
-		const layout = layoutPinnedHud(running.length, expanded);
-		const tickMs =
-			livePreview && !agentPauseGate.paused
-				? nextSubagentPreviewTickMs(running.slice(0, layout.itemRows), Date.now())
-				: undefined;
-		return { lines, order: running.map(session => session.id), toggleRow: layout.toggleRow, tickMs };
-	}
-
-	#armSubagentPreviewTick(tickMs: number | undefined): void {
-		if (tickMs === undefined) return;
-		this.#subagentPreviewTickTimer = setTimeout(() => {
-			this.#subagentPreviewTickTimer = undefined;
-			this.#renderSubagentList();
-			this.ui.requestRender();
-		}, tickMs);
-		this.#subagentPreviewTickTimer.unref?.();
-	}
-
-	#cancelSubagentPreviewTick(): void {
-		if (this.#subagentPreviewTickTimer) {
-			clearTimeout(this.#subagentPreviewTickTimer);
-			this.#subagentPreviewTickTimer = undefined;
-		}
 	}
 
 	#updateGoalModeStatus(): void {
@@ -4969,7 +4227,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		stopSharedSpinnerTicker();
 		this.#downloadActivityHud.dispose();
 		this.#cancelTodoAutoClearTimer();
-		this.#cancelObserverUiSyncTimer();
 		this.#cancelGoalContinuation();
 		clearInterval(this.#jobsSheetTimer);
 		this.#jobsSheetTimer = undefined;
@@ -4980,10 +4237,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			unsubscribe();
 		}
 		this.#eventBusUnsubscribers = [];
-		this.#observerRegistry.dispose();
-		this.#agentRegistryUnsubscribe?.();
-		this.#agentRegistryUnsubscribe = undefined;
-		this.#agentRegistrySubscriptionTarget = undefined;
 		this.#eventController.dispose();
 		this.#codexResetFireworksController.dispose();
 		this.statusLine.dispose();
@@ -5177,7 +4430,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#recorder = undefined;
 			await this.#btwController.dispose();
 			this.#omfgController.dispose();
-			this.#focusController.dispose();
 
 			// Persist the draft and dispose the session through the shared teardown
 			// so a signal that arrives mid-shutdown cannot fire a second dispose.
@@ -5626,7 +4878,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				() => this.interruptFromPointer(),
 			);
 			this.#workingMessage = DEFAULT_WORKING_MESSAGE;
-			this.#workingStartedAt = this.viewSession.runStartedAt ?? Date.now();
+			this.#workingStartedAt = this.session.runStartedAt ?? Date.now();
 			this.statusContainer.addChild(this.loadingAnimation);
 		} else if (!this.statusContainer.children.includes(this.loadingAnimation)) {
 			this.statusContainer.disposeChildren();
@@ -5754,7 +5006,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * dispatched by the editor to `InputController.handleRetry`.
 	 */
 	syncRetryHintRow(): void {
-		const show = !this.viewSession.isStreaming && this.viewSession.hasAbortedToolCallTail;
+		const show = !this.session.isStreaming && this.session.hasAbortedToolCallTail;
 		if (this.#retryHintRow) {
 			const mounted = this.statusContainer.children.includes(this.#retryHintRow);
 			if (mounted && show) return;
@@ -5974,15 +5226,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	async showDebugSelector(): Promise<void> {
 		await this.#selectorController.showDebugSelector();
-	}
-
-	showAgentHub(options?: AgentHubOpenOptions): void {
-		this.#selectorController.showAgentHub(this.#observerRegistry, options);
-	}
-
-	resetObserverRegistry(): void {
-		this.#observerRegistry.resetSessions();
-		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
 	}
 
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void> {
@@ -6287,7 +5530,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	setTodoExpanded(expanded: boolean): void {
 		this.todoExpanded = expanded;
 		if (expanded) {
-			const owner = this.#todoPhasesOwner ?? this.viewSession;
+			const owner = this.#todoPhasesOwner ?? this.session;
 			this.#cancelTodoAutoClearTimer();
 			this.#todoHudHidden = false;
 			const appendReveal = (data: TodoHudStateEntryData): void => {
@@ -6341,8 +5584,8 @@ export class InteractiveMode implements InteractiveModeContext {
 				},
 			];
 		}
-		this.#todoPhasesOwner = this.viewSession;
-		this.#syncTodoHudState(this.viewSession);
+		this.#todoPhasesOwner = this.session;
+		this.#syncTodoHudState(this.session);
 		this.#renderTodoList();
 		this.ui.requestRender();
 	}

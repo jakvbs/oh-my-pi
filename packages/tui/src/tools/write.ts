@@ -23,15 +23,7 @@ import {
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
 } from "../render/render-utils";
-import type { CoordinationDetails } from "./wait";
-import {
-	describeAgentWrite,
-	describeProcWrite,
-	renderAgentWrite,
-	renderProcWrite,
-	type ProcWriteAction,
-	type ProcWriteDetails,
-} from "./proc-render";
+import { describeProcWrite, renderProcWrite, type ProcWriteAction, type ProcWriteDetails } from "./proc-render";
 import type { TspTone } from "@oh-my-pi/pi-wire";
 import { code, compact, md, node, span } from "../native/describe";
 import type { NativeChild, NativeNode } from "../native/node";
@@ -79,7 +71,6 @@ export interface WriteToolDetails {
 	resolvedPath?: string;
 	/** Set when the write dispatched an `xd://` tool device; drives renderer delegation. */
 	xdev?: XdevRenderDispatch;
-	message?: CoordinationDetails;
 	proc?: ProcWriteDetails;
 	cfg?: CfgWriteDetails;
 }
@@ -433,10 +424,10 @@ function procWriteTarget(target: string): { id: string; action: ProcWriteAction 
 	return { id: target, action: "stdin" };
 }
 
-/** Transcript card for writes to a scheme with its own UI (peer message, process control, setting change). */
+/** Transcript card for writes to a scheme with its own UI (process control, setting change). */
 interface WriteUrlCard {
 	/** Result details field whose presence identifies this card. */
-	readonly detailsKey: "message" | "proc" | "cfg";
+	readonly detailsKey: "proc" | "cfg";
 	/** Compact activity line for the text after `scheme://`. */
 	activity(target: string): ToolActivitySummary;
 	/** Pending call card when `result` is undefined, else the finished result card. */
@@ -453,19 +444,6 @@ interface WriteUrlCard {
 
 /** Write cards keyed by URL scheme. */
 const WRITE_URL_CARDS: Record<string, WriteUrlCard> = {
-	agent: {
-		detailsKey: "message",
-		activity: target => ({ label: "Message", detail: target === "all" ? "broadcast" : target }),
-		render: (_url, target, content, result, details, options, uiTheme) =>
-			renderAgentWrite(
-				target,
-				typeof content === "string" ? content : "",
-				result,
-				details?.message,
-				options,
-				uiTheme,
-			),
-	},
 	proc: {
 		detailsKey: "proc",
 		activity: target => {
@@ -519,7 +497,7 @@ function couldBecomeWriteCardUrl(lowerPath: string): boolean {
 	return false;
 }
 
-/** Native view of a `proc://`, `agent://` or `cfg://` write. */
+/** Native view of a `proc://` or `cfg://` write. */
 function describeWriteUrl(
 	routed: { card: WriteUrlCard; target: string },
 	url: string,
@@ -529,8 +507,6 @@ function describeWriteUrl(
 ): NativeToolView {
 	const body = typeof content === "string" ? content : undefined;
 	switch (routed.card.detailsKey) {
-		case "message":
-			return describeAgentWrite(routed.target, body ?? "", result, details?.message);
 		case "proc": {
 			const { id, action } = procWriteTarget(routed.target);
 			return describeProcWrite(id, action, body, result, details?.proc);

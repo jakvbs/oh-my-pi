@@ -196,31 +196,6 @@ describe("ACP event mapper", () => {
 		expect(doneUpdates).toEqual([]);
 	});
 
-	it("keeps write agent:// messages off the ACP session stream", () => {
-		const args = { path: "agent://Scout", content: "Private coordination" };
-		const events: AgentSessionEvent[] = [
-			{ type: "tool_execution_start", toolCallId: "tc-agent-message", toolName: "write", args },
-			{
-				type: "tool_execution_update",
-				toolCallId: "tc-agent-message",
-				toolName: "write",
-				args,
-				partialResult: { content: [{ type: "text", text: "delivering" }] },
-			},
-			{
-				type: "tool_execution_end",
-				toolCallId: "tc-agent-message",
-				toolName: "write",
-				isError: false,
-				result: { content: [{ type: "text", text: "Delivered to Scout." }] },
-			},
-		] satisfies AgentSessionEvent[];
-		const updates = events.flatMap(event =>
-			mapAgentSessionEventToAcpSessionUpdates(event, "session-1", { getToolArgs: () => args }),
-		);
-		expect(updates).toEqual([]);
-	});
-
 	it("maps proc:// controls as execution and reads as resources, never editor file locations", () => {
 		expect(mapToolKind("write", { path: "proc://web/mode", content: "persist" })).toBe("execute");
 		expect(mapToolKind("write", { path: "proc://build-42/kill" })).toBe("execute");

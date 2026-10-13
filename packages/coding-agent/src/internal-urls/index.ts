@@ -8,7 +8,6 @@
  * on each resolve call.
  */
 
-export * from "./agent-protocol";
 export * from "./artifact-protocol";
 export * from "./attachment-protocol";
 export * from "./cfg-protocol";

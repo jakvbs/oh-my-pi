@@ -40,7 +40,6 @@ import {
 	type StreamSimpleFn,
 } from "./bench-runtime";
 import { createLiveBoard, type LiveBoardOutput } from "@oh-my-pi/pi-tui/chrome/live-board";
-import { formatCost } from "@oh-my-pi/pi-tui/overlays/agent-hub-renderer";
 
 import { cfgTierAnthropic, cfgTierGoogle, cfgTierOpenai } from "../session/settings";
 
@@ -816,6 +815,12 @@ function computeBenchStats(successes: BenchRunSuccess[]): BenchStats {
 
 function formatBenchModelLabel(report: BenchModelReport): string {
 	return formatModelSelectorValue(report.model, report.thinking);
+}
+
+function formatCost(cost: number): string {
+	if (cost < 0.01) return `$${cost.toFixed(4)}`;
+	if (cost < 1) return `$${cost.toFixed(3)}`;
+	return `$${cost.toFixed(2)}`;
 }
 
 function formatMs(ms: number): string {

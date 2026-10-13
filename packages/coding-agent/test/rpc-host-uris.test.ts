@@ -123,7 +123,7 @@ describe("RpcHostUriBridge", () => {
 
 	it("rejects every built-in scheme so hosts can neither shadow nor clear() them", () => {
 		const bridge = new RpcHostUriBridge(() => {});
-		for (const scheme of ["cfg", "local", "Agent", "mcp"]) {
+		for (const scheme of ["cfg", "local", "Mcp"]) {
 			expect(() => bridge.setSchemes([{ scheme, writable: true }])).toThrow(
 				`Host URI scheme is reserved by OMP: ${scheme.toLowerCase()}://`,
 			);
@@ -132,7 +132,7 @@ describe("RpcHostUriBridge", () => {
 		// Built-ins keep their own semantics for later sessions.
 		expect(router.normalize("local:/x")).toBe("local://x");
 		expect(router.fileWritable("local://x")).toBe(true);
-		expect(router.canHandle("agent://x")).toBe(true);
+		expect(router.canHandle("mcp://x")).toBe(true);
 	});
 
 	it("normalizes scheme casing and rejects invalid characters", () => {

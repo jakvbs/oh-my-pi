@@ -780,18 +780,16 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			throw new ToolError(`content is required for ${path}.`);
 		}
 		const content = rawContent ?? "";
-		// Coordination writes (peer messages, background-work cancellation) touch no
-		// files, so neither gate below applies to them.
-		const coordination =
-			policy?.scope === "coordination" || (target !== undefined && policy?.cancels?.(target.url) === true);
+		// Background-work cancellation touches no files, so neither gate below applies to it.
+		const cancelsWork = target !== undefined && policy?.cancels?.(target.url) === true;
 		// A device-only session grants `write` purely as the device transport (see
-		// createTools): device dispatches, coordination writes, and the session's
+		// createTools): device dispatches, work cancellation, and the session's
 		// local:// sandbox proceed; every other target is rejected before any
 		// handler, guard, conflict resolver, or bridge sees it.
 		if (
 			this.session.deviceOnlyWrite === true &&
 			policy?.scope !== "device" &&
-			!coordination &&
+			!cancelsWork &&
 			!(await targetsLocalSandbox(this.session, path, signal))
 		) {
 			throw new ToolError(

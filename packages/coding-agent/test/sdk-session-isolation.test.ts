@@ -1,3 +1,4 @@
+import * as secrets from "@oh-my-pi/pi-coding-agent/secrets";
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -9,11 +10,8 @@ import type { Rule } from "@oh-my-pi/pi-coding-agent/capability/rule";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { LocalProtocolHandler } from "@oh-my-pi/pi-coding-agent/internal-urls/local-protocol";
-import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import * as secrets from "@oh-my-pi/pi-coding-agent/secrets";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { getSessionsDir, removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
@@ -153,44 +151,6 @@ describe("createAgentSession session storage isolation", () => {
 			await session.dispose();
 		}
 	});
-	it("does not replace a newer registry generation when creation expected the id to be absent", async () => {
-		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-generation-cas-${Snowflake.next()}-`));
-		tempDirs.push(tempDir);
-		const cwd = path.join(tempDir, "project");
-		fs.mkdirSync(cwd, { recursive: true });
-		const registry = new AgentRegistry();
-		const replacement = registry.register({
-			id: "shared-worker",
-			displayName: "replacement B",
-			kind: "sub",
-			parentId: "Main",
-			session: null,
-			status: "idle",
-		});
-
-		await expect(
-			createAgentSession({
-				cwd,
-				agentDir: path.join(tempDir, "agent"),
-				modelRegistry: sharedModelRegistry,
-				settings: Settings.isolated(),
-				disableExtensionDiscovery: true,
-				skills: [],
-				contextFiles: [],
-				promptTemplates: [],
-				slashCommands: [],
-				enableMCP: false,
-				enableLsp: false,
-				agentRegistry: registry,
-				agentId: "shared-worker",
-				agentDisplayName: "late A",
-				expectedAgentRef: null,
-			}),
-		).rejects.toThrow("already owned by another session generation");
-		expect(registry.get("shared-worker")).toBe(replacement);
-		expect(replacement).toMatchObject({ status: "idle", session: null });
-	});
-
 	it("keeps helper sessions out of the process-global registry so they neither replace the host nor each other", async () => {
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-helper-registry-${Snowflake.next()}-`));
 		tempDirs.push(tempDir);
@@ -199,10 +159,7 @@ describe("createAgentSession session storage isolation", () => {
 		AgentRegistry.resetGlobalForTests();
 		const host = AgentRegistry.global().register({
 			id: "Main",
-			displayName: "main",
-			kind: "main",
 			session: null,
-			status: "running",
 		});
 		const startHelper = () =>
 			createAgentSession({
@@ -230,102 +187,6 @@ describe("createAgentSession session storage isolation", () => {
 		} finally {
 			AgentRegistry.resetGlobalForTests();
 		}
-	});
-
-	it("reclaims an unrevivable parked generation before a fresh same-id spawn", async () => {
-		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-generation-corpse-${Snowflake.next()}-`));
-		tempDirs.push(tempDir);
-		const cwd = path.join(tempDir, "project");
-		fs.mkdirSync(cwd, { recursive: true });
-		AgentLifecycleManager.resetGlobalForTests();
-		AgentRegistry.resetGlobalForTests();
-		const lifecycle = AgentLifecycleManager.global();
-		const registry = AgentRegistry.global();
-		const corpse = registry.register({
-			id: "reused-worker",
-			displayName: "dead generation",
-			kind: "sub",
-			parentId: "Main",
-			session: null,
-			sessionFile: path.join(tempDir, "old-worker.jsonl"),
-			status: "parked",
-		});
-
-		let session: AgentSession | undefined;
-		try {
-			({ session } = await createAgentSession({
-				cwd,
-				agentDir: path.join(tempDir, "agent"),
-				modelRegistry: sharedModelRegistry,
-				settings: Settings.isolated(),
-				disableExtensionDiscovery: true,
-				skills: [],
-				contextFiles: [],
-				promptTemplates: [],
-				slashCommands: [],
-				enableMCP: false,
-				enableLsp: false,
-				agentRegistry: registry,
-				agentId: "reused-worker",
-				agentDisplayName: "fresh generation",
-				expectedAgentRef: null,
-			}));
-			const replacement = registry.get("reused-worker");
-			expect(replacement).toBeDefined();
-			expect(replacement).not.toBe(corpse);
-			expect(replacement?.session).toBe(session);
-		} finally {
-			await session?.dispose();
-			await lifecycle.dispose();
-			AgentLifecycleManager.resetGlobalForTests();
-			AgentRegistry.resetGlobalForTests();
-		}
-	});
-
-	it("reuses the exact parked ref authorized for revival", async () => {
-		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-generation-revive-${Snowflake.next()}-`));
-		tempDirs.push(tempDir);
-		const cwd = path.join(tempDir, "project");
-		fs.mkdirSync(cwd, { recursive: true });
-		const sessionManager = SessionManager.create(cwd, tempDir);
-		await sessionManager.ensureOnDisk();
-		const sessionFile = sessionManager.getSessionFile();
-		if (!sessionFile) throw new Error("Expected persisted worker session file");
-		const registry = new AgentRegistry();
-		const parked = registry.register({
-			id: "revived-worker",
-			displayName: "revived worker",
-			kind: "sub",
-			parentId: "Main",
-			session: null,
-			sessionFile,
-			status: "parked",
-		});
-
-		const { session } = await createAgentSession({
-			cwd,
-			modelRegistry: sharedModelRegistry,
-			settings: Settings.isolated(),
-			disableExtensionDiscovery: true,
-			skills: [],
-			contextFiles: [],
-			promptTemplates: [],
-			slashCommands: [],
-			enableMCP: false,
-			enableLsp: false,
-			sessionManager,
-			agentRegistry: registry,
-			agentId: "revived-worker",
-			agentDisplayName: "revived worker",
-			expectedAgentRef: parked,
-		});
-		try {
-			expect(registry.get("revived-worker")).toBe(parked);
-			expect(parked).toMatchObject({ status: "running", session, sessionFile });
-		} finally {
-			await session.dispose();
-		}
-		expect(registry.get("revived-worker")).toBeUndefined();
 	});
 
 	it("wires the discovered TTSR manager into the created session", async () => {

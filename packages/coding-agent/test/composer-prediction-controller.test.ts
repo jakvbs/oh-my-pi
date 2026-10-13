@@ -36,7 +36,6 @@ interface HarnessOptions {
 	enabled?: boolean;
 	draft?: string;
 	compacting?: boolean;
-	focusedAgentId?: string;
 	/** What `ephemeralMaxTokensPreservesRequest()` reports for the session. */
 	capPreservesRequest?: boolean;
 	deadlineMs?: number;
@@ -70,9 +69,8 @@ function harness(options: HarnessOptions = {}) {
 	};
 	let renders = 0;
 	const ctx = {
+		session,
 		settings: Settings.isolated({ "composer.predictions": options.enabled ?? true }),
-		viewSession: session,
-		focusedAgentId: options.focusedAgentId,
 		editor: { getText: () => options.draft ?? "" },
 		ui: { requestRender: () => renders++ },
 	} as unknown as ConstructorParameters<typeof ComposerPredictionController>[0];
@@ -116,17 +114,16 @@ describe("ComposerPredictionController", () => {
 		expect(renders()).toBe(1);
 	});
 
-	it("does not request while disabled, drafted, compacting, or viewing a subagent", () => {
+	it("does not request while disabled, drafted, or compacting", () => {
 		const blocked = [
 			harness({ enabled: false }),
 			harness({ draft: "my own message" }),
 			harness({ draft: "  " }),
 			harness({ compacting: true }),
-			harness({ focusedAgentId: "0-Explore" }),
 		];
 		for (const { controller } of blocked) controller.request();
 
-		expect(blocked.map(h => h.turns.length)).toEqual([0, 0, 0, 0, 0]);
+		expect(blocked.map(h => h.turns.length)).toEqual([0, 0, 0, 0]);
 	});
 
 	it("sends the output cap only when it leaves the side request otherwise unchanged", () => {

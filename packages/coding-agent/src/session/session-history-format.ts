@@ -417,17 +417,11 @@ const CONTEXTUAL_HIDDEN_CUSTOM_TYPES: Record<string, true> = {
 const LEGACY_IMAGE_ATTACHMENT_INDEX = /`\[Image #(\d+)\]`/;
 const LEGACY_IMAGE_ATTACHMENT_PATH = /^Source path: `(.+)`$/m;
 
-/** One-liner for custom/hook messages: `[irc] A → B: body…`. */
+/** One-liner for custom/hook messages. */
 function customOneLiner(msg: CustomMessage | HookMessage, transform?: ToolIOTransform): string {
 	const details = (msg.details ?? {}) as Record<string, unknown>;
 	const str = (key: string): string => (typeof details[key] === "string" ? (details[key] as string) : "");
 	switch (msg.customType) {
-		case "irc:incoming":
-			return `[irc] ${str("from") || "?"} → me: ${previewLine(str("message"), transform)}`;
-		case "irc:relay":
-			return `[irc] ${str("from") || "?"} → ${str("to") || "?"}: ${previewLine(str("body"), transform)}`;
-		case "irc:workpool":
-			return `[pool] ${str("pool")} → ${str("to") || "?"}: ${previewLine(str("body"), transform)}`;
 		case "async-result": {
 			const jobs = Array.isArray(details.jobs) && details.jobs.length > 0 ? details.jobs : [details];
 			const labels = jobs

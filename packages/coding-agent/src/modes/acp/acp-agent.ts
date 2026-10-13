@@ -1927,7 +1927,6 @@ export class AcpAgent implements Agent {
 			orchestrationCacheRead: usage.orchestrationCacheRead,
 			premiumRequests: usage.premiumRequests,
 			cost: usage.cost,
-			subagentCost: usage.subagentCost,
 		};
 	}
 

@@ -1,13 +1,9 @@
 /**
- * The job tool's TUI preview must not leak the model-facing `<task-result>`
- * envelope (prompts/tools/task-summary.md): a settled task job previews the
- * inner <output>/<preview> body, while non-envelope result text (bash jobs)
- * passes through unchanged.
+ * The wait tool's TUI preview of background jobs: job text previews flatten
+ * pretty-printed JSON, and the id column is dropped when the label repeats it.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
-import { prompt } from "@oh-my-pi/pi-utils";
-import taskSummaryTemplate from "../../coding-agent/src/prompts/tools/task-summary.md" with { type: "text" };
 import { waitToolRenderer } from "@oh-my-pi/pi-tui/tools/wait";
 
 function renderLines(resultText: string): string {
@@ -18,7 +14,7 @@ function renderLines(resultText: string): string {
 			jobs: [
 				{
 					id: "SpawnProbe",
-					type: "task" as const,
+					type: "bash" as const,
 					status: "completed" as const,
 					label: "SpawnProbe",
 					durationMs: 8_700,
@@ -35,87 +31,19 @@ function renderLines(resultText: string): string {
 	return (component.render(120) as readonly string[]).join("\n");
 }
 
-describe("job renderer task-result preview", () => {
+describe("job renderer preview", () => {
 	beforeAll(async () => {
 		await initTheme();
 	});
 
-	it("renders the consumed peer message as a sender card", () => {
-		const component = waitToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "[42] Worker: file unlocked" }],
-				details: {
-					op: "wait",
-					waited: { id: "42", from: "Worker", to: "Main", body: "file unlocked", ts: Date.now() },
-				},
-			},
-			{ expanded: true, isPartial: false },
-			theme,
-		);
-		const output = Bun.stripANSI(component.render(120).join("\n"));
-		expect(output).toContain("Worker");
-		expect(output).toContain("file unlocked");
-	});
-
-	it("previews the envelope body, not the wrapper markup", () => {
-		const summary = prompt.render(taskSummaryTemplate, {
-			agentName: "sonic",
-			id: "SpawnProbe",
-			status: "completed",
-			duration: "8.7s",
-			preview: "Probe finished: spawned worker, ping ok.",
-			truncated: false,
-			meta: { lineCount: 3, charSize: "120 B" },
-			mergeSummary: "",
-		});
-		const deliveryText = `${summary}\n\nSpawnProbe is now idle — message it via \`write agent://SpawnProbe\` to follow up; transcript at history://SpawnProbe`;
-
-		const output = renderLines(deliveryText);
-		expect(output).toContain("Probe finished: spawned worker, ping ok.");
-		expect(output).not.toContain("<task-result");
-		expect(output).not.toContain("<output>");
-	});
-
-	it("previews the truncated <preview> body the same way", () => {
-		const summary = prompt.render(taskSummaryTemplate, {
-			agentName: "task",
-			id: "BigOne",
-			status: "completed",
-			duration: "2m",
-			preview: "first line of long output",
-			truncated: true,
-			mergeSummary: "",
-		});
-
-		const output = renderLines(summary);
-		expect(output).toContain("first line of long output");
-		expect(output).not.toContain("<task-result");
-	});
-
 	it("flattens a pretty-printed JSON body instead of previewing a lone brace", () => {
-		const summary = prompt.render(taskSummaryTemplate, {
-			agentName: "sonic",
-			id: "EchoAlpha",
-			status: "completed",
-			duration: "11.6s",
-			preview: '{\n  "echo": "alpha",\n  "ok": true\n}',
-			truncated: false,
-			mergeSummary: "",
-		});
-
-		const output = Bun.stripANSI(renderLines(summary));
+		const output = Bun.stripANSI(renderLines('{\n  "echo": "alpha",\n  "ok": true\n}'));
 		expect(output).toContain('{ "echo": "alpha", "ok": true }');
 		expect(output.split("\n").some(line => line.trim() === "{")).toBe(false);
 	});
 
-	it("passes non-envelope result text through unchanged", () => {
-		const output = renderLines("42 pass, 0 fail (18.4s)");
-		expect(output).toContain("42 pass, 0 fail (18.4s)");
-	});
-
 	it("drops the id column when the label repeats it", () => {
-		// Task jobs label themselves with their agent id; rendering both columns
-		// stutters ("SpawnProbe ⟨task⟩ SpawnProbe").
+		// Rendering both columns stutters ("SpawnProbe ⟨bash⟩ SpawnProbe").
 		const output = Bun.stripANSI(renderLines("done"));
 		const header = output.split("\n").find(line => line.includes("SpawnProbe"));
 		expect(header).toBeDefined();
@@ -126,14 +54,14 @@ describe("job renderer task-result preview", () => {
 		const jobsData = [
 			{
 				id: "Job1",
-				type: "task" as const,
+				type: "bash" as const,
 				status: "running" as const,
 				label: "Job1 running",
 				durationMs: 1200,
 			},
 			{
 				id: "Job2",
-				type: "task" as const,
+				type: "bash" as const,
 				status: "completed" as const,
 				label: "Job2 completed",
 				durationMs: 3400,
@@ -141,7 +69,7 @@ describe("job renderer task-result preview", () => {
 			},
 			{
 				id: "Job3",
-				type: "task" as const,
+				type: "bash" as const,
 				status: "running" as const,
 				label: "Job3 running",
 				durationMs: 500,
@@ -186,7 +114,7 @@ describe("job renderer task-result preview", () => {
 			const runningJobsOnly = [
 				{
 					id: "Job1",
-					type: "task" as const,
+					type: "bash" as const,
 					status: "running" as const,
 					label: "Job1 running",
 					durationMs: 1200,
@@ -221,7 +149,6 @@ describe("job renderer task-result preview", () => {
 				details: {
 					op: "wait" as const,
 					jobs: [jobsData[0], jobsData[1]],
-					agents: [{ id: "Worker", ageMs: 1_000, live: true }],
 				},
 			};
 			const view = waitToolRenderer.describeResult!(result, { expanded: true, isPartial });
@@ -233,17 +160,9 @@ describe("job renderer task-result preview", () => {
 					{ k: "elapsed", p: isPartial ? { age: 1200 } : { age: 1200, stopped: 1200 } },
 				],
 			});
-			expect(rows[2]).toMatchObject({
-				c: [
-					expect.any(Object),
-					expect.any(Object),
-					{ k: "elapsed", p: isPartial ? { age: 1000 } : { age: 1000, stopped: 1000 } },
-				],
-			});
 			if (!isPartial) expect(JSON.stringify(view)).not.toContain('"fx":"shimmer"');
 			else {
 				expect(JSON.stringify(rows[0])).not.toContain('"stopped"');
-				expect(JSON.stringify(rows[2])).not.toContain('"stopped"');
 			}
 		});
 
@@ -275,43 +194,6 @@ describe("job renderer task-result preview", () => {
 			expect(json).not.toContain("Benchmark 1");
 			expect(json).not.toContain("exited with code 1");
 			expect(json).not.toContain("artifact write failed");
-		});
-
-		it("renders agent rows for running agents outside job control", () => {
-			const result = {
-				content: [{ type: "text" as const, text: "" }],
-				details: {
-					op: "wait" as const,
-					jobs: [],
-					agents: [{ id: "Worker", parentId: "Main", activity: "grepping the tree", ageMs: 65_000, live: true }],
-				},
-			};
-			const component = waitToolRenderer.renderResult(
-				result,
-				{ expanded: true, isPartial: false } as Parameters<typeof waitToolRenderer.renderResult>[1],
-				theme,
-			);
-			const output = Bun.stripANSI((component.render(120) as readonly string[]).join("\n"));
-			expect(output).toContain("1 running agent — no jobs");
-			expect(output).toContain("Worker");
-			expect(output).toContain("grepping the tree");
-		});
-
-		it("keeps a sealed bare-poll result visible when it carries an agent roster", () => {
-			const result = {
-				content: [{ type: "text" as const, text: "No running background jobs to wait for." }],
-				details: { op: "wait" as const, jobs: [], agents: [{ id: "Worker", ageMs: 1_000, live: false }] },
-			};
-			const component = waitToolRenderer.renderResult(
-				result,
-				{ expanded: true, isPartial: false } as Parameters<typeof waitToolRenderer.renderResult>[1],
-				theme,
-			);
-			const output = Bun.stripANSI((component.render(120) as readonly string[]).join("\n"));
-			expect(output).toContain("Worker");
-			// A ref claiming `running` with no turn in flight is flagged, not shown
-			// as live work.
-			expect(output).toContain("no turn");
 		});
 	});
 });

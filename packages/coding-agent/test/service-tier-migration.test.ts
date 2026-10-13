@@ -1,9 +1,6 @@
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as path from "node:path";
-import type { ServiceTierByFamily } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { resolveAgentServiceTierOverride } from "@oh-my-pi/pi-coding-agent/config/service-tier";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
@@ -17,16 +14,6 @@ import {
 	cfgTierOpenai,
 	cfgTierSubagent,
 } from "@oh-my-pi/pi-coding-agent/session/settings";
-
-function requiredBundledModel(provider: "openai-codex" | "anthropic" | "google", id: string) {
-	const model = getBundledModel(provider, id);
-	if (!model) throw new Error(`Expected bundled model ${provider}/${id}`);
-	return model;
-}
-
-const openAIModel = requiredBundledModel("openai-codex", "gpt-5.6-sol");
-const anthropicModel = requiredBundledModel("anthropic", "claude-sonnet-4-5");
-const googleModel = requiredBundledModel("google", "gemini-2.5-flash");
 
 // Locks the back-compat migration of the legacy single `serviceTier` enum (with
 // scoped `openai-only`/`claude-only` sentinels) plus `serviceTierSubagent`/

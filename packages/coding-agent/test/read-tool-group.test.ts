@@ -436,7 +436,6 @@ describe("readArgsCollapseIntoGroup", () => {
 		["omp://docs/tools/read.md"],
 		["issue://123"],
 		["pr://can1357/oh-my-pi/456"],
-		["agent://abc"],
 		["artifact://abc"],
 		["rule://name"],
 		["mcp://server/resource"],

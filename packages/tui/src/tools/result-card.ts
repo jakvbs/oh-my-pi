@@ -1,6 +1,6 @@
 /**
  * Line-based status cards shared by the internal-URL renderers (`proc://`,
- * `agent://`, `cfg://`): a header plus sanitized, width-truncated body lines.
+ * `cfg://`): a header plus sanitized, width-truncated body lines.
  */
 import type { Component } from "../tui";
 import { createCachedComponent, Ellipsis, truncateToWidth } from "../render";

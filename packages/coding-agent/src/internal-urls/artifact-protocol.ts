@@ -2,7 +2,7 @@
  * Protocol handler for artifact:// URLs.
  *
  * Resolves artifact IDs against the artifacts directories of every active
- * session. Unlike agent://, artifacts are raw text with no JSON extraction.
+ * session. Artifacts are raw text with no JSON extraction.
  *
  * URL form:
  * - artifact://<id> - Full artifact content

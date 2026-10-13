@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import { runAnonymizeCommand } from "../src/cli/anonymize-cli";
@@ -79,20 +78,5 @@ describe("omp anonymize output", () => {
 		await expect(
 			runAnonymizeCommand({ session: missing, out: path.join(tempDir.path(), "out") }),
 		).rejects.toBeInstanceOf(CliUsageError);
-	});
-
-	it("finds subagents next to the real file when the session argument is a symlink", async () => {
-		const real = path.join(tempDir.path(), "real", "main.jsonl");
-		await Bun.write(real, SESSION);
-		await Bun.write(path.join(tempDir.path(), "real", "main", "Scout.jsonl"), SESSION);
-		const link = path.join(tempDir.path(), "link.jsonl");
-		try {
-			await fs.symlink(real, link, "file");
-		} catch {
-			return; // Symlink creation needs developer mode on Windows; nothing to verify without one.
-		}
-		const out = path.join(tempDir.path(), "out");
-		await runAnonymizeCommand({ session: link, out });
-		expect(await Array.fromAsync(new Bun.Glob("subagents/*.jsonl").scan(out))).toHaveLength(1);
 	});
 });

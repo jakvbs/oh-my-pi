@@ -72,7 +72,6 @@ function createLoopContext(options: {
 		skillCommands: new Map(),
 		fileSlashCommands: new Set<string>(),
 		isBashMode: false,
-		focusedAgentId: undefined,
 		compactionQueuedMessages: [],
 		locallySubmittedUserSignatures: new Set<string>(),
 	} as unknown as InteractiveModeContext;

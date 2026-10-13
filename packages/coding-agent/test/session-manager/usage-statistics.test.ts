@@ -50,7 +50,7 @@ describe("SessionManager usage statistics", () => {
 		expect(session.getBranch(usageId).at(-1)).toMatchObject({ type: "model_usage", parentId: ownerParent });
 	});
 
-	it("accumulates premium requests from assistant messages and task tool results", () => {
+	it("accumulates premium requests from assistant messages", () => {
 		const session = SessionManager.inMemory();
 
 		session.appendMessage({ role: "user", content: "hello", timestamp: 1 });
@@ -72,65 +72,11 @@ describe("SessionManager usage statistics", () => {
 			stopReason: "stop",
 			timestamp: 2,
 		});
-		session.appendMessage({
-			role: "toolResult",
-			toolCallId: "task_1",
-			toolName: "task",
-			content: [{ type: "text", text: "task output" }],
-			details: {
-				usage: {
-					input: 2,
-					output: 3,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 5,
-					premiumRequests: 2,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-			},
-			isError: false,
-			timestamp: 3,
-		});
 
 		const usage = session.getUsageStatistics();
-		expect(usage.input).toBe(12);
-		expect(usage.output).toBe(8);
-		expect(usage.premiumRequests).toBe(3);
-	});
-
-	it("tracks task-result cost as the subagent portion of total cost", () => {
-		const session = SessionManager.inMemory();
-		const usage = (total: number) => ({
-			input: 1,
-			output: 1,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 2,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total },
-		});
-		session.appendMessage({
-			role: "assistant",
-			content: [{ type: "text", text: "hi" }],
-			api: "anthropic-messages",
-			provider: "anthropic",
-			model: "claude-sonnet-4-5",
-			usage: usage(0.38),
-			stopReason: "stop",
-			timestamp: 1,
-		});
-		session.appendMessage({
-			role: "toolResult",
-			toolCallId: "task_1",
-			toolName: "task",
-			content: [{ type: "text", text: "task output" }],
-			details: { usage: usage(0.12) },
-			isError: false,
-			timestamp: 2,
-		});
-
-		const stats = session.getUsageStatistics();
-		expect(stats.cost).toBeCloseTo(0.5);
-		expect(stats.subagentCost).toBeCloseTo(0.12);
+		expect(usage.input).toBe(10);
+		expect(usage.output).toBe(5);
+		expect(usage.premiumRequests).toBe(1);
 	});
 
 	it("keeps orchestration usage out of ordinary input while preserving total tokens", () => {
@@ -186,28 +132,9 @@ describe("SessionManager usage statistics", () => {
 			stopReason: "stop",
 			timestamp: 2,
 		});
-		session.appendMessage({
-			role: "toolResult",
-			toolCallId: "task_1",
-			toolName: "task",
-			content: [{ type: "text", text: "task output" }],
-			details: {
-				usage: {
-					input: 2,
-					output: 3,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 5,
-					premiumRequests: 3,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-			},
-			isError: false,
-			timestamp: 3,
-		});
 
 		const usage = session.getUsageStatistics();
-		expect(usage.premiumRequests).toBeCloseTo(3.33, 8);
+		expect(usage.premiumRequests).toBeCloseTo(0.33, 8);
 	});
 	it("defaults premium requests to zero when usage payload omits the field", () => {
 		const session = SessionManager.inMemory();

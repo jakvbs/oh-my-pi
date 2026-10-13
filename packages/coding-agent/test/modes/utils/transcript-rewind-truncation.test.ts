@@ -70,18 +70,17 @@ function createHarness() {
 	transcriptMessageComponents.set(user2, blocks[2]!);
 	transcriptMessageComponents.set(assistant2, blocks[3]!);
 
-	// Messages the view session reports AFTER the rewind; tests mutate this to
+	// Messages the session reports AFTER the rewind; tests mutate this to
 	// model a session that was (or was not) actually rewound.
 	const remainingMessages: AgentMessage[] = [user1, assistant1];
-	const viewSession = {
+	const session = {
 		isStreaming: false,
 		buildTranscriptSessionContext: () => ({ messages: remainingMessages }),
 	};
 
 	const ctx = {
 		initialChatRendered: true,
-		focusedAgentId: undefined,
-		viewSession,
+		session,
 		pendingTools: new Map<string, unknown>(),
 		pendingBashComponents: [],
 		pendingPythonComponents: [],
@@ -98,7 +97,7 @@ function createHarness() {
 		chat,
 		blocks,
 		remainingMessages,
-		viewSession,
+		session,
 		messages: { user1, assistant1, user2, assistant2 },
 		helpers: new UiHelpers(ctx),
 	};
@@ -107,7 +106,7 @@ function createHarness() {
 describe("UiHelpers.truncateTranscriptFromMessage", () => {
 	it("falls back while the view session is streaming or has in-flight tools", () => {
 		const streaming = createHarness();
-		streaming.viewSession.isStreaming = true;
+		streaming.session.isStreaming = true;
 		expect(streaming.helpers.truncateTranscriptFromMessage(streaming.messages.user2)).toBe(false);
 
 		const pending = createHarness();

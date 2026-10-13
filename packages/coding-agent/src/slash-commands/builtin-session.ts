@@ -577,15 +577,6 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
-		name: "hub",
-		icon: "agents",
-		description: "Open the live Agent Hub",
-		handleTui: (_command, runtime) => {
-			runtime.ctx.showAgentHub({ initialSection: "activity" });
-			clearSubmittedText(runtime);
-		},
-	},
-	{
 		name: "branch",
 		aliases: ["rewind"],
 		icon: "branch",

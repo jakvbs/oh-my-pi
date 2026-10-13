@@ -18,8 +18,6 @@ import type { LocalProtocolOptions } from "../internal-urls";
 import type { DaemonCompletionNotification } from "../launch/protocol";
 import { LspTool } from "../lsp";
 import type { MCPManager } from "../mcp";
-import type { AgentLifecycleManager } from "../registry/agent-lifecycle";
-import type { AgentRegistry } from "../registry/agent-registry";
 import type { ArtifactManager } from "../session/artifacts";
 import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
@@ -91,7 +89,7 @@ export * from "./gh";
 export * from "./glob";
 export * from "./grep";
 export * from "./jfind";
-export type { AgentActivitySnapshot, CoordinationDetails, JobSnapshot } from "@oh-my-pi/pi-tui/tools/wait";
+export type { CoordinationDetails, JobSnapshot } from "@oh-my-pi/pi-tui/tools/wait";
 export * from "./manage-skill";
 export * from "./read";
 export * from "./report-tool-issue";
@@ -247,7 +245,7 @@ export interface ToolSession {
 		Partial<Pick<SessionManager, "getSessionId" | "getLeafId" | "appendModelUsage">>;
 	/** Get tool-state session ID (distinct from the owning session for advisors). */
 	getSessionId?: () => string | null;
-	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
+	/** Agent identity that owns background jobs. Returns the registry id (e.g. "Main"). */
 	getAgentId?: () => string | null;
 	/** Look up a registered tool by name. */
 	getToolByName?: (name: string) => AgentTool | undefined;
@@ -277,10 +275,6 @@ export interface ToolSession {
 	 * remains restricted until the activation commits.
 	 */
 	pendingFullWriteDescription?: boolean;
-	/** Agent registry for IRC routing across live sessions. */
-	agentRegistry?: AgentRegistry;
-	/** Idle→parked→revive lifecycle owner; lets explicit cancellation stop a non-job-backed agent registration. Default: AgentLifecycleManager.global(). */
-	agentLifecycle?: () => AgentLifecycleManager;
 	/** Get artifacts directory for artifact:// URLs */
 	getArtifactsDir?: () => string | null;
 	/** Get the ArtifactManager backing this session (shared across parent + subagents). */

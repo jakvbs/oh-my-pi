@@ -178,7 +178,6 @@ async function createContext() {
 		autoCompactionEscapeHandler: undefined,
 		retryEscapeHandler: undefined,
 		session: session as unknown as InteractiveModeContext["session"],
-		viewSession: session as unknown as InteractiveModeContext["viewSession"],
 		keybindings: {
 			getKeys(action: string) {
 				return keyMap[action] ? [...keyMap[action]] : [];
@@ -348,22 +347,6 @@ describe("InputController keybinding setup", () => {
 		expect(editor.getText()).toBe("");
 	});
 
-	it("retries the focused view session instead of the main session", async () => {
-		const { InputController, ctx, editor, spies } = await createContext();
-		const focusedRetry = vi.fn(async () => true);
-		(ctx as unknown as { focusedAgentId: string; viewSession: { retry: typeof focusedRetry } }).focusedAgentId =
-			"worker";
-		(ctx as unknown as { viewSession: { retry: typeof focusedRetry } }).viewSession = { retry: focusedRetry };
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-		editor.onRetry?.();
-		await Promise.resolve();
-
-		expect(focusedRetry).toHaveBeenCalledTimes(1);
-		expect(spies.retry).not.toHaveBeenCalled();
-	});
-
 	it("keeps the draft when there is nothing to retry", async () => {
 		const { InputController, ctx, editor, spies } = await createContext();
 		spies.retry.mockResolvedValueOnce(false);
@@ -404,7 +387,7 @@ describe("InputController keybinding setup", () => {
 		const controller = new InputController(ctx);
 
 		controller.setupKeyHandlers();
-		const listener = spies.addInputListener.mock.calls[1]?.[0];
+		const listener = spies.addInputListener.mock.calls[0]?.[0];
 		expect(listener).toBeDefined();
 		const result = listener?.("b");
 
@@ -419,7 +402,7 @@ describe("InputController keybinding setup", () => {
 		const controller = new InputController(ctx);
 
 		controller.setupKeyHandlers();
-		const listener = spies.addInputListener.mock.calls[1]?.[0];
+		const listener = spies.addInputListener.mock.calls[0]?.[0];
 		expect(listener).toBeDefined();
 		const result = listener?.("b");
 
@@ -433,7 +416,7 @@ describe("InputController keybinding setup", () => {
 		const controller = new InputController(ctx);
 
 		controller.setupKeyHandlers();
-		const listener = spies.addInputListener.mock.calls[1]?.[0];
+		const listener = spies.addInputListener.mock.calls[0]?.[0];
 		expect(listener).toBeDefined();
 		const result = listener?.("b");
 

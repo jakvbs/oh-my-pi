@@ -17,7 +17,6 @@ import { setInternalUrlSchemeHost, splitUrlScheme } from "@oh-my-pi/pi-tui/tools
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { ToolSession } from "../tools";
 import { TIER_RANK } from "../tools/approval";
-import { AgentProtocolHandler } from "./agent-protocol";
 import { ArtifactProtocolHandler } from "./artifact-protocol";
 import { AttachmentProtocolHandler } from "./attachment-protocol";
 import { CfgProtocolHandler } from "./cfg-protocol";
@@ -103,7 +102,6 @@ export class InternalUrlRouter {
 		// Registration order is system-prompt order (see describe()).
 		this.register(new SkillProtocolHandler());
 		this.register(new RuleProtocolHandler());
-		this.register(new AgentProtocolHandler());
 		this.register(new HistoryProtocolHandler());
 		this.register(new ArtifactProtocolHandler());
 		this.register(new LocalProtocolHandler());
