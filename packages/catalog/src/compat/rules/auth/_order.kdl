@@ -1,7 +1,7 @@
 // `/login` roster order. Every provider whose auth node declares a `login`
 // (and does not set `show-in-login-list #false`) must appear here; providers
 // without a login flow sort alphabetically after this list.
-login-order "openai-codex" "anthropic" "zai" "kimi-code" "openrouter" "github-copilot" \
+login-order "openai-codex" "anthropic" "zai" "zai-coding-plan" "kimi-code" "openrouter" "github-copilot" \
 	"openai-codex-device" "xai" "xai-oauth" \
 	"aiand" "abliteration" "umans" "sakana" \
 	"firepass" "commandcode" "charm-hyper" "deepseek" "stepfun" "muse-code" "meta" "moonshot" \

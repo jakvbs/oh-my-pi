@@ -70,7 +70,7 @@ describe("provider registry auth surface", () => {
 
 	test("paste-code login set is derived from pasteCodeFlow", () => {
 		expect([...PASTE_CODE_LOGIN_PROVIDERS].sort()).toEqual(
-			["anthropic", "openai-codex", "openrouter", "stencil"].sort(),
+			["anthropic", "openai-codex", "openrouter", "stencil", "zai-coding-plan"].sort(),
 		);
 		expect(PASTE_CODE_LOGIN_PROVIDERS.has("zenmux")).toBe(false);
 	});

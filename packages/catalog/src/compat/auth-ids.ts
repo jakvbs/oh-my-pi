@@ -74,6 +74,7 @@ export type AuthProviderId =
 	| "xai-oauth"
 	| "yolo-auto"
 	| "zai"
+	| "zai-coding-plan"
 	| "zenmux";
 
 /** Providers whose policy declares a `login` flow (the `/login` roster). */
@@ -138,4 +139,5 @@ export type LoginProviderId =
 	| "xai-oauth"
 	| "yolo-auto"
 	| "zai"
+	| "zai-coding-plan"
 	| "zenmux";

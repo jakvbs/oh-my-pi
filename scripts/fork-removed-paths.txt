@@ -37,7 +37,6 @@ packages/ai/src/registry/oauth/google-oauth-shared.ts
 packages/ai/src/registry/oauth/kilo.ts
 packages/ai/src/registry/oauth/snowflake.ts
 packages/ai/src/registry/oauth/xiaomi.ts
-packages/ai/src/registry/oauth/zai.ts
 packages/ai/src/registry/snowflake.ts
 packages/ai/src/usage/alibaba-token-plan.ts
 packages/ai/src/usage/cline-pass.ts
@@ -105,7 +104,6 @@ packages/ai/test/minimax-token-plan-usage.test.ts
 packages/ai/test/snowflake-provider.test.ts
 packages/ai/test/xiaomi-oauth.test.ts
 packages/ai/test/xiaomi-tp-login-integration.test.ts
-packages/ai/test/zai-oauth.test.ts
 packages/ai/test/zhipu-coding-plan-login.test.ts
 packages/browser-relay
 packages/catalog/scripts/generate-protocols.ts
@@ -133,7 +131,6 @@ packages/catalog/src/compat/rules/auth/xiaomi-token-plan-ams.kdl
 packages/catalog/src/compat/rules/auth/xiaomi-token-plan-cn.kdl
 packages/catalog/src/compat/rules/auth/xiaomi-token-plan-sgp.kdl
 packages/catalog/src/compat/rules/auth/xiaomi.kdl
-packages/catalog/src/compat/rules/auth/zai-coding-plan.kdl
 packages/catalog/src/compat/rules/auth/zhipu-coding-plan.kdl
 packages/catalog/src/compat/rules/providers/alibaba-coding-plan.kdl
 packages/catalog/src/compat/rules/providers/alibaba-token-plan.kdl
