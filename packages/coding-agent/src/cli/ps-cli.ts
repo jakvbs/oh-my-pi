@@ -30,7 +30,7 @@ import {
 	tableCells,
 } from "@oh-my-pi/pi-tui/apps/ps-data";
 import { runPsTop, type PsTopHost } from "@oh-my-pi/pi-tui/apps/ps-top";
-import { isSharedBrowserDaemonName, restartSharedBrowser } from "../tools/browser/shared-daemon";
+import { isSharedBrowserDaemonName, restartSharedBrowser } from "../chromium/shared-daemon";
 import { collectReports, KILL_GRACE_MS, scopeClient } from "./ps-data";
 
 export type PsAction = "list" | "info" | "logs" | "stop" | "kill" | "restart";

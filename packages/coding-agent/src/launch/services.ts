@@ -11,7 +11,7 @@ import type { DaemonOperation, DaemonRpcResult } from "./protocol";
 import { renderTerminalOutputIsolated } from "./terminal-output-worker-client";
 import type { ToolSession } from "../tools";
 import { resolveToCwd } from "../tools/path-utils";
-import { isSharedBrowserDaemonName } from "../tools/browser/shared-daemon";
+import { isSharedBrowserDaemonName } from "../chromium/shared-daemon";
 
 import { cfgLaunchEnabled } from "../tools/settings";
 

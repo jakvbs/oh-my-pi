@@ -88,7 +88,7 @@ class "gemini" {
 	// the introductory rate.
 	// https://ai.google.dev/gemini-api/docs/pricing
 	// https://cloud.google.com/vertex-ai/generative-ai/pricing
-	on "google" "google-vertex" "google-antigravity" {
+	on "google" "google-vertex" {
 		models "gemini-4-argon" {
 			cost-patch {
 				input 2

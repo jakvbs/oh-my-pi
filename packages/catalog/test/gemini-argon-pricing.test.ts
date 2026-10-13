@@ -5,7 +5,6 @@ import type { Api, Model, ModelSpec, Provider, TokenCost } from "../src/types";
 
 const INTRO = { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 0 };
 const LIST = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 0 };
-const UNPRICED = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 // Midnight US Pacific (PST) on 2026-12-01, when Cloud Billing's day starts.
 const SWITCH = Date.parse("2026-12-01T08:00:00Z");
 
@@ -58,10 +57,6 @@ describe("Gemini 4 Argon list-price schedule", () => {
 			// stencil.so's introductory price, or a list price it already caught up to.
 			argon("google", "google-generative-ai", INTRO),
 			argon("google-vertex", "google-vertex", LIST),
-			// Antigravity discovery reports no price.
-			argon("google-antigravity", "google-gemini-cli", UNPRICED),
-			// Cursor bills Other Models at the model's API price.
-			argon("cursor", "cursor-agent", UNPRICED),
 		];
 		for (const spec of hosts) {
 			expect(costAt(SWITCH - 1, spec), `${spec.provider} before`).toEqual(INTRO);

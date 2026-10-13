@@ -20,7 +20,7 @@ import * as bashExecutor from "../../src/exec/bash-executor";
 import { completeBashResult } from "../../src/exec/bash-result";
 import { BashTool } from "../../src/tools/bash";
 import { WriteTool } from "../../src/tools/write";
-import { sharedBrowserDaemonName } from "../../src/tools/browser/shared-daemon";
+import { sharedBrowserDaemonName } from "../../src/chromium/shared-daemon";
 import type { ToolSession } from "../../src/tools";
 import type { DaemonSnapshot } from "@oh-my-pi/pi-tui/tools/daemon";
 
