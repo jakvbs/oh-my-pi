@@ -5,6 +5,11 @@
 ### Added
 
 - `getAsideMessages` and `setAsideMessageProvider` callbacks receive the `AsideBoundary` (`"mid-work"` or `"stop"`), so passive asides can skip the stop poll, where any aside buys another model turn.
+
+## [18.10.4] - 2026-10-13
+
+### Added
+
 - `AgentTool.formatApprovalDetails` receives `ApprovalDetailsOptions`; `compact: true` asks for untruncated bodies so a compact approval prompt can count their lines ([#15550](https://github.com/can1357/oh-my-pi/pull/15550) by [@H4vC](https://github.com/H4vC))
 
 ### Changed
