@@ -767,14 +767,14 @@ describe("AgentSession derived queued custom display", () => {
 	it("popLastQueuedMessage drops only the popped prompt's preceding companion", async () => {
 		fixture = await createRealSession();
 		const { session } = fixture;
-		// [ultrathink-notice, "first", orchestrate-notice, "second"].
+		// [ultrathink-notice, "first", ultrathink-notice, "second"].
 		queueMagicCompanion(session, "ultrathink-notice");
 		queueUserSteer(session, "first");
-		queueMagicCompanion(session, "orchestrate-notice");
+		queueMagicCompanion(session, "ultrathink-notice");
 		queueUserSteer(session, "second");
 
 		expect(session.popLastQueuedMessage()?.text).toBe("second");
-		// Only the popped prompt's companion (orchestrate-notice) leaves; the earlier
+		// Only the popped prompt's companion (the second ultrathink-notice) leaves; the earlier
 		// prompt and its own companion stay intact.
 		const remaining = session.agent.peekSteeringQueue();
 		expect(remaining.map(m => (m.role === "custom" ? m.customType : m.role))).toEqual(["ultrathink-notice", "user"]);

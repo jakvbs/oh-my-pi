@@ -40,26 +40,26 @@ function countOccurrences(haystack: string, needle: string): number {
 
 describe("UserMessageComponent magic-keyword highlighting", () => {
 	it("gradient-paints a magic keyword in the rendered (sent) message bubble", () => {
-		const raw = render("please orchestrate the rollout");
+		const raw = render("please ultrathink the rollout");
 		// Visible text is preserved.
-		expect(Bun.stripANSI(raw)).toContain("please orchestrate the rollout");
+		expect(Bun.stripANSI(raw)).toContain("please ultrathink the rollout");
 		// The keyword is gradient-painted: a per-character foreground sequence is emitted,
 		// and the word no longer survives as a contiguous run in the rendered bytes.
 		expect(raw).toContain("\x1b[38");
-		expect(raw).not.toContain("orchestrate");
+		expect(raw).not.toContain("ultrathink");
 	});
 
 	it("does not paint a keyword inside an inline code span", () => {
-		const raw = render("ship the `orchestrate` helper");
-		expect(Bun.stripANSI(raw)).toContain("orchestrate");
+		const raw = render("ship the `ultrathink` helper");
+		expect(Bun.stripANSI(raw)).toContain("ultrathink");
 		// Code spans render through the code style as a single run — the word stays intact.
-		expect(raw).toContain("orchestrate");
+		expect(raw).toContain("ultrathink");
 	});
 
 	it("does not paint a keyword inside a fenced code block", () => {
-		const raw = render("intro\n```\norchestrate\n```");
-		expect(Bun.stripANSI(raw)).toContain("orchestrate");
-		expect(raw).toContain("orchestrate");
+		const raw = render("intro\n```\nultrathink\n```");
+		expect(Bun.stripANSI(raw)).toContain("ultrathink");
+		expect(raw).toContain("ultrathink");
 	});
 
 	it("closes the OSC 133 prompt zone and leaves no command zone open", () => {

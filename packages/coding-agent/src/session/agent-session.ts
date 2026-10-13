@@ -163,7 +163,7 @@ import type { GoalModeState, GoalTokenUsage } from "../goals/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { type ChainJudge, hasNativeJudge, journalJudgmentUsage, resolveJudge, sharedJudgmentCache } from "../judgment";
 import type { DaemonCompletionNotification } from "../launch/protocol";
-import { MAGIC_KEYWORDS, type MagicKeywordContext, type MagicKeywordId } from "../modes/magic-keywords";
+import { MAGIC_KEYWORDS, type MagicKeywordId } from "../modes/magic-keywords";
 import { containsMagicKeyword } from "@oh-my-pi/pi-tui/prompt/magic-keywords";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 import { parseTurnBudget } from "../modes/turn-budget";
@@ -6255,20 +6255,12 @@ export class AgentSession implements SettingsScope {
 		const turnBudget = parseTurnBudget(text);
 		this.sessionManager.beginTurnBudget(turnBudget?.total ?? null, turnBudget?.hard ?? false);
 		const keywordNotices: CustomMessage[] = [];
-		let context: MagicKeywordContext | undefined;
 		for (const keyword of MAGIC_KEYWORDS) {
 			if (!this.#magicKeywordEnabled(keyword.id) || !containsMagicKeyword(text, keyword.word)) continue;
-			context ??= {
-				tools: this.getEnabledToolNames(),
-			};
-			// A notice whose contract needs an inactive tool would demand an
-			// unavailable capability; skip it rather than mislead the model.
-			const tools = context.tools;
-			if (!keyword.requires.every(tool => tools.includes(tool))) continue;
 			keywordNotices.push({
 				role: "custom",
 				customType: `${keyword.id}-notice`,
-				content: keyword.notice(context),
+				content: keyword.notice(),
 				display: false,
 				attribution: "user",
 				timestamp,
