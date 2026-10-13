@@ -126,7 +126,7 @@ describe("classifyModel", () => {
 	test("effort suffix collapses with except-bare-prefix gate", () => {
 		// qwen3.6-max is a product SKU, not an effort variant: the collapse
 		// vocabulary carries except-bare-prefix="qwen" on the -max suffix.
-		const qwen = classifyModel("alibaba-token-plan", "qwen3.6-max");
+		const qwen = classifyModel("dashscope-custom", "qwen3.6-max");
 		expect(qwen.class).toBe("qwen");
 		expect(qwen.effort).toBeUndefined();
 	});

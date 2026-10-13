@@ -55,7 +55,7 @@ describe("issue #2299 — NVIDIA NIM qwen thinking format", () => {
 			api: "openai-completions",
 			id: "qwen3-coder-plus",
 			name: "Qwen3 Coder Plus",
-			provider: "alibaba-coding-plan",
+			provider: "dashscope-custom",
 			baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 			input: ["text"],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

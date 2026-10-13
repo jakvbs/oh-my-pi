@@ -14,8 +14,6 @@
 interface HostClassSpec {
 	/** Provider ids that imply this host class regardless of baseUrl. */
 	readonly providers?: readonly string[];
-	/** Provider-id prefixes that imply this host class (e.g. `xiaomi-token-plan-`). */
-	readonly providerPrefixes?: readonly string[];
 	/** Lowercase ASCII substrings matched case-insensitively against the base URL. */
 	readonly urlMarkers: readonly string[];
 	// Strict hostname matching is intentionally not modeled here: the one
@@ -43,12 +41,8 @@ export const KNOWN_HOSTS = {
 	zai: { providers: ["zai"], urlMarkers: ["api.z.ai"] },
 	zhipu: { providers: ["zhipu-coding-plan"], urlMarkers: ["open.bigmodel.cn"] },
 	kilo: { providers: ["kilo"], urlMarkers: ["api.kilo.ai"] },
-	alibabaDashscope: {
-		providers: ["alibaba-coding-plan", "alibaba-token-plan"],
-		urlMarkers: ["dashscope", "token-plan."],
-	},
+	alibabaDashscope: { urlMarkers: ["dashscope"] },
 	umans: { providers: ["umans"], urlMarkers: ["api.code.umans.ai"] },
-	xiaomi: { providers: ["xiaomi"], providerPrefixes: ["xiaomi-token-plan-"], urlMarkers: ["xiaomimimo.com"] },
 	xai: { providers: ["xai", "xai-oauth"], urlMarkers: ["api.x.ai"] },
 	mistral: { providers: ["mistral"], urlMarkers: ["mistral.ai"] },
 	together: { providers: ["together"], urlMarkers: ["api.together.xyz"] },
@@ -56,10 +50,7 @@ export const KNOWN_HOSTS = {
 	/** URL-only on purpose: the `fireworks`/`firepass` providers route per-model and not every model is Fireworks-shaped. */
 	fireworks: { urlMarkers: ["fireworks.ai"] },
 	groq: { providers: ["groq"], urlMarkers: ["api.groq.com"] },
-	minimax: {
-		providers: ["minimax", "minimax-code", "minimax-code-cn"],
-		urlMarkers: ["api.minimax.io", "api.minimaxi.com"],
-	},
+	minimax: { providers: ["minimax"], urlMarkers: ["api.minimax.io", "api.minimaxi.com"] },
 	/** NVIDIA NIM (`integrate.api.nvidia.com`). Qwen NIM endpoints take `chat_template_kwargs.enable_thinking`, never top-level `enable_thinking`. */
 	nvidia: { providers: ["nvidia"], urlMarkers: ["integrate.api.nvidia.com"] },
 	/** Venice AI (`api.venice.ai`). OpenAI-compatible; drives reasoning via top-level `reasoning_effort` (and `venice_parameters.disable_thinking`), and rejects DashScope's top-level `enable_thinking` with a 400 (`additionalProperties: false` request schema). */
@@ -112,11 +103,6 @@ export function modelMatchesHost(model: { provider: string; baseUrl: string }, h
 	if (spec.providers) {
 		for (const provider of spec.providers) {
 			if (model.provider === provider) return true;
-		}
-	}
-	if (spec.providerPrefixes) {
-		for (const prefix of spec.providerPrefixes) {
-			if (model.provider.startsWith(prefix)) return true;
 		}
 	}
 	return hostMatchesUrl(model.baseUrl, host);

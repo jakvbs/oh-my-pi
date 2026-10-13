@@ -832,8 +832,8 @@ describe("selectCollapsedTodos walking viewport (#5873)", () => {
 });
 
 describe("todoToolRenderer.renderCall malformed-args regression (#2005)", () => {
-	// Reporter saw `TypeError: args?.ops?.map is not a function` against
-	// Xiaomi Token Plan's Anthropic protocol because `parseStreamingJson`
+	// Reporter saw `TypeError: args?.ops?.map is not a function` against an
+	// Anthropic-compatible third-party endpoint because `parseStreamingJson`
 	// surfaced `{ ops: "[..." }` shapes mid-stream. The renderer is invoked
 	// on every streaming delta, so any non-array `ops` (string, object,
 	// number) must NOT crash the TUI render loop and trigger the spam-warn /

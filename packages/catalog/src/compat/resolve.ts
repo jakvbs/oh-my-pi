@@ -323,7 +323,6 @@ interface OpenAIDetection {
 	isDirectDeepseekReasoning: boolean;
 	isVenice: boolean;
 	requiresEnabledThinking: boolean;
-	isXiaomiMimo: boolean;
 	isLocalOpenAICompatBackend: boolean;
 	isLocalServingBackend: boolean;
 	isOpenRouter: boolean;
@@ -341,7 +340,6 @@ function detectOpenAI(
 	const isZai = modelMatchesHost(hostModel, "zai");
 	const isZhipu = modelMatchesHost(hostModel, "zhipu");
 	const isMoonshotNative = modelMatchesHost(hostModel, "moonshotNative");
-	const isXiaomiHost = modelMatchesHost(hostModel, "xiaomi");
 	const isDirectDeepseekApi = modelMatchesHost(hostModel, "deepseekDirect");
 	const isDeepseekFamily = modelMatchesHost(hostModel, "deepseekFamily") || facts.is("deepseek");
 	const isDeepseekReasoning = isDeepseekFamily && reasoningCapable;
@@ -361,7 +359,6 @@ function detectOpenAI(
 		isDirectDeepseekReasoning: isDirectDeepseekApi && isDeepseekReasoning,
 		isVenice: modelMatchesHost(hostModel, "venice"),
 		requiresEnabledThinking: isMoonshotNative && facts.is("kimi") && facts.family("k2.7-code"),
-		isXiaomiMimo: isXiaomiHost && facts.is("mimo"),
 		isLocalOpenAICompatBackend,
 		isLocalServingBackend: isLocalOpenAICompatBackend || hasLocalLoopbackBaseUrl(baseUrl),
 		isOpenRouter: modelMatchesHost(hostModel, "openrouter"),
@@ -387,7 +384,6 @@ function detectOpenAICompat(
 	const isCerebrasHost = hostMatchesUrl(baseUrl, "cerebras");
 	const isKilo = modelMatchesHost(hostModel, "kilo");
 	const isAlibaba = modelMatchesHost(hostModel, "alibabaDashscope");
-	const isXiaomiHost = modelMatchesHost(hostModel, "xiaomi");
 	const isGrok = modelMatchesHost(hostModel, "xai");
 	const isMistral = modelMatchesHost(hostModel, "mistral");
 	const isGoogleAistudioOpenAI = hostMatchesUrl(baseUrl, "googleAistudio");
@@ -419,7 +415,6 @@ function detectOpenAICompat(
 		d.isZhipu ||
 		isKilo ||
 		isQwen ||
-		isXiaomiHost ||
 		d.isMoonshotNative ||
 		d.isOpenCodeHost;
 
@@ -461,18 +456,16 @@ function detectOpenAICompat(
 		!facts.family("vision") &&
 		(hostMatchesUrl(baseUrl, "zai") || hostMatchesUrl(baseUrl, "zhipu") || hostMatchesUrl(baseUrl, "opencode"))
 			? GLM_CODING_PLAN_STREAM_IDLE_TIMEOUT_MS
-			: facts.is("mimo") && hostMatchesUrl(baseUrl, "xiaomi")
+			: reasoningCapable &&
+				  facts.is("kimi") &&
+				  (facts.family("k3") || facts.family("k2.7-code")) &&
+				  hostMatchesUrl(baseUrl, "moonshotNative")
 				? 300_000
-				: reasoningCapable &&
-					  facts.is("kimi") &&
-					  (facts.family("k3") || facts.family("k2.7-code")) &&
-					  hostMatchesUrl(baseUrl, "moonshotNative")
+				: reasoningCapable && facts.is("deepseek") && hostMatchesUrl(baseUrl, "deepseekDirect")
 					? 300_000
-					: reasoningCapable && facts.is("deepseek") && hostMatchesUrl(baseUrl, "deepseekDirect")
-						? 300_000
-						: d.isLocalServingBackend
-							? LOCAL_OPENAI_COMPAT_STREAM_IDLE_TIMEOUT_MS
-							: undefined;
+					: d.isLocalServingBackend
+						? LOCAL_OPENAI_COMPAT_STREAM_IDLE_TIMEOUT_MS
+						: undefined;
 
 	const wireModelIdMode: ResolvedOpenAISharedCompat["wireModelIdMode"] = hostMatchesUrl(baseUrl, "openrouter")
 		? "openrouter"
@@ -482,8 +475,7 @@ function detectOpenAICompat(
 	const thinkingFormat: ResolvedOpenAISharedCompat["thinkingFormat"] =
 		(facts.is("kimi") && !facts.family("k3") && hostMatchesUrl(baseUrl, "moonshotNative")) ||
 		hostMatchesUrl(baseUrl, "zai") ||
-		hostMatchesUrl(baseUrl, "zhipu") ||
-		(facts.is("mimo") && hostMatchesUrl(baseUrl, "xiaomi"))
+		hostMatchesUrl(baseUrl, "zhipu")
 			? "zai"
 			: hostMatchesUrl(baseUrl, "openrouter")
 				? "openrouter"
@@ -499,7 +491,7 @@ function detectOpenAICompat(
 		supportsStore: !isNonStandard,
 		supportsDeveloperRole: isOpenAIHost || isAzureHost,
 		supportsMultipleSystemMessages: supportsMultipleSystemMessagesDefault,
-		supportsReasoningEffort: !isGrok && !d.isXiaomiMimo && (!(d.isZai || d.isZhipu) || supportsZaiReasoningEffort),
+		supportsReasoningEffort: !isGrok && (!(d.isZai || d.isZhipu) || supportsZaiReasoningEffort),
 		trustExplicitThinkingOnly: undefined,
 		// API-conditional: this completions-only Copilot exclusion cannot be a
 		// provider rule without changing Copilot Responses rows.
@@ -538,11 +530,9 @@ function detectOpenAICompat(
 		requiresReasoningContentForToolCalls:
 			(facts.is("kimi") && !d.isOpenCodeProvider) ||
 			(isDeepseekFamily && reasoningCapable) ||
-			d.isXiaomiMimo ||
 			(d.isOpenRouter && reasoningCapable),
-		requiresReasoningContentForAllAssistantTurns:
-			((isDeepseekFamily && reasoningCapable) || d.isXiaomiMimo) && !d.isOpenRouter,
-		allowsSyntheticReasoningContentForToolCalls: (!isDeepseekFamily || !reasoningCapable) && !d.isXiaomiMimo,
+		requiresReasoningContentForAllAssistantTurns: isDeepseekFamily && reasoningCapable && !d.isOpenRouter,
+		allowsSyntheticReasoningContentForToolCalls: !isDeepseekFamily || !reasoningCapable,
 		// Keep the typed sparse override key present for DeepSeek proxy replay.
 		syntheticReasoningContentFallback: undefined,
 		replayReasoningContent: d.isLocalOpenAICompatBackend,

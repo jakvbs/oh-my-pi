@@ -3,9 +3,8 @@
 // without a login flow sort alphabetically after this list.
 login-order "openai-codex" "anthropic" "zai" "zai-coding-plan" "kimi-code" "openrouter" "github-copilot" \
 	"openai-codex-device" "xai" "xai-oauth" \
-	"alibaba-coding-plan" "alibaba-token-plan" "aiand" "abliteration" "zhipu-coding-plan" \
-	"umans" "sakana" "minimax-code" "minimax-code-cn" "xiaomi" "xiaomi-token-plan-sgp" \
-	"xiaomi-token-plan-ams" "xiaomi-token-plan-cn" "firepass" "cline-pass" "commandcode" "charm-hyper" "deepseek" "stepfun" "meta" "moonshot" \
+	"aiand" "abliteration" "zhipu-coding-plan" "umans" "sakana" \
+	"firepass" "cline-pass" "commandcode" "charm-hyper" "deepseek" "stepfun" "meta" "moonshot" \
 	"cerebras" "baseten" "helmcode" "fireworks" "together" "nvidia" "novita" "deepinfra" "huggingface" "perplexity" \
 	"qianfan" "venice" "siliconflow" "siliconflow-cn" "synthetic" "nanogpt" "wafer-serverless" "coreweave" \
 	"vercel-ai-gateway" "cloudflare-ai-gateway" "cloudflare-workers-ai" "snowflake" "litellm" "kilo" "zenmux" "opencode-zen" "opencode-go" \

@@ -6,7 +6,7 @@ OpenAI-shaped HTTP protocol. A request is shaped by four layers at once:
 1. endpoint family: `openai-completions`, `openai-responses`,
    `openai-codex-responses`, `anthropic-messages`, etc.
 2. gateway/auth surface: OpenRouter, Vercel AI Gateway, Azure OpenAI, Copilot,
-   Alibaba Coding Plan, Kimi Code, Fireworks/Firepass, and similar hosts
+   Kimi Code, Fireworks/Firepass, and similar hosts
 3. model metadata and `compat` overrides
 4. request context: tools, images, reasoning mode, stateful session, service tier
 
@@ -159,18 +159,6 @@ routing, model ids, or usage accounting.
 - Responses uses top-level `caching: "auto"`, optional `cache_anchor_items`,
   and `cache_ttl`; a `1h` TTL requires long cache retention.
 - Do not reuse OpenRouter's `provider` object.
-
-### Alibaba Coding Plan
-
-- API key bytes may be JSON carrying `{ token, enterpriseUrl }`.
-- Auth and base URL resolution are provider-specific.
-
-### Alibaba Token Plan
-
-- Uses a dedicated Token Plan credential rather than a generic `OPENAI_API_KEY`
-  fallback.
-- A structured credential can supply both the token and its regional base URL.
-- Keep it separate from Alibaba Coding Plan's enterprise-URL encoding.
 
 ### Amazon Bedrock Mantle
 

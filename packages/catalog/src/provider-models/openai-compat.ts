@@ -41,7 +41,6 @@ import {
 	type ThinkingConfig,
 } from "../types";
 import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, toPositiveNumber } from "../utils";
-import { ALIBABA_TOKEN_PLAN_BASE_URL, parseAlibabaTokenPlanCredential } from "../wire/alibaba-token-plan";
 import { normalizeCharmHyperBaseUrl } from "../wire/charm-hyper";
 import { CLINEPASS_API_BASE_URL, clinePassClientHeaders } from "../wire/cline-pass";
 import { CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL } from "../wire/cloudflare-ai-gateway";
@@ -3897,108 +3896,6 @@ export function kiloModelManagerOptions(config?: KiloModelManagerConfig): ModelM
 }
 
 // ---------------------------------------------------------------------------
-// Alibaba Coding Plan
-// ---------------------------------------------------------------------------
-
-export interface AlibabaCodingPlanModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function alibabaCodingPlanModelManagerOptions(
-	config?: AlibabaCodingPlanModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	return createOpenAICompatibleModelManagerOptions({
-		api: "openai-completions",
-		providerId: "alibaba-coding-plan",
-		defaultBaseUrl: "https://coding-intl.dashscope.aliyuncs.com/v1",
-		config,
-		mapModel: mapWithBundledReference,
-	});
-}
-
-// ---------------------------------------------------------------------------
-// Alibaba Token Plan
-// ---------------------------------------------------------------------------
-
-export { ALIBABA_TOKEN_PLAN_BASE_URL };
-
-function isAlibabaTokenPlanChatModelId(id: string): boolean {
-	const normalized = id.trim().toLowerCase();
-	return normalized.length > 0 && !isExcludedModel("alibaba-token-plan", normalized);
-}
-
-export interface AlibabaTokenPlanModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function alibabaTokenPlanModelManagerOptions(
-	config?: AlibabaTokenPlanModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	const credential = config?.apiKey ? parseAlibabaTokenPlanCredential(config.apiKey) : undefined;
-	const apiKey = credential?.token;
-	// A region-locked credential (China/custom) dictates the discovery endpoint:
-	// its key only authenticates against its own region, so fetching /models from
-	// any other base URL would 401 (#6682).
-	const baseUrl = credential?.baseUrl ?? config?.baseUrl ?? ALIBABA_TOKEN_PLAN_BASE_URL;
-	const staticModels = seedModels<"openai-completions">("alibaba-token-plan");
-	return {
-		providerId: "alibaba-token-plan",
-		dynamicModelsAuthoritative: true,
-		staticModels,
-		...(apiKey && {
-			fetchDynamicModels: () =>
-				fetchOpenAICompatibleModels({
-					api: "openai-completions",
-					provider: "alibaba-token-plan",
-					baseUrl,
-					apiKey,
-					filterModel: (_entry, model) => isAlibabaTokenPlanChatModelId(model.id),
-					mapModel: (_entry, defaults) => {
-						const reference = staticModels.find(model => model.id === defaults.id);
-						if (reference) {
-							return {
-								...reference,
-								id: defaults.id,
-								api: defaults.api,
-								provider: defaults.provider,
-								baseUrl: defaults.baseUrl,
-							};
-						}
-						const normalizedId = defaults.id.trim().toLowerCase();
-						// Discovery carries no limit fields; the `model-limits` behavior
-						// rules pin values from official model documentation.
-						const limits = modelLimitsFor("alibaba-token-plan", normalizedId);
-						const enriched = limits
-							? {
-									...defaults,
-									contextWindow: limits.context ?? defaults.contextWindow,
-									maxTokens: limits.maxTokens ?? defaults.maxTokens,
-								}
-							: defaults;
-
-						if (isDeepseekV4Generation("alibaba-token-plan", normalizedId)) {
-							return {
-								...enriched,
-								reasoning: true,
-								thinking: {
-									mode: "effort" as const,
-									efforts: [Effort.High, Effort.Max],
-								},
-							};
-						}
-						return enriched;
-					},
-					fetch: config?.fetch,
-				}),
-		}),
-	};
-}
-
-// ---------------------------------------------------------------------------
 // 11. Vercel AI Gateway
 // ---------------------------------------------------------------------------
 
@@ -5334,89 +5231,6 @@ export function cloudflareAiGatewayModelManagerOptions(
 	);
 }
 
-// ---------------------------------------------------------------------------
-// 20. Xiaomi
-// ---------------------------------------------------------------------------
-
-/** Region codes for Xiaomi Token Plan clusters exposed as separate login providers. */
-export type XiaomiTokenPlanRegion = "sgp" | "ams" | "cn";
-
-/** Configures Xiaomi standard or regional Token Plan OpenAI-compatible model discovery. */
-export interface XiaomiModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-	providerId?: Provider;
-	tokenPlanRegion?: XiaomiTokenPlanRegion;
-}
-
-const XIAOMI_TOKEN_PLAN_BASE_URLS: Record<XiaomiTokenPlanRegion, string> = {
-	sgp: "https://token-plan-sgp.xiaomimimo.com/v1",
-	ams: "https://token-plan-ams.xiaomimimo.com/v1",
-	cn: "https://token-plan-cn.xiaomimimo.com/v1",
-};
-
-const XIAOMI_TOKEN_PLAN_FALLBACK_BASE_URLS = [
-	XIAOMI_TOKEN_PLAN_BASE_URLS.sgp,
-	XIAOMI_TOKEN_PLAN_BASE_URLS.ams,
-	XIAOMI_TOKEN_PLAN_BASE_URLS.cn,
-];
-
-/** Builds a Xiaomi model manager, preserving Token Plan region provider ids during discovery. */
-export function xiaomiModelManagerOptions(
-	config?: XiaomiModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	const apiKey = config?.apiKey;
-	const providerId = config?.providerId ?? "xiaomi";
-	const tokenPlanBaseUrls = config?.tokenPlanRegion
-		? [XIAOMI_TOKEN_PLAN_BASE_URLS[config.tokenPlanRegion]]
-		: XIAOMI_TOKEN_PLAN_FALLBACK_BASE_URLS;
-	const XIAOMI_STANDARD_BASE_URL = "https://api.xiaomimimo.com/v1";
-	const isTokenPlanProvider = config?.tokenPlanRegion !== undefined || providerId.startsWith("xiaomi-token-plan-");
-	const isTokenPlanKey = isTokenPlanProvider || apiKey?.startsWith("tp-");
-	// Token-plan keys always use a TP cluster; config?.baseUrl (from catalog)
-	// would incorrectly pin to the standard endpoint (api.xiaomimimo.com).
-	const baseUrl = isTokenPlanKey ? tokenPlanBaseUrls[0] : (config?.baseUrl ?? XIAOMI_STANDARD_BASE_URL);
-	const references = createBundledReferenceMap<"openai-completions">("xiaomi");
-	for (const seed of seedModels<"openai-completions">(providerId)) {
-		references.set(seed.id, seed);
-	}
-	const fetchModels = (url: string) =>
-		fetchOpenAICompatibleModels({
-			api: "openai-completions",
-			provider: providerId,
-			baseUrl: url,
-			apiKey,
-			filterModel: (_entry, model) => !isExcludedModel(providerId, model.id),
-			mapModel: (entry, defaults) => {
-				const reference = references.get(defaults.id);
-				const model = mapWithBundledReference(entry, defaults, reference);
-				return {
-					...model,
-					api: "openai-completions",
-					provider: providerId,
-					baseUrl: defaults.baseUrl,
-					name: toModelName(entry.display_name, model.name),
-				};
-			},
-			fetch: config?.fetch,
-		});
-	return {
-		providerId,
-		...(apiKey && {
-			fetchDynamicModels: async () => {
-				if (!isTokenPlanKey) {
-					return fetchModels(baseUrl);
-				}
-				for (const url of tokenPlanBaseUrls) {
-					const result = await fetchModels(url);
-					if (result) return result;
-				}
-				return null;
-			},
-		}),
-	};
-}
 // ---------------------------------------------------------------------------
 // 21. LiteLLM
 // ---------------------------------------------------------------------------
@@ -7278,35 +7092,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CODING_PLANS: readonly ModelsDevProviderDe
 	// costs as zero, while `/models/info` omits pricing entirely. The generator
 	// overlays these rates onto the authoritative endpoint discovery (issue #5733).
 	anthropicMessagesDescriptor("umans-ai", "umans", UMANS_BASE_URL),
-	// --- Xiaomi ---
-	openAiCompletionsDescriptor("xiaomi", "xiaomi", "https://api.xiaomimimo.com/v1", {
-		defaultContextWindow: 262144,
-		defaultMaxTokens: 8192,
-		compat: {
-			supportsStore: false,
-			thinkingFormat: "zai",
-			reasoningContentField: "reasoning_content",
-			requiresReasoningContentForToolCalls: true,
-			allowsSyntheticReasoningContentForToolCalls: false,
-		},
-	}),
-	// --- MiniMax Token Plan ---
-	// MiniMax documents its Anthropic-compatible API as the recommended
-	// protocol: signed thinking blocks, `output_config.effort` depth control,
-	// and prompt-cache usage reporting.
-	anthropicMessagesDescriptor("minimax-coding-plan", "minimax-code", "https://api.minimax.io/anthropic"),
-	anthropicMessagesDescriptor("minimax-cn-coding-plan", "minimax-code-cn", "https://api.minimaxi.com/anthropic"),
-	// --- Alibaba Coding Plan ---
-	openAiCompletionsDescriptor(
-		"alibaba-coding-plan",
-		"alibaba-coding-plan",
-		"https://coding-intl.dashscope.aliyuncs.com/v1",
-		{
-			compat: {
-				supportsDeveloperRole: false,
-			},
-		},
-	),
 	// --- Zhipu Coding Plan ---
 	openAiCompletionsDescriptor(
 		"zhipuai-coding-plan",
@@ -7435,22 +7220,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 	}),
 	// --- Ollama Cloud ---
 	simpleModelsDevDescriptor("ollama-cloud", "ollama-cloud", "ollama-chat", "https://ollama.com"),
-	// --- Xiaomi Token Plan ---
-	openAiCompletionsDescriptor(
-		"xiaomi-token-plan-ams",
-		"xiaomi-token-plan-ams",
-		"https://token-plan-ams.xiaomimimo.com/v1",
-	),
-	openAiCompletionsDescriptor(
-		"xiaomi-token-plan-cn",
-		"xiaomi-token-plan-cn",
-		"https://token-plan-cn.xiaomimimo.com/v1",
-	),
-	openAiCompletionsDescriptor(
-		"xiaomi-token-plan-sgp",
-		"xiaomi-token-plan-sgp",
-		"https://token-plan-sgp.xiaomimimo.com/v1",
-	),
 
 	// --- ZenMux ---
 	openAiCompletionsDescriptor("zenmux", "zenmux", ZENMUX_OPENAI_BASE_URL, {

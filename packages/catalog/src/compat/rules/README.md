@@ -433,7 +433,7 @@ A `seed` _defines_ bundled rows for providers whose catalog cannot be discovered
 | `empty`    | Only when no other source produced a row for the provider.                |
 | `never`    | Never; the provider's runtime model manager is the only consumer.         |
 
-`precedence="seed"` prepends the rows after the previous-snapshot merge and cross-provider reference fills, so the authored row wins dedup and same-id rows on other hosts never overwrite its name or capabilities (QwenCloud Token Plan, Meta). The default `upstream` precedence appends before the snapshot merge, so the current seed — not a stale snapshot copy — is the fallback row.
+`precedence="seed"` prepends the rows after the previous-snapshot merge and cross-provider reference fills, so the authored row wins dedup and same-id rows on other hosts never overwrite its name or capabilities (Meta). The default `upstream` precedence appends before the snapshot merge, so the current seed — not a stale snapshot copy — is the fallback row.
 
 ## Vendoring provenance
 

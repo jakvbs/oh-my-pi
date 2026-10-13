@@ -2,7 +2,7 @@
 
 class "qwen" {
 	// Groq owns its Qwen effort ladder in providers/groq.kdl.
-	on "aiand" "aimlapi" "alibaba-coding-plan" "amazon-bedrock" "coreweave" "huggingface" \
+	on "aiand" "aimlapi" "amazon-bedrock" "coreweave" "huggingface" \
 		"kilo" "nanogpt" "novita" "nvidia" "ollama-cloud" "openrouter" "synthetic" \
 		"together" "venice" "wafer-serverless" "zenmux" {
 		thinking-efforts "minimal" "low" "medium" "high"
@@ -15,7 +15,7 @@ class "qwen" {
 			thinking-requires-effort #true
 		}
 	}
-	on "alibaba-coding-plan" "alibaba-token-plan" "wafer-serverless" {
+	on "wafer-serverless" {
 		supports-developer-role #false
 	}
 	on "amazon-bedrock" "umans" "vercel-ai-gateway" {
@@ -55,20 +55,6 @@ class "qwen" {
 			thinking-efforts "low" "medium" "xhigh"
 			thinking-format "qwen-chat-template"
 			thinking-requires-effort #true
-		}
-	}
-	// DashScope compatible-mode text-only families reject image_url content.
-	on "alibaba-token-plan" {
-		family "coder" {
-			strip-image-input #true
-		}
-		revision "<3.8" {
-			models token="max" {
-				strip-image-input #true
-			}
-		}
-		models "qwen-max" {
-			strip-image-input #true
 		}
 	}
 }

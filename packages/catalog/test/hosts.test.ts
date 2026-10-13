@@ -28,11 +28,8 @@ describe("hostMatchesUrl", () => {
 });
 
 describe("modelMatchesHost", () => {
-	test("matches by provider id, provider prefix, and URL-only Fireworks markers", () => {
+	test("matches by provider id and URL-only Fireworks markers", () => {
 		expect(modelMatchesHost({ provider: "openrouter", baseUrl: "https://example.com/v1" }, "openrouter")).toBe(true);
-		expect(modelMatchesHost({ provider: "xiaomi-token-plan-eu", baseUrl: "https://example.com/v1" }, "xiaomi")).toBe(
-			true,
-		);
 		expect(modelMatchesHost({ provider: "fireworks", baseUrl: "https://example.com/v1" }, "fireworks")).toBe(false);
 		expect(
 			modelMatchesHost({ provider: "custom", baseUrl: "https://api.fireworks.ai/inference/v1" }, "fireworks"),

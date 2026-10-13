@@ -507,57 +507,6 @@ AIML API is an AI model aggregator platform providing access to diverse multi-ve
 - **Dynamic discovery**: Managed via `aimlApiModelManagerOptions()` in `packages/catalog/src/provider-models/openai-compat.ts`, which fetches `https://api.aimlapi.com/v1/models` and maps candidates via `filterModel` (`isLikelyAimlApiChatModelId`) and `mapWithBundledReference`.
 - **Canonical resolution**: Multi-vendor namespaced models (e.g., `alibaba/qwen3-32b`, `x-ai/grok-4-3`) resolve canonical parameter defaults through `buildModelProviderPriorityRank`, where `aimlapi` participates in cross-provider identity lookup (`packages/catalog/src/identity/priority.ts`, `packages/catalog/test/canonical-limit-fallback.test.ts`).
 
-## Alibaba Coding Plan (`alibaba-coding-plan`)
-Alibaba Coding Plan provides coding-oriented model endpoints hosted on Alibaba Cloud's DashScope platform. It uses the `OpenAI Chat Completions` transport (`openai-completions`) connecting to international (`https://coding-intl.dashscope.aliyuncs.com/v1`) or mainland China (`https://coding.dashscope.aliyuncs.com/v1`) endpoints.
-
-### Special casings
-
-Provider-specific overrides in `packages/catalog/src/compat/rules/providers/alibaba-coding-plan.kdl` (more-specific selectors override provider defaults):
-
-- For class glm: `thinking.efforts=["minimal","low","medium","high"]`.
-- For models *.5: `thinkingFormat="qwen"`.
-- For models glm-5: `thinkingFormat="qwen"`.
-- Provider defaults: `thinkingFormat="qwen"`, `streamIdleTimeoutMs=600000`, `thinking.mode="effort"`.
-
-- **Structured API key parsing**: In `packages/ai/src/providers/openai-shared.ts`, when `alibabaCodingPlanAuth` is enabled (`packages/ai/src/providers/openai-completions.ts`), JSON-formatted API keys (emitted by login/OAuth storage) are parsed to extract the bearer `token` and override `baseUrl` via `enterpriseUrl`.
-- **Host classification**: Grouped under the `alibabaDashscope` host entry in `packages/catalog/src/hosts.ts` (`urlMarkers: ["dashscope", "token-plan."]`).
-- **Structured credentials**: The registry formats Alibaba Coding Plan credentials as a JSON API-key envelope carrying access, refresh, expiry, and enterprise endpoint metadata before transport execution.
-
-### Auth & usage
-- **Interactive login & endpoint selection**: Declared in `packages/catalog/src/compat/rules/auth/alibaba-coding-plan.kdl` (`login "custom" hook="alibaba-coding-plan"`) and implemented in `packages/ai/src/registry/oauth/alibaba-coding-plan.ts` (`loginAlibabaCodingPlan`), prompting users to select between International (`https://coding-intl.dashscope.aliyuncs.com/v1`), Mainland China (`https://coding.dashscope.aliyuncs.com/v1`), or a custom proxy base URL.
-- **API key validation**: Validates credentials via `apiKeyValidation.validateOpenAICompatibleApiKey` (`packages/ai/src/registry/api-key-validation.ts`) against model `qwen3.5-plus` for preset endpoints, or `validateApiKeyAgainstModelsEndpoint` for custom URLs (`packages/ai/src/registry/oauth/alibaba-coding-plan.ts`).
-- **Environment variable**: API key is retrieved via `ALIBABA_CODING_PLAN_API_KEY` (`packages/catalog/src/compat/rules/providers/alibaba-coding-plan.kdl`).
-- **Usage & quota tracking**: Unlike `alibaba-token-plan`, `alibaba-coding-plan` has no dedicated usage provider or quota tracking in `packages/ai/src/usage/`.
-
-### Catalog model handling
-- **Provider entry (`alibaba-coding-plan`)**: `packages/catalog/src/compat/rules/providers/alibaba-coding-plan.kdl` declares default model `qwen3.7-plus`. Environment keys: `ALIBABA_CODING_PLAN_API_KEY`.
-- **Model manager options**: `alibabaCodingPlanModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) creates manager options via `createOpenAICompatibleModelManagerOptions` configured with `providerId: "alibaba-coding-plan"`, `defaultBaseUrl: "https://coding-intl.dashscope.aliyuncs.com/v1"`, and `mapWithBundledReference`.
-- **Model source**: Model specifications are bundled in `packages/catalog/src/models.json` under `"alibaba-coding-plan"`.
-
-### Stream behavior
-- **Extended stream idle timeout**: Sets `streamIdleTimeoutMs` to 600,000 ms (`ALIBABA_CODING_PLAN_STREAM_IDLE_TIMEOUT_MS = 600_000` in `packages/catalog/src/compat/resolve.ts`) to prevent premature stream watchdogs aborting during long initial generation delays before the first SSE event.
-
-## QwenCloud Token Plan (`alibaba-token-plan`)
-QwenCloud Token Plan provides model subscription access to Alibaba Cloud's Qwen and DeepSeek model suites. It operates using the OpenAI Chat Completions transport (`openai-completions` API schema) over HTTP POST JSON and Server-Sent Events (SSE) streaming (`packages/ai/src/providers/openai-shared.ts`).
-
-### Special casings
-- **Explicit Credential Isolation**: `resolveOpenAIRequestSetup` (`packages/ai/src/providers/openai-shared.ts`) requires an explicit `ALIBABA_TOKEN_PLAN_API_KEY` or `BAILIAN_TOKEN_PLAN_API_KEY` credential and explicitly disables the generic `$env.OPENAI_API_KEY` fallback to prevent key leakage to QwenCloud endpoints.
-- **Region Base URL Routing**: Credentials support region-locked endpoints: International Singapore (`ALIBABA_TOKEN_PLAN_BASE_URL` = `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`) and China Beijing (`ALIBABA_TOKEN_PLAN_CN_BASE_URL` = `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`). Region keys are non-interchangeable; stored `baseUrl` overrides catalog defaults for inference and model discovery (`packages/catalog/src/provider-models/openai-compat.ts`).
-- **Stored compound credentials**: Alibaba Token Plan keys can serialize `{ token, cookie?, baseUrl? }`; `parseAlibabaTokenPlanCredential` in `packages/catalog/src/wire/alibaba-token-plan.ts` recovers the wire bearer token and optional quota cookie/endpoint.
-
-### Auth & usage
-- **Environment & Wire Credential**: Resolves `ALIBABA_TOKEN_PLAN_API_KEY` then `BAILIAN_TOKEN_PLAN_API_KEY`. Supports plain bearer keys (`sk-sp-...`) or serialized JSON strings (`{ token, cookie?, baseUrl? }`) parsed via `parseAlibabaTokenPlanCredential` and formatted via `serializeAlibabaTokenPlanCredential` (`packages/catalog/src/wire/alibaba-token-plan.ts`).
-- **Interactive Login**: Declared in `packages/catalog/src/compat/rules/auth/alibaba-token-plan.kdl` (`login "custom" hook="alibaba-token-plan"`) and implemented in `packages/ai/src/registry/oauth/alibaba-token-plan.ts` (`loginAlibabaTokenPlan`), prompting for region (1=International, 2=China Beijing, 3=Custom URL), validating the API key via `${baseUrl}/models` (`validateApiKeyAgainstModelsEndpoint`), and accepting an optional `cs-data.qwencloud.com` browser `Cookie` header for quota reporting.
-- **Console Quota Scraping**: `alibabaTokenPlanUsageProvider` (`packages/ai/src/usage/alibaba-token-plan.ts`) uses the stored `Cookie` header to fetch `secToken` from `https://home.qwencloud.com/tool/user/info.json` and issues a POST to `https://cs-data.qwencloud.com/data/api.json?product=sfm_bailian&action=IntlBroadScopeAspnGateway&api=zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage` with URL-encoded parameters.
-- **Quota Windows & Ranking**: Parses `per5HourPercentage`/`per5HourResetTime` (5-hour window, `credits:5h`), `per1WeekPercentage`/`per1WeekResetTime` (7-day window, `credits:7d`), and `per1MonthPercentage`/`per1MonthResetTime` (`credits:monthly`, reset deadline only — the console never states the month's span). Monthly-only plans therefore still produce a report, and the status-line usage segment promotes their monthly window (`MONTHLY_SUBSCRIPTION_PROVIDERS` in `packages/tui/src/status-line/component.ts`). `alibabaTokenPlanRankingStrategy` configures `credits:5h` as primary limit (5h window) and `credits:7d` as secondary limit (7d window); `credits:monthly` is display-only.
-
-### Catalog model handling
-- **Provider entry (`alibaba-token-plan`)**: `packages/catalog/src/compat/rules/providers/alibaba-token-plan.kdl` declares default model `qwen3.7-plus`. Environment keys: `ALIBABA_TOKEN_PLAN_API_KEY`, `BAILIAN_TOKEN_PLAN_API_KEY`.
-- **Discovery replacement**: Successful authoritative discovery replaces fallback provider rows rather than retaining retired seed models.
-- **Authored seeds**: `qwen3.8-max-preview`, `qwen3.8-max`, `qwen3.8-flash`, `qwen3.7-max`, `qwen3.7-plus`, `qwen3.6-flash`, `glm-5.2`, `deepseek-v4-pro`; bundle policy `fallback`. Limits, capabilities, and prices are authored alongside these rows.
-- **Authoritative Discovery**: Configured with `dynamicModelsAuthoritative: true` (`packages/catalog/src/compat/rules/providers/alibaba-token-plan.kdl`). `/models` discovery is subscription-scoped; a successful endpoint response is authoritative and overrides static fallback catalogs even if empty (`packages/catalog/scripts/generate-models.ts`).
-- **Discovery Filtering & Overrides**: `isAlibabaTokenPlanChatModelId` (`packages/catalog/src/provider-models/openai-compat.ts`) filters non-chat prefixes (`qwen-audio-`, `qwen-image-`, `text-embedding-`, `wan2.7-`). Discovered `deepseek-v4*` models are mapped with `reasoning: true` and effort thinking (`[Effort.High, Effort.Max]`).
-
 ## Baseten (`baseten`)
 Baseten provides high-performance infrastructure for hosting open-weight LLMs (including Moonshot Kimi, DeepSeek, Zhipu GLM, and gpt-oss series). Requests execute over the OpenAI Chat Completions transport (`openai-completions` API) targeting default base URL `https://inference.baseten.co/v1`.
 
@@ -954,7 +903,7 @@ Meta Model API is Meta's commercial API platform hosting first-party models such
 
 
 ## MiniMax (`minimax`)
-MiniMax provides foundation models (including MiniMax-M3 and M2 generation) accessible via regional international (`api.minimax.io`) and mainland China (`api.minimaxi.com`) endpoints. Standard `minimax` / `minimax-cn` and MiniMax Token Plan `minimax-code` / `minimax-code-cn` all use "Anthropic Messages" (`/anthropic`), the protocol MiniMax recommends; only the Token Plan's legacy `*-lightning` rows stay on "OpenAI Chat Completions" (`/v1`).
+MiniMax provides foundation models (including MiniMax-M3 and M2 generation) accessible via regional international (`api.minimax.io`) and mainland China (`api.minimaxi.com`) endpoints. Standard `minimax` / `minimax-cn` use "Anthropic Messages" (`/anthropic`), the protocol MiniMax recommends.
 
 ### Special casings
 
@@ -966,53 +915,12 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/mini
 - **Inband XML dialect**: `packages/ai/src/dialect/minimax.ts` registers the `minimax` dialect (`<minimax:tool_call>`) for fallback XML tool invocation parsing.
 - **Gateway API overrides**: `OPENCODE_ZEN_API_RESOLUTION` and `OPENCODE_GO_API_RESOLUTION` in `packages/catalog/src/provider-models/openai-compat.ts` force `minimax-m3` / `minimax-m3-free` / `minimax-m2.7` on OpenCode gateways to route over `openai-completions` at `/v1/chat/completions` instead of Anthropic `/v1/messages`.
 
-### Auth & usage
-- **Auth keys**: Uses `MINIMAX_API_KEY` (`minimax`), `MINIMAX_CODE_API_KEY` (`minimax-code`), and `MINIMAX_CODE_CN_API_KEY` (`minimax-code-cn`) declared in `packages/catalog/src/compat/rules/providers/minimax.kdl`.
-- **Token Plan login**: Declared in `packages/catalog/src/compat/rules/auth/minimax-code.kdl` and `minimax-code-cn.kdl` as `login "api-key"` rules (`packages/ai/src/registry/engine/api-key.ts`), driving prompts linking to `https://platform.minimax.io/subscribe/token-plan` (international) and `https://platform.minimaxi.com/subscribe/token-plan` (China) and validating the key with a `MiniMax-M3` Anthropic Messages request (`validate "anthropic-messages"`).
-- **Usage quota**: `minimaxCodeUsageProvider` in `packages/ai/src/usage/minimax-code.ts` polls `GET /v1/token_plan/remains` at the host root of the configured `minimax-code` base URL (default `https://api.minimax.io`; trailing `/v1`, `/anthropic`, and `/anthropic/v1` suffixes are stripped), parsing rolling interval and weekly usage windows per plan bucket into remaining percentages for `omp usage`. Only the international provider is registered; `minimax-code-cn` has no usage provider.
+### Auth
+- **Auth keys**: Uses `MINIMAX_API_KEY` (`minimax`) declared in `packages/catalog/src/compat/rules/providers/minimax.kdl`.
 
 ### Catalog model handling
 - **Provider entry (`minimax`)**: `packages/catalog/src/compat/rules/providers/minimax.kdl` declares default model `MiniMax-M3`. Environment keys: `MINIMAX_API_KEY`.
-- **Context window policy**: `scripts/generated-policies.ts` overrides `MiniMax-M3` context limits to 1,000,000 tokens for `minimax`, `minimax-code`, and `minimax-code-cn`, matching the documented 1M long-context tier over upstream pricing boundaries.
-- **OpenAI-route flags**: For Token Plan rows still on `openai-completions` (legacy `*-lightning`), `classes/minimax.kdl` sets `supports-store #false`, `supports-developer-role #false`, `supports-reasoning-effort #false`, and `reasoning-content-field "reasoning_content"`.
-
-## MiniMax Token Plan (`minimax-code`)
-The MiniMax Token Plan provider (`minimax-code`, alongside its mainland China regional variant `minimax-code-cn`) provides access to MiniMax subscription models such as `MiniMax-M3.1-Flash-Preview`, `MiniMax-M3`, and `MiniMax-M2.5` over the Anthropic Messages transport (`https://api.minimax.io/anthropic` for international, `https://api.minimaxi.com/anthropic` for China), the same transport as plain `minimax`. Unlike plain `minimax` (static pay-as-you-go API key), `minimax-code` uses an interactive subscription login flow and features token plan quota monitoring via `omp usage`.
-
-### Special casings
-- **Shared transport with plain `minimax`**: All four MiniMax providers route over `anthropic-messages`, so the `class "minimax"` rules in `packages/catalog/src/compat/rules/classes/minimax.kdl` give them the same adaptive thinking. `MiniMax-M3.1-Flash-Preview` sends `low`..`max` as `output_config.effort`. The model always thinks (`thinking.type: "disabled"` and effort `none` return error 2013), so like the M2 family it is marked `thinking-requires-effort`: thinking-off, forced-off, and effort-less requests clamp to `low` in `normalizeMandatoryReasoningOptions` (`packages/ai/src/stream.ts`) before reaching the transport (`test/anthropic-fable-request-shaping.test.ts`).
-- **Legacy lightning rows**: `MiniMax-M2.1-lightning` and `MiniMax-M2.5-lightning` are absent from models.dev, both live model lists, and the Anthropic endpoint's supported-model list, so they survive only as previous-snapshot rows on `openai-completions` (`https://api.minimax.io/v1`). A `models` residue rule in `providers/minimax-code.kdl` / `minimax-code-cn.kdl` keeps their effort-mode thinking.
-- **OpenAI-route handling (lightning rows, custom overrides)**: `classes/minimax.kdl` sets `supports-store #false`, `supports-developer-role #false`, `supports-reasoning-effort #false`, and `reasoning-content-field "reasoning_content"` for `minimax-code` / `minimax-code-cn`. `mergeStreamingArgumentObjects` in `packages/ai/src/providers/openai-completions.ts` deep-merges `function.arguments` streamed as partial JSON objects, and the stream parser turns inline `<think>`...`</think>` tags into thinking blocks while deduplicating MiniMax-M3 cumulative reasoning snapshots after visible answer content has started.
-
-### Auth & usage
-- **Interactive Subscription Login Flow**: Declared in `packages/catalog/src/compat/rules/auth/minimax-code.kdl` as a `login "api-key"` rule (`packages/ai/src/registry/engine/api-key.ts`). This is an interactive API key prompt: it directs to the subscription portal (`https://platform.minimax.io/subscribe/token-plan`), prompts for key entry (`sk-...`), and validates the key via a `POST /anthropic/v1/messages` request (`validate "anthropic-messages"`) using `MiniMax-M3`.
-- **Environment Variables**: Resolves credentials from `MINIMAX_CODE_API_KEY` for international `minimax-code` and `MINIMAX_CODE_CN_API_KEY` for China `minimax-code-cn` (plain `minimax` resolves `MINIMAX_API_KEY`).
-- **Token Plan Quota Tracking**: `minimaxCodeUsageProvider` in `packages/ai/src/usage/minimax-code.ts` queries `GET /v1/token_plan/remains` with `Authorization: Bearer ${apiKey}` at the host root, so the bundled Anthropic-route base URL (`https://api.minimax.io/anthropic`) still resolves to `https://api.minimax.io/v1/token_plan/remains` (`test/minimax-token-plan-usage.test.ts`).
-- **Quota Metric Parsing & Normalization**: Parses `model_remains[]` entries into rolling interval windows (`current_interval_*`) and 7-day windows (`current_weekly_*`). The shared plan quota `general` is scoped as `{ shared: true }`. Calculates `usedFraction` via `(100 - remainingPercent) / 100` and overrides status if `current_*_status === 2` (`STATUS_EXHAUSTED`). Out-of-plan models (status 3 `STATUS_UNLIMITED` with zero totals) are filtered out into `metadata.unavailableModels`. Validates success via `base_resp.status_code === 0` to catch API errors returned under HTTP 200 responses.
-
-### Catalog model handling
-- **Provider entry (`minimax-code`)**: `packages/catalog/src/compat/rules/providers/minimax-code.kdl` declares default model `MiniMax-M3`. Environment keys: `MINIMAX_CODE_API_KEY`.
-- **Catalog Wiring**: `anthropicMessagesDescriptor` in `packages/catalog/src/provider-models/openai-compat.ts` registers descriptors `"minimax-coding-plan"` and `"minimax-cn-coding-plan"` bound to base URLs `https://api.minimax.io/anthropic` and `https://api.minimaxi.com/anthropic`.
-- **1M Context Tier Override**: Policy generation (`packages/catalog/scripts/generated-policies.ts`) explicitly overrides `MiniMax-M3` context windows for `minimax-code` and `minimax-code-cn` to report the documented 1,000,000-token tier instead of the upstream 512,000-token pricing boundary.
-- **Pay-as-you-go equivalent pricing**: Upstream reports $0 for every Token Plan model. The `minimax-code` / `minimax-code-cn` `pricing-peer` rules in `runtime/behavior.kdl` price rows at their `minimax` / `minimax-cn` list prices at build time (Credits overflow is billed at the PAYG list price), so usage and `omp stats` show PAYG-equivalent cost. `MiniMax-M3.1-Flash-Preview` has no published price and borrows the `MiniMax-M3` rate as an estimate. `applyPricingPeerFallback` (`packages/catalog/scripts/generated-policies.ts`) fills only zero-cost rows and tries a rule's alias `peer-id` before the row's own id, across peers in declared order.
-- **Host Matching**: Provider host mapping in `packages/catalog/src/hosts.ts` associates `urlMarkers` `api.minimax.io` and `api.minimaxi.com` with `minimax`, `minimax-code`, and `minimax-code-cn`.
-
-## MiniMax Token Plan (China) (`minimax-code-cn`)
-MiniMax Token Plan (China) provides access to MiniMax models for mainland China subscribers using the Anthropic Messages transport (`anthropic-messages`, `https://api.minimaxi.com/anthropic`); only the legacy `*-lightning` rows use OpenAI Chat Completions (`https://api.minimaxi.com/v1`). It connects to China regional endpoints for subscription onboarding, API key validation, and model execution.
-
-### Special casings
-- **OpenAI-route stream handling (lightning rows, custom overrides)**: `mergeStreamingArgumentObjects` in `packages/ai/src/providers/openai-completions.ts` handles MiniMax backends streaming `function.arguments` as raw JSON objects instead of standard OpenAI JSON strings (`test/issue-1776-repro.test.ts`, `test/issue-2080-repro.test.ts`). `<think>` tags delivered in content streams are normalized into thinking blocks (`test/issue-1203-repro.test.ts`), while `lastCumulativeReasoningBySignature` in `packages/ai/src/dialect/demotion.ts` and `streamOpenAICompletionsOnce` deduplicate cumulative reasoning snapshots for `MiniMax-M3` across text block transitions. These repros build an explicit OpenAI-route Token Plan model (`minimaxTokenPlanOpenAIModel` in `packages/ai/test/helpers`) because the bundled rows ride the Anthropic route.
-- **Unsupported Feature Stripping**: On the OpenAI route, requests omit unsupported thinking options (`test/issue-955-repro.test.ts`, which runs an OpenAI-route Token Plan model); `classes/minimax.kdl` applies `supports-store #false`, `supports-developer-role #false`, `supports-reasoning-effort #false`, and `reasoning-content-field "reasoning_content"`.
-
-### Auth & usage
-- **API Key & Interactive Login**: Authenticates via `MINIMAX_CODE_CN_API_KEY` (`packages/catalog/src/compat/rules/providers/minimax-code-cn.kdl`). Interactive login declared in `packages/catalog/src/compat/rules/auth/minimax-code-cn.kdl` as a `login "api-key"` rule (`packages/ai/src/registry/engine/api-key.ts`) points to `https://platform.minimaxi.com/subscribe/token-plan` and validates the pasted key with a `MiniMax-M3` Anthropic Messages request against `https://api.minimaxi.com/anthropic`.
-- **Endpoints & Host Detection**: API requests target `https://api.minimaxi.com/anthropic` (lightning rows: `https://api.minimaxi.com/v1`) (`packages/catalog/src/models.json`). `urlMarkers` includes `api.minimaxi.com` under the `minimax` host classification in `packages/catalog/src/hosts.ts`.
-- **Usage Telemetry Availability**: Unlike `minimax-code` (which fetches quota remaining percentages from `https://api.minimax.io/v1/token_plan/remains` via `minimaxCodeUsageProvider` in `packages/ai/src/usage/minimax-code.ts`), `minimax-code-cn` has no usage provider registered (`storage.usageProviderFor("minimax-code-cn")` returns `undefined` in `packages/ai/src/auth-storage.ts` and `test/minimax-token-plan-usage.test.ts`), so usage telemetry is disabled for China regional accounts.
-
-### Catalog model handling
-- **Provider entry (`minimax-code-cn`)**: `packages/catalog/src/compat/rules/providers/minimax-code-cn.kdl` declares default model `MiniMax-M3`. Environment keys: `MINIMAX_CODE_CN_API_KEY`.
-- **1M Context Window Override**: `packages/catalog/scripts/generated-policies.ts` overrides `MiniMax-M3` context window from the upstream 512K pricing boundary to 1,000,000 (1M) tokens (`model.contextWindow = 1_000_000`) for `minimax-code-cn` (alongside `minimax-code`, `minimax`).
-- **Catalog Policy Overrides**: OpenAI-route rows take `reasoning-content-field "reasoning_content"`, `supports-store #false`, `supports-developer-role #false`, and `supports-reasoning-effort #false` from `classes/minimax.kdl`; Anthropic-route rows share plain `minimax-cn`'s adaptive thinking rules.
+- **Context window policy**: `classes/minimax.kdl` overrides `MiniMax-M3` context limits to 1,000,000 tokens for `minimax` and `minimax-cn`, matching the documented 1M long-context tier over upstream pricing boundaries.
 
 ## Mistral (`mistral`)
 Mistral AI provides access to Mistral, Codestral, Devstral, Ministral, and Pixtral models via `api.mistral.ai/v1`. Requests use the OpenAI Chat Completions transport (`openai-completions`).
@@ -1616,106 +1524,6 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/xai-
 - **Provider entry (`xai-oauth`)**: `packages/catalog/src/compat/rules/providers/xai-oauth.kdl` declares default model `grok-4.6`. Environment keys: `XAI_OAUTH_TOKEN`, `XAI_API_KEY`.
 - **Authored seeds**: `grok-build`, `grok-build-0.1`, `grok-4.3`, `grok-4.5`, `grok-4.6`, `grok-4.7`, `grok-4.20-multi-agent-0309`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-composer-2.5-fast`, `grok-tts`, `grok-imagine-image`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
 - **Dynamic Curation Overlay**: `applyXAIOAuthCuration` (`openai-compat.ts`, `xaiOAuthModelManagerOptions`) filters non-chat prefixes (`grok-imagine-`, `grok-stt-`, `grok-voice-`), overlays curated context windows (up to 2M), sets `maxTokens` equal to `contextWindow`, preserves image capabilities and reasoning flags, and injects missing curated models.
-
-## Xiaomi MiMo (`xiaomi`)
-Xiaomi MiMo delivers Xiaomi's proprietary MiMo model family (such as `mimo-v2.5` and `mimo-v2.5-pro`) over OpenAI-compatible endpoints. Requests execute over the OpenAI Chat Completions transport using standard pay-as-you-go base URLs (`https://api.xiaomimimo.com/v1`) or regional Token Plan base URLs (`https://token-plan-{sgp,ams,cn}.xiaomimimo.com/v1`).
-
-### Special casings
-
-Provider-specific overrides in `packages/catalog/src/compat/rules/providers/xiaomi.kdl` (more-specific selectors override provider defaults):
-
-- For class mimo; family v2: `allowsSyntheticReasoningContentForToolCalls=false`, `reasoningContentField="reasoning_content"`, `requiresReasoningContentForToolCalls=true`, `supportsStore=false`, `thinkingFormat="zai"`, `thinking.mode="effort"`.
-- For models mimo-v2.5: `allowsSyntheticReasoningContentForToolCalls=false`, `reasoningContentField="reasoning_content"`, `requiresReasoningContentForToolCalls=true`, `supportsStore=false`, `thinkingFormat="zai"`.
-
-- **Reasoning Content Invariants**:
-  - `requiresReasoningContentForToolCalls: true` (`packages/catalog/src/compat/resolve.ts`): MiMo models require exact `reasoning_content` replay on thinking-mode tool-call continuations across standard and Token Plan hosts.
-  - `requiresReasoningContentForAllAssistantTurns: true` (`packages/catalog/src/compat/resolve.ts`): Enforces `reasoning_content` presence on all prior assistant turns during reasoning mode (except when routed via OpenRouter).
-  - `allowsSyntheticReasoningContentForToolCalls: false` (`packages/catalog/src/compat/resolve.ts`): Rejects synthetic `reasoning_content` placeholders (e.g. `"."`) on tool-call turns.
-- **Thinking Format & Effort Mapping**:
-  - `thinkingFormat: "zai"` (`packages/catalog/src/compat/resolve.ts`): Formats thinking mode payloads using the z.ai binary `thinking` structure.
-  - `supportsReasoningEffort: false` (`packages/catalog/src/compat/resolve.ts`): Suppresses standard `reasoning_effort` parameters.
-
-### Stream behavior
-
-### Auth & usage
-- **Registry & Provider Definitions**: Primary provider is declared in `packages/catalog/src/compat/rules/auth/xiaomi.kdl`; regional Token Plan providers are declared in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-{ams,cn,sgp}.kdl`.
-- **Interactive Key Prompts & Validation**: Standard Xiaomi login (`loginXiaomi` in `packages/ai/src/registry/oauth/xiaomi.ts`) prompts for standard (`sk-...`) or Token Plan (`tp-...`) API keys and validates them via `validateXiaomiApiKey`, while regional Token Plan providers use declarative `login "api-key"` rules in their respective `.kdl` files.
-- **Token Plan Validation Fallback**: Standard `xiaomi` login with `tp-` keys falls back sequentially through SGP (`https://token-plan-sgp.xiaomimimo.com/v1`) → AMS (`https://token-plan-ams.xiaomimimo.com/v1`) → CN (`https://token-plan-cn.xiaomimimo.com/v1`), using fresh per-endpoint `AbortSignal.timeout(15_000)` signals so regional timeouts do not abort subsequent fallback endpoints. Regional `xiaomi-token-plan-*` logins validate against their specific cluster.
-- **Environment Variables**: `XIAOMI_API_KEY` for standard `xiaomi`, and `XIAOMI_TOKEN_PLAN_AMS_API_KEY`, `XIAOMI_TOKEN_PLAN_CN_API_KEY`, `XIAOMI_TOKEN_PLAN_SGP_API_KEY` for regional Token Plan providers (`packages/catalog/src/compat/rules/providers/xiaomi.kdl`).
-
-### Catalog model handling
-- **Provider entry (`xiaomi`)**: `packages/catalog/src/compat/rules/providers/xiaomi.kdl` declares default model `mimo-v2.5`. Environment keys: `XIAOMI_API_KEY`.
-- **Dynamic Model Discovery**: `xiaomiModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts` inspects keys (`tp-` vs `sk-`) and provider IDs to query standard or regional `/models` endpoints (`XIAOMI_TOKEN_PLAN_BASE_URLS`), preserving regional provider IDs on returned models.
-- **Audio Model Filtering**: Speech and audio models are excluded from discovery and catalog generation (`!model.id.includes("-tts") && !model.id.includes("-asr")`) in `xiaomiModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) and `scripts/generate-models.ts`.
-- **Host Matching**: `modelMatchesHost` (`packages/catalog/src/hosts.ts`) matches `xiaomi` provider IDs, `xiaomi-token-plan-` provider prefixes, and `xiaomimimo.com` URL markers to the `xiaomi` host class.
-
-## Xiaomi Token Plan (Europe) (`xiaomi-token-plan-ams`)
-Xiaomi Token Plan (Europe) (`xiaomi-token-plan-ams`) provides regional access to Xiaomi's MiMo model family (such as `mimo-v2.5` and `mimo-v2-omni`) via Xiaomi's European Token Plan gateway (`https://token-plan-ams.xiaomimimo.com/v1`). It uses the OpenAI Chat Completions transport (`api: "openai-completions"`). This regional provider allows CLI login (`omp login`) and dynamic model lookup to store and validate `tp-` API keys against the European cluster without falling back across regions.
-
-### Special casings
-
-Provider-specific overrides in `packages/catalog/src/compat/rules/providers/xiaomi-token-plan-ams.kdl` (more-specific selectors override provider defaults):
-
-- For class mimo; family v2: `thinking.mode="effort"`.
-
-- **TTS/ASR Model Filter**: Dynamic model manager options (`xiaomiModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`) and model generation scripts (`scripts/generate-models.ts`) filter out audio models (`!model.id.includes("-tts") && !model.id.includes("-asr")`).
-- **Provider ID Retention**: `xiaomiModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) explicitly sets `providerId: "xiaomi-token-plan-ams"` and maps dynamic discovery entries back to `provider: "xiaomi-token-plan-ams"` rather than collapsing them to generic `xiaomi`.
-
-### Auth & usage
-- **Registry Provider & Auth Policy**: Declared in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-ams.kdl` with ID `"xiaomi-token-plan-ams"` as a `login "api-key"` rule (`packages/ai/src/registry/engine/api-key.ts`).
-- **Region Console Instructions**: Interactive CLI login declared in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-ams.kdl` prompts users for a `tp-` prefix API key and directs them to the Token Plan console URL (`https://platform.xiaomimimo.com/console/plan-manage`).
-- **Single-Cluster Validation**: Validates keys directly against `https://token-plan-ams.xiaomimimo.com/v1` (using `mimo-v2.5` via `validate "chat-completions"` in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-ams.kdl`), bypassing the multi-region fallback sequence used by generic `loginXiaomi`.
-- **Headers & Errors**: Requests pass standard `Authorization: Bearer tp-...` headers. Authentication or network failures throw `AIError.OAuthError` or `AIError.ApiKeyRequiredError`.
-
-### Catalog model handling
-- **Provider entry (`xiaomi-token-plan-ams`)**: `packages/catalog/src/compat/rules/providers/xiaomi-token-plan-ams.kdl` declares default model `mimo-v2.5`. Environment keys: `XIAOMI_TOKEN_PLAN_AMS_API_KEY`.
-- **Dynamic Model Manager**: `xiaomiModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) maps `tokenPlanRegion: "ams"` to base URL `https://token-plan-ams.xiaomimimo.com/v1` for `fetchDynamicModels`, utilizing `createBundledReferenceMap("xiaomi")` for baseline specs.
-- **Pre-packaged Catalog Models**: Bundled models (e.g. `mimo-v2-omni`, `mimo-v2.5`) are registered in `packages/catalog/src/models.json` under key `"xiaomi-token-plan-ams"`, setting `baseUrl: "https://token-plan-ams.xiaomimimo.com/v1"` with `api: "openai-completions"`.
-
-## Xiaomi Token Plan (China) (`xiaomi-token-plan-cn`)
-Xiaomi Token Plan (China) is the regional China endpoint for Xiaomi MiMo's Token Plan subscription service (`https://token-plan-cn.xiaomimimo.com/v1`). It provides access to MiMo AI models using regional `tp-...` API keys. It uses the "OpenAI Chat Completions" transport.
-
-### Special casings
-
-Provider-specific overrides in `packages/catalog/src/compat/rules/providers/xiaomi-token-plan-cn.kdl` (more-specific selectors override provider defaults):
-
-- For class mimo; family v2: `thinking.mode="effort"`.
-
-- **Host classification**: `KNOWN_HOSTS.xiaomi` in `packages/catalog/src/hosts.ts` matches `xiaomi-token-plan-cn` via `providerPrefixes: ["xiaomi-token-plan-"]` and `urlMarkers: ["xiaomimimo.com"]`, enabling host-level compatibility flags across all Token Plan endpoints.
-- **Reasoning content replay**: `packages/catalog/src/compat/resolve.ts` marks MiMo models on Xiaomi hosts with `requiresReasoningContentForToolCalls: true` and `requiresReasoningContentForAllAssistantTurns: true`, requiring prior assistant tool-call turns to preserve exact `reasoning_content`.
-- **Synthetic reasoning rejection**: `allowsSyntheticReasoningContentForToolCalls` in `packages/catalog/src/compat/resolve.ts` evaluates to `false` for MiMo models, rejecting synthetic `.` placeholders on tool-call continuations.
-- **Audio SKU filtering**: `packages/catalog/scripts/generate-models.ts` filters out speech-synthesis and recognition SKUs containing `-tts` or `-asr` for `xiaomi-token-plan-` providers.
-
-### Auth & usage
-- **Environment variable & login**: Authenticates via `XIAOMI_TOKEN_PLAN_CN_API_KEY`. Declared in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-cn.kdl` as a `login "api-key"` rule (`packages/ai/src/registry/engine/api-key.ts`).
-- **Regional API key validation**: Prompts for a `tp-...` key from `https://platform.xiaomimimo.com/console/plan-manage` and validates it via `validateXiaomiApiKey` by sending a `POST /v1/chat/completions` request for `mimo-v2.5` strictly against `https://token-plan-cn.xiaomimimo.com/v1` with a 15-second timeout (`VALIDATION_TIMEOUT_MS`).
-- **Usage accounting**: Standard OpenAI Chat Completions usage accounting applies (`calculateOpenAIUsageAccounting`); no provider-specific usage or quota module exists.
-
-### Catalog model handling
-- **Provider entry (`xiaomi-token-plan-cn`)**: `packages/catalog/src/compat/rules/providers/xiaomi-token-plan-cn.kdl` declares default model `mimo-v2.5`. Environment keys: `XIAOMI_TOKEN_PLAN_CN_API_KEY`.
-- **Authored seeds**: `mimo-v2.6-pro`, `mimo-v2.6-flash`, `mimo-v2.6-pro-ultraspeed`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
-- **Regional discovery & model manager**: `xiaomiModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts` pins discovery to `XIAOMI_TOKEN_PLAN_BASE_URLS.cn` (`https://token-plan-cn.xiaomimimo.com/v1`). Dynamic model discovery preserves `providerId: "xiaomi-token-plan-cn"`, filters `-tts` and `-asr` models, and merges metadata from bundled `xiaomi` reference specs using `createBundledReferenceMap("xiaomi")`.
-
-## Xiaomi Token Plan (Singapore) (`xiaomi-token-plan-sgp`)
-The Xiaomi Token Plan (Singapore) provider (`xiaomi-token-plan-sgp`) routes requests to Xiaomi's Singapore Token Plan cluster using the OpenAI Chat Completions transport (`openai-completions`). It provides dedicated access to Xiaomi MiMo models (`mimo-v2.5`, `mimo-v2-omni`) using region-bound `tp-...` API keys targeted at `https://token-plan-sgp.xiaomimimo.com/v1`. This regional entry allows login and model storage isolated from standard Xiaomi MiMo (`xiaomi`) and other regional token plan endpoints (`xiaomi-token-plan-ams`, `xiaomi-token-plan-cn`).
-
-### Special casings
-
-Provider-specific overrides in `packages/catalog/src/compat/rules/providers/xiaomi-token-plan-sgp.kdl` (more-specific selectors override provider defaults):
-
-- For class mimo; family v2: `thinking.mode="effort"`.
-
-- **Regional Base URL Binding**: `xiaomiModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) explicitly sets `baseUrl` to `https://token-plan-sgp.xiaomimimo.com/v1` (`XIAOMI_TOKEN_PLAN_BASE_URLS.sgp`) when configured with `tokenPlanRegion: "sgp"`, preventing token-plan keys from reverting to the standard Xiaomi endpoint `https://api.xiaomimimo.com/v1` (`XIAOMI_STANDARD_BASE_URL`).
-
-### Auth & usage
-- **Pinned Regional Validation**: Validates keys strictly against the Singapore endpoint `https://token-plan-sgp.xiaomimimo.com/v1` (via `validate "chat-completions"` in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-sgp.kdl`). Unlike generic `loginXiaomi` (which performs SGP -> AMS -> CN fallback for `tp-` keys), `xiaomi-token-plan-sgp` disables cross-region fallback during auth validation.
-- **Plan Management Auth URL**: Declared in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-sgp.kdl`, prompting users with instructions pointing to `https://platform.xiaomimimo.com/console/plan-manage` for acquiring regional `tp-` keys (`placeholder="tp-..."`), contrasting with standard `https://platform.xiaomimimo.com/#/console/api-keys`.
-- **Validation Handshake**: Validation tests credentials via `POST /chat/completions` using model `mimo-v2.5` (`validate "chat-completions"` in `packages/catalog/src/compat/rules/auth/xiaomi-token-plan-sgp.kdl`), `max_tokens: 1`, and `messages: [{ role: "user", content: "ping" }]`, enforcing a 15-second timeout.
-- **Usage Accounting**: Token consumption and cache metrics are calculated using standard OpenAI Chat Completions accounting via `calculateOpenAIUsageAccounting` (`packages/ai/src/providers/openai-shared.ts`).
-
-### Catalog model handling
-- **Provider entry (`xiaomi-token-plan-sgp`)**: `packages/catalog/src/compat/rules/providers/xiaomi-token-plan-sgp.kdl` declares default model `mimo-v2.5`. Environment keys: `XIAOMI_TOKEN_PLAN_SGP_API_KEY`.
-- **Bundled Spec Mapping**: Dynamic model mapping uses `createBundledReferenceMap` (`packages/catalog/src/provider-models/openai-compat.ts`) to merge dynamic models with static reference specs defined under `"xiaomi"` in `packages/catalog/src/models.json`.
 
 ## Z.AI (GLM Coding Plan) (`zai`)
 Z.AI provides GLM family models (such as `glm-5.2`) via Zhipu AI's coding plan infrastructure using the Anthropic Messages transport (`https://api.z.ai/api/anthropic`). Authentication supports both direct API keys and an OAuth browser sign-in flow that mints a durable API key.

@@ -212,19 +212,6 @@ describe("Anthropic-compatible unsigned thinking replay (#2005)", () => {
 		expect(body).toContain("\ufffd");
 	});
 
-	it("covers the Xiaomi MiMo Anthropic-compatible reporter configuration without provider allowlists", () => {
-		const model = makeModel({
-			provider: "user-custom",
-			id: "mimo-v2.5-pro",
-			name: "MiMo V2.5 Pro (Singapore)",
-			baseUrl: "https://token-plan-sgp.xiaomimimo.com/anthropic",
-			maxTokens: 131_072,
-			contextWindow: 1_048_576,
-		});
-		const blocks = assistantWireBlocks([makeUser(), makeAssistantThinking("hidden reasoning")], model);
-		expect(blocks[0]).toEqual({ type: "thinking", thinking: "hidden reasoning", signature: "" });
-	});
-
 	it("preserves legacy known non-signing endpoints even if model.reasoning is false", () => {
 		const model = makeModel({ provider: "custom", baseUrl: "https://api.deepseek.com/v1", reasoning: false });
 		const blocks = assistantWireBlocks([makeUser(), makeAssistantThinking("deepseek reasoning")], model);

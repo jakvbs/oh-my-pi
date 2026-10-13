@@ -82,13 +82,6 @@ interface RowLike {
 function keepsExplicitThinking(row: RowLike): boolean {
 	if (isCollapsedVariantSpec(row as unknown as ModelSpec<Api>)) return true;
 	if (row.compatConfig?.thinkingFormat === "chat-template" && row.thinking) return true;
-	if (
-		row.provider === "alibaba-token-plan" &&
-		(row.id === "qwen3.8-max-preview" || row.id === "qwen3.8-max") &&
-		row.thinking
-	) {
-		return true;
-	}
 	if (row.provider === "cline-pass" && row.thinking) return true;
 	if (row.compatConfig?.trustExplicitThinkingOnly === true) return true;
 	if (row.provider === "openrouter" && row.thinking?.requiresEffort === true) return true;

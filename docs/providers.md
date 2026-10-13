@@ -110,7 +110,6 @@ The variables below supply credentials after runtime/config overrides and stored
 | `abliteration`                   | `ABLITERATION_API_KEY`, then `ABLIT_KEY`                                       |
 | `aiand`                          | `AIAND_API_KEY`                                                               |
 | `cerebras`                       | `CEREBRAS_API_KEY`                                                            |
-| `alibaba-token-plan`             | `ALIBABA_TOKEN_PLAN_API_KEY`, then `BAILIAN_TOKEN_PLAN_API_KEY`               |
 | `baseten`                        | `BASETEN_API_KEY`                                                             |
 | `bedrock-mantle`                 | `AWS_BEARER_TOKEN_BEDROCK` or the AWS credential chain (SigV4)                 |
 | `commandcode`                    | `COMMAND_CODE_API_KEY`, then `COMMANDCODE_API_KEY`                            |
@@ -145,20 +144,13 @@ The variables below supply credentials after runtime/config overrides and stored
 | `umans`                          | `UMANS_AI_CODING_PLAN_API_KEY`                                                |
 | `qianfan`                        | `QIANFAN_API_KEY`                                                             |
 | `synthetic`                      | `SYNTHETIC_API_KEY`                                                           |
-| `minimax-code`                   | `MINIMAX_CODE_API_KEY`                                                        |
-| `minimax-code-cn`                | `MINIMAX_CODE_CN_API_KEY`                                                     |
 | `minimax`                        | `MINIMAX_API_KEY`                                                             |
-| `alibaba-coding-plan`            | `ALIBABA_CODING_PLAN_API_KEY`                                                 |
 | `sakana`                         | `SAKANA_API_KEY`, then `FUGU_API_KEY`                                         |
 | `aimlapi`                        | `AIMLAPI_API_KEY`                                                             |
 | `opencode-zen`, `opencode-go`    | `OPENCODE_API_KEY`                                                            |
 | `cline-pass`                     | `CLINE_API_KEY`                                                               |
 | `firepass`                       | `FIREPASS_API_KEY`                                                            |
 | `wafer-serverless`               | `WAFER_SERVERLESS_API_KEY`                                                    |
-| `xiaomi`                         | `XIAOMI_API_KEY`                                                              |
-| `xiaomi-token-plan-ams`          | `XIAOMI_TOKEN_PLAN_AMS_API_KEY`                                               |
-| `xiaomi-token-plan-cn`           | `XIAOMI_TOKEN_PLAN_CN_API_KEY`                                                |
-| `xiaomi-token-plan-sgp`          | `XIAOMI_TOKEN_PLAN_SGP_API_KEY`                                               |
 | `ollama-cloud`                   | `OLLAMA_CLOUD_API_KEY`                                                        |
 | `ollama`                         | `OLLAMA_API_KEY` (optional; local discovery is keyless by default)            |
 | `lm-studio`                      | `LM_STUDIO_API_KEY` (optional; keyless by default)                            |

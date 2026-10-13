@@ -70,11 +70,7 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 - **LiteLLM** (requires `LITELLM_API_KEY`)
 - **zAI** (requires `ZAI_API_KEY`)
 - **Umans AI Coding Plan** (supports `/login umans` or `UMANS_AI_CODING_PLAN_API_KEY`)
-- **MiniMax Token Plan** (requires `MINIMAX_CODE_API_KEY` or `MINIMAX_CODE_CN_API_KEY`)
-- **Xiaomi MiMo** (requires `XIAOMI_API_KEY`)
 - **ZenMux** (requires `ZENMUX_API_KEY`)
-- **QwenCloud Token Plan** (supports `/login alibaba-token-plan`, `ALIBABA_TOKEN_PLAN_API_KEY`, or `BAILIAN_TOKEN_PLAN_API_KEY`; interactive login first selects a region — International (Singapore, default), China (Beijing) for 百炼 Token Plan keys, or a custom base URL — since region keys are non-interchangeable, then optionally stores a `home.qwencloud.com` Cookie request header for best-effort 5-hour and 7-day quota reporting)
-  To enable quota reporting, sign in to the Token Plan dashboard, copy the `Cookie` request-header value from a `home.qwencloud.com` request in browser developer tools, and paste it at the second login prompt. Press Enter to skip; the Cookie is sensitive and session-lived, so rerun login when it expires.
 - **Cloudflare AI Gateway** (supports `/login cloudflare-ai-gateway`, or `CLOUDFLARE_AI_GATEWAY_API_KEY` with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID`)
 - **Snowflake Cortex** (browser `/login snowflake`, or `SNOWFLAKE_ACCOUNT` + `SNOWFLAKE_PAT`; account-billed Cortex REST API)
 - **Ollama** (local OpenAI-compatible runtime; optional `OLLAMA_API_KEY`)
@@ -950,11 +946,8 @@ In Node.js environments, you can set environment variables to avoid passing API 
 | LiteLLM               | `LITELLM_API_KEY`                                                                                                   |
 | Ollama                | `OLLAMA_API_KEY` (optional for local deployments)                                                                   |
 | Ollama Cloud          | `OLLAMA_CLOUD_API_KEY`                                                                                              |
-| QwenCloud Token Plan  | `ALIBABA_TOKEN_PLAN_API_KEY` or `BAILIAN_TOKEN_PLAN_API_KEY`                                                        |
 | zAI                   | `ZAI_API_KEY`                                                                                                       |
 | Umans AI Coding Plan  | `UMANS_AI_CODING_PLAN_API_KEY`                                                                                      |
-| MiniMax Code          | `MINIMAX_CODE_API_KEY` (international) or `MINIMAX_CODE_CN_API_KEY` (China)                                         |
-| Xiaomi MiMo           | `XIAOMI_API_KEY`                                                                                                    |
 | ZenMux                | `ZENMUX_API_KEY`                                                                                                    |
 | vLLM                  | `VLLM_API_KEY`                                                                                                      |
 | Cloudflare AI Gateway | `CLOUDFLARE_AI_GATEWAY_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_GATEWAY_ID`                                 |
@@ -985,7 +978,6 @@ Provider endpoint defaults for the current OpenAI-compatible integrations:
 - DeepInfra: `https://api.deepinfra.com/v1/openai`
 - Hugging Face Inference: `https://router.huggingface.co/v1`
 - Venice: `https://api.venice.ai/api/v1`
-- Xiaomi MiMo: `https://api.xiaomimimo.com/anthropic`
 - ZenMux (OpenAI): `https://zenmux.ai/api/v1`
 - ZenMux (Anthropic models): `https://zenmux.ai/api/anthropic`
 - Umans AI Coding Plan: `https://api.code.umans.ai`
@@ -1093,7 +1085,7 @@ If SQLite reports corruption during startup, the damaged database and remaining 
 
 `login` supports OAuth providers (Anthropic, OpenAI Codex, GitHub Copilot) and API-key onboarding flows.
 
-For the current API-key onboarding flows, the library covers Together, Moonshot, Qianfan, NVIDIA, NanoGPT, Novita, DeepInfra, Hugging Face, Venice, Xiaomi, vLLM, LiteLLM, Cloudflare AI Gateway, and Ollama Cloud. Ollama remains the local runtime integration; set `OLLAMA_API_KEY` only when your local or self-hosted deployment enforces bearer auth.
+For the current API-key onboarding flows, the library covers Together, Moonshot, Qianfan, NVIDIA, NanoGPT, Novita, DeepInfra, Hugging Face, Venice, vLLM, LiteLLM, Cloudflare AI Gateway, and Ollama Cloud. Ollama remains the local runtime integration; set `OLLAMA_API_KEY` only when your local or self-hosted deployment enforces bearer auth.
 
 ### Programmatic OAuth
 

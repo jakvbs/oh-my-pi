@@ -187,7 +187,7 @@ async function resolveProviderApiKey(providerId: string, catalog: CatalogDiscove
 
 	return undefined;
 }
-type CatalogProviderFetchResult = { models: ModelSpec[]; succeeded: boolean };
+type CatalogProviderFetchResult = { models: ModelSpec[] };
 
 async function fetchProviderModelsFromCatalog(
 	descriptor: CatalogProviderDescriptor,
@@ -196,7 +196,7 @@ async function fetchProviderModelsFromCatalog(
 
 	if (!apiKey && !allowsUnauthenticatedCatalogDiscovery(descriptor)) {
 		console.log(`No ${descriptor.catalogDiscovery.label} credentials found (env or agent.db), using fallback models`);
-		return { models: [], succeeded: false };
+		return { models: [] };
 	}
 
 	try {
@@ -218,19 +218,19 @@ async function fetchProviderModelsFromCatalog(
 			console.warn(
 				`${descriptor.catalogDiscovery.label} dynamic fetch failed (stale cache merge), using fallback models`,
 			);
-			return { models: [], succeeded: false };
+			return { models: [] };
 		}
 		const models = result.models.filter(model => model.provider === descriptor.providerId);
 		if (models.length === 0) {
 			console.warn(`${descriptor.catalogDiscovery.label} discovery returned no models`);
-			return { models: [], succeeded: true };
+			return { models: [] };
 		}
 		console.log(`Fetched ${models.length} models from ${descriptor.catalogDiscovery.label} model manager`);
 		// Keep discovery rows as specs until policies finish; the final bundle is fully materialized below.
-		return { models: models.map(model => toModelSpec(model)), succeeded: true };
+		return { models: models.map(model => toModelSpec(model)) };
 	} catch (error) {
 		console.error(`Failed to fetch ${descriptor.catalogDiscovery.label} models:`, error);
-		return { models: [], succeeded: false };
+		return { models: [] };
 	}
 }
 
@@ -494,16 +494,10 @@ async function generateModels(selectedProvider?: string) {
 	// A provider is authoritative once its endpoint snapshot can replace the
 	// stencil.so / previous-snapshot rows. Requiring fetched models keeps a
 	// flaky empty-but-200 discovery from silently wiping another provider's
-	// bundled catalog; only alibaba-token-plan treats an empty success as
-	// authoritative, because its `/models` allowlist reflects the subscribed
-	// edition and must not be widened by the curated seed below.
+	// bundled catalog.
 	const authoritativeCatalogProviders = new Set(
 		catalogProviderModelBatches
-			.filter(
-				batch =>
-					batch.descriptor.dynamicModelsAuthoritative === true &&
-					(batch.models.length > 0 || (batch.succeeded && batch.descriptor.providerId === "alibaba-token-plan")),
-			)
+			.filter(batch => batch.descriptor.dynamicModelsAuthoritative === true && batch.models.length > 0)
 			.map(batch => batch.descriptor.providerId),
 	);
 	const catalogProviderModels = catalogProviderModelBatches.flatMap(batch => batch.models);

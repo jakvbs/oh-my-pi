@@ -1848,7 +1848,6 @@ function createRequestSetup(
 				: model.provider === "cline-pass"
 					? () => clinePassClientHeaders(promptCacheSessionId)
 					: undefined,
-		alibabaCodingPlanAuth: true,
 		azureChatCompletions: { apiVersion, deploymentName },
 	});
 	if (!setup.baseUrl) {
@@ -2512,7 +2511,7 @@ export function convertMessages(
 						assistantMsg[wireField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
 					}
 				} else if (compat.thinkingFormat === "zai" && model.reasoning) {
-					// Z.AI / Zhipu / Moonshot Kimi (native) / Xiaomi MiMo accept
+					// Z.AI / Zhipu / Moonshot Kimi (native) accept
 					// `reasoning_content` as a continuation hint even when they don't
 					// strictly require it. Surfacing the preserved thinking text here
 					// keeps cross-API replays (Z.AI Anthropic → Z.AI OpenAI, etc.)

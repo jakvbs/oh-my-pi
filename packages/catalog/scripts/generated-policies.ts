@@ -8,7 +8,6 @@ import { modelLimitsFor, pricingPeerFor } from "../src/compat/behavior";
 import { isCollapsedVariantSpec } from "../src/compat/collapse";
 import { resolveModelPolicy } from "../src/compat/resolve";
 import { compareRevision, parseRevision } from "../src/compat/revision";
-import { seedModels } from "../src/compat/providers";
 import { classifyModel } from "../src/compat/taxonomy";
 import { bareModelId, getLongestModelLikeIdSegment } from "../src/identity/id";
 import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
@@ -85,13 +84,6 @@ export function rebakeModelThinking(model: ModelSpec<Api>): void {
 		model.thinking
 	)
 		return;
-	if (
-		model.provider === "alibaba-token-plan" &&
-		(model.id === "qwen3.8-max-preview" || model.id === "qwen3.8-max") &&
-		model.thinking
-	) {
-		return;
-	}
 	if (model.provider === "cline-pass" && model.thinking) return;
 	// Discovery rows that trust only their explicit thinking carry a live
 	// ladder (or deliberately none); the generic deriver would erase it.
@@ -250,10 +242,6 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 	if (limits) {
 		if (limits.context !== undefined) model.contextWindow = limits.context;
 		if (limits.maxTokens !== undefined) model.maxTokens = limits.maxTokens;
-	}
-	if (model.provider === "alibaba-token-plan") {
-		const reference = seedModels("alibaba-token-plan").find(candidate => candidate.id === model.id);
-		if (reference) model.name = reference.name;
 	}
 
 	if (model.provider === "ollama-cloud") {

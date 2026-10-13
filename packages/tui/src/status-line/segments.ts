@@ -1194,7 +1194,7 @@ const usageSegment: StatusLineSegment = {
 		}
 		if (u.monthly) {
 			// Monthly-subscription providers only (the normalizer gates the class).
-			// Cursor and QwenCloud floor used percents upstream (Cursor's dashboard
+			// Cursor floors used percents upstream (Cursor's dashboard
 			// shows 1.88 → "1% used"; OpenCode's endpoint emits floored integers).
 			parts.push(formatQuotaWindow(ctx, "mo", u.monthly.percent, u.monthly.resetHours, "h", "floor"));
 		}

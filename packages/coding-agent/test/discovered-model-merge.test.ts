@@ -8,22 +8,21 @@ import { invalidateCommandConfig } from "@oh-my-pi/pi-coding-agent/config/resolv
 import { mergeDiscoveredModel } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 
 /**
- * Regression for v15.2.4 tp- key bug: when Xiaomi `tp-` token-plan keys hit
- * discovery, models came back with `baseUrl: token-plan-sgp.xiaomimimo.com/v1`,
- * but the bundled `xiaomi/*` entries in `models.json` carry the standard
- * `api.xiaomimimo.com/v1` host. The old merge forced `existing.baseUrl` over
- * the discovered value, sending stream calls to the wrong host → 401.
+ * Regression for v15.2.4: discovery can resolve a credential-scoped host (a
+ * regional plan endpoint) while the bundled `models.json` entry carries the
+ * provider's default host. The old merge forced `existing.baseUrl` over the
+ * discovered value, sending stream calls to the wrong host → 401.
  */
 
-const STANDARD = "https://api.xiaomimimo.com/v1";
-const TOKEN_PLAN = "https://token-plan-sgp.xiaomimimo.com/v1";
+const STANDARD = "https://api.example.com/v1";
+const REGIONAL = "https://plan-sgp.example.com/v1";
 
 function bundled(baseUrl: string): Model<"openai-completions"> {
 	return buildModel({
-		id: "mimo-v2.5",
-		name: "MiMo v2.5",
+		id: "example-model",
+		name: "Example Model",
 		api: "openai-completions",
-		provider: "xiaomi",
+		provider: "example",
 		baseUrl,
 		reasoning: false,
 		input: ["text"],
@@ -34,11 +33,11 @@ function bundled(baseUrl: string): Model<"openai-completions"> {
 }
 
 describe("mergeDiscoveredModel", () => {
-	test("prefers discovered baseUrl over bundled baseUrl (xiaomi tp- regression)", () => {
-		const discovered = bundled(TOKEN_PLAN);
+	test("prefers discovered baseUrl over bundled baseUrl (credential-scoped host regression)", () => {
+		const discovered = bundled(REGIONAL);
 		const existing = bundled(STANDARD);
 		const merged = mergeDiscoveredModel(discovered, existing);
-		expect(merged.baseUrl).toBe(TOKEN_PLAN);
+		expect(merged.baseUrl).toBe(REGIONAL);
 	});
 
 	test("falls back to existing baseUrl when discovery did not supply one", () => {
@@ -50,7 +49,7 @@ describe("mergeDiscoveredModel", () => {
 
 	test("merges headers: existing first, discovered overrides per-key", async () => {
 		const discovered: Model<"openai-completions"> = {
-			...bundled(TOKEN_PLAN),
+			...bundled(REGIONAL),
 			headers: { "x-tp": "1", "x-shared": "discovered" },
 		};
 		const existing: Model<"openai-completions"> = {
@@ -67,8 +66,8 @@ describe("mergeDiscoveredModel", () => {
 
 	test("provider override path: override baseUrl wins when no bundled entry", () => {
 		const discovered = bundled(STANDARD);
-		const merged = mergeDiscoveredModel(discovered, undefined, { baseUrl: TOKEN_PLAN });
-		expect(merged.baseUrl).toBe(TOKEN_PLAN);
+		const merged = mergeDiscoveredModel(discovered, undefined, { baseUrl: REGIONAL });
+		expect(merged.baseUrl).toBe(REGIONAL);
 	});
 
 	test("user providerOverride baseUrl wins over discovered baseUrl even when bundled entry exists", () => {
@@ -110,7 +109,7 @@ describe("mergeDiscoveredModel", () => {
 	});
 
 	test("returns model untouched when no existing entry and no override", () => {
-		const discovered = bundled(TOKEN_PLAN);
+		const discovered = bundled(REGIONAL);
 		const merged = mergeDiscoveredModel(discovered, undefined);
 		expect(merged).toEqual(discovered);
 	});

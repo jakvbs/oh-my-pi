@@ -303,46 +303,6 @@ describe("generated model policies", () => {
 		expect(copilot.cost.longContext).toBeUndefined();
 	});
 
-	it("preserves QwenCloud's provider-authored qwen3.8 effort ladders", () => {
-		const models: ModelSpec<Api>[] = [
-			createSpec({
-				id: "qwen3.8-max-preview",
-				api: "openai-completions",
-				provider: "alibaba-token-plan",
-				thinking: {
-					mode: "effort",
-					efforts: [Effort.Low, Effort.High, Effort.XHigh],
-					requiresEffort: true,
-				},
-			}),
-			createSpec({
-				id: "qwen3.8-max",
-				api: "openai-completions",
-				provider: "alibaba-token-plan",
-				thinking: {
-					mode: "effort",
-					efforts: [Effort.Low, Effort.Medium, Effort.XHigh],
-					defaultLevel: Effort.XHigh,
-				},
-			}),
-		];
-
-		applyGeneratedModelPolicies(models);
-
-		expect(models.map(model => model.thinking)).toEqual([
-			{
-				mode: "effort",
-				efforts: [Effort.Low, Effort.High, Effort.XHigh],
-				requiresEffort: true,
-			},
-			{
-				mode: "effort",
-				efforts: [Effort.Low, Effort.Medium, Effort.XHigh],
-				defaultLevel: Effort.XHigh,
-			},
-		]);
-	});
-
 	it("pins zai glm-5.2 base id to 1M context", () => {
 		const models = [
 			createSpec({
@@ -490,30 +450,12 @@ describe("generated model policies", () => {
 				contextWindow: 512_000,
 				maxTokens: 128_000,
 			}),
-			createSpec({
-				id: "MiniMax-M3",
-				api: "openai-completions",
-				provider: "minimax-code",
-				contextWindow: 512_000,
-				maxTokens: 128_000,
-			}),
-			createSpec({
-				id: "MiniMax-M3",
-				api: "openai-completions",
-				provider: "minimax-code-cn",
-				contextWindow: 512_000,
-				maxTokens: 128_000,
-			}),
 		].map(model => buildGenerated(model));
 
 		expect(models[0]?.contextWindow).toBe(1_000_000);
 		expect(models[0]?.maxTokens).toBe(128_000);
 		expect(models[1]?.contextWindow).toBe(1_000_000);
 		expect(models[1]?.maxTokens).toBe(128_000);
-		expect(models[2]?.contextWindow).toBe(1_000_000);
-		expect(models[2]?.maxTokens).toBe(128_000);
-		expect(models[3]?.contextWindow).toBe(1_000_000);
-		expect(models[3]?.maxTokens).toBe(128_000);
 	});
 
 	it("normalizes Copilot generated fallback limits", () => {
@@ -804,25 +746,27 @@ describe("applyOllamaCloudOutputCap", () => {
 });
 
 describe("applyPricingPeerFallback", () => {
-	it("prices MiniMax Token Plan rows at pay-as-you-go peers, M3.1 Flash Preview at the M3 rate", () => {
-		const m3Cost = { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0 };
-		const m27Cost = { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0.375 };
+	it("prices SuperGrok rows at their xai pay-as-you-go peer, aliased ids at the mapped peer", () => {
+		const grokCost = { input: 2, output: 6, cacheRead: 0.2, cacheWrite: 0 };
+		const multiAgentCost = { input: 3, output: 9, cacheRead: 0.3, cacheWrite: 0 };
 		const zeroCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 		const models: ModelSpec<Api>[] = [
-			createSpec({ id: "MiniMax-M3", api: "anthropic-messages", provider: "minimax", cost: m3Cost }),
-			createSpec({ id: "MiniMax-M2.7", api: "anthropic-messages", provider: "minimax", cost: m27Cost }),
-			createSpec({ id: "MiniMax-M3.1-Flash-Preview", api: "anthropic-messages", provider: "minimax-code" }),
-			createSpec({ id: "MiniMax-M2.7", api: "anthropic-messages", provider: "minimax-code" }),
-			createSpec({ id: "MiniMax-M2.1-lightning", api: "anthropic-messages", provider: "minimax-code" }),
-			// No minimax-cn row: the China plan falls back to the international peer.
-			createSpec({ id: "MiniMax-M3.1-Flash-Preview", api: "anthropic-messages", provider: "minimax-code-cn" }),
+			createSpec({ id: "grok-4.20", api: "openai-responses", provider: "xai", cost: grokCost }),
+			createSpec({
+				id: "grok-4.20-multi-agent-beta-latest",
+				api: "openai-responses",
+				provider: "xai",
+				cost: multiAgentCost,
+			}),
+			createSpec({ id: "grok-4.20", api: "openai-responses", provider: "xai-oauth" }),
+			createSpec({ id: "grok-4.20-multi-agent-0309", api: "openai-responses", provider: "xai-oauth" }),
+			createSpec({ id: "grok-oauth-only", api: "openai-responses", provider: "xai-oauth" }),
 		];
 
 		const result = applyPricingPeerFallback(models);
 
-		expect(result[2]?.cost).toEqual(m3Cost);
-		expect(result[3]?.cost).toEqual(m27Cost);
+		expect(result[2]?.cost).toEqual(grokCost);
+		expect(result[3]?.cost).toEqual(multiAgentCost);
 		expect(result[4]?.cost).toEqual(zeroCost);
-		expect(result[5]?.cost).toEqual(m3Cost);
 	});
 });

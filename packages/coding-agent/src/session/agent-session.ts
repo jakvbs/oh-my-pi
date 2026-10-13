@@ -9951,7 +9951,7 @@ export class AgentSession implements SettingsScope {
 		// `openai-completions` sessions are keyed `openai-completions:<provider>:<resolvedBaseUrl>:<modelId>`
 		// and cache backend-specific decisions (strict-tools disable scopes, reasoning-effort
 		// fallbacks). The resolved request base URL can differ from the catalog `model.baseUrl`
-		// (Moonshot env override, Alibaba Coding Plan enterprise URL, Azure deployment URL),
+		// (Moonshot env override, Azure deployment URL),
 		// so evict by provider prefix when the user moves away from that completions backend.
 		let completionsPrefixToEvict: string | undefined;
 		if (currentModel.api === "openai-completions") {

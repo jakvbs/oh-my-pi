@@ -158,7 +158,6 @@ const BRAND_FADE_FRAME_MS = 40;
  * out: their monthly row is not the session quota.
  */
 const MONTHLY_SUBSCRIPTION_PROVIDERS: Record<string, true> = {
-	"alibaba-token-plan": true,
 	cursor: true,
 	"opencode-go": true,
 };

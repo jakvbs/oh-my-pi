@@ -89,8 +89,7 @@ const DAY_MS = 86_400_000;
 /**
  * Status-line and ranking consumers match on canonical window ids ("5h",
  * "7d"), so derive the id from the reported span: the 300-minute burst window
- * surfaces as "5h" instead of "300time_unit_minute". Mirrors the
- * intervalWindowId convention in minimax-code.ts.
+ * surfaces as "5h" instead of "300time_unit_minute".
  */
 function canonicalWindowId(durationMs: number): string {
 	if (durationMs > 0 && durationMs % DAY_MS === 0) return `${durationMs / DAY_MS}d`;

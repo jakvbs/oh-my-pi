@@ -107,12 +107,6 @@ describe("model thinking derivation", () => {
 				effortMap: { minimal: "low", xhigh: "high" },
 			},
 		});
-		const nativeXiaomi = createModel({
-			id: "mimo-v2.5-pro",
-			api: "openai-completions",
-			provider: "xiaomi",
-			baseUrl: "https://api.xiaomimimo.com/v1",
-		});
 
 		const expectedThinking = {
 			mode: "effort" as const,
@@ -131,8 +125,6 @@ describe("model thinking derivation", () => {
 		expect(() => requireSupportedEffort(mimo, Effort.XHigh)).toThrow(/Supported efforts: low, medium, high/);
 		expect(clampThinkingLevelForModel(mimo, Effort.Minimal)).toBe(Effort.Low);
 		expect(clampThinkingLevelForModel(mimo, Effort.XHigh)).toBe(Effort.High);
-
-		expect(nativeXiaomi.thinking?.efforts).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
 	});
 
 	it("preserves stale explicit MiniMax M2 / GPT-OSS effort metadata from caches", () => {

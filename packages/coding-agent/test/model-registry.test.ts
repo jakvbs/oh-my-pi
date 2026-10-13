@@ -1335,7 +1335,7 @@ describe("ModelRegistry", () => {
 			});
 			minimaxReplace = readonlyRegistry({
 				providers: {
-					"minimax-code": {
+					minimax: {
 						baseUrl: "https://proxy.example.com/v1",
 						apiKey: "TEST_KEY",
 						api: "openai-completions",
@@ -1759,7 +1759,7 @@ describe("ModelRegistry", () => {
 		});
 
 		test("same-id replacement uses configured compat without bundled compat leak", () => {
-			const model = minimaxReplace.find("minimax-code", "MiniMax-M2.5");
+			const model = minimaxReplace.find("minimax", "MiniMax-M2.5");
 			const compat = getOpenAICompat(model);
 			expect(compat?.thinkingFormat).toBeUndefined();
 			expect(compat?.reasoningContentField).toBeUndefined();

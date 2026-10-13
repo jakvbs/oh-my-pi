@@ -101,7 +101,7 @@ describe("issue #9345 — Venice qwen thinking format", () => {
 		const dashscope = veniceQwenSpec({
 			id: "qwen3-coder-plus",
 			name: "Qwen3 Coder Plus",
-			provider: "alibaba-coding-plan",
+			provider: "dashscope-custom",
 			baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 		});
 		expect(resolveModelPolicy(dashscope).compat.thinkingFormat).toBe("qwen");

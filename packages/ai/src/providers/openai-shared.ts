@@ -13,7 +13,6 @@ import type {
 	ResolvedOpenAISharedCompat,
 	VercelGatewayRouting,
 } from "@oh-my-pi/pi-catalog/types";
-import { parseAlibabaTokenPlanCredential } from "@oh-my-pi/pi-catalog/wire/alibaba-token-plan";
 import {
 	COREWEAVE_PROJECT_HEADER,
 	coreWeaveProjectHeaders,
@@ -166,7 +165,6 @@ export interface OpenAIRequestSetupOptions {
 	messages: Message[];
 	defaultBaseUrl?: string;
 	prependHeaders?: () => Record<string, string>;
-	alibabaCodingPlanAuth?: boolean;
 	azureChatCompletions?: {
 		apiVersion: string;
 		deploymentName: string;
@@ -283,33 +281,6 @@ export function resolveOpenAIRequestSetup(
 		copilotPremiumRequests = copilot.premiumRequests;
 		baseUrl = copilotBaseUrl;
 		copilotCacheSnapshot = copilotCached ?? null;
-	}
-
-	if (model.provider === "alibaba-token-plan") {
-		// Require an explicitly resolved Token Plan credential. The generic
-		// `$env.OPENAI_API_KEY` fallback above matches the broad `sk-*` token
-		// grammar and would otherwise be sent to QwenCloud as bearer material.
-		if (!options.apiKey) {
-			throw new AIError.MissingApiKeyError("alibaba-token-plan");
-		}
-		const credential = parseAlibabaTokenPlanCredential(rawApiKey);
-		if (!credential) throw new AIError.ConfigurationError("Invalid QwenCloud Token Plan credential");
-		apiKey = credential.token;
-		if (credential.baseUrl) baseUrl = credential.baseUrl;
-	}
-
-	if (options.alibabaCodingPlanAuth && model.provider === "alibaba-coding-plan") {
-		try {
-			const parsed = JSON.parse(rawApiKey);
-			if (typeof parsed?.token === "string") {
-				apiKey = parsed.token;
-			}
-			if (typeof parsed?.enterpriseUrl === "string") {
-				baseUrl = parsed.enterpriseUrl;
-			}
-		} catch {
-			// Not JSON — use raw apiKey and catalog baseUrl.
-		}
 	}
 
 	let query: Record<string, string> | undefined;
@@ -1290,9 +1261,9 @@ export function disableChatCompletionsReasoningForDialect(
 /**
  * Z.AI/GLM-5.2 reasoning-effort dialect predicate. GLM-5.2 models served on a
  * Z.AI-format host (thinkingFormat "zai") accept `reasoning_effort`, stream tool
- * calls via `tool_stream`, and clamp output to the model cap. Moonshot Kimi and
- * Xiaomi MiMo also resolve to thinkingFormat "zai" with supportsReasoningEffort
- * true but are NOT GLM-5.2, so the model-id check is load-bearing — never swap it
+ * calls via `tool_stream`, and clamp output to the model cap. Moonshot Kimi also
+ * resolves to thinkingFormat "zai" with supportsReasoningEffort true but is NOT
+ * GLM-5.2, so the model-id check is load-bearing — never swap it
  * for `compat.supportsReasoningEffort`.
  */
 function isZaiReasoningEffortDialect(_model: Model<"openai-completions">, compat: ResolvedOpenAICompat): boolean {

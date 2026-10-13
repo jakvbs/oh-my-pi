@@ -20,9 +20,7 @@ import {
 } from "@oh-my-pi/pi-ai/auth-storage";
 import { usageCacheIdentity } from "@oh-my-pi/pi-ai/auth/usage-cache";
 import type { UsageLimit, UsageProvider, UsageReport } from "@oh-my-pi/pi-ai/usage";
-import { alibabaTokenPlanUsageProvider } from "@oh-my-pi/pi-ai/usage/alibaba-token-plan";
 import * as claudeUsage from "@oh-my-pi/pi-ai/usage/claude";
-import { serializeAlibabaTokenPlanCredential } from "@oh-my-pi/pi-catalog/wire/alibaba-token-plan";
 
 function anthropicReports(reports: UsageReport[] | null): UsageReport[] {
 	return (reports ?? []).filter(r => r.provider === "anthropic");
@@ -862,72 +860,6 @@ describe("AuthStorage usage cache: explicit invalidation", () => {
 		}
 	});
 });
-describe("AuthStorage usage cache: provider failure policy", () => {
-	it("drops stale QwenCloud quota after the optional console session expires", async () => {
-		const store = makeStore([
-			{
-				id: 1,
-				provider: "alibaba-token-plan",
-				credential: {
-					type: "api_key",
-					key: serializeAlibabaTokenPlanCredential("sk-sp-test", "session_id=test"),
-				},
-				disabledCause: null,
-			},
-		]);
-		let usageCalls = 0;
-		const usageFetch = Object.assign(
-			(input: string | URL | Request) => {
-				if (String(input).endsWith("/tool/user/info.json")) {
-					return Promise.resolve(Response.json({ code: "200", data: { secToken: "sec-token" } }));
-				}
-				usageCalls++;
-				return Promise.resolve(
-					usageCalls === 1
-						? Response.json({
-								data: {
-									DataV2: {
-										data: {
-											data: {
-												per5HourPercentage: 0.25,
-												per5HourResetTime: 1_800_000_000_000,
-												per1WeekPercentage: 0.5,
-												per1WeekResetTime: 1_800_100_000_000,
-											},
-										},
-									},
-								},
-							})
-						: Response.json({
-								code: "ConsoleNeedLogin",
-								message: "You need to log in.",
-								successResponse: false,
-							}),
-				);
-			},
-			{ preconnect: fetch.preconnect },
-		);
-		const storage = new AuthStorage(store, {
-			usageFetch,
-			usageProviderResolver: provider =>
-				provider === "alibaba-token-plan" ? alibabaTokenPlanUsageProvider : undefined,
-		});
-		await storage.credentials.reload();
-		try {
-			const first = (await storage.usage.reports()) ?? [];
-			expect(first.filter(report => report.provider === "alibaba-token-plan")).toHaveLength(1);
-			expect(usageCalls).toBe(1);
-
-			expireCachePayloads(store);
-			const second = (await storage.usage.reports()) ?? [];
-			expect(second.filter(report => report.provider === "alibaba-token-plan")).toHaveLength(0);
-			expect(usageCalls).toBe(2);
-		} finally {
-			storage.close();
-		}
-	});
-});
-
 describe("AuthStorage usage cache: jitter", () => {
 	it("writes per-credential cache TTLs with ±25% jitter so refreshes decorrelate", async () => {
 		const store = makeStore([oauthRow(1, "a@example.com"), oauthRow(2, "b@example.com")]);

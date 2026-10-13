@@ -20,15 +20,12 @@ function makeAnthropicModel(id: string): Model<"anthropic-messages"> {
 	});
 }
 
-function makeMiniMaxAnthropicModel(
-	id: string,
-	provider: "minimax" | "minimax-code" = "minimax",
-): Model<"anthropic-messages"> {
+function makeMiniMaxAnthropicModel(id: string): Model<"anthropic-messages"> {
 	return buildModel({
 		id,
 		name: id,
 		api: "anthropic-messages",
-		provider,
+		provider: "minimax",
 		baseUrl: "https://api.minimax.io/anthropic",
 		reasoning: true,
 		input: ["text", "image"],
@@ -413,7 +410,7 @@ describe("MiniMax Anthropic adaptive thinking", () => {
 		[Effort.High, "high"],
 		[Effort.Max, "max"],
 	] as const)("sends MiniMax-M3.1-Flash-Preview %s effort as output_config.effort", async (effort, wire) => {
-		const payload = await capturePayload(makeMiniMaxAnthropicModel("MiniMax-M3.1-Flash-Preview", "minimax-code"), {
+		const payload = await capturePayload(makeMiniMaxAnthropicModel("MiniMax-M3.1-Flash-Preview"), {
 			reasoning: effort,
 			thinkingEnabled: true,
 		});
@@ -430,7 +427,7 @@ describe("MiniMax Anthropic adaptive thinking", () => {
 		["a forced-off request", { forceReasoningOff: true }],
 		["a disabled-reasoning request", { disableReasoning: true }],
 	] as const)("clamps MiniMax-M3.1-Flash-Preview %s to low effort with thinking on", async (_label, opts) => {
-		const model = makeMiniMaxAnthropicModel("MiniMax-M3.1-Flash-Preview", "minimax-code");
+		const model = makeMiniMaxAnthropicModel("MiniMax-M3.1-Flash-Preview");
 		expect(model.thinking?.requiresEffort).toBe(true);
 
 		let payload: CapturedPayload | undefined;
@@ -445,15 +442,5 @@ describe("MiniMax Anthropic adaptive thinking", () => {
 
 		expect(payload?.thinking).toEqual({ type: "adaptive" });
 		expect(payload?.output_config?.effort).toBe("low");
-	});
-
-	it("drives Token Plan MiniMax-M3 through the adaptive tag like the pay-as-you-go host", async () => {
-		const payload = await capturePayload(makeMiniMaxAnthropicModel("MiniMax-M3", "minimax-code"), {
-			reasoning: Effort.High,
-			thinkingEnabled: true,
-		});
-
-		expect(payload.thinking).toEqual({ type: "adaptive" });
-		expect(payload.output_config?.effort).toBeUndefined();
 	});
 });

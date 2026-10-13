@@ -8,7 +8,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"google-vertex",
 	"kimi-code",
 	"moonshot",
-	"alibaba-token-plan",
 	"zai",
 	"xai-oauth",
 	"xai",
@@ -27,7 +26,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 
 	// Generic gateways and editor/proxy providers. These are useful when picked
 	// explicitly, but should not win ambiguous automatic role selection.
-	"alibaba-coding-plan",
 	"umans",
 	"opencode-zen",
 	"opencode-go",
