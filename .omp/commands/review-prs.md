@@ -1,6 +1,6 @@
 # Review PRs
 
-Parallel PR triage: decide merge-worthiness, prepare rebased worktrees, fix blockers, return them for human merge.
+Sequential PR triage: decide merge-worthiness, prepare rebased worktrees, fix blockers, return them for human merge.
 
 ## Arguments
 
@@ -18,13 +18,13 @@ Parse `$ARGUMENTS`. Explicit numbers/URLs: use verbatim. Otherwise `github` `op:
 github { op: "search_prs", query: "is:open", since: "3d", limit: 50 }
 ```
 
-Pass supplied qualifiers verbatim in `query`; add `is:open` unless present. Time window (`3d`, `2w`, `12h`, ISO date; see `github` docs): `since`. `dateField` defaults `created`; set `"updated"` only on explicit request for recently-touched PRs. Print resolved set before fan-out for scope confirmation.
+Pass supplied qualifiers verbatim in `query`; add `is:open` unless present. Time window (`3d`, `2w`, `12h`, ISO date; see `github` docs): `since`. `dateField` defaults `created`; set `"updated"` only on explicit request for recently-touched PRs. Print resolved set before starting for scope confirmation.
 
-## 2. One parallel `task` subagent/PR
+## 2. Per-PR workflow
 
-Assign each PR's number, head ref, author, and workflow. Agents isolate; use `irc` only if a fix on PR A obviously conflicts with PR B.
+Work PRs one at a time, in resolved order; finish (including report) before starting the next. Note in the report when a fix on one PR obviously conflicts with another.
 
-### Required subagent workflow
+### Required workflow
 
 #### Read and decide
 
@@ -81,7 +81,7 @@ Mechanical conflicts (formatting, import order, adjacent edits): resolve, contin
 
 Review for correctness, security, regressions, breaking-change impact, and new-path test coverage. Fix merge blockers only: build/test failure, obvious PR-introduced bugs, or edge cases required by the PR's goal. Do NOT taste-rewrite, unrelated-refactor, or expand scope.
 
-Each fix: read existing patterns; follow `AGENTS.md` conventions; add/update behavior-change tests; run targeted area test files only—no project-wide subagent tests. End with `bun fmt` over union of edited files.
+Each fix: read existing patterns; follow `AGENTS.md` conventions; add/update behavior-change tests; run targeted area test files only—no project-wide test runs. End with `bun fmt` over union of edited files.
 
 #### Commit
 
@@ -98,7 +98,7 @@ Do NOT amend author commits, push, merge, or force-push author history; human re
 
 #### Report
 
-Return:
+Print:
 
 ```
 PR #<N>  <title>
@@ -111,7 +111,7 @@ Blockers: <anything the human must decide>
 
 ## 3. Aggregate
 
-After all agents finish, print:
+After all PRs, print:
 
 ```
 | PR | Title | Decision | Rebase | Fixes | Blockers |
@@ -122,7 +122,7 @@ Then worktree paths grouped by decision for `cd` and merge.
 
 ## Rules
 
-- MUST use parallel subagents, one/PR; NEVER serial loop.
+- MUST process PRs one at a time, to completion.
 - `slop`/`superseded`: skip checkout; record decision only.
 - Fixes limited to merge blockers in that PR's diff.
 - MUST NOT push or merge; human reviews and merges.
