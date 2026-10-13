@@ -36,6 +36,7 @@
 
 ### Fixed
 
+- Long single-line `--system-prompt` text no longer prevents sessions from starting with `ENAMETOOLONG`.
 - Fixed SDK consumers losing asynchronous cleanup on SIGINT and SIGTERM while preserving the CLI's signal shutdown behavior.
 - A session started with `--system-prompt` keeps it when resumed without the flag and in sessions started with `/new`, and switching sessions renders each session's own policy. A file is re-read on every prompt rebuild, so edits reach the session; a recorded file that no longer exists stops startup with an error instead of falling back to `~/.agents/AGENTS.md`.
 
