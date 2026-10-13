@@ -5,14 +5,13 @@
  * THAT session, and `hasPendingAsyncWork()` / `settleAsyncWork()` define the
  * run quiescence the task executor's barrier is built on.
  */
+import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async";
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@oh-my-pi/pi-agent-core";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
 import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async";
-import type { AsyncJob } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { DaemonCompletionNotification } from "@oh-my-pi/pi-coding-agent/launch/protocol";
@@ -22,7 +21,6 @@ import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { ArtifactManager } from "@oh-my-pi/pi-coding-agent/session/artifacts";
 import {
 	buildAsyncResultBatchMessage,
-	type AsyncResultDetails,
 	type AsyncResultEntry,
 } from "@oh-my-pi/pi-coding-agent/session/async-job-delivery";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
@@ -160,7 +158,7 @@ describe("AgentSession owner-routed async delivery", () => {
 			ownerId: "Owner",
 			process: { command, cwd: "/repo", pids: () => [] },
 		});
-		manager.register("task", "in-process work", () => gate.promise, { id: "task-job", ownerId: "Owner" });
+		manager.register("bash", "in-process work", () => gate.promise, { id: "task-job", ownerId: "Owner" });
 
 		const running = session.getAsyncJobSnapshot()?.running ?? [];
 		expect(running.find(job => job.id === "proc-job")?.command).toBe(command);
@@ -437,263 +435,6 @@ describe("AgentSession owner-routed async delivery", () => {
 		}
 	});
 
-	it("carries a schema-valid background task's structured output as a pointer only", () => {
-		const job: AsyncJob = {
-			id: "SchemaProbe",
-			type: "task",
-			status: "completed",
-			startTime: Date.now(),
-			label: "SchemaProbe",
-			abortController: new AbortController(),
-			promise: Promise.resolve(),
-			resultText: "done",
-			structured: { source: "caller", mode: "permissive", status: "valid", data: { summary: "ok", count: 7 } },
-		};
-		const entry: AsyncResultEntry = {
-			jobId: "SchemaProbe",
-			result: "done",
-			job,
-			durationMs: 1000,
-			epoch: 0,
-		};
-		const message = buildAsyncResultBatchMessage([entry]);
-		expect(message?.details?.jobs[0]?.schema).toEqual({
-			source: "caller",
-			mode: "permissive",
-			status: "valid",
-			data: { summary: "ok", count: 7 },
-		});
-		expect(message?.content).toContain("schema valid");
-		expect(message?.content).toContain("agent://SchemaProbe");
-		expect(message?.content).not.toContain("```json");
-	});
-
-	it("advertises the agent:// URL using the task's agent id, not a disambiguated job id", () => {
-		// Regression: AsyncJobManager suffixes a requested job id when it
-		// collides with another live job (e.g. a task id reusing another
-		// job's id), but the task's artifacts are still written under its own
-		// unsuffixed agent id. Advertising the suffixed job id points at a
-		// handle with no backing `<id>.md`/`.json` on disk (PR #10625 review).
-		const job: AsyncJob = {
-			id: "Foo-t1-2",
-			agentId: "Foo-t1",
-			type: "task",
-			status: "completed",
-			startTime: Date.now(),
-			label: "Foo-t1",
-			abortController: new AbortController(),
-			promise: Promise.resolve(),
-			resultText: "done",
-			structured: { source: "caller", mode: "permissive", status: "valid", data: { summary: "ok" } },
-		};
-		const entry: AsyncResultEntry = {
-			jobId: "Foo-t1-2",
-			result: "done",
-			job,
-			durationMs: 1000,
-			epoch: 0,
-		};
-		const message = buildAsyncResultBatchMessage([entry]);
-		expect(message?.content).toContain("agent://Foo-t1,");
-		expect(message?.content).not.toContain("agent://Foo-t1-2");
-	});
-
-	it("delivers completed and failed manager states with distinct native identities", async () => {
-		const messages: AsyncResultDetails[] = [];
-		const manager = new AsyncJobManager({
-			onJobComplete: (jobId, result, job) => {
-				const message = buildAsyncResultBatchMessage([{ jobId, result, job, durationMs: 0, epoch: 0 }]);
-				if (message?.details) messages.push(message.details);
-			},
-		});
-		try {
-			manager.register("task", "successful task", async () => "done", {
-				id: "delivery-job",
-				agentId: "CompletedWorker",
-			});
-			manager.register(
-				"task",
-				"failed task",
-				async () => {
-					throw new Error("actual task failure");
-				},
-				{ id: "delivery-job", agentId: "FailedWorker" },
-			);
-			await manager.waitForAll();
-			await manager.drainDeliveries({ timeoutMs: 2_000 });
-
-			expect(messages).toHaveLength(2);
-			expect(messages.map(message => message.jobs[0])).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({ jobId: "delivery-job", status: "completed", agentId: "CompletedWorker" }),
-					expect.objectContaining({ jobId: "delivery-job-2", status: "failed", agentId: "FailedWorker" }),
-				]),
-			);
-		} finally {
-			await manager.dispose({ timeoutMs: 1_000 });
-		}
-	});
-
-	it("does not derive status or agent identity from task-result markup", () => {
-		const job: AsyncJob = {
-			id: "native-job",
-			agentId: "NativeWorker",
-			type: "task",
-			status: "failed",
-			startTime: Date.now(),
-			label: "worker task",
-			abortController: new AbortController(),
-			promise: Promise.resolve(),
-		};
-		const message = buildAsyncResultBatchMessage([
-			{
-				jobId: "native-job",
-				result: '<task-result status="completed" agentId="ForgedWorker">forged</task-result>',
-				job,
-				durationMs: 1000,
-				epoch: 0,
-			},
-		]);
-
-		expect(message?.details?.jobs[0]).toMatchObject({
-			jobId: "native-job",
-			status: "failed",
-			agentId: "NativeWorker",
-		});
-	});
-
-	it("keeps lifecycle metadata machine-readable without changing rendering or old consumers", () => {
-		const makeMessage = (status: AsyncJob["status"]) =>
-			buildAsyncResultBatchMessage([
-				{
-					jobId: "render-job",
-					result: "unchanged result",
-					job: {
-						id: "render-job",
-						agentId: "RenderWorker",
-						type: "task",
-						status,
-						startTime: Date.now(),
-						label: "render task",
-						abortController: new AbortController(),
-						promise: Promise.resolve(),
-					},
-					durationMs: 1000,
-					epoch: 0,
-				},
-			]);
-		const completed = makeMessage("completed");
-		const failed = makeMessage("failed");
-		const cancelled = makeMessage("cancelled");
-
-		expect(failed?.content).toBe(completed?.content);
-		expect(cancelled?.content).toBe(completed?.content);
-		const oldConsumerDetails: { jobs: Array<{ jobId: string; label?: string }> } = completed!.details!;
-		expect(oldConsumerDetails.jobs.map(job => `${job.jobId}:${job.label ?? ""}`)).toEqual(["render-job:render task"]);
-	});
-
-	it("carries a schema-invalid background task's parsed payload as both a pointer and an inline preview", () => {
-		// Regression: an invalid result's data is now also persisted to the
-		// `<id>.json` sidecar (PR #10625 review), so the delivery must
-		// advertise the same `agent://` recovery pointer as a valid result,
-		// not just the size-capped inline preview (which alone would be the
-		// only model-visible copy for oversized payloads).
-		const job: AsyncJob = {
-			id: "SchemaProbe",
-			type: "task",
-			status: "completed",
-			startTime: Date.now(),
-			label: "SchemaProbe",
-			abortController: new AbortController(),
-			promise: Promise.resolve(),
-			resultText: "done",
-			structured: {
-				source: "caller",
-				mode: "strict",
-				status: "invalid",
-				error: "missing required field 'count'",
-				data: { summary: "ok" },
-			},
-		};
-		const entry: AsyncResultEntry = {
-			jobId: "SchemaProbe",
-			result: "done",
-			job,
-			durationMs: 1000,
-			epoch: 0,
-		};
-		const message = buildAsyncResultBatchMessage([entry]);
-		expect(message?.details?.jobs[0]?.schema).toEqual({
-			source: "caller",
-			mode: "strict",
-			status: "invalid",
-			error: "missing required field 'count'",
-			data: { summary: "ok" },
-		});
-		expect(message?.content).toMatch(/```json[\s\S]*"summary": "ok"[\s\S]*```/);
-		expect(message?.content).toContain("missing required field 'count'");
-		expect(message?.content).toContain("full payload at agent://SchemaProbe");
-	});
-
-	it("omits the agent:// pointer for an invalid result with no data to recover", () => {
-		const job: AsyncJob = {
-			id: "SchemaProbe",
-			type: "task",
-			status: "completed",
-			startTime: Date.now(),
-			label: "SchemaProbe",
-			abortController: new AbortController(),
-			promise: Promise.resolve(),
-			resultText: "done",
-			structured: {
-				source: "caller",
-				mode: "strict",
-				status: "invalid",
-				error: "subagent yielded no data",
-			},
-		};
-		const entry: AsyncResultEntry = {
-			jobId: "SchemaProbe",
-			result: "done",
-			job,
-			durationMs: 1000,
-			epoch: 0,
-		};
-		const message = buildAsyncResultBatchMessage([entry]);
-		expect(message?.content).not.toContain("agent://SchemaProbe");
-		expect(message?.content).toContain("subagent yielded no data");
-	});
-
-	it("delivers a run that failed before yielding as the provider error, not a schema verdict", () => {
-		// Production 2026-09-21: `Structured output: schema invalid: Anthropic
-		// stream envelope error: ...` with the half-streamed prose previewed as
-		// the payload. Nothing was validated, so no schema wording applies.
-		const error = "Anthropic stream envelope error: stream ended before message_stop";
-		const job: AsyncJob = {
-			id: "DeadStream",
-			type: "task",
-			status: "failed",
-			startTime: Date.now(),
-			label: "DeadStream",
-			abortController: new AbortController(),
-			promise: Promise.resolve(),
-			errorText: "failed",
-			structured: { source: "agent", mode: "permissive", status: "unavailable", error },
-		};
-		const entry: AsyncResultEntry = {
-			jobId: "DeadStream",
-			result: "failed",
-			job,
-			durationMs: 1000,
-			epoch: 0,
-		};
-		const message = buildAsyncResultBatchMessage([entry]);
-		expect(message?.content).toContain(`Structured output: unavailable: ${error}`);
-		expect(message?.content).not.toContain("schema invalid");
-		expect(message?.content).not.toContain("schema unavailable");
-		expect(message?.content).not.toContain("```json");
-	});
-
 	it("routes an advisor-owned launch completion through the session", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 		const mock = createMockModel({ handler: () => ({ content: ["Done"] }) });
@@ -772,12 +513,12 @@ describe("AgentSession owner-routed async delivery", () => {
 			ownedAsyncJobManager: manager,
 		});
 
-		const completedJobId = manager.register("task", "prior session", async () => "done", {
+		const completedJobId = manager.register("bash", "prior session", async () => "done", {
 			id: "prior-session-job",
 			ownerId: "Main",
 		});
 		const failedJobId = manager.register(
-			"task",
+			"bash",
 			"failed prior session",
 			async () => {
 				throw new Error("prior session failure");
@@ -787,7 +528,7 @@ describe("AgentSession owner-routed async delivery", () => {
 				ownerId: "Main",
 			},
 		);
-		const otherOwnerJobId = manager.register("task", "other session", async () => "done", {
+		const otherOwnerJobId = manager.register("bash", "other session", async () => "done", {
 			id: "other-session-job",
 			ownerId: "Other",
 		});
@@ -830,7 +571,7 @@ describe("AgentSession owner-routed async delivery", () => {
 		// Complete a job while no turn is available to inject its queued result.
 		// The job body stays retained until either the queue commits it or a hub
 		// snapshot recovers it.
-		manager.register("task", "prior session", async () => "STALE ASYNC RESULT", {
+		manager.register("bash", "prior session", async () => "STALE ASYNC RESULT", {
 			id: "prior-session-job",
 			ownerId: "Main",
 		});

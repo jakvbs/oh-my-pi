@@ -5,7 +5,7 @@ import type { EffectiveExtensionRoots } from "../capability/types";
 import { appendInlineArgsFallback, templateUsesInlineArgPlaceholders } from "../config/prompt-templates";
 import type { SlashCommand } from "../discovery";
 import { loadCapability } from "../discovery";
-import { EMBEDDED_COMMAND_TEMPLATES } from "../task/commands";
+import initMd from "../prompts/agents/init.md" with { type: "text" };
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 
 export type SlashCommandSource = "extension" | "prompt" | "skill";
@@ -36,7 +36,9 @@ export interface FileSlashCommand {
 	_source?: { providerName: string; level: "user" | "project" | "native" };
 }
 
-const EMBEDDED_SLASH_COMMANDS = EMBEDDED_COMMAND_TEMPLATES;
+const EMBEDDED_SLASH_COMMANDS: ReadonlyArray<{ name: string; content: string }> = [
+	{ name: "init.md", content: prompt.render(initMd) },
+];
 
 function parseCommandTemplate(
 	content: string,

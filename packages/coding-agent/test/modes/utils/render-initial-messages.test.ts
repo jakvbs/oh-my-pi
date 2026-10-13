@@ -80,8 +80,7 @@ function makeCtx(): RenderInitialMessagesTestContext {
 		pendingTools: new Map(),
 		hideToolActivity: false,
 		initialChatRendered: true,
-		session: { buildTranscriptSessionContext: transcriptSpy },
-		viewSession: {
+		session: {
 			buildTranscriptSessionContext: transcriptSpy,
 			hasBuiltInTool: () => true,
 			sessionManager: {
@@ -187,9 +186,8 @@ function makeRenderCtx(
 		hideThinkingBlock: false,
 		assistantImagesVisible: showImages,
 		tableChartsVisible: true,
-		focusedAgentId: undefined,
 		editor: { addToHistory: vi.fn() },
-		viewSession: {
+		session: {
 			getQueuedMessages: () => ({ steering: [], followUp: [] }),
 			buildTranscriptSessionContext: () => transcript,
 			getToolByName: () => undefined,
@@ -263,7 +261,7 @@ describe("UiHelpers.renderInitialMessages — clearTerminalHistory", () => {
 describe("UiHelpers.renderInitialMessages — queued messages", () => {
 	it("keeps the queued-message bar after a mid-turn rebuild such as rewind (#13680)", async () => {
 		const { ctx } = makeRenderCtx(makeEmptyContext());
-		vi.spyOn(ctx.viewSession, "getQueuedMessages").mockReturnValue({
+		vi.spyOn(ctx.session, "getQueuedMessages").mockReturnValue({
 			steering: ["steer now"],
 			followUp: ["queued one", "queued two"],
 			liveSteered: 0,
@@ -730,7 +728,7 @@ describe("UiHelpers.renderInitialMessages — replay convergence (issue #7811)",
 			calls++;
 			return Array.from({ length: calls }, () => ({ type: "message" }));
 		});
-		(made.ctx.viewSession.sessionManager as unknown as { getEntries: unknown }).getEntries = getEntries;
+		(made.ctx.session.sessionManager as unknown as { getEntries: unknown }).getEntries = getEntries;
 		(made.ctx.sessionManager as unknown as { getEntries: unknown }).getEntries = getEntries;
 		return made;
 	}
@@ -764,7 +762,7 @@ describe("UiHelpers.renderInitialMessages — replay convergence (issue #7811)",
 			call++;
 			return Array.from({ length }, () => ({ type: "message" }));
 		});
-		(ctx.viewSession.sessionManager as unknown as { getEntries: unknown }).getEntries = getEntries;
+		(ctx.session.sessionManager as unknown as { getEntries: unknown }).getEntries = getEntries;
 		(ctx.sessionManager as unknown as { getEntries: unknown }).getEntries = getEntries;
 
 		await new UiHelpers(ctx).renderInitialMessages();

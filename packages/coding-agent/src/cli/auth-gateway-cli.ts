@@ -33,7 +33,7 @@ import {
 	type SnapshotResponse,
 } from "@oh-my-pi/pi-ai/auth-broker";
 import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@oh-my-pi/pi-ai/auth-gateway";
-import { type GeneratedProvider, getBundledModels } from "@oh-my-pi/pi-catalog/models";
+import { type GeneratedProvider, getBundledModels, getEffectiveTokenCost } from "@oh-my-pi/pi-catalog/models";
 import { type ModelKind, modelKind } from "@oh-my-pi/pi-catalog/types";
 import { getConfigRootDir, logger, VERSION } from "@oh-my-pi/pi-utils";
 import chalk from "@oh-my-pi/pi-utils/chalk";
@@ -542,11 +542,7 @@ export async function runAuthGatewayCommand(cmd: AuthGatewayCommandArgs): Promis
  * (`{ token, projectId, refreshToken, expiresAt, … }`) rather than the raw
  * access token. Mirrors `getOAuthApiKey` in `packages/ai/src/registry/oauth`.
  */
-const STRUCTURED_API_KEY_PROVIDERS: ReadonlySet<string> = new Set([
-	"github-copilot",
-	"google-gemini-cli",
-	"google-antigravity",
-]);
+const STRUCTURED_API_KEY_PROVIDERS: ReadonlySet<string> = new Set(["github-copilot"]);
 
 /**
  * Provider API types that strict-mode chat probes intentionally skip:
@@ -593,7 +589,11 @@ function pickProbeCandidates(provider: string): Model<Api>[] {
 		if (model.maxTokens !== null && model.maxTokens <= 0) return false;
 		return true;
 	});
-	candidates.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output) || a.id.localeCompare(b.id));
+	const price = (model: Model<Api>): number => {
+		const { input, output } = getEffectiveTokenCost(model.cost);
+		return input + output;
+	};
+	candidates.sort((a, b) => price(a) - price(b) || a.id.localeCompare(b.id));
 	return candidates;
 }
 

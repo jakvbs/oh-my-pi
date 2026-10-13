@@ -68,7 +68,6 @@ export function createGallerySegmentContext(sessionOptions?: GallerySessionOptio
 		autoCompactEnabled: true,
 		compactionSpeculation: "idle",
 		speculationBlinkOn: false,
-		subagentCount: 3,
 		activeMs: 372_000,
 		turnElapsedMs: null,
 		git: {
@@ -91,7 +90,6 @@ function variantsFor(id: StatusLineSegmentId): readonly SegmentVariantSpec[] {
 			return [
 				{ label: "idle", context: { turnElapsedMs: null } },
 				{ label: "active", context: { turnElapsedMs: 92_000 } },
-				{ label: "focused subagent", context: { focusedAgentId: "Scout" } },
 			];
 		case "status":
 			return [
@@ -173,11 +171,6 @@ function variantsFor(id: StatusLineSegmentId): readonly SegmentVariantSpec[] {
 				{
 					label: "subscription",
 					session: { usingSubscription: true, cost: 0, premiumRequests: 0, advisorCost: 0 },
-				},
-				{
-					label: "subscription + subagents",
-					session: { usingSubscription: true, cost: 0.38, premiumRequests: 0, advisorCost: 0 },
-					context: { subagentTreeCost: 1.27 },
 				},
 				{
 					label: "premium requests",

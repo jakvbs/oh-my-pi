@@ -15,10 +15,15 @@ import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { getWorktreeDir, hashPath, logger } from "@oh-my-pi/pi-utils";
 import { shortenPath } from "@oh-my-pi/pi-tui/render/render-utils";
 import type { Settings } from "../config/settings";
-import { formatIsolationBackend, parseIsolationBackend } from "../task/worktree";
 import { resolveAvailableWorktreePath } from "../tools/gh-pr-checkout";
 
-import { cfgIsolationBackend, cfgWorktreeCleanSource, cfgWorktreeClone } from "../task/settings";
+import {
+	cfgIsolationBackend,
+	cfgWorktreeCleanSource,
+	cfgWorktreeClone,
+	formatIsolationBackend,
+	parseIsolationBackend,
+} from "./worktree-settings";
 
 export interface SessionWorktree {
 	/** Absolute, realpath'd worktree root. */

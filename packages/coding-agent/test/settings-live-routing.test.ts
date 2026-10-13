@@ -2,21 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AuthStorage, SqliteAuthCredentialStore } from "@oh-my-pi/pi-ai";
-import { resolveAgentModelSelection } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
+import { resolveConfiguredModelPatterns } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import { createAuthStorageSettingsSync } from "@oh-my-pi/pi-coding-agent/session/auth-broker-config";
 import { getRetryFallbackChains } from "@oh-my-pi/pi-coding-agent/session/retry-fallback-chains";
 import { cfgRetryUsageReservePct } from "@oh-my-pi/pi-coding-agent/session/settings";
-import { cfgTaskAgentModelOverrides } from "@oh-my-pi/pi-coding-agent/task/settings";
+import { cfgGrepContextAfter } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import { logger, TempDir } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 const routing = (model: string, reservePct = 10, priority = 1) => ({
-	modelRoles: { smol: `anthropic/${model}`, slow: "anthropic/strong" },
+	modelRoles: { smol: `anthropic/${model}`, slow: "anthropic/strong", worker: "@smol" },
 	retry: { fallbackChains: { smol: [`anthropic/${model}-fallback`] }, usageReservePct: reservePct },
-	task: { agentModelOverrides: { worker: "@smol" } },
+	grep: { contextAfter: 3 },
 	auth: { accountPolicies: [{ provider: "live-routing-test", account: { accountId: "routing-test" }, priority }] },
 });
 
@@ -41,12 +41,8 @@ async function retargetDirLink(link: string, target: string): Promise<void> {
 	await fs.rename(`${link}.next`, link);
 }
 
-function selection(settings: Settings) {
-	return resolveAgentModelSelection({
-		settingsOverride: cfgTaskAgentModelOverrides.get(settings).worker,
-		agentModel: "anthropic/agent-default",
-		settings,
-	});
+function workerPatterns(settings: Settings): string[] {
+	return resolveConfiguredModelPatterns("@worker", settings);
 }
 
 describe("live routing config files", () => {
@@ -110,18 +106,18 @@ describe("live routing config files", () => {
 			() => sync.stop(),
 			() => storage.close(),
 		);
-		expect(selection(settings).patterns).toEqual(["anthropic/first"]);
+		expect(workerPatterns(settings)).toEqual(["anthropic/first"]);
 		// A non-finite per-call threshold uses the storage's configured reserve.
 		expect((await storage.health.model("live-routing-test", { reserveFraction: Number.NaN })).state).toBe("healthy");
 
 		const next = routing("second", 30, 7);
-		next.task.agentModelOverrides.worker = "@slow";
+		next.modelRoles.worker = "@slow";
 		await Bun.write(`${file}.next`, YAML.stringify(next));
 		await fs.rename(`${file}.next`, file);
 		await waitFor(() => settings.getModelRole("smol") === "anthropic/second");
 		await sync.settled();
 
-		expect(selection(settings).patterns).toEqual(["anthropic/strong"]);
+		expect(workerPatterns(settings)).toEqual(["anthropic/strong"]);
 		expect(getRetryFallbackChains(settings).smol).toEqual(["anthropic/second-fallback"]);
 		expect(storage.oauth.policy("live-routing-test", { accountId: "routing-test" })?.priority).toBe(7);
 		expect((await storage.health.model("live-routing-test", { reserveFraction: Number.NaN })).state).toBe("reserve");
@@ -151,7 +147,7 @@ describe("live routing config files", () => {
 		await start(path.join(profile, "config", "routing.yml"));
 		await retargetDirLink(profile, second);
 		await waitFor(() => settings.getModelRole("smol") === "anthropic/second");
-		expect(selection(settings).patterns).toEqual(["anthropic/second"]);
+		expect(workerPatterns(settings)).toEqual(["anthropic/second"]);
 		await Bun.write(path.join(second, "config", "routing.yml"), YAML.stringify(routing("third")));
 		await waitFor(() => settings.getModelRole("smol") === "anthropic/third");
 		expect(getRetryFallbackChains(settings).smol).toEqual(["anthropic/third-fallback"]);
@@ -171,7 +167,7 @@ describe("live routing config files", () => {
 		await fs.symlink(second, `${managed}.next`, "file");
 		await fs.rename(`${managed}.next`, managed);
 		await waitFor(() => settings.getModelRole("smol") === "anthropic/second");
-		expect(selection(settings).patterns).toEqual(["anthropic/second"]);
+		expect(workerPatterns(settings)).toEqual(["anthropic/second"]);
 		await Bun.write(second, YAML.stringify(routing("third")));
 		await waitFor(() => settings.getModelRole("smol") === "anthropic/third");
 	});
@@ -184,7 +180,7 @@ describe("live routing config files", () => {
 		const profile = tempDir.join("profile");
 		await fs.symlink(first, profile, "dir");
 		await start(path.join(profile, "routing.yml"));
-		cfgTaskAgentModelOverrides.override(settings, { worker: "anthropic/runtime" });
+		cfgGrepContextAfter.override(settings, 11);
 		const warnings = vi.spyOn(logger, "warn");
 		await retargetDirLink(profile, second);
 		await waitFor(() => warnings.mock.calls.some(([message]) => message.includes("keeping last good config")));
@@ -192,7 +188,8 @@ describe("live routing config files", () => {
 		expect(await Bun.file(path.join(second, "routing.yml")).text()).toBe("modelRoles: [\n");
 		await Bun.write(path.join(second, "routing.yml"), YAML.stringify(routing("recovered")));
 		await waitFor(() => settings.getModelRole("smol") === "anthropic/recovered");
-		expect(selection(settings).patterns).toEqual(["anthropic/runtime"]);
+		expect(cfgGrepContextAfter.get(settings)).toBe(11);
+		expect(workerPatterns(settings)).toEqual(["anthropic/recovered"]);
 		expect(getRetryFallbackChains(settings).smol).toEqual(["anthropic/recovered-fallback"]);
 	});
 });

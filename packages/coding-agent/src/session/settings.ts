@@ -569,21 +569,6 @@ export const cfgTierGoogle = register({
 	},
 });
 
-export const cfgTierSubagent = register({
-	id: "tier.subagent",
-	type: "enum",
-	values: SERVICE_TIER_INHERIT_SETTING_VALUES,
-	default: "inherit",
-	ui: {
-		tab: "model",
-		group: "Sampling",
-		label: "Service Tier — Subagent",
-		description:
-			"Service Tier for spawned task subagents. Inherit = match the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
-		options: SERVICE_TIER_INHERIT_OPTIONS,
-	},
-});
-
 export const cfgTierAdvisor = register({
 	id: "tier.advisor",
 	protocolDefault: ["rpc", "acp"],
@@ -764,7 +749,7 @@ export const cfgRetryFallbackChains = register({
 		group: "Retry & Fallback",
 		label: "Retry Fallback Chains",
 		description:
-			'JSON object mapping model roles, model selectors ("provider/model-id"), or provider wildcards ("provider/*") to ordered fallback selectors, e.g. {"default":["openai/gpt-4o-mini"],"google-antigravity/*":["google/*","google-vertex/*"]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a "provider/*" entry keeps the failing model\'s id and swaps the provider. An id-prefixed wildcard ("openrouter/google/*") re-prefixes the failing model\'s bare id (google-antigravity/gemini-x -> openrouter/google/gemini-x) and, used as a key, matches only that provider\'s ids under the prefix. A fallback entry may carry an explicit thinking suffix ("provider/model:low", ":high", ":max", ":off"); a bare entry inherits the failing turn\'s effort, and "provider/*" entries always inherit.',
+			'JSON object mapping model roles, model selectors ("provider/model-id"), or provider wildcards ("provider/*") to ordered fallback selectors, e.g. {"default":["openai/gpt-4o-mini"],"google-vertex/*":["google/*"]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a "provider/*" entry keeps the failing model\'s id and swaps the provider. An id-prefixed wildcard ("openrouter/google/*") re-prefixes the failing model\'s bare id (google-vertex/gemini-x -> openrouter/google/gemini-x) and, used as a key, matches only that provider\'s ids under the prefix. A fallback entry may carry an explicit thinking suffix ("provider/model:low", ":high", ":max", ":off"); a bare entry inherits the failing turn\'s effort, and "provider/*" entries always inherit.',
 	},
 });
 
@@ -861,36 +846,6 @@ export const cfgProvidersWebSearchTimeoutSeconds = register({
 			{ value: "120", label: "2 minutes" },
 			{ value: "180", label: "3 minutes" },
 			{ value: "300", label: "5 minutes" },
-		],
-	},
-});
-
-export const cfgProvidersAntigravityEndpoint = register({
-	id: "providers.antigravityEndpoint",
-	type: "enum",
-	values: ["auto", "production", "sandbox"] as const,
-	default: "auto",
-	ui: {
-		tab: "providers",
-		group: "Services",
-		label: "Antigravity Endpoint Mode",
-		description: "Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery)",
-		options: [
-			{
-				value: "auto",
-				label: "Auto",
-				description: "Try production endpoint, fail over to sandbox on 5xx/429",
-			},
-			{
-				value: "production",
-				label: "Production Only",
-				description: "Force production endpoint only",
-			},
-			{
-				value: "sandbox",
-				label: "Sandbox Only",
-				description: "Force sandbox endpoint only",
-			},
 		],
 	},
 });
@@ -1376,7 +1331,7 @@ export const cfgProviderAppendOnlyContext = register({
 		group: "Protocol",
 		label: "Append-Only Context",
 		description:
-			"Cache system prompt + tool specs and keep an append-only message log so provider prefix caches (DeepSeek, Xiaomi/SGLang, Anthropic) hit at maximum rate. Auto enables for known prefix-cache providers.",
+			"Cache system prompt + tool specs and keep an append-only message log so provider prefix caches (DeepSeek, SGLang, Anthropic) hit at maximum rate. Auto enables for known prefix-cache providers.",
 		options: [
 			{ value: "auto", label: "Auto", description: "Enable for known prefix-cache providers (recommended)" },
 			{ value: "on", label: "On", description: "Always enable append-only context" },

@@ -53,7 +53,7 @@ export type {
 } from "./google-types";
 export { normalizeSchemaForGoogle };
 
-type GoogleApiType = "google-generative-ai" | "google-gemini-cli" | "google-vertex";
+type GoogleApiType = "google-generative-ai" | "google-vertex";
 
 function convertGoogleImagePart(image: ImageContent): Part {
 	if (image.providerFile?.provider === "google" && image.providerFile.uri) {
@@ -73,7 +73,6 @@ export type GoogleThinkingLevel = "THINKING_LEVEL_UNSPECIFIED" | "MINIMAL" | "LO
 
 /**
  * Sampling/thinking options shared by `streamGoogle` and `streamGoogleVertex`.
- * `google-gemini-cli` uses a different transport and request shape — do not extend this for it.
  */
 export interface GoogleSharedStreamOptions extends StreamOptions {
 	/**
@@ -222,7 +221,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 
 			for (const block of msg.content) {
 				if (block.type === "text") {
-					// Skip empty text blocks - they can cause issues with some models (e.g. Claude via Antigravity)
+					// Skip empty text blocks - they can cause issues with some models (e.g. Claude on Google-hosted endpoints)
 					if (!block.text || block.text.trim() === "") continue;
 					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.textSignature);
 					parts.push({
@@ -293,8 +292,8 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 			const hasImages = imageContent.length > 0;
 
 			// Gemini 3+ models support multimodal function responses with images nested inside
-			// functionResponse.parts. Claude and other non-Gemini models behind Cloud Code Assist /
-			// Antigravity also accept this shape. Gemini < 3 still needs a separate user image turn.
+			// functionResponse.parts. Some non-Gemini models behind Google endpoints also accept
+			// this shape. Gemini < 3 still needs a separate user image turn.
 			const modelSupportsMultimodalFunctionResponse = model.compat.multimodalFunctionResponse;
 
 			// Use "output" key for success, "error" key for errors as per SDK documentation
@@ -353,7 +352,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
  */
 export function convertTools(
 	tools: Tool[],
-	model: Model<"google-generative-ai" | "google-gemini-cli" | "google-vertex">,
+	model: Model<"google-generative-ai" | "google-vertex">,
 ): { functionDeclarations: Record<string, unknown>[] }[] | undefined {
 	if (tools.length === 0) return undefined;
 
@@ -440,8 +439,7 @@ export function mapStopReasonString(reason: string): StopReason {
 /**
  * Bounded retries for the well-known Gemini "empty response" failure: a benign
  * `finishReason: STOP` carrying only an empty/whitespace text part and no tool call.
- * Shared by the public/Vertex `streamGoogleGenAI` path and the Cloud Code Assist
- * (`google-gemini-cli`/`google-antigravity`) provider so both apply the same policy.
+ * Used by the public/Vertex `streamGoogleGenAI` path.
  */
 export const MAX_EMPTY_STREAM_RETRIES = 2;
 export const EMPTY_STREAM_BASE_DELAY_MS = 500;
@@ -484,7 +482,7 @@ function resetGoogleStreamOutputForRetry(output: AssistantMessage): void {
  * `promptTokenCount` includes `cachedContentTokenCount`, so input = prompt − cached,
  * matching the OpenAI convention where input + cacheRead = total prompt tokens.
  * Upstream sometimes omits `promptTokenCount` or reports a cache count above the
- * prompt (Antigravity), so the prompt falls back to `total − candidates − thoughts`
+ * prompt, so the prompt falls back to `total − candidates − thoughts`
  * and cached tokens are clamped to it: input is never negative.
  * Ref: https://ai.google.dev/api/generate-content#v1beta.GenerateContentResponse.UsageMetadata
  */
@@ -518,8 +516,7 @@ export function nextToolCallId(name: string): string {
 
 /**
  * Push the appropriate `text_end` / `thinking_end` event for the given block.
- * Shared between the SDK-backed stream consumer and the gemini-cli SSE consumer so
- * the end-of-block event shape stays in lockstep.
+ * Keeps the end-of-block event shape in one place.
  */
 export function pushBlockEndEvent(
 	block: TextContent | ThinkingContent,
@@ -829,10 +826,6 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
  * Build the `GenerateContentParameters` payload for the public Gemini API and Vertex AI.
  * Both surfaces accept the same `GenerateContentConfig` shape — every numeric/string knob,
  * tool-config, thinking-config, and system-instruction conversion is identical.
- *
- * `google-gemini-cli` is NOT routed through here: its `CloudCodeAssistRequest` body has a
- * distinct top-level shape (project/request/requestType) and a different thinking-config
- * placement on `generationConfig`.
  */
 export function buildGoogleGenerateContentParams<T extends "google-generative-ai" | "google-vertex">(
 	model: Model<T>,

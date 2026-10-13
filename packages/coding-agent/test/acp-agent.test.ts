@@ -23,8 +23,6 @@ import type {
 import { SILENT_ABORT_MARKER } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { resetSessionIndexForTests } from "@oh-my-pi/pi-coding-agent/session/session-index";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TaskTool } from "@oh-my-pi/pi-coding-agent/task";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { getConfigRootDir, setAgentDir } from "@oh-my-pi/pi-utils";
 import type {
 	AgentSideConnection,
@@ -77,15 +75,6 @@ const TEST_MODELS: Model[] = [
 		maxTokens: 8_192,
 	}),
 ];
-
-function createTaskSession(cwd: string): ToolSession {
-	return {
-		cwd,
-		hasUI: false,
-		settings: Settings.isolated({}),
-		getSessionFile: () => null,
-	} as unknown as ToolSession;
-}
 
 function makeAssistantMessage(text: string, thinking?: string) {
 	const content: Array<{ type: "text"; text: string } | { type: "thinking"; thinking: string }> = [
@@ -1369,49 +1358,6 @@ describe("ACP agent", () => {
 		await Bun.sleep(0);
 	});
 
-	it("does not replay internal peer messages to ACP clients", async () => {
-		const harness = await createHarness();
-		const stored = new FakeAgentSession(harness.cwdA);
-		harness.sessions.push(stored);
-		stored.sessionManager.appendMessage({ role: "user", content: "Delegate this task", timestamp: Date.now() });
-		stored.sessionManager.appendMessage({
-			...makeAssistantMessage(""),
-			content: [
-				{
-					type: "toolCall",
-					id: "toolu_hub_replay",
-					name: "write",
-					arguments: { path: "agent://Scout", content: "Private coordination" },
-				},
-			],
-			stopReason: "toolUse",
-		});
-		stored.sessionManager.appendMessage({
-			role: "toolResult",
-			toolCallId: "toolu_hub_replay",
-			toolName: "write",
-			content: [{ type: "text", text: "Delivered to Scout." }],
-			isError: false,
-			timestamp: Date.now(),
-		});
-		await stored.sessionManager.ensureOnDisk();
-		await stored.sessionManager.flush();
-
-		await harness.agent.loadSession({
-			sessionId: stored.sessionId,
-			cwd: harness.cwdA,
-			mcpServers: [],
-		});
-
-		const hubUpdates = harness.updates
-			.filter(update => update.sessionId === stored.sessionId)
-			.map(notification => notification.update)
-			.filter(update => "toolCallId" in update && update.toolCallId === "toolu_hub_replay");
-		expect(hubUpdates).toEqual([]);
-
-		harness.abortController.abort();
-	});
-
 	it("preserves tool_use input payloads when replaying assistant tool calls", async () => {
 		const harness = await createHarness();
 		const stored = new FakeAgentSession(harness.cwdA);
@@ -1612,34 +1558,6 @@ describe("ACP agent", () => {
 
 		harness.abortController.abort();
 		await Bun.sleep(0);
-	});
-
-	it("refreshes task agent descriptions on ACP /reload-plugins", async () => {
-		const harness = await createHarness();
-		const agentDir = path.join(harness.cwdA, ".omp", "agents");
-		const agentFile = path.join(agentDir, "acp-reload-agent.ts");
-		await fs.promises.mkdir(agentDir, { recursive: true });
-		await fs.promises.writeFile(
-			agentFile,
-			'export default { name: "acp-reload-agent", description: "VERSION_ONE", systemPrompt: "ACP reload agent." };\n',
-		);
-		const taskTool = await TaskTool.create(createTaskSession(harness.cwdA));
-		expect(taskTool.description).toContain("VERSION_ONE");
-		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
-
-		await fs.promises.writeFile(
-			agentFile,
-			'export default { name: "acp-reload-agent", description: "VERSION_TWO", systemPrompt: "ACP reload agent." };\n',
-		);
-		await harness.agent.prompt({
-			sessionId: created.sessionId,
-			messageId: "00000000-0000-4000-8000-000000000006",
-			prompt: [{ type: "text", text: "/reload-plugins" }],
-		} as PromptRequest);
-
-		expect(taskTool.description).toContain("VERSION_TWO");
-		expect(taskTool.description).not.toContain("VERSION_ONE");
-		harness.abortController.abort();
 	});
 
 	it("advertises ACP-safe builtins and skill commands", async () => {

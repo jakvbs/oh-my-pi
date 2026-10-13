@@ -1,5 +1,5 @@
 /**
- * Write a shareable, anonymized copy of a session and its subagent transcripts.
+ * Write a shareable, anonymized copy of a session.
  */
 import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
 import { runAnonymizeCommand } from "../cli/anonymize-cli";

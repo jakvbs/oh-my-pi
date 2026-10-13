@@ -58,7 +58,7 @@ When strict mode is requested (`strict=true` at call site), the schema MUST sati
 
 ---
 
-## 2) Google Gemini / Vertex / Gemini CLI (`normalizeSchemaForGoogle`)
+## 2) Google Gemini / Vertex (`normalizeSchemaForGoogle`)
 
 Schemas sent on the Google JSON Schema path MUST follow:
 
@@ -149,7 +149,7 @@ If any remain, schema is incompatible.
    - Use `adaptSchemaForStrict`.
    - Emit `strict: true` only when effective strict enforcement succeeded.
 
-- **Google Gemini/Vertex/Gemini CLI (non-CCA Claude)**:
+- **Google Gemini/Vertex (non-CCA Claude)**:
    - Use `normalizeSchemaForGoogle` and send schema on `parametersJsonSchema` path.
 
 - **Cloud Code Assist Claude models (`model.id` starts with `claude-`)**:
@@ -165,7 +165,3 @@ When adding/changing provider adapters:
 2. Any new normalization rule MUST include regression tests under `packages/ai/test`.
 3. Never bypass adapter helpers (`adaptSchemaForStrict`, `normalizeSchemaForGoogle`, `normalizeSchemaForCCA`, `normalizeSchemaForMCP`) in provider code.
 4. If a provider rejects schema with partial support, prefer deterministic per-tool fallback over request-wide failure.
-
-## 6) Gemini CLI / Antigravity CCA parity
-
-The Gemini CLI / Antigravity Claude path MUST run the same full `normalizeSchemaForCCA` pipeline as the shared Google Claude path. It MUST NOT call only the first keyword-stripping pass, because that leaves object combiners, nullable unions, residual combiners, and fallback gating inconsistent between transports.

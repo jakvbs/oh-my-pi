@@ -124,21 +124,6 @@ export const FENCE_RE = /^( {0,3})([`~]{3,})/;
 /** Shared empty link-target lookup for renderers without interactive links. */
 export const EMPTY_LINK_TARGETS: ReadonlyMap<string, string> = new Map();
 
-/** Default display width reserved for a resolved model badge. */
-export const FEED_MODEL_BADGE_WIDTH = 30;
-
-let feedModelBadgeEnabled = false;
-
-/** Set whether feed rows display their resolved model badge. */
-export function setFeedModelBadgeEnabled(enabled: boolean): void {
-	feedModelBadgeEnabled = enabled;
-}
-
-/** Return whether resolved model badges are enabled. */
-export function isFeedModelBadgeEnabled(): boolean {
-	return feedModelBadgeEnabled;
-}
-
 /** Compact glyph for a configured thinking level; empty for `inherit` (nothing to show). */
 export function thinkingLevelGlyph(level: ConfiguredThinkingLevel, uiTheme: Theme): string {
 	if (level === ThinkingLevel.Inherit) return "";
@@ -147,38 +132,6 @@ export function thinkingLevelGlyph(level: ConfiguredThinkingLevel, uiTheme: Them
 	if (typeof symbol !== "string") return "";
 	const space = symbol.indexOf(" ");
 	return space < 0 ? symbol : symbol.slice(0, space);
-}
-
-/**
- * Compact feed-row prefix: explicit thinking glyph, sanitized model identity,
- * then advisor eye. Keep fitting icons if no model fits; preserve literal identity suffixes.
- */
-export function formatFeedModelBadge(
-	modelIdentity: string | undefined,
-	thinkingLevel: ConfiguredThinkingLevel | undefined,
-	advisor: boolean | undefined,
-	uiTheme: Theme,
-	maxWidth = FEED_MODEL_BADGE_WIDTH,
-): string {
-	if (!modelIdentity) return "";
-	const width = Math.max(0, Math.floor(maxWidth));
-	const clean = sanitizeText(modelIdentity).replace(/\s+/g, " ").trim();
-	if (!clean || !(width > 0)) return "";
-	const glyph = thinkingLevel !== undefined ? thinkingLevelGlyph(thinkingLevel, uiTheme) : "";
-	const advisorIcon = advisor === true ? uiTheme.icon.advisor : "";
-	const prefix = glyph ? `${glyph} ` : "";
-	const suffix = advisorIcon ? ` ${advisorIcon}` : "";
-	const modelWidth = width - visibleWidth(prefix) - visibleWidth(suffix);
-	if (modelWidth < 1) {
-		const advisorWidth = visibleWidth(advisorIcon);
-		if (advisorIcon && advisorWidth <= width) {
-			const thinkingPrefix = glyph && visibleWidth(prefix) + advisorWidth <= width ? prefix : "";
-			return uiTheme.fg("accent", thinkingPrefix) + uiTheme.fg("dim", advisorIcon);
-		}
-		return glyph && visibleWidth(glyph) <= width ? uiTheme.fg("accent", glyph) : "";
-	}
-	const model = truncateMiddleToWidth(clean, modelWidth);
-	return uiTheme.fg("accent", prefix) + uiTheme.fg("dim", `${model}${suffix}`);
 }
 
 /** Truncation lengths for different content types */

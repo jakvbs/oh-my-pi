@@ -107,7 +107,7 @@ describe("async result yield queue delivery", () => {
 	test("multiple completions in one yield window become one follow-up", async () => {
 		const harness = createHarness(true);
 		const firstJobId = harness.manager.register("bash", "first", async () => "first result");
-		const secondJobId = harness.manager.register("task", "second", async () => "second result");
+		const secondJobId = harness.manager.register("bash", "second", async () => "second result");
 
 		await harness.manager.waitForAll();
 		expect(await harness.manager.drainDeliveries({ timeoutMs: 2_000 })).toBe(true);

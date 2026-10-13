@@ -1,16 +1,11 @@
 import type { Provider } from "../types";
 import type { CredentialRankingStrategy, UsageProvider } from "../usage";
-import { alibabaTokenPlanRankingStrategy, alibabaTokenPlanUsageProvider } from "./alibaba-token-plan";
 import { charmHyperUsageProvider } from "./charm-hyper";
 import { claudeRankingStrategy, claudeUsageProvider } from "./claude";
-import { clinePassUsageProvider } from "./cline-pass";
 import { commandCodeRankingStrategy, commandCodeUsageProvider } from "./commandcode";
-import { googleGeminiCliUsageProvider } from "./gemini";
 import { githubCopilotUsageProvider } from "./github-copilot";
-import { antigravityRankingStrategy, antigravityUsageProvider } from "./google-antigravity";
 import { kimiRankingStrategy, kimiUsageProvider } from "./kimi";
 import { museCodeUsageProvider } from "./muse-code";
-import { minimaxCodeUsageProvider } from "./minimax-code";
 import { ollamaCloudUsageProvider, ollamaUsageProvider } from "./ollama";
 import { codexRankingStrategy, openaiCodexUsageProvider } from "./openai-codex";
 import { opencodeGoRankingStrategy, opencodeGoUsageProvider } from "./opencode-go";
@@ -24,17 +19,12 @@ export type RankingStrategyResolver = (provider: Provider) => CredentialRankingS
 
 /** Built-in usage providers, in probe order. */
 export const DEFAULT_USAGE_PROVIDERS: readonly UsageProvider[] = [
-	alibabaTokenPlanUsageProvider,
 	openaiCodexUsageProvider,
 	kimiUsageProvider,
-	minimaxCodeUsageProvider,
 	museCodeUsageProvider,
-	antigravityUsageProvider,
-	googleGeminiCliUsageProvider,
 	ollamaUsageProvider,
 	ollamaCloudUsageProvider,
 	claudeUsageProvider,
-	clinePassUsageProvider,
 	zaiUsageProvider,
 	umansUsageProvider,
 	opencodeGoUsageProvider,
@@ -55,10 +45,8 @@ export function defaultUsageProvider(provider: Provider): UsageProvider | undefi
 }
 
 const DEFAULT_RANKING_STRATEGIES = new Map<Provider, CredentialRankingStrategy>([
-	["alibaba-token-plan", alibabaTokenPlanRankingStrategy],
 	["openai-codex", codexRankingStrategy],
 	["anthropic", claudeRankingStrategy],
-	["google-antigravity", antigravityRankingStrategy],
 	["kimi-code", kimiRankingStrategy],
 	["zai", zaiRankingStrategy],
 	["opencode-go", opencodeGoRankingStrategy],

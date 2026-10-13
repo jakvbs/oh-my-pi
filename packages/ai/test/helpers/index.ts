@@ -143,21 +143,17 @@ export function withOfficialAnthropicEndpoint(): void {
 }
 
 /**
- * MiniMax Token Plan model on the plan's OpenAI-compatible route (`/v1`). The
- * bundled Token Plan rows ride MiniMax's Anthropic endpoint, so OpenAI-route
- * repros build the row explicitly; compat still resolves from the same rules
- * as a bundled row.
+ * MiniMax model on the OpenAI-compatible route (`/v1`). The bundled MiniMax
+ * rows ride MiniMax's Anthropic endpoint, so OpenAI-route repros build the row
+ * explicitly; compat still resolves from the same rules as a bundled row.
  */
-export function minimaxTokenPlanOpenAIModel(
-	provider: "minimax-code" | "minimax-code-cn",
-	id: string,
-): Model<"openai-completions"> {
+export function minimaxOpenAIModel(provider: "minimax" | "minimax-cn", id: string): Model<"openai-completions"> {
 	return buildModel({
 		id,
 		name: id,
 		api: "openai-completions",
 		provider,
-		baseUrl: provider === "minimax-code" ? "https://api.minimax.io/v1" : "https://api.minimaxi.com/v1",
+		baseUrl: provider === "minimax" ? "https://api.minimax.io/v1" : "https://api.minimaxi.com/v1",
 		reasoning: true,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import { ConcatSink, getBlobsDir, isEisdir, isEnoent, isEnotdir, parseJsonlLenient } from "@oh-my-pi/pi-utils";
 import * as snapcompact from "@oh-my-pi/snapcompact";
-import { Semaphore } from "../task/parallel";
+import { Semaphore } from "../utils/parallel";
 import {
 	BlobStore,
 	isBlobRef,

@@ -10,8 +10,6 @@ export interface BillingSummaryOptions {
 	readonly premiumRequests: number;
 	readonly fractionDigits: number;
 	readonly pricingPeriod?: "peak" | "off-peak";
-	/** Subagent-tree spend, rendered `(+…)` after the session's own spend; `cost` excludes it. */
-	readonly subagentCost?: number;
 	readonly advisor?: {
 		readonly cost: number;
 		readonly usingSubscription: boolean;
@@ -59,22 +57,14 @@ function formatAdvisorSpend(
 export function formatBillingSummary(options: BillingSummaryOptions, uiTheme: Theme): string | undefined {
 	const premiumRequests = normalizePremiumRequests(options.premiumRequests);
 	const advisorCost = options.advisor?.cost ?? 0;
-	const subagentCost = options.subagentCost ?? 0;
-	if (
-		!options.cost &&
-		!subagentCost &&
-		!advisorCost &&
-		!options.usingSubscription &&
-		!premiumRequests &&
-		!options.pricingPeriod
-	) {
+	if (!options.cost && !advisorCost && !options.usingSubscription && !premiumRequests && !options.pricingPeriod) {
 		return undefined;
 	}
 
 	const parts: string[] = [];
 	let shownUnit: BillingUnit | undefined;
 	const primaryUnit: BillingUnit = options.usingSubscription ? "subscription" : "metered";
-	if (options.cost || options.pricingPeriod || subagentCost) {
+	if (options.cost || options.pricingPeriod) {
 		parts.push(formatSpend(options.cost, options.usingSubscription, options.fractionDigits, uiTheme, true));
 		shownUnit = primaryUnit;
 	} else if (options.usingSubscription) {
@@ -83,8 +73,6 @@ export function formatBillingSummary(options: BillingSummaryOptions, uiTheme: Th
 		);
 		shownUnit = primaryUnit;
 	}
-	// Always follows the primary spend, which already carries the unit.
-	if (subagentCost) parts.push(`(+${subagentCost.toFixed(options.fractionDigits)})`);
 	if (options.pricingPeriod) parts.push(options.pricingPeriod === "peak" ? "↑" : "↓");
 	if (premiumRequests) parts.push(`★ ${formatNumber(premiumRequests)}`);
 	if (advisorCost && options.advisor) {

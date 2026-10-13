@@ -11,6 +11,7 @@ export function getExtraHelpText(): string {
   FOUNDRY_BASE_URL           - Anthropic Foundry base URL (e.g., https://<foundry-host>)
   ANTHROPIC_FOUNDRY_API_KEY  - Anthropic token used as Authorization: Bearer <token> in Foundry mode
   ANTHROPIC_CUSTOM_HEADERS   - Extra headers for Foundry or any custom ANTHROPIC_BASE_URL gateway (e.g., "user-id: USERNAME")
+  CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS - Omit pre-release Anthropic fields (context_management, beta tool fields, task budgets, thinking.block_binding) for gateways that reject them
   CLAUDE_CODE_CLIENT_CERT    - Client certificate (PEM path or inline PEM) for mTLS
   CLAUDE_CODE_CLIENT_KEY     - Client private key (PEM path or inline PEM) for mTLS
   NODE_EXTRA_CA_CERTS        - CA bundle path (or inline PEM) for server certificate validation
@@ -24,7 +25,6 @@ export function getExtraHelpText(): string {
   CEREBRAS_API_KEY           - Cerebras models
   XAI_API_KEY                - xAI Grok models
   OPENROUTER_API_KEY         - OpenRouter aggregated models
-  KILO_API_KEY               - Kilo Gateway models
   MISTRAL_API_KEY            - Mistral models
   ZAI_API_KEY                - z.ai models (ZhipuAI/GLM)
   UMANS_AI_CODING_PLAN_API_KEY - Umans AI Coding Plan models
@@ -32,8 +32,6 @@ export function getExtraHelpText(): string {
   UMANS_WEBSEARCH_PROVIDER    - Umans gateway web search backend (native or exa)
   MINIMAX_API_KEY            - MiniMax models
   OPENCODE_API_KEY           - OpenCode Zen/OpenCode Go models
-  CURSOR_ACCESS_TOKEN        - Cursor AI models
-  CLINE_API_KEY              - ClinePass subscription models
   COMMAND_CODE_API_KEY       - Command Code Provider API models
   CHARM_HYPER_API_KEY        - Charm Hyper inference gateway models
   AI_GATEWAY_API_KEY         - Vercel AI Gateway

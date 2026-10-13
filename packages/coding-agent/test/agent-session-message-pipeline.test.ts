@@ -950,7 +950,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -1034,7 +1033,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -1427,7 +1425,6 @@ describe("AgentSession message pipeline", () => {
 	);
 
 	it.each([
-		["Antigravity fixed-profile transport", getBundledModel("google-antigravity", "claude-sonnet-4-6")],
 		[
 			"Ollama Cloud",
 			buildModel({
@@ -1497,9 +1494,9 @@ describe("AgentSession message pipeline", () => {
 			true,
 		],
 		[
-			"Gemini CLI",
+			"Gemini",
 			buildModel({
-				...getBundledModel("google-gemini-cli", "gemini-2.5-pro"),
+				...getBundledModel("google", "gemini-2.5-pro"),
 				thinking: { mode: "budget", efforts: [Effort.Medium] },
 			}),
 			false,
@@ -2338,7 +2335,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -2411,7 +2407,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 		});
 		try {
 			await session.sendUserMessage("rewrite this");
@@ -2492,7 +2487,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 		});
 		try {
 			const turn = session.sendUserMessage("rewrite this");

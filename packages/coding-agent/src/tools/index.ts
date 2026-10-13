@@ -10,11 +10,7 @@ import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import { EditTool } from "../edit";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
-import type {
-	BeforeSubagentSpawnEvent,
-	BeforeSubagentSpawnEventResult,
-	PreparedExtension,
-} from "../extensibility/extensions/types";
+import type { PreparedExtension } from "../extensibility/extensions/types";
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
 import { GoalTool } from "../goals/tools/goal-tool";
@@ -22,19 +18,12 @@ import type { LocalProtocolOptions } from "../internal-urls";
 import type { DaemonCompletionNotification } from "../launch/protocol";
 import { LspTool } from "../lsp";
 import type { MCPManager } from "../mcp";
-import type { AgentLifecycleManager } from "../registry/agent-lifecycle";
-import type { AgentRegistry } from "../registry/agent-registry";
 import type { ArtifactManager } from "../session/artifacts";
 import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
 import type { UsageStatistics } from "../session/session-entries";
 import type { SessionManager } from "../session/session-manager";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
-import { TaskTool } from "../task";
-import type { AgentOutputManager } from "../task/output-manager";
-import type { AgentDefinition } from "../task/types";
-import { type StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
-import type { WorkPoolYieldItem } from "../task/workpool-yield";
 import type { EventBus } from "../utils/event-bus";
 import { WebSearchTool } from "../web/search";
 import type { WorkspaceTree } from "../workspace-tree";
@@ -49,6 +38,7 @@ import { GrepTool } from "./grep";
 import { FindTool, isFindEnabled } from "./jfind";
 import { ManageSkillTool } from "./manage-skill";
 import { wrapToolWithMetaNotice } from "./output-meta";
+import type { OutputSchemaMode } from "./output-schema-validator";
 import { ReadTool } from "./read";
 import { supportsExternalThinking, ThinkTool } from "./think";
 import { type TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
@@ -81,7 +71,6 @@ export * from "../edit";
 export * from "../goals";
 export * from "../lsp";
 export * from "@oh-my-pi/pi-tui/tools/streaming-output";
-export * from "../task";
 export * from "../web/search";
 export * from "./ask";
 export * from "./bash";
@@ -100,17 +89,11 @@ export * from "./gh";
 export * from "./glob";
 export * from "./grep";
 export * from "./jfind";
-export type { AgentActivitySnapshot, CoordinationDetails, JobSnapshot } from "@oh-my-pi/pi-tui/tools/wait";
+export type { CoordinationDetails, JobSnapshot } from "@oh-my-pi/pi-tui/tools/wait";
 export * from "./manage-skill";
 export * from "./read";
 export * from "./report-tool-issue";
 export * from "./resolve";
-export type {
-	FindingPriority,
-	FindingPriorityInfo,
-	FindingDetails,
-	SubmitReviewDetails,
-} from "@oh-my-pi/pi-tui/tools/task";
 export * from "./think";
 export * from "./todo";
 export * from "./wait";
@@ -173,19 +156,10 @@ export interface ToolSession {
 	settingsApproval?: boolean;
 	/** Whether this session has begun disposal. */
 	isDisposed?: () => boolean;
-	/**
-	 * Suppress the spawn specialization/coordination advisory appended to `task`
-	 * results. Set by internal/programmatic callers (e.g. the commit agent's
-	 * file-analysis fan-out) whose results are consumed by code — not by a model
-	 * orchestrating further spawns — so the nudge would only be noise.
-	 */
-	suppressSpawnAdvisory?: boolean;
 	/** Optional fetch implementation injected into the URL read pipeline (tests, proxies). Defaults to global fetch. */
 	fetch?: FetchImpl;
 	/** Provider credential resolver forwarded unchanged to restricted child sessions. */
 	getApiKey?: AgentOptions["getApiKey"];
-	/** Current session whose stored credential affinities should seed a child session. */
-	getCredentialSourceSessionId?: () => string | undefined;
 	/** Pre-loaded context files (AGENTS.md, etc) */
 	contextFiles?: ContextFileEntry[];
 	/** Pre-loaded workspace tree (forwarded to subagents to skip re-scanning) */
@@ -241,8 +215,6 @@ export interface ToolSession {
 	enableLsp?: boolean;
 	/** Whether LSP is limited to navigation and diagnostics. */
 	lspReadOnly?: boolean;
-	/** Whether this invocation may expose IRC. `false` removes it even for subagents. */
-	enableIrc?: boolean;
 	/**
 	 * Whether MCP capabilities may be forwarded to child sessions. `false`
 	 * prohibits inherited-manager and process-global MCP fallback.
@@ -252,29 +224,17 @@ export interface ToolSession {
 	hasEditTool?: boolean;
 	/** Event bus for tool/extension communication */
 	eventBus?: EventBus;
-	/**
-	 * Root-scoped bus for `task:subagent:*` observability frames. The root
-	 * session creates it; every spawned subagent session inherits it, so RPC
-	 * and HUD surfaces see spawns at any depth without crossing into another
-	 * root session's traffic.
-	 */
-	subagentEventBus?: EventBus;
 	/** Output schema for structured completion (subagents). */
 	outputSchema?: unknown;
 	/** Enforcement policy for {@link outputSchema}; defaults to legacy permissive behavior. */
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	/** Whether to include the yield tool by default */
 	requireYieldTool?: boolean;
-	/** Session starts with a prewalk hand-off armed. Keeps `todo` in yield-gated
-	 *  (subagent) registries: the prewalk plan nudge + todo gate need it. */
-	prewalkArmed?: boolean;
 	/**
 	 * Constrain the active set to the caller's explicit built-in names (plus a
 	 * required yield tool). Suppresses automatic tool-set expansion.
 	 */
 	restrictToolNames?: boolean;
-	/** Whether this session is a subagent rather than the spawning root. */
-	isSubagent?: boolean;
 	/** Get session file */
 	getSessionFile: () => string | null;
 	/**
@@ -285,12 +245,13 @@ export interface ToolSession {
 		Partial<Pick<SessionManager, "getSessionId" | "getLeafId" | "appendModelUsage">>;
 	/** Get tool-state session ID (distinct from the owning session for advisors). */
 	getSessionId?: () => string | null;
-	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
+	/** Agent identity that owns background jobs. Returns the registry id (e.g. "Main"). */
 	getAgentId?: () => string | null;
 	/** Look up a registered tool by name. */
 	getToolByName?: (name: string) => AgentTool | undefined;
 	/** Current session context for tool execution. */
 	getToolContext?: () => AgentToolContext | undefined;
+
 	/** Return whether a built-in tool is active in this turn's tool set. */
 	isToolActive?: (name: string) => boolean;
 	/** Update the active built-in tool predicate when a session changes tools mid-run. */
@@ -314,48 +275,24 @@ export interface ToolSession {
 	 * remains restricted until the activation commits.
 	 */
 	pendingFullWriteDescription?: boolean;
-	/** Agent registry for IRC routing across live sessions. */
-	agentRegistry?: AgentRegistry;
-	/** Idle→parked→revive lifecycle owner; lets explicit cancellation stop a non-job-backed agent registration. Default: AgentLifecycleManager.global(). */
-	agentLifecycle?: () => AgentLifecycleManager;
 	/** Get artifacts directory for artifact:// URLs */
 	getArtifactsDir?: () => string | null;
 	/** Get the ArtifactManager backing this session (shared across parent + subagents). */
 	getArtifactManager?: () => ArtifactManager | null;
 	/** Allocate a new artifact path and ID for session-scoped truncated output. */
 	allocateOutputArtifact?: (toolType: string) => Promise<{ id?: string; path?: string }>;
-	/** Session-scoped agent definitions (user-tagged model pseudonyms) merged after discovered agents. */
-	getSessionAgents?: () => readonly AgentDefinition[];
-	/**
-	 * Session agents baked into the current base prompt surface. The task
-	 * description lists these instead of the live set so tagging a model
-	 * mid-session does not mutate the provider tool prefix; the delta rides a
-	 * hidden notice. Absent when the embedder has no base-prompt surface.
-	 */
-	advertisedSessionAgents?: () => readonly AgentDefinition[];
 	/** Get resolved model string if explicitly set for this session */
 	getModelString?: () => string | undefined;
 	/** Get the current session model string, regardless of how it was chosen */
 	getActiveModelString?: () => string | undefined;
 	/** Get the current session model object (provider/api capabilities), regardless of how it was chosen. */
 	getActiveModel?: () => Model | undefined;
-	/** Get the session's live per-family service tiers (undefined = none). Source of truth for subagent `tier.subagent: inherit`. */
+	/** Get the session's live per-family service tiers (undefined = none). */
 	getServiceTierByFamily?: () => ServiceTierByFamily | undefined;
-	/**
-	 * Fires `before_subagent_spawn` on this session's extensions before a child's
-	 * model resolves. `signal` cancels awaiting handlers. Undefined when the
-	 * session has no extension runner.
-	 */
-	emitBeforeSubagentSpawn?(
-		event: BeforeSubagentSpawnEvent,
-		signal?: AbortSignal,
-	): Promise<BeforeSubagentSpawnEventResult | undefined>;
 	/** Auth storage for passing to subagents (avoids re-discovery) */
 	authStorage?: import("../session/auth-storage").AuthStorage;
 	/** Model registry for passing to subagents (avoids re-discovery) */
 	modelRegistry?: import("../config/model-registry").ModelRegistry;
-	/** Agent output manager for unique agent:// IDs across task invocations */
-	agentOutputManager?: AgentOutputManager;
 	/** Manager of this session's root, shared only with that root's subagents. */
 	asyncJobManager?: AsyncJobManager;
 	/** MCP manager visible to subagents without relying on the process-global singleton. */
@@ -372,8 +309,6 @@ export interface ToolSession {
 	getUsageStatistics?: () => UsageStatistics;
 	/** Current per-turn token budget {total, spent, hard}. */
 	getTurnBudget?: () => { total: number | null; spent: number; hard: boolean };
-	/** Record output tokens consumed by a spawned subagent toward the current turn budget. */
-	recordEvalSubagentUsage?: (output: number) => void;
 	/** Bridge to the connected client (e.g. ACP editor host). Tools should route fs/terminal/permission requests through this when available. */
 	getClientBridge?: () => ClientBridge | undefined;
 	/** Live session secret obfuscator; absent when Hide Secrets never turned on. */
@@ -388,8 +323,6 @@ export interface ToolSession {
 	 * so branch rehydration agrees with the in-memory list.
 	 */
 	persistTodoPhases?: (phases: TodoPhase[]) => void;
-	/** Active workpool items whose incremental yields complete the current turn. */
-	getWorkPoolYieldItems?: () => readonly WorkPoolYieldItem[];
 	/**
 	 * Trimmed text of the most recent assistant message, or `undefined` when the
 	 * turn carries no text (e.g. thinking-only). The yield tool uses it to reject
@@ -398,8 +331,6 @@ export interface ToolSession {
 	getLastAssistantText?: () => string | undefined;
 	/** Resolve a terminal yield's current or immediately preceding report, bound to its call ID. */
 	getYieldReportText?: (toolCallId: string) => string | undefined;
-	/** Replace the active workpool item contract and refresh its provider-facing prompt. */
-	setWorkPoolYieldItems?: (items: readonly WorkPoolYieldItem[]) => Promise<void>;
 	/** The tool-choice queue used to force forthcoming tool invocations and carry invocation handlers. */
 	getToolChoiceQueue?(): ToolChoiceQueue;
 	/** Build a model-provider-specific ToolChoice that targets the named tool, or undefined if unsupported. */
@@ -480,7 +411,6 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	rewind: RewindTool.createIf,
 	context_notes: ContextNotesTool.createIf,
 	new_context: NewContextTool.createIf,
-	task: s => TaskTool.create(s),
 	wait: s => new WaitTool(s),
 	todo: s => new TodoTool(s),
 	web_search: s => new WebSearchTool(s),
@@ -514,7 +444,7 @@ export interface BuiltinToolPlan {
 /**
  * Resolve which built-in tools `session` gets for `toolNames` under the current
  * settings. Shared by {@link createTools} and the live settings reconcile so both
- * honor explicit lists, `restrictToolNames`, and task depth identically.
+ * honor explicit lists and `restrictToolNames` identically.
  */
 export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: string[]): Promise<BuiltinToolPlan> {
 	const restrictToolNames = session.restrictToolNames === true;
@@ -564,14 +494,8 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		// `manage_skill` is gated by `autolearn.enabled` but must also be
 		// force-included into an explicit requestedTools list so a restricted
 		// top-level session whose controller/guidance is active still exposes the
-		// tool the nudge points at. Gated to top-level sessions: the controller
-		// only runs there, so a subagent's explicit tool whitelist must never be
-		// silently widened with write-capable tools.
-		if (
-			cfgAutolearnEnabled.get(session.settings) &&
-			!session.isSubagent &&
-			!requestedTools.includes("manage_skill")
-		) {
+		// tool the nudge points at.
+		if (cfgAutolearnEnabled.get(session.settings) && !requestedTools.includes("manage_skill")) {
 			requestedTools.push("manage_skill");
 		}
 	}
@@ -588,8 +512,7 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		}
 		if (name === "lsp") return enableLsp && cfgLspEnabled.get(session.settings);
 		if (name === "bash") return cfgBashEnabled.get(session.settings);
-		if (name === "todo")
-			return (!includeYield || session.prewalkArmed === true) && cfgTodoEnabled.get(session.settings);
+		if (name === "todo") return !includeYield && cfgTodoEnabled.get(session.settings);
 		if (name === "glob") return cfgGlobEnabled.get(session.settings);
 		if (name === "grep") return cfgGrepEnabled.get(session.settings);
 		if (name === "find") return isFindEnabled(session);
@@ -599,20 +522,11 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "ask") return cfgAskEnabled.get(session.settings);
 		if (name === "context_notes" || name === "new_context")
 			return cfgCompactionExperimentalContextManagement.get(session.settings);
-		if (name === "checkpoint" || name === "rewind")
-			return cfgCheckpointEnabled.get(session.settings) && (!session.isSubagent || requestedTools !== undefined);
+		if (name === "checkpoint" || name === "rewind") return cfgCheckpointEnabled.get(session.settings);
 		if (name === "wait") {
-			return (
-				cfgAsyncEnabled.get(session.settings) ||
-				session.enableIrc !== false ||
-				cfgLaunchEnabled.get(session.settings)
-			);
+			return cfgAsyncEnabled.get(session.settings) || cfgLaunchEnabled.get(session.settings);
 		}
-		if (name === "manage_skill")
-			return cfgAutolearnEnabled.get(session.settings) && (!session.isSubagent || requestedTools !== undefined);
-		if (name === "task") {
-			return !session.isSubagent;
-		}
+		if (name === "manage_skill") return cfgAutolearnEnabled.get(session.settings);
 		return true;
 	};
 	if (includeYield && requestedTools && !requestedTools.includes("yield")) {

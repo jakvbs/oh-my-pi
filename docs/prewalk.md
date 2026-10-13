@@ -57,7 +57,7 @@ The switch is one-shot: after the handoff, prewalk disarms itself, removes the p
 
 In a top-level session, changing `prewalk.enabled` live also takes effect:
 turning it on arms the current `@smol` target when none is armed; turning it off
-disarms a pending handoff. This does not control subagent prewalk.
+disarms a pending handoff.
 
 Run these slash commands without restarting OMP:
 
@@ -74,7 +74,3 @@ Run these slash commands without restarting OMP:
 After a handoff, `/prewalk restart` immediately returns the session to the current `@default` assignment and re-arms the handoff to `@smol`. Both roles are resolved when the command runs, so the cycle is independent of concrete model names and does not alter either role's persisted configuration.
 
 If prewalk is already armed, `/prewalk` leaves the existing target in place. `/prewalk restart` also preserves a matching arm; if its existing target differs from the current `@smol` resolution, restart is rejected before changing the active model. To choose a different target at startup, use `--prewalk-into`.
-
-## Subagent prewalk
-
-Task subagents have a separate per-agent control, `task.agentPrewalk` (agent name → `"on"` / `"off"` / target pattern), configured from the `/agents` hub.

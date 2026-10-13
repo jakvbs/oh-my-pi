@@ -62,12 +62,10 @@ export async function createCompressSession(options: {
 		slashCommands: [],
 		disableExtensionDiscovery: true,
 		enableMCP: false,
-		enableIrc: false,
 		enableLsp: false,
 		hasUI: false,
 		autoApprove: true,
 		agentId: options.agentId ?? "Compress",
-		agentDisplayName: "compress",
 	});
 	const active = resolved?.model ?? session.model;
 	return { session, model: active ? formatModelString(active) : "session default" };

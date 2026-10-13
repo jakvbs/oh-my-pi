@@ -5,7 +5,7 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { runSessionToYield } from "@oh-my-pi/pi-coding-agent/task/executor";
+import { runSessionToYield } from "@oh-my-pi/pi-coding-agent/session/run-to-yield";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import { createInMemoryAuthStorage } from "./helpers/agent-session-setup";
 
@@ -51,7 +51,6 @@ async function closedBookSession(responses: MockResponseSource, toolNames: strin
 		rules: [],
 		enableMCP: false,
 		enableLsp: false,
-		enableIrc: false,
 		hasUI: false,
 		bindProcessState: false,
 		requireYieldTool: true,

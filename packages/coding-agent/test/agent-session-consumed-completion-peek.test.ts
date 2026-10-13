@@ -49,7 +49,7 @@ describe("AgentSession peek at consumed background completions", () => {
 	});
 
 	/** Register a job owned by the session that runs until its gate resolves. */
-	function gatedJob(id: string, type: "bash" | "task"): PromiseWithResolvers<string> {
+	function gatedJob(id: string, type: "bash"): PromiseWithResolvers<string> {
 		const gate = Promise.withResolvers<string>();
 		gates.push(gate);
 		manager.register(type, id, async () => await gate.promise, { id, ownerId: "Main" });
@@ -96,7 +96,7 @@ describe("AgentSession peek at consumed background completions", () => {
 	}
 
 	it("does not interrupt a wait for a completion the eval cell already consumed", async () => {
-		const subagent = gatedJob("subagent", "task");
+		const subagent = gatedJob("subagent", "bash");
 		const cell = gatedJob("cell", "bash");
 		const queued = Promise.withResolvers<void>();
 		const active = createSession([
@@ -139,7 +139,7 @@ describe("AgentSession peek at consumed background completions", () => {
 	});
 
 	it("reports no pending async work once the only queued result was consumed", async () => {
-		const subagent = gatedJob("subagent", "task");
+		const subagent = gatedJob("subagent", "bash");
 		const active = createSession([{ content: ["Done"] }]);
 		const queued = Promise.withResolvers<void>();
 		observeAsyncResultQueued(active, queued);

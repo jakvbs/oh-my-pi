@@ -6,15 +6,11 @@ import {
 	TOOL_INTERRUPT_ABORT_REASON,
 } from "@oh-my-pi/pi-agent-core";
 import { prompt } from "@oh-my-pi/pi-utils";
-import { IrcBus } from "../irc/bus";
 import waitDescription from "../prompts/tools/wait.md" with { type: "text" };
 import type { ToolSession } from ".";
 import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
 import { buildJobResult, snapshotJobs, undeliveredJobs } from "../async/job-control";
 import { hasLiveOwnedService, listServicesTolerant, waitForOwnedServiceCompletion } from "../launch/services";
-import { drainPendingInbox, messageResult } from "../irc/messaging";
-import type { AgentRegistry } from "../registry/agent-registry";
-import type { IrcMessage } from "@oh-my-pi/pi-tui/tools/irc";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { CoordinationDetails } from "@oh-my-pi/pi-tui/tools/wait";
 import { throwIfAborted } from "./tool-errors";
@@ -25,16 +21,6 @@ const waitSchema = type({});
 const WAIT_MAX_MS = 30 * 60_000;
 const PROGRESS_INTERVAL_MS = 500;
 
-interface WaitMessaging {
-	registry: AgentRegistry;
-	senderId: string;
-}
-
-function takeQueuedMessage(messaging: WaitMessaging | undefined): IrcMessage | undefined {
-	if (!messaging) return undefined;
-	return drainPendingInbox(messaging.registry, messaging.senderId) ?? IrcBus.global().take(messaging.senderId);
-}
-
 /** Whether `session` has the `wait` tool active, so prompts may point blocked callers at it. */
 export function hasWaitTool(session: ToolSession): boolean {
 	return session.isToolActive?.("wait") ?? true;
@@ -42,9 +28,7 @@ export function hasWaitTool(session: ToolSession): boolean {
 
 /**
  * Blocks on background jobs and services the calling agent started. Work it
- * did not start never sustains a wait: a peer owes no message — a parent
- * blocked awaiting this very agent stays running — so waiting on peers can
- * park both sides for good. A message arriving mid-wait still ends it.
+ * did not start never sustains a wait.
  */
 export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetails> {
 	readonly name = "wait";
@@ -66,19 +50,13 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<CoordinationDetails>,
 	): Promise<AgentToolResult<CoordinationDetails>> {
-		const registry = this.session.agentRegistry;
 		const senderId = this.session.getAgentId?.() ?? undefined;
-		const messaging = registry && senderId ? { registry, senderId } : undefined;
 		const manager = this.session.asyncJobManager;
 
-		const pending = takeQueuedMessage(messaging);
-		if (pending && messaging) return messageResult(messaging.senderId, pending);
 		// Refreshes owned-service tracking only; jobs are in-process, so a hung
 		// broker must not turn every wait into an error.
 		if (cfgLaunchEnabled.get(this.session.settings)) {
 			await listServicesTolerant(this.session, signal);
-			const queued = takeQueuedMessage(messaging);
-			if (queued && messaging) return messageResult(messaging.senderId, queued);
 		}
 		const jobs = manager?.getRunningJobs({ ownerId: senderId }) ?? [];
 		// An accepted completion whose delivery has not reached the transcript
@@ -90,34 +68,24 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 		}
 		const serviceRunning = hasLiveOwnedService(this.session);
 		if (jobs.length === 0 && !serviceRunning) {
-			throw new ToolError(
-				"Nothing to wait for: no background job or service you started is running. Other agents' results and messages arrive on their own.",
-			);
+			throw new ToolError("Nothing to wait for: no background job or service you started is running.");
 		}
-		return this.#blockUntilWake({ jobs, manager, messaging, serviceRunning, signal, onUpdate });
+		return this.#blockUntilWake({ jobs, manager, serviceRunning, signal, onUpdate });
 	}
 
-	/** Block until an owned job settles, an owned service finishes, a message arrives, the cap elapses, or the call aborts. */
+	/** Block until an owned job settles, an owned service finishes, the cap elapses, or the call aborts. */
 	async #blockUntilWake(args: {
 		jobs: AsyncJob[];
 		manager: AsyncJobManager | undefined;
-		messaging: WaitMessaging | undefined;
 		serviceRunning: boolean;
 		signal: AbortSignal | undefined;
 		onUpdate: AgentToolUpdateCallback<CoordinationDetails> | undefined;
 	}): Promise<AgentToolResult<CoordinationDetails>> {
-		const { jobs, manager, messaging, serviceRunning, signal, onUpdate } = args;
+		const { jobs, manager, serviceRunning, signal, onUpdate } = args;
 		const watchedIds = jobs.map(job => job.id);
 		manager?.watchJobs(watchedIds);
 		const serviceAbort = new AbortController();
 		const serviceLeg = serviceRunning ? waitForOwnedServiceCompletion(this.session, serviceAbort.signal) : undefined;
-		const busAbort = new AbortController();
-		// Only `busAbort` can reject this leg, and it fires once the wait has settled.
-		const busLeg = messaging
-			? IrcBus.global()
-					.wait(messaging.senderId, {}, 0, busAbort.signal)
-					.catch(() => null)
-			: undefined;
 		const { promise: timeout, resolve: timedOut } = Promise.withResolvers<void>();
 		const timer = setTimeout(timedOut, WAIT_MAX_MS);
 		const abort = Promise.withResolvers<void>();
@@ -133,11 +101,10 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 			});
 		const progressTimer = onUpdate && jobs.length > 0 ? setInterval(emitProgress, PROGRESS_INTERVAL_MS) : undefined;
 		if (jobs.length > 0) emitProgress();
-		let wake: "job" | "message" | "service" | "timeout" | "abort";
+		let wake: "job" | "service" | "timeout" | "abort";
 		try {
 			wake = await Promise.race([
 				...jobs.map(job => job.promise.then(() => "job" as const)),
-				...(busLeg ? [busLeg.then(() => "message" as const)] : []),
 				...(serviceLeg ? [serviceLeg.then(() => "service" as const)] : []),
 				timeout.then(() => "timeout" as const),
 				abort.promise.then(() => "abort" as const),
@@ -145,20 +112,15 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 		} finally {
 			clearTimeout(timer);
 			clearInterval(progressTimer);
-			busAbort.abort();
 			serviceAbort.abort();
 			signal?.removeEventListener("abort", onAbort);
 		}
 		// Unwatch only after the result is built: a job recovered below is
-		// consumed first, while one left unreported (message or interrupt won
+		// consumed first, while one left unreported (an interrupt won
 		// the race) is re-enqueued for its ordinary async delivery.
 		try {
-			// A dequeued message wins a photo-finish with a job: the job remains
-			// deliverable, whereas a lost message cannot be recovered from the bus.
-			const message = await busLeg;
-			if (message && messaging) return messageResult(messaging.senderId, message);
 			if (signal?.aborted) {
-				// Steering, a peer IRC, or a completion notice cut the wait short:
+				// Steering or a completion notice cut the wait short:
 				// the designed wake path, so the message injects after a normal
 				// result. Any other abort stops the run.
 				if (signal.reason === TOOL_INTERRUPT_ABORT_REASON) {

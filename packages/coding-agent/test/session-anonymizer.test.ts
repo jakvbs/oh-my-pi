@@ -23,6 +23,7 @@ describe("SessionAnonymizer", () => {
 				id: "01a0c9ac-8c2d",
 				timestamp: "2026-09-22T15:12:03.629Z",
 				cwd: "/home/alice/acme",
+				taskPromptCacheKey: "customer-acme:reviewer",
 			},
 			{
 				type: "message",
@@ -62,6 +63,7 @@ describe("SessionAnonymizer", () => {
 					provider: "anthropic",
 					model: "claude-opus-5-5",
 					usage,
+					elidedOutputTokens: 12,
 					stopReason: "toolUse",
 					providerPayload: {
 						items: [
@@ -128,6 +130,7 @@ describe("SessionAnonymizer", () => {
 		expect(at(usageEntry, "errorMessage")).toMatch(/^400 \[redacted #\d+: \d+ chars, 1 line\]$/);
 		expect(at(ttsr, "injectedRules")).toEqual([expect.stringMatching(/^PLACEHOLDER_\d+$/)]);
 		expect(header).toMatchObject({ type: "session", id: "01a0c9ac-8c2d", timestamp: "2026-09-22T15:12:03.629Z" });
+		expect(at(header, "taskPromptCacheKey")).toMatch(/^\[redacted #\d+: 22 chars, 1 line\]$/);
 		const cwd = String(at(header, "cwd"));
 		expect(cwd).toMatch(/^\/home\/seg\d+\/seg\d+$/);
 
@@ -136,6 +139,7 @@ describe("SessionAnonymizer", () => {
 			model: "claude-opus-5-5",
 			provider: "anthropic",
 			usage,
+			elidedOutputTokens: 12,
 			stopReason: "toolUse",
 		});
 
@@ -154,12 +158,20 @@ describe("SessionAnonymizer", () => {
 		const wireArgs = JSON.parse(String(at(assistant, "message", "providerPayload", "items", 0, "arguments")));
 		expect(wireArgs).toEqual({ pattern, path: grepPath.replace(/:10-20$/, "") });
 		expect(at(start, "data", "args", "pattern")).toBe(pattern);
-		const agentIndex = String(content(2, "arguments", "tasks", 0, "name")).replace("PLACEHOLDER_", "");
-		expect(content(2, "arguments", "tasks", 0, "agent")).toMatch(/^PLACEHOLDER_\d+$/);
-		expect(content(3, "arguments", "path")).toBe(`agent://seg${agentIndex}`);
+		expect(content(3, "arguments", "path")).toMatch(/^agent:\/\/seg\d+$/);
 
 		expect(at(toolResult, "message", "content", 0, "text")).toMatch(/^\[redacted #\d+: 53 chars, 1 line\]$/);
 		expect(at(toolResult, "message", "details")).toEqual({ matchCount: 1, searchPath: cwd });
+	});
+
+	test("preserves the suppressed Bash timing flag", () => {
+		const anonymizer = new SessionAnonymizer();
+		const result = anonymizer.entry({
+			type: "message",
+			message: { role: "toolResult", toolName: "bash", details: { wallTimeNoticeEmitted: false } },
+		});
+
+		expect(at(result, "message", "details")).toEqual({ wallTimeNoticeEmitted: false });
 	});
 
 	test("rewrites shell commands keeping programs, flags, and operators", () => {
@@ -256,10 +268,10 @@ describe("SessionAnonymizer", () => {
 		expect(json).toMatch(/"toolName":"eval","details":"\[redacted #\d+/);
 		expect(json).toMatch(/"data":"\[redacted #\d+/);
 		expect(json).toMatch(/"preserveData":"\[redacted #\d+/);
-		// A dotted task name and its agent:// URI share one token index.
-		const index = /"tasks":\[\{"name":"PLACEHOLDER_(\d+)"/.exec(json)?.[1];
-		// `.v2` is not a file extension, so the whole name maps to the shared token.
-		expect(json).toContain(`"path":"agent://seg${index}"`);
+		// A tool this build no longer ships (`task`, from an old session) is opaque like an extension tool.
+		expect(json).not.toContain("Probe");
+		expect(json).toMatch(/"name":"task","arguments":"\[redacted #\d+/);
+		expect(json).toMatch(/"path":"agent:\/\/seg\d+"/);
 	});
 
 	test("keeps only known schemes, extensions, env names, long flags, and count selectors", () => {
@@ -422,6 +434,7 @@ describe("SessionAnonymizer", () => {
 					details: {
 						status: "customer-acme",
 						jobId: "account_12345",
+						wallTimeNoticeEmitted: "customer-acme",
 						results: [{ structuredOutput: { data: { status: "customer-acme" } } }],
 						progress: [{ status: "completed", tokens: 12 }],
 					},
@@ -431,6 +444,7 @@ describe("SessionAnonymizer", () => {
 		expect(json).not.toContain("acme");
 		expect(json).not.toContain("account_12345");
 		expect(json).toContain('"op":"start"');
-		expect(json).toContain('"progress":[{"status":"completed","tokens":12}]');
+		// The `task` tool is gone, so an old session's task result is opaque.
+		expect(json).toMatch(/"toolName":"task","details":"\[redacted #\d+/);
 	});
 });

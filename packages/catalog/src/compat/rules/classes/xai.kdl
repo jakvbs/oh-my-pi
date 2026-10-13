@@ -13,7 +13,7 @@ class "xai" {
 			}
 		}
 	}
-	on "aimlapi" "kilo" "nanogpt" "opencode-go" "opencode-zen" "venice" "vercel-ai-gateway" \
+	on "aimlapi" "nanogpt" "opencode-go" "opencode-zen" "venice" "vercel-ai-gateway" \
 		"zenmux" {
 		family "grok" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
@@ -38,6 +38,32 @@ class "xai" {
 		family "grok" {
 			revision ">=0.1 <4.3" {
 				supports-reasoning-effort #false
+			}
+		}
+	}
+	// Grok bills 32px patches plus ~30–40 tokens per image, resizing past
+	// 2,401 patches at every detail level; the 1.017 multiplier carries the
+	// per-image tokens at full size (small images bill slightly more).
+	// verified: billing matched this rule on Grok 4.6, 4.7 and 4.20.
+	family "grok" {
+		revision ">=4.6 <=4.20" {
+			image-tokenization {
+				regime "openai-patch"
+				verified #true
+				multiplier 1.017
+				auto "original"
+				low {
+					max-edge 65535
+					patch-budget 2401
+				}
+				high {
+					max-edge 65535
+					patch-budget 2401
+				}
+				original {
+					max-edge 65535
+					patch-budget 2401
+				}
 			}
 		}
 	}

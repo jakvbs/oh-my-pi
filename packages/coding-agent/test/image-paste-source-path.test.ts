@@ -297,7 +297,7 @@ describe("path-pasted image source path (#12244)", () => {
 				...ctx,
 				chatContainer: new TranscriptContainer(),
 				transcriptMessageComponents: new WeakMap(),
-				viewSession: moving,
+				session: moving,
 			};
 			const user = moving.messages.find(message => message.role === "user");
 			if (!user) throw new Error("Expected the sent image message");

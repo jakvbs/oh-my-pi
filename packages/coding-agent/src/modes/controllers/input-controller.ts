@@ -10,7 +10,6 @@ import {
 	type SlashCommand,
 } from "@oh-my-pi/pi-tui";
 import { isEnoent, logger, postmortem, sanitizeText } from "@oh-my-pi/pi-utils";
-import { formatDoubleTap } from "@oh-my-pi/pi-tui/app-keybindings";
 import { appKey, editorKey } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { formatModelRoleAlias, roleCandidatePool } from "../../config/model-roles";
 import { resolveModelRoleValue } from "../../config/model-resolver";
@@ -39,14 +38,11 @@ import { parseQueueShorthand, splitQueuedMessages } from "@oh-my-pi/pi-tui/promp
 import { invokeSkillCommandFromText, isKnownSkillCommand } from "../../modes/skill-command";
 import type { InteractiveModeContext, SubmittedUserInput } from "../../modes/types";
 import manualContinuePrompt from "../../prompts/system/manual-continue.md" with { type: "text" };
-import { AgentRegistry } from "../../registry/agent-registry";
 import type { RestoredQueuedMessage } from "../../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
-import { PINNED_HUD_TOGGLE_ID } from "@oh-my-pi/pi-tui/prompt/composer";
-import { pickRecentFocusableAgentId } from "./session-focus-controller";
 import { executeBuiltinSlashCommand, lookupBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
 import { restoreDetachedDraft } from "../../slash-commands/helpers/draft";
-import { parseSlashCommand, parseSubcommand } from "../../slash-commands/helpers/parse";
+import { parseSlashCommand } from "../../slash-commands/helpers/parse";
 import { isTinyLocalModelKey } from "../../tiny/models";
 import { tinyTitleClient } from "../../tiny/title-client";
 import { resolveReadPath } from "../../tools/path-utils";
@@ -156,23 +152,6 @@ function hasPasteText(value: unknown): value is PasteTarget {
 	return typeof value === "object" && value !== null && typeof (value as PasteTarget).pasteText === "function";
 }
 
-/**
- * Read-only slash commands that also run from a focused subagent view, keyed by name to
- * a check on their arguments; every other command (and mutating forms such as
- * `/usage reset`, which spends a saved rate-limit reset) still needs the main session.
- */
-const FOCUSED_VIEW_COMMANDS: Record<string, (args: string) => boolean> = {
-	btw: () => true,
-	export: () => true,
-	usage: args => {
-		const { verb, rest } = parseSubcommand(args);
-		return !verb || (verb === "show" && !rest);
-	},
-};
-const FOCUSED_VIEW_COMMAND_LIST = Object.keys(FOCUSED_VIEW_COMMANDS)
-	.map(name => `/${name}`)
-	.join(", ");
-
 /** Wrap pasted text in `<attachment>` tags so the model treats it as one quoted block. */
 function wrapPasteInAttachmentBlock(content: string): string {
 	return `<attachment>\n${content}\n</attachment>`;
@@ -188,17 +167,6 @@ function safeAbort(label: string, fn: () => void): void {
 		logger.debug(`Failed to abort ${label}`, { error: err instanceof Error ? err.message : String(err) });
 	}
 }
-
-// Double-tap ← on an empty editor opens the Agent Hub (and, in a focused
-// subagent view, ←← returns to the main session). The second tap must land
-// inside this window. The lower bound rejects terminal-synthesized arrow-key
-// bursts: "click to move cursor" / pointer features in iTerm2, WezTerm, kitty,
-// and tmux emit several arrow keys in a single stdin read (sub-millisecond
-// apart) on a stray click, which used to pop the hub with no key ever pressed.
-// Three or more rapid taps are likewise treated as a burst, not a gesture. A
-// deliberate human double-tap is always tens of milliseconds apart.
-const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
-const LEFT_DOUBLE_TAP_MAX_GAP_MS = 500;
 
 export class InputController {
 	constructor(
@@ -233,7 +201,6 @@ export class InputController {
 
 	#enhancedPaste?: EnhancedPasteController;
 	#draftText: string | undefined;
-	#focusedLeftTapListenerInstalled = false;
 	#focusedPasteListenerInstalled = false;
 	#btwBranchListenerInstalled = false;
 	#btwCopyListenerInstalled = false;
@@ -241,18 +208,11 @@ export class InputController {
 	#expandToolsListenerInstalled = false;
 	#inlineMouseListenerInstalled = false;
 
-	/** Click-candidate id the hover band currently tracks; repaint only on change. */
-	#lastHoverClickId: string | undefined;
-
 	/** Return the last full editor snapshot delivered by its change contract. */
 	getDraftText(): string {
 		return this.#draftText ?? this.ctx.editor.getText();
 	}
 
-	// Tap counter for the double-← gesture; reset whenever a quiet gap
-	// (>= LEFT_DOUBLE_TAP_MAX_GAP_MS) starts a fresh sequence. See
-	// #detectLeftDoubleTap.
-	#leftTapCount = 0;
 	// Sequential index for `local://paste-N.md` references created by the large-paste
 	// flow. Seeded from 0 and bumped past existing paste files.
 	#pasteCounter = 0;
@@ -282,16 +242,6 @@ export class InputController {
 	setupKeyHandlers(): void {
 		this.#draftText ??= this.ctx.editor.getText();
 		this.ctx.editor.setActionKeys("app.interrupt", this.ctx.keybindings.getKeys("app.interrupt"));
-		if (!this.#focusedLeftTapListenerInstalled) {
-			this.#focusedLeftTapListenerInstalled = true;
-			this.ctx.ui.addInputListener(data => {
-				if (!this.ctx.focusedAgentId) return undefined;
-				if (!matchesKey(data, "left")) return undefined;
-				if (this.ctx.editor.getText().trim()) return undefined;
-				this.#handleFocusedLeftTap();
-				return { consume: true };
-			});
-		}
 		if (!this.#btwBranchListenerInstalled) {
 			this.#btwBranchListenerInstalled = true;
 			this.ctx.ui.addInputListener(data => {
@@ -409,7 +359,7 @@ export class InputController {
 		}
 		if (!this.#inlineMouseListenerInstalled) {
 			this.#inlineMouseListenerInstalled = true;
-			// Inline click-to-focus (`tui.mouse`): SGR reports only arrive while
+			// `tui.mouse`: SGR reports only arrive while
 			// the setting has tracking enabled, so this stays inert otherwise.
 			// Defers to fullscreen overlays, which own mouse handling on the
 			// alternate screen.
@@ -437,14 +387,6 @@ export class InputController {
 			// to clobber the single saved-handler slot (auto-compaction start
 			// → /compact → auto end → manual finally), leaving Esc wired to a
 			// stale no-op closure until restart.
-			//
-			// While a subagent is focused, Esc honors the advertised view action
-			// ("Esc returns to main") instead of cancelling maintenance —
-			// accidentally killing a focused subagent's compaction on the way out
-			// was #2819. The auto-maintenance loaders relabel their hint to match
-			// (see EventController). Main-session maintenance still owns Esc and
-			// stays cancellable from the main view (focused submit gates /compact
-			// and handoff, so manual maintenance is main-only anyway).
 			if (this.ctx.hasActiveBtw() && this.ctx.handleBtwEscape()) {
 				return;
 			}
@@ -455,23 +397,20 @@ export class InputController {
 				return;
 			}
 
-			if (!this.ctx.focusedAgentId) {
-				const viewSession = this.ctx.viewSession;
-				let aborted = false;
-				if (viewSession.isCompacting) {
-					safeAbort("compaction", () => viewSession.abortCompaction());
-					aborted = true;
-				}
-				if (viewSession.isGeneratingHandoff) {
-					safeAbort("handoff", () => viewSession.abortHandoff());
-					aborted = true;
-				}
-				if (viewSession.isRetrying) {
-					safeAbort("retry", () => viewSession.abortRetry());
-					aborted = true;
-				}
-				if (aborted) return;
+			let aborted = false;
+			if (this.ctx.session.isCompacting) {
+				safeAbort("compaction", () => this.ctx.session.abortCompaction());
+				aborted = true;
 			}
+			if (this.ctx.session.isGeneratingHandoff) {
+				safeAbort("handoff", () => this.ctx.session.abortHandoff());
+				aborted = true;
+			}
+			if (this.ctx.session.isRetrying) {
+				safeAbort("retry", () => this.ctx.session.abortRetry());
+				aborted = true;
+			}
+			if (aborted) return;
 
 			if (this.ctx.loopModeEnabled) {
 				// Esc suspends the loop even mid-iteration: abort the live turn,
@@ -484,18 +423,6 @@ export class InputController {
 				this.ctx.pauseLoop();
 				this.ctx.cancelPendingSubmission();
 				return;
-			}
-			if (this.ctx.focusedAgentId) {
-				// Esc never interrupts the focused agent's turn: clear typed text,
-				// else return the view to the main session. Interrupt via empty
-				// steer-flush submit if needed.
-				if (this.ctx.editor.getText().trim()) {
-					this.ctx.editor.setText("");
-					this.ctx.ui.requestRender();
-				} else {
-					void this.ctx.unfocusSession();
-				}
-				return; // double-escape backtrack (/tree, /branch) stays main-only
 			}
 			if (this.ctx.loadingAnimation) {
 				if (this.ctx.cancelPendingSubmission()) {
@@ -616,33 +543,6 @@ export class InputController {
 		for (const key of this.ctx.keybindings.getKeys("app.clipboard.copyLine")) {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.handleCopyCurrentLine());
 		}
-		const hubKeys = new Set([
-			...this.ctx.keybindings.getKeys("app.agents.hub"),
-			...this.ctx.keybindings.getKeys("app.session.observe"),
-		]);
-		for (const key of hubKeys) {
-			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentHub());
-		}
-
-		// Double-tap left arrow on an empty editor: opens the agent hub from the
-		// main session, or returns the focused subagent view to the main session.
-		// Focused ←← intentionally matches Esc. From the main session the gesture
-		// stays inert when there are no subagents (requireContent); the explicit
-		// hub key still opens the empty roster. `armCloseTap` hands this gesture's
-		// tap state to the hub so the same ←← that opened it also arms its close —
-		// otherwise the hub's fresh detector demands a second ←← (issue #4780).
-		this.ctx.editor.onLeftAtStart = () => {
-			if (this.ctx.focusedAgentId) {
-				this.#handleFocusedLeftTap();
-				return;
-			}
-			if (this.#detectLeftDoubleTap()) {
-				hintUsage.record("agents");
-				this.ctx.showAgentHub({ requireContent: true, armCloseTap: true });
-			}
-		};
-		// The native composer's viewing header: an ancestor crumb, or back to main.
-		this.ctx.editor.onFocusAgent = id => this.#focusResolvedAgent(id);
 
 		this.#setupEnhancedPaste();
 
@@ -669,125 +569,16 @@ export class InputController {
 		};
 	}
 
-	#handleFocusedLeftTap(): void {
-		if (this.#detectLeftDoubleTap()) {
-			void this.ctx.unfocusSession();
-		}
-	}
-
 	/**
-	 * Inline click-to-focus (`tui.mouse`): left-clicks on live subagent cards
-	 * and HUD rows focus that agent in one action, and pointer motion lights up
-	 * the hover band on the target under the cursor. Every SGR report is consumed
-	 * while inline tracking owns the terminal so button/wheel bytes never reach
-	 * the editor as typed input; clicks on chrome simply swallow.
+	 * Swallow SGR mouse reports while `tui.mouse` tracking owns the terminal so
+	 * button/wheel bytes never reach the editor as typed input.
 	 */
 	#handleInlineMouse(data: string): { consume?: boolean; data?: string } | undefined {
 		if (!data.startsWith("\x1b[<")) return undefined;
 		if (!cfgTuiMouse.get(this.ctx.settings)) return undefined;
 		if (this.ctx.ui.hasOverlay()) return undefined;
-		const event = parseSgrMouse(data);
-		if (!event) return undefined;
-		if (event.motion) this.#updateHoverHighlight(event.row);
-		else if (event.leftClick) this.#focusClickedAgent(event.row);
+		if (!parseSgrMouse(data)) return undefined;
 		return { consume: true };
-	}
-
-	/**
-	 * Track the hovered click target, repainting only when it changes. The band
-	 * is id-anchored in the composer, so it follows an agent whose rows shift
-	 * while streaming; pointing at chrome clears it.
-	 */
-	#updateHoverHighlight(screenRow: number): void {
-		const hovered = this.#viewportCandidates(screenRow)[0];
-		if (hovered === this.#lastHoverClickId) return;
-		this.#lastHoverClickId = hovered;
-		this.ctx.setClickHoverId(hovered);
-		this.ctx.ui.requestRender();
-	}
-
-	// Candidates under a screen row, or none when the published viewport is
-	// empty (resize transactions) or the row falls outside it: routing stale
-	// spans would highlight or focus an unrelated agent from old rows.
-	#viewportCandidates(screenRow: number): string[] {
-		const viewport = this.ctx.ui.getMutableViewport();
-		const local = screenRow - viewport.top;
-		if (viewport.length === 0 || local < 0 || local >= viewport.length) return [];
-		return this.ctx.resolveViewportClickCandidates(local);
-	}
-
-	/**
-	 * Forget the last hovered target without repainting. Disabling mouse
-	 * capture clears the composer's band, but with reporting off no motion
-	 * event will ever refresh this cache — so a re-enable plus motion over
-	 * the same card would look unchanged and skip restoring the band.
-	 */
-	clearHoverHighlight(): void {
-		this.#lastHoverClickId = undefined;
-	}
-
-	#focusClickedAgent(screenRow: number): void {
-		const candidates = this.#viewportCandidates(screenRow);
-		if (candidates.length === 0) return;
-		const refs = AgentRegistry.global().list();
-		const scoped = refs.filter(ref => candidates.includes(ref.id));
-		// A live agent wins over the expander sentinel: task names are
-		// user-controlled, so an agent id can equal the toggle id. The toggle
-		// row itself names no agent and still toggles.
-		if (candidates.includes(PINNED_HUD_TOGGLE_ID) && scoped.length === 0) {
-			this.ctx.togglePinnedHudExpanded();
-			return;
-		}
-		// No global fallback: when every candidate is gone (aborted, released),
-		// focusing an unrelated recent agent would open something other than
-		// what the click displayed.
-		const nextId = pickRecentFocusableAgentId(scoped, this.ctx.focusedAgentId);
-		if (nextId === undefined) {
-			this.ctx.showStatus("That subagent is gone — open the hub for live agents");
-			return;
-		}
-		this.#focusResolvedAgent(nextId);
-	}
-
-	/** Focus a resolved agent id, ignoring already-viewing and surfacing errors as status. */
-	#focusResolvedAgent(nextId: string): void {
-		if (nextId === this.ctx.focusedAgentId) {
-			// Reaffirming the current view is still the user's latest click: a
-			// parked agent reviving from an older click must not land over it.
-			this.ctx.invalidatePendingFocus();
-			return;
-		}
-		void this.ctx.focusAgentSession(nextId).catch((error: unknown) => {
-			this.ctx.showStatus(error instanceof Error ? error.message : String(error));
-		});
-	}
-
-	/**
-	 * Detect a deliberate double-← gesture, rejecting terminal-synthesized arrow
-	 * bursts. Returns true only on the *second* tap of a fresh sequence when it
-	 * lands a human-plausible interval after the first
-	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, LEFT_DOUBLE_TAP_MAX_GAP_MS)`). Taps closer
-	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
-	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the Agent Hub.
-	 */
-	#detectLeftDoubleTap(): boolean {
-		const now = Date.now();
-		const sinceLast = now - this.ctx.lastLeftTapTime;
-		this.ctx.lastLeftTapTime = now;
-		if (sinceLast >= LEFT_DOUBLE_TAP_MAX_GAP_MS) {
-			// Quiet gap: this tap starts a fresh sequence.
-			this.#leftTapCount = 1;
-			return false;
-		}
-		this.#leftTapCount += 1;
-		if (this.#leftTapCount === 2 && sinceLast >= LEFT_DOUBLE_TAP_MIN_GAP_MS) {
-			// Exactly two taps, the second a human-plausible interval after the first.
-			this.#leftTapCount = 0;
-			this.ctx.lastLeftTapTime = 0;
-			return true;
-		}
-		return false;
 	}
 
 	#setupEnhancedPaste(): void {
@@ -866,14 +657,6 @@ export class InputController {
 			text = this.#compactDraftImages(text.trim());
 			const hasPendingImages = this.ctx.editor.pendingImages.length > 0;
 			if ((!isSettingsInitialized() || cfgEmojiAutocomplete.get(settings)) && text) text = expandEmoticons(text);
-
-			// Focused subagent session: the editor is a plain chat box for it.
-			// Everything below (slash/bash, loop,
-			// compaction queueing) is main-session-only.
-			if (this.ctx.focusedAgentId) {
-				await this.#submitToFocusedSession(text, "steer");
-				return;
-			}
 
 			// Empty submit while streaming with queued (or live-steered) messages:
 			// abort the active turn and let the post-unwind drain deliver the
@@ -1275,66 +1058,6 @@ export class InputController {
 		);
 	}
 
-	/** Submit editor text to the focused subagent session (chat and continue shortcuts only). */
-	async #submitToFocusedSession(text: string, streamingBehavior: "steer" | "followUp"): Promise<void> {
-		const target = this.ctx.viewSession;
-		const images = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
-		const imageLinks =
-			images && this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
-		if (!text && !images) {
-			if (target.isStreaming && target.hasInterruptibleInput) {
-				const aborting = target.abort({ reason: USER_INTERRUPT_LABEL });
-				await aborting;
-				this.ctx.updatePendingMessagesDisplay();
-				this.ctx.ui.requestRender();
-			}
-			return;
-		}
-		if (text?.startsWith("/")) {
-			const parsed = parseSlashCommand(text);
-			if (parsed && FOCUSED_VIEW_COMMANDS[parsed.name]?.(parsed.args)) {
-				// Viewer-scoped commands: /btw asks about the focused transcript, /export
-				// writes it (with its own subagents), /usage reports account-wide limits.
-				this.#recordSlashCommandUsage(text);
-				if ((await executeBuiltinSlashCommand(text, { ctx: this.ctx })) === true) {
-					if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-					return;
-				}
-			}
-		}
-		if (text && (text.startsWith("/") || text.startsWith("!"))) {
-			this.ctx.showStatus(
-				`Only ${FOCUSED_VIEW_COMMAND_LIST} run here; other commands run in the main session — press ${formatDoubleTap("left")} to return first`,
-			);
-			return; // editor text not cleared: Editor does not auto-clear on submit
-		}
-		const isContinueShortcut = streamingBehavior === "steer" && !images && (text === "." || text === "c");
-		this.ctx.editor.clearDraft(text);
-		try {
-			// Synthetic directives must not use streamingBehavior: AgentSession would
-			// otherwise queue them as visible user messages while the target is busy.
-			if (isContinueShortcut) {
-				await target.prompt(manualContinuePrompt, { synthetic: true, userInitiated: true });
-			} else {
-				await this.ctx.withLocalSubmission(text, () => target.prompt(text, { streamingBehavior, images }), {
-					imageCount: images?.length ?? 0,
-				});
-			}
-		} catch (error) {
-			// Hand the message back, mirroring the main submit error path: restore
-			// pasted images so the user can retry an image-only or text+image draft.
-			if (images && images.length > 0) {
-				this.ctx.editor.pendingImages = [...images];
-				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : images.map(() => undefined);
-				this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
-			}
-			this.ctx.editor.setCollapsedText(text);
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
-		}
-		this.ctx.updatePendingMessagesDisplay();
-		this.ctx.ui.requestRender();
-	}
-
 	handleCtrlC(): void {
 		// Sync-flush the session JSONL so in-flight writes survive a hard exit.
 		// The TUI consumes Ctrl+C as a key event in raw mode, so postmortem's
@@ -1482,14 +1205,11 @@ export class InputController {
 	}
 
 	/**
-	 * Pop the last restorable message from the viewed session's agent queues.
-	 * Only the main session owns the separate compaction queue; focused views
-	 * must not restore its messages into a subagent's composer.
+	 * Pop the last restorable message from the session's agent queues, then the compaction queue.
 	 */
 	#popLastQueuedMessage(): RestoredQueuedMessage | undefined {
-		const fromQueue = this.ctx.viewSession.popLastQueuedMessage();
+		const fromQueue = this.ctx.session.popLastQueuedMessage();
 		if (fromQueue) return fromQueue;
-		if (this.ctx.focusedAgentId) return undefined;
 		const compaction = this.ctx.compactionQueuedMessages;
 		if (compaction.length === 0) return undefined;
 		const last = compaction[compaction.length - 1];
@@ -1555,7 +1275,7 @@ export class InputController {
 	}
 
 	async handleRetry(): Promise<void> {
-		const didRetry = await this.ctx.viewSession.retry();
+		const didRetry = await this.ctx.session.retry();
 		if (didRetry) {
 			this.ctx.editor.clearDraft();
 		} else {
@@ -1708,12 +1428,6 @@ export class InputController {
 		let imageLinks =
 			images && this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
 		if (!text && !images) return;
-
-		// Focused subagent session: follow-ups go to it; non-chat input is gated.
-		if (this.ctx.focusedAgentId) {
-			await this.#submitToFocusedSession(text, "followUp");
-			return;
-		}
 
 		// Detach before the first await: another Ctrl+Enter cannot submit the
 		// same draft, and later typing belongs to the next submission.
@@ -2454,7 +2168,7 @@ export class InputController {
 			}),
 			// This TUI host uses the default registry; the receiving session can change with focus.
 			internalUrlCaller: () => {
-				const manager = this.ctx.viewSession.sessionManager;
+				const manager = this.ctx.session.sessionManager;
 				return {
 					cwd: manager.getCwd(),
 					sessionId: manager.getSessionId(),
@@ -2508,12 +2222,6 @@ export class InputController {
 	}
 
 	cycleThinkingLevel(): void {
-		if (this.ctx.focusedAgentId) {
-			this.ctx.showStatus(
-				`Model/thinking apply to the main session — press ${formatDoubleTap("left")} to return first`,
-			);
-			return;
-		}
 		const newLevel = this.ctx.session.cycleThinkingLevel();
 		if (newLevel === undefined) {
 			this.ctx.showStatus("Current model does not support thinking");
@@ -2524,12 +2232,6 @@ export class InputController {
 	}
 
 	async cycleRoleModel(direction: "forward" | "backward" = "forward"): Promise<void> {
-		if (this.ctx.focusedAgentId) {
-			this.ctx.showStatus(
-				`Model/thinking apply to the main session — press ${formatDoubleTap("left")} to return first`,
-			);
-			return;
-		}
 		try {
 			const cycleOrder = cfgCycleOrder.get(settings);
 			const result = await this.ctx.session.cycleRoleModels(cycleOrder, direction);
@@ -2610,7 +2312,7 @@ export class InputController {
 		// without advertising model support, so observed thinking content unlocks
 		// the display toggle.
 		const thinkingOff =
-			((this.ctx.viewSession ?? this.ctx.session)?.thinkingLevel ?? ThinkingLevel.Off) === ThinkingLevel.Off;
+			((this.ctx.session ?? this.ctx.session)?.thinkingLevel ?? ThinkingLevel.Off) === ThinkingLevel.Off;
 		if (thinkingOff && !this.ctx.hasDisplayableThinkingContent) {
 			this.ctx.showStatus("Thinking is off — enable thinking to show blocks");
 			return;

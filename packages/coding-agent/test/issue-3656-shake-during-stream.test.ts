@@ -156,26 +156,6 @@ describe("issue #3656 /shake mid-stream preserves the in-flight assistant turn",
 		expect(pendingIdx).toBeGreaterThan(streamingIdx);
 	});
 
-	it("uses the rendered view session when preserving a focused subagent stream", () => {
-		const { streamingComponent, pendingTool } = makeStreamingFixture(false);
-		Object.defineProperty(mode, "viewSession", {
-			configurable: true,
-			get: () => ({
-				isStreaming: true,
-				buildTranscriptSessionContext: () => ({ messages: [] }),
-				getToolByName: () => undefined,
-				sessionManager: { getCwd: () => tempDir.path() },
-				retryAttempt: undefined,
-			}),
-		});
-
-		mode.rebuildChatFromMessages();
-
-		expect(mode.chatContainer.children).toContain(streamingComponent);
-		expect(mode.chatContainer.children).toContain(pendingTool);
-		expect(mode.pendingTools.get("call-1")).toBe(pendingTool);
-	});
-
 	it("does not preserve in-flight tracking when the session is idle (post-stream rebuilds reset cleanly)", () => {
 		const streamingComponent = new AssistantMessageComponent();
 		mode.chatContainer.addChild(streamingComponent);

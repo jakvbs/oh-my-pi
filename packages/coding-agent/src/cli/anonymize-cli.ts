@@ -1,6 +1,6 @@
 /**
- * `omp anonymize` — write a shareable copy of a session (and its subagent
- * transcripts) with turn contents redacted and metadata preserved.
+ * `omp anonymize` — write a shareable copy of a session with turn contents
+ * redacted and metadata preserved.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -27,21 +27,20 @@ export async function runAnonymizeCommand(args: AnonymizeCommandArgs): Promise<v
 		throw new CliUsageError(err instanceof Error ? err.message : String(err));
 	}
 	const outDir = path.resolve(args.out ?? `${path.basename(sourcePath, ".jsonl")}.anon`);
-	// Subagent transcripts sit next to the real file, not next to a symlink pointing at it.
+	// Session artifacts sit next to the real file, not next to a symlink pointing at it.
 	const sourceReal = await fs.realpath(sourcePath);
 	if (!(await fs.stat(sourceReal)).isFile()) throw new CliUsageError(`${sourcePath} is not a session file`);
 	const { entries: records, malformedRecords } = await loadSessionFile(sourceReal);
 	// The loader returns [] for a file without a valid session header.
 	const header = records.find((record): record is SessionHeader => record.type === "session");
 	if (!header) throw new CliUsageError(`${sourcePath} is not a valid session file`);
-	const result = await anonymizeSessionTranscripts({
+	const result = anonymizeSessionTranscripts({
 		header,
 		entries: records.filter((record): record is SessionEntry => record.type !== "session"),
-		sessionFile: sourceReal,
 		malformedRecords,
 	});
 	// The output must never hold raw transcripts: writing into the session's directory (or an ancestor)
-	// could overwrite the session and would bundle it, and `<stem>/` holds raw subagent transcripts.
+	// could overwrite the session and would bundle it, and `<stem>/` holds raw session artifacts.
 	let outReal: string;
 	let existing: string[];
 	try {
@@ -73,12 +72,9 @@ export async function runAnonymizeCommand(args: AnonymizeCommandArgs): Promise<v
 
 	const count = result.files.length;
 	process.stdout.write(`Anonymized ${count} transcript${count === 1 ? "" : "s"} → ${outDir}\n`);
-	if (result.subagentError) process.stdout.write(`Subagent transcripts unavailable: ${result.subagentError}\n`);
 	for (const [member, skipped] of result.malformed) {
 		process.stdout.write(`Skipped ${skipped} malformed record${skipped === 1 ? "" : "s"} in ${member}\n`);
 	}
-	for (const member of result.unreadable)
-		process.stdout.write(`Not exported (no readable session header): ${member}\n`);
 	process.stdout.write(`${ANONYMIZED_REVIEW_NOTE}\n`);
 }
 

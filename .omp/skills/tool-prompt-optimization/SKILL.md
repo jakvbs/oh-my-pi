@@ -32,7 +32,7 @@ bun .omp/skills/tool-prompt-optimization/scripts/probe-builtin.ts --tool <name> 
 - `--show`: resolved schema, derived outline, real prompt; exits without API calls. Inspect before spending tokens.
 - `--no-summary`: direct summary-line-blank ablation.
 - `--samples` / `--model` / `--max-tokens` / `--json`: panel passthrough. Output ends with real prompt for in-place diff.
-- Factory-map bypasses settings allowlist: gated `irc`, `github`, … resolve. Construction availability gate (e.g. missing `gh` CLI) → manual inputs.
+- Factory-map bypasses settings allowlist: gated `github`, … resolve. Construction availability gate (e.g. missing `gh` CLI) → manual inputs.
 
 ## Inputs
 
@@ -68,14 +68,14 @@ Structural code search via native ast-grep AST matching.
 Bucket each real-prompt line:
 
 - **Prune candidate:** stable across samples **and** models; schema restatement — parameter names/types, `required`, field-description value examples, stated clamp ranges.
-- **Keep:** no model recovers it — defaults/direction (`gitignore` default true); routing/escalation (`NEVER` shell out to `find`/`fd` → use this tool; broad exploration → `Task` subagent); exact output shape (mtime sort, grouping, `artifact://` truncation); worked anti-patterns; type-invisible constraints (AST metavariable grammar, C++ trailing `;`).
+- **Keep:** no model recovers it — defaults/direction (`gitignore` default true); routing/escalation (`NEVER` shell out to `find`/`fd` → use this tool); exact output shape (mtime sort, grouping, `artifact://` truncation); worked anti-patterns; type-invisible constraints (AST metavariable grammar, C++ trailing `;`).
 
 One sample: noise. Stable cross-sample/model overlap is only a candidate; history must clear it. MUST NOT delete on inferability alone.
 
 ## Caveats — before every deletion
 
 - **MUST `git blame` each cut line; read its commit/issue.** Many lines are incident scar tissue: hallucinated flag, shell-out, repo-root scan, fabricated anchor. Keep scar tissue. History distinguishes schema restatement from incident prevention. Inferability necessary, NEVER sufficient.
-- **Memorization ≠ inference:** public repos, including this one, may be training data. Repo-specific prediction absent from schema — exact tool names, internal URI schemes, `Task` subagent — is recitation; discount it.
+- **Memorization ≠ inference:** public repos, including this one, may be training data. Repo-specific prediction absent from schema — exact tool names, internal URI schemes — is recitation; discount it.
 - **Outline leaks:** summary and section names hint. For schema-alone inference, second pass: no summary, generic section tags. Content surviving only the summary is summary-inferable, not schema-inferable.
 
 ## Verdict

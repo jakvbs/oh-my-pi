@@ -162,7 +162,6 @@ describe("mid-turn transcript rebuild keeps in-flight tool calls", () => {
 						messages: arrival === "persisted" ? [assistant, result] : [assistant],
 					} as SessionContext);
 				}
-				controller.restorePendingToolResults();
 				if (arrival !== "live") {
 					expect(Bun.stripANSI(chatContainer.render(120).join("\n")).match(/\[Image: image\/png\]/g)).toHaveLength(
 						1,

@@ -7,7 +7,6 @@ export const STATUS_LINE_SEGMENT_IDS = [
 	"path",
 	"git",
 	"pr",
-	"subagents",
 	"token_in",
 	"token_out",
 	"token_total",

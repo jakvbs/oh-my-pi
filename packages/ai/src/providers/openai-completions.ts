@@ -3,7 +3,6 @@ import type { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { resolveWireModelId } from "@oh-my-pi/pi-catalog/model-thinking";
 import { calculateCost } from "@oh-my-pi/pi-catalog/models";
 import type { ResolvedOpenAICompat } from "@oh-my-pi/pi-catalog/types";
-import { clinePassClientHeaders } from "@oh-my-pi/pi-catalog/wire/cline-pass";
 import {
 	$env,
 	logger,
@@ -1841,14 +1840,7 @@ function createRequestSetup(
 		// Provider auth/header overlay: Kimi-code hosts require shared client
 		// attribution headers prepended before caller headers. Kept here (not in
 		// the shared helper) because it is provider-specific request setup.
-		// ClinePass sends the mirrored Cline CLI identity; documented in wire/cline-pass.ts.
-		prependHeaders:
-			model.provider === "kimi-code"
-				? getKimiCommonHeaders
-				: model.provider === "cline-pass"
-					? () => clinePassClientHeaders(promptCacheSessionId)
-					: undefined,
-		alibabaCodingPlanAuth: true,
+		prependHeaders: model.provider === "kimi-code" ? getKimiCommonHeaders : undefined,
 		azureChatCompletions: { apiVersion, deploymentName },
 	});
 	if (!setup.baseUrl) {
@@ -2512,7 +2504,7 @@ export function convertMessages(
 						assistantMsg[wireField] = nonEmptyThinkingBlocks.map(b => b.thinking).join("\n");
 					}
 				} else if (compat.thinkingFormat === "zai" && model.reasoning) {
-					// Z.AI / Zhipu / Moonshot Kimi (native) / Xiaomi MiMo accept
+					// Z.AI / Zhipu / Moonshot Kimi (native) accept
 					// `reasoning_content` as a continuation hint even when they don't
 					// strictly require it. Surfacing the preserved thinking text here
 					// keeps cross-API replays (Z.AI Anthropic → Z.AI OpenAI, etc.)

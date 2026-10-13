@@ -10,7 +10,7 @@ function buildContext(): InteractiveModeContext {
 	return {
 		chatContainer,
 		transcriptMessageComponents: new WeakMap(),
-		viewSession: {
+		session: {
 			extensionRunner: undefined,
 			sessionManager: { putBlobSync: () => "unused" },
 		},

@@ -10,7 +10,7 @@
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getModelPricingStatus, modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
+import { getEffectiveTokenCost, getModelPricingStatus, modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { modelKind, type ModelKind, type ModelPricingStatus } from "@oh-my-pi/pi-catalog/types";
 import type { Component } from "../tui";
 import { FuzzyCorpus, fuzzyRank } from "../fuzzy";
@@ -37,7 +37,14 @@ import {
 } from "../keybinding-matchers";
 import { MenuSelection } from "../components/menu-selection";
 import { clampScrollOffset, scrollOffsetForRow } from "../components/scroll-viewport";
-import type { TspPickerColumn, TspPickerGroup, TspPickerItem, TspSpan, TspText } from "@oh-my-pi/pi-wire";
+import type {
+	TspPickerColumn,
+	TspPickerGroup,
+	TspPickerItem,
+	TspPickerMark,
+	TspSpan,
+	TspText,
+} from "@oh-my-pi/pi-wire";
 import { col, md, node, row, span, text } from "../native/describe";
 import { pickerFuzzyHits } from "../native/picker";
 import type { NativeChild, NativeNode, NativeUiEvent } from "../native/node";
@@ -52,7 +59,6 @@ export type ModelRole =
 	| "vision"
 	| "commit"
 	| "tiny"
-	| "task"
 	| "advisor"
 	| "image"
 	| "web"
@@ -64,22 +70,12 @@ export const MODEL_ROLE_IDS: ModelRole[] = [
 	"vision",
 	"commit",
 	"tiny",
-	"task",
 	"advisor",
 	"image",
 	"web",
 	"judge",
 ];
-export const CHAT_MODEL_ROLE_IDS: ModelRole[] = [
-	"default",
-	"smol",
-	"slow",
-	"vision",
-	"commit",
-	"tiny",
-	"task",
-	"advisor",
-];
+export const CHAT_MODEL_ROLE_IDS: ModelRole[] = ["default", "smol", "slow", "vision", "commit", "tiny", "advisor"];
 export const KIND_ROLE_IDS: ModelRole[] = ["image", "web", "judge"];
 
 /** Measured model performance shown in browser rows. */
@@ -725,7 +721,7 @@ function declaredPricingStatus(model: Model): Exclude<ModelPricingStatus, "fixed
 function isFreeModel(model: Model): boolean {
 	const declared = declaredPricingStatus(model);
 	if (declared !== undefined) return declared === "free";
-	const cost = model.cost;
+	const cost = model.cost ? getEffectiveTokenCost(model.cost) : undefined;
 	return !cost || (cost.input === 0 && cost.output === 0);
 }
 
@@ -751,7 +747,8 @@ function formatCostPair(model: Model): string {
 	const declared = declaredPricingStatus(model);
 	if (declared !== undefined) return PRICING_STATUS_LABELS[declared].short;
 	if (isFreeModel(model)) return "free";
-	return `$${formatCostLeg(model.cost.input)}/${formatCostLeg(model.cost.output)}`;
+	const cost = getEffectiveTokenCost(model.cost);
+	return `$${formatCostLeg(cost.input)}/${formatCostLeg(cost.output)}`;
 }
 
 /** Detail-pane price fact: `$3/15 per M`, or the declared pricing state in words. */
@@ -773,17 +770,32 @@ function pickerPrice(model: Model): string {
 	const declared = declaredPricingStatus(model);
 	if (declared !== undefined) return PRICING_STATUS_LABELS[declared].short;
 	if (isFreeModel(model)) return "free";
-	return `$${formatCostLeg(model.cost.input)}·${formatCostLeg(model.cost.output)}`;
+	const cost = getEffectiveTokenCost(model.cost);
+	return `$${formatCostLeg(cost.input)}·${formatCostLeg(cost.output)}`;
 }
 
 /** `$2 in · $10 out · $0.2 cache` for a model preview. */
 function previewPrice(model: Model): string {
 	const declared = declaredPricingStatus(model);
 	if (declared !== undefined) return PRICING_STATUS_LABELS[declared].detail;
-	const cost = model.cost;
+	const cost = getEffectiveTokenCost(model.cost);
 	const parts = [`$${formatCostLeg(cost.input)} in`, `$${formatCostLeg(cost.output)} out`];
 	if (cost.cacheRead > 0) parts.push(`$${formatCostLeg(cost.cacheRead)} cache`);
 	return parts.join(" · ");
+}
+
+/**
+ * A provider's picker mark: the terminal's logo for it, else its initials
+ * (`amazon-bedrock` → `AB`, `anthropic` → `An`) on its own gradient.
+ */
+export function providerMark(providerId: string): TspPickerMark {
+	const words = providerId.split(/[-_\s.]+/).filter(word => word.length > 0);
+	const word = words[0] ?? providerId;
+	const text =
+		words.length >= 2
+			? `${words[0]!.charAt(0)}${words[1]!.charAt(0)}`.toUpperCase()
+			: `${word.charAt(0).toUpperCase()}${word.charAt(1)}`;
+	return { text, seed: providerId, icon: `provider:${providerId}` };
 }
 
 /** The omp theme token of a thinking level's dot (`thinkingHigh`); none for inherit and auto. */
@@ -1976,6 +1988,7 @@ export class ModelBrowser implements Component {
 		const value: TspPickerItem = {
 			id: item.selector,
 			label: quickRole ? item.id : item.selector,
+			mark: providerMark(item.model.provider),
 			mono: true,
 			...(quickRole ? { detail: `${item.model.provider}/${item.model.id}` } : {}),
 			facts,

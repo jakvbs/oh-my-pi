@@ -33,7 +33,7 @@ interface PredictionSource {
 	leafId: string | null;
 }
 
-type PredictionContext = Pick<InteractiveModeContext, "settings" | "viewSession" | "focusedAgentId" | "editor" | "ui">;
+type PredictionContext = Pick<InteractiveModeContext, "settings" | "session" | "editor" | "ui">;
 
 /**
  * Normalize a prediction reply to the single line the composer shows, or
@@ -75,9 +75,7 @@ export class ComposerPredictionController {
 	request(): void {
 		this.cancel();
 		if (!cfgComposerPredictions.get(this.#ctx.settings)) return;
-		// A focused subagent's "user" is the parent agent, not the person at the composer.
-		if (this.#ctx.focusedAgentId !== undefined) return;
-		const session = this.#ctx.viewSession;
+		const session = this.#ctx.session;
 		// Any draft, even whitespace, keeps the ghost hidden (it shows only over a prefix of the
 		// prediction), and a compaction would rewrite the history the prediction reads: skip the
 		// billed request either way.
@@ -145,6 +143,6 @@ export class ComposerPredictionController {
 	}
 
 	#isCurrent(source: PredictionSource): boolean {
-		return this.#ctx.viewSession === source.session && source.session.messages.at(-1) === source.lastMessage;
+		return this.#ctx.session === source.session && source.session.messages.at(-1) === source.lastMessage;
 	}
 }

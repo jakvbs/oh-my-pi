@@ -30,21 +30,6 @@ interface VersionCheck {
 	fetchLatest: () => Promise<string | null>;
 }
 
-/** Fetch the latest non-prerelease tag from a GitHub repo, reduced to semver. */
-async function fetchLatestGitHubRelease(repo: string): Promise<string | null> {
-	try {
-		// /releases/latest only returns non-prerelease, non-draft releases
-		const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-			headers: { Accept: "application/vnd.github+json", "User-Agent": USER_AGENT },
-		});
-		if (!res.ok) return null;
-		const data = (await res.json()) as { tag_name?: string };
-		return data.tag_name ? (SEMVER_RE.exec(data.tag_name)?.[1] ?? null) : null;
-	} catch {
-		return null;
-	}
-}
-
 /** Fetch the `latest` dist-tag version of an npm package. */
 async function fetchLatestNpmVersion(pkg: string): Promise<string | null> {
 	try {
@@ -65,12 +50,6 @@ const checks: VersionCheck[] = [
 		file: "packages/catalog/src/wire/codex.ts",
 		sourcePattern: /CODEX_CLIENT_VERSION\s*=\s*"(\d+\.\d+\.\d+)"/,
 		fetchLatest: () => fetchLatestNpmVersion("@openai/codex"),
-	},
-	{
-		name: "Gemini CLI",
-		file: "packages/catalog/src/wire/gemini-headers.ts",
-		sourcePattern: /PI_AI_GEMINI_CLI_VERSION\s*\|\|\s*"(\d+\.\d+\.\d+)"/,
-		fetchLatest: () => fetchLatestGitHubRelease("google-gemini/gemini-cli"),
 	},
 	{
 		// `latest`, not `stable`: Anthropic gates new models on the newest release.

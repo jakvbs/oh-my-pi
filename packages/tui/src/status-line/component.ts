@@ -1,10 +1,6 @@
 import * as path from "node:path";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@oh-my-pi/pi-ai";
-import {
-	getAntigravityCounterKeyForModel,
-	scopeAntigravityLimitsForModel,
-} from "@oh-my-pi/pi-ai/usage/google-antigravity";
 import { getNextTimeBasedPricingTransition } from "@oh-my-pi/pi-catalog/models";
 import type { Model, ModelCost } from "@oh-my-pi/pi-catalog/types";
 import type { VcsGitRepo, VcsRepo } from "@oh-my-pi/pi-natives";
@@ -84,9 +80,7 @@ const PINNED_NATIVE_PRIORITY = 1000;
 /**
  * Segments a TSP terminal shows outside the composer's facts: the model chip,
  * the context hairline and usage text (context, cost), Tern's pane header
- * (path), the tab title (session name, PR), the HUD pills (subagents), the
- * editor (vim) and the brand (`pi`; while focus-proxied, the viewed agent is
- * the composer's viewing header).
+ * (path), the tab title (session name, PR), the editor (vim) and the brand (`pi`).
  */
 const COMPOSER_HOMED_SEGMENTS: Partial<Record<StatusLineSegmentId, true>> = {
 	pi: true,
@@ -97,7 +91,6 @@ const COMPOSER_HOMED_SEGMENTS: Partial<Record<StatusLineSegmentId, true>> = {
 	path: true,
 	pr: true,
 	session_name: true,
-	subagents: true,
 	vim: true,
 };
 
@@ -132,8 +125,8 @@ export function statusSegmentPriority(side: "left" | "right", index: number, cou
 }
 
 /** A native `seg` for a segment view; `dim` fades its spans while focus-proxied. */
-function describeSeg(key: string, props: TspProps<"seg">, view: SegmentView, dim: boolean): NativeNode {
-	props.spans = dim ? view.spans.map(part => ({ ...part, s: part.s ? `${part.s} dim` : "dim" })) : view.spans;
+function describeSeg(key: string, props: TspProps<"seg">, view: SegmentView): NativeNode {
+	props.spans = view.spans;
 	if (view.icon !== undefined) props.icon = view.icon;
 	if (view.tone !== undefined) props.tone = view.tone;
 	if (view.title !== undefined) props.title = view.title;
@@ -162,8 +155,6 @@ const BRAND_FADE_FRAME_MS = 40;
  * out: their monthly row is not the session quota.
  */
 const MONTHLY_SUBSCRIPTION_PROVIDERS: Record<string, true> = {
-	"alibaba-token-plan": true,
-	cursor: true,
 	"opencode-go": true,
 };
 
@@ -445,7 +436,6 @@ class StatusLineExternalInputs {
 
 interface CachedStatusLine {
 	content: string;
-	dimmedContent: string;
 	width: number;
 	availableWidth: number;
 	renderRevision: number;
@@ -705,14 +695,9 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	#pricingTransition: number | undefined;
 	#hookStatuses: Map<string, string> = new Map();
 	#sortedHookStatuses: readonly string[] = [];
-	#subagentCount: number = 0;
-	#runningSubagentIds = new Set<string>();
-	#subagentTreeCost = 0;
 	/**
 	 * Active-processing accounting for the `time_spent` segment, keyed per
-	 * {@link StatusLineSession} so the focus-controller mid-turn attach path
-	 * cannot leak an unmatched synthesized `agent_start` from a subagent
-	 * into the main session's meter.
+	 * {@link StatusLineSession}.
 	 *
 	 * Each meter is `{ activeMs, activeStartedAt }`: `activeMs` is the union
 	 * of every completed `agent_start`→`agent_end` window since
@@ -722,9 +707,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	 * currently-attached session, so the counter ticks live during a turn
 	 * and freezes the instant the agent yields.
 	 *
-	 * WeakMap so meters die with their session (e.g. a parked subagent
-	 * dropped from the registry); the main session's meter survives focus
-	 * round-trips because the same {@link StatusLineSession} ref is reused.
+	 * WeakMap so meters die with their session.
 	 */
 	#activeMeters: WeakMap<TSession, ActiveMeter> = new WeakMap();
 	#loopModeStatus: SegmentContext["loopMode"] = null;
@@ -733,7 +716,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	#collabStatus: CollabStatus | null = null;
 	#streamStatus: { viewers: number } | null = null;
 	#recording = false;
-	#focusedAgentId: string | undefined;
 	#activeRepoCache: ActiveRepoCache | undefined;
 
 	// Git status caching (1s TTL)
@@ -905,39 +887,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		this.#invalidateStatusLineRenderCache();
 	}
 
-	/**
-	 * Re-point the status line at another session (focus proxy). Invalidate: model/context/usage all derive
-	 * from it. `focusedAgentId` is the focused subagent id while the view is proxied, undefined for main.
-	 */
-	setSession(session: TSession, focusedAgentId?: string): void {
-		const sessionChanged = this.session !== session;
-		if (!sessionChanged && this.#focusedAgentId === focusedAgentId) return;
-		this.session = session;
-		this.#focusedAgentId = focusedAgentId;
-		if (sessionChanged) {
-			this.#invalidateSessionCaches();
-			this.#closeStaleActiveWindow();
-		}
-		this.invalidate();
-	}
-
-	/**
-	 * Drop a meter's in-flight window when the newly-attached session is no
-	 * longer streaming. Handles the case where the focus controller
-	 * synthesized an `agent_start` on a mid-turn attach but the matching
-	 * real `agent_end` never reached us — the user detached before it
-	 * fired, and re-focusing later (after the agent finished) would
-	 * otherwise tick over the entire detached gap. Crediting that gap to
-	 * `activeMs` would be wrong (the agent finished at some point we never
-	 * observed), so the window is dropped rather than folded in.
-	 */
-	#closeStaleActiveWindow(): void {
-		const meter = this.#meter();
-		if (meter.activeStartedAt === null) return;
-		if (this.session.isStreaming) return;
-		meter.activeStartedAt = null;
-	}
-
 	updateSettings(settings: StatusLineSettings): void {
 		this.#settings = settings;
 		this.#effectiveSettings = undefined;
@@ -956,50 +905,9 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		this.#invalidateStatusLineRenderCache();
 	}
 
-	setRunningSubagents(agentIds: readonly string[]): void {
-		if (
-			agentIds.length === this.#runningSubagentIds.size &&
-			agentIds.every(agentId => this.#runningSubagentIds.has(agentId))
-		) {
-			return;
-		}
-		this.#subagentCount = agentIds.length;
-		this.#runningSubagentIds = new Set(agentIds);
-		this.#invalidateStatusLineRenderCache();
-	}
-
-	/** Host-computed spend of the main session's whole subagent tree (Agent Hub projection). */
-	setSubagentTreeCost(cost: number): void {
-		const next = Number.isFinite(cost) && cost > 0 ? cost : 0;
-		if (next === this.#subagentTreeCost) return;
-		this.#subagentTreeCost = next;
-		this.#invalidateStatusLineRenderCache();
-	}
-
-	/**
-	 * Compatibility shim for callers predating the simplified subagent badge.
-	 * The status line now intentionally shows only the active count.
-	 */
-	setSubagentHubHint(_hint: string | undefined): void {}
-
-	/** Active subagent count as currently displayed (collab state mirroring). */
-	get subagentCount(): number {
-		return this.#subagentCount;
-	}
-
-	/**
-	 * Running background jobs outside the subagent badge. Task jobs count only
-	 * until their AgentRegistry ref appears; once it is running, the subagent
-	 * badge represents that same agent. Bash and eval jobs always count.
-	 */
+	/** Running background jobs (bash and eval). */
 	runningBackgroundJobCount(): number {
-		return (
-			this.session
-				.getAsyncJobSnapshot()
-				?.running.filter(
-					job => job.type !== "task" || job.agentId === undefined || !this.#runningSubagentIds.has(job.agentId),
-				).length ?? 0
-		);
+		return this.session.getAsyncJobSnapshot()?.running.length ?? 0;
 	}
 
 	/**
@@ -1408,16 +1316,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		// settled PR context on ordinary activity while leaving HEAD work intact.
 		this.#cachedPrContext = undefined;
 	}
-	#invalidateSessionCaches(): void {
-		this.#clearUsageStartTimer();
-		this.#cachedUsage = null;
-		this.#usageFetchedAt = 0;
-		this.#usageInFlight = false;
-		this.#contextUsageCache = undefined;
-		this.#lastTokensPerSecond = null;
-		this.#lastTokensPerSecondTimestamp = null;
-	}
-
 	/**
 	 * Explicit Git/repository cache invalidation. Aborts any in-flight
 	 * reftable HEAD/PR resolve, bumps the stale-result generation, and drops
@@ -1974,13 +1872,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	}
 
 	#noticeResetExpiry(session: TSession, reports: unknown): void {
-		// A focused subagent's view is not a conversation the user started; warn in their own.
-		if (
-			this.#focusedAgentId !== undefined ||
-			!this.#onResetExpiryNotice ||
-			!this.host.resetExpiryNotice ||
-			!Array.isArray(reports)
-		) {
+		if (!this.#onResetExpiryNotice || !this.host.resetExpiryNotice || !Array.isArray(reports)) {
 			return;
 		}
 		const sessionId = session.sessionManager.getSessionId();
@@ -2113,8 +2005,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		const now = Date.now();
 		const resetReports: UsageReport[] = [];
 		const activeModelId = normalizeUsageScopeValue(context.modelId);
-		const activeAntigravityCounter =
-			context.provider === "google-antigravity" ? getAntigravityCounterKeyForModel(context.modelId) : undefined;
 		const monthlySubscriptionProvider =
 			context.provider !== undefined && MONTHLY_SUBSCRIPTION_PROVIDERS[context.provider] === true;
 		const scopeGroups = new Map<string, UsageScopeGroup>();
@@ -2133,11 +2023,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			) {
 				resetReports.push(usageReport);
 			}
-			const limits =
-				provider === "google-antigravity" && activeAntigravityCounter
-					? scopeAntigravityLimitsForModel(usageReport, context)
-					: reportLimits;
-			for (const limit of limits) {
+			for (const limit of reportLimits) {
 				if (
 					!limit ||
 					typeof limit !== "object" ||
@@ -2254,15 +2140,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		let daily: { percent: number; resetMinutes?: number } | undefined;
 		let sevenDay: { percent: number; resetHours?: number } | undefined;
 		let monthly: { percent: number; resetHours?: number } | undefined;
-		let monthlyPriority = Number.POSITIVE_INFINITY;
-		const cursorMonthlyPriority = (limitId: unknown): number => {
-			// When /auth/usage and /api/usage-summary are merged, prefer the personal
-			// dashboard rails over legacy per-model request fractions.
-			if (limitId === "cursor:usd:individual-auto") return 0;
-			if (limitId === "cursor:usd:individual-plan" || limitId === "cursor:usd:individual-overall") return 1;
-			if (typeof limitId === "string" && limitId.startsWith("cursor:usd:individual-")) return 2;
-			return 3;
-		};
 		for (const candidate of selectedGroup.candidates) {
 			if (candidate.windowClass === "5h" && !fiveHour) {
 				fiveHour = {
@@ -2291,18 +2168,14 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 							: undefined,
 				};
 			}
-			if (candidate.windowClass === "monthly") {
-				const priority = cursorMonthlyPriority(candidate.id);
-				if (priority < monthlyPriority) {
-					monthly = {
-						percent: candidate.fraction * 100,
-						resetHours:
-							typeof candidate.resetsAt === "number"
-								? Math.max(0, Math.round((candidate.resetsAt - now) / 3_600_000))
-								: undefined,
-					};
-					monthlyPriority = priority;
-				}
+			if (candidate.windowClass === "monthly" && !monthly) {
+				monthly = {
+					percent: candidate.fraction * 100,
+					resetHours:
+						typeof candidate.resetsAt === "number"
+							? Math.max(0, Math.round((candidate.resetsAt - now) / 3_600_000))
+							: undefined,
+				};
 			}
 		}
 		if (!fiveHour && !daily && !sevenDay && !monthly && !resetCredits) return null;
@@ -2450,7 +2323,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		const turnElapsedMs = this.getTurnElapsedMs();
 		return {
 			session: this.session,
-			focusedAgentId: this.#focusedAgentId,
 			sessionAccent: sessionAccentEnabled,
 			previewTitle,
 			activeRepo: activeRepoCache.activeRepo,
@@ -2476,10 +2348,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			autoCompactEnabled: this.#autoCompactEnabled,
 			compactionSpeculation,
 			speculationBlinkOn: this.#speculationBlinkOn,
-			subagentCount: this.#subagentCount,
-			// The tree total describes the main session; a focused subagent's
-			// view falls back to its own completed task results.
-			subagentTreeCost: this.#focusedAgentId ? 0 : this.#subagentTreeCost,
 			activeMs: this.getActiveMs(),
 			turnElapsedMs,
 			now: new Date(nowMs),
@@ -2533,11 +2401,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			separator: this.#settings.separator ?? presetDef.separator,
 			segmentOptions: mergedSegmentOptions,
 		};
-	}
-
-	#subagentBadgeText(): string | undefined {
-		if (this.#subagentCount === 0) return undefined;
-		return theme.fg("statusLineSubagents", `${theme.icon.agents} ${this.#subagentCount}`);
 	}
 
 	/**
@@ -2723,11 +2586,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		// The `pi` brand is the only spinner-rate animation: its braille spinner
 		// while a turn runs and its color fade across turn edges. While
 		// focus-proxied it shows the viewed agent's id instead.
-		if (
-			(turnActive || this.#brandFade !== null) &&
-			this.#focusedAgentId === undefined &&
-			(leftSegments.includes("pi") || rightSegments.includes("pi"))
-		) {
+		if ((turnActive || this.#brandFade !== null) && (leftSegments.includes("pi") || rightSegments.includes("pi"))) {
 			return Math.floor(nowMs / SPINNER_ADVANCE_MS);
 		}
 		const includesTime = leftSegments.includes("time") || rightSegments.includes("time");
@@ -2779,7 +2638,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		const content = this.#renderStatusLine(width, layout, previewTitle, nowMs);
 		const result = {
 			content,
-			dimmedContent: this.#dimWhileFocusProxied(content),
 			width: visibleWidth(content),
 			availableWidth: width,
 			renderRevision: this.#renderRevision,
@@ -2871,14 +2729,12 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		const transparentBg = bgAnsi === TRANSPARENT_BG_ANSI;
 		const fgAnsi = theme.getFgAnsi("text");
 		const sepAnsi = theme.getFgAnsi("statusLineSep");
-		const subagentBadge = this.#subagentBadgeText();
 
 		// Collect visible segment contents
 		const leftParts: string[] = [];
 		const leftSegIds: StatusLineSegmentId[] = [];
 		const leftSegmentIds = layout === "plain-right" ? [] : effectiveSettings.leftSegments;
 		for (const segId of leftSegmentIds) {
-			if (subagentBadge && segId === "subagents") continue;
 			// The band composer relocates the title to the working row's trailer.
 			if (layout === "band" && segId === "session_name") continue;
 			const rendered = renderSegment(segId, ctx);
@@ -2892,7 +2748,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		const rightSegIds: StatusLineSegmentId[] = [];
 		const rightSegmentIds = layout === "plain-left" ? [] : effectiveSettings.rightSegments;
 		for (const segId of rightSegmentIds) {
-			if (subagentBadge && segId === "subagents") continue;
 			if (layout === "band" && segId === "session_name") continue;
 			const rendered = renderSegment(segId, ctx);
 			if (rendered.visible && rendered.content) {
@@ -2917,7 +2772,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			if (runningBackgroundJobs > 0) {
 				rightParts.unshift(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
 			}
-			if (subagentBadge) rightParts.unshift(subagentBadge);
 		}
 		const topFillWidth = Math.max(0, width);
 		// These arrays are local to this render; overflow handling can mutate them.
@@ -3059,11 +2913,8 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 						: separatorDef.endCaps.left
 					: "";
 			const capPrefix = separatorDef.endCaps?.useBgAsFg ? bgAnsi.replace("\x1b[48;", "\x1b[38;") : bgAnsi + sepAnsi;
-			const capText = cap ? `${capPrefix}${this.#focusedAgentId ? "\x1b[22m" : ""}${cap}\x1b[0m` : "";
-			const openText =
-				direction === "left" && bandCap
-					? `${capPrefix}${this.#focusedAgentId ? "\x1b[22m" : ""}${bandCap}\x1b[0m`
-					: "";
+			const capText = cap ? `${capPrefix}${cap}\x1b[0m` : "";
+			const openText = direction === "left" && bandCap ? `${capPrefix}${bandCap}\x1b[0m` : "";
 
 			let content = bgAnsi + fgAnsi;
 			content += ` ${parts.join(` ${sepAnsi}${sep}${fgAnsi} `)} `;
@@ -3324,7 +3175,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	getTopBorder(width: number, previewTitle?: string): { content: string; width: number; revision: number } {
 		const statusLine = this.#buildStatusLine(width, "box", previewTitle);
 		return {
-			content: statusLine.dimmedContent,
+			content: statusLine.content,
 			width: statusLine.width,
 			revision: this.#renderRevision,
 		};
@@ -3334,18 +3185,12 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	getBandTopBorder(width: number, previewTitle?: string): { content: string; width: number; revision: number } {
 		const statusLine = this.#buildStatusLine(width, "band", previewTitle);
 		return {
-			content: statusLine.dimmedContent,
+			content: statusLine.content,
 			width: statusLine.width,
 			revision: this.#renderRevision,
 		};
 	}
 
-	/** Dim the whole bar while focus-proxied. Group/cap terminators emit full
-	 * `\x1b[0m` resets that would cancel faint mid-bar, so re-open it after each. */
-	#dimWhileFocusProxied(content: string): string {
-		if (!this.#focusedAgentId || !content) return content;
-		return `\x1b[2m${content.replaceAll("\x1b[0m", "\x1b[0m\x1b[2m")}\x1b[22m`;
-	}
 	/**
 	 * Standalone bar placement derived from the composer style. `bottomBar`
 	 * `"full"` renders both groups on the bottom bar (pi/borderless/field/rail);
@@ -3371,7 +3216,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	getStandaloneTopBorder(width: number, previewTitle?: string): { content: string; width: number; revision: number } {
 		const statusLine = this.#buildStatusLine(width, "plain-right", previewTitle);
 		return {
-			content: statusLine.dimmedContent,
+			content: statusLine.content,
 			width: statusLine.width,
 			revision: this.#renderRevision,
 		};
@@ -3384,7 +3229,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	 * the active one).
 	 */
 	renderBottomBar(width: number, groups: "left" | "full", previewTitle?: string): string {
-		return this.#buildStatusLine(width, groups === "left" ? "plain-left" : "plain-full", previewTitle).dimmedContent;
+		return this.#buildStatusLine(width, groups === "left" ? "plain-left" : "plain-full", previewTitle).content;
 	}
 	/**
 	 * Status bar lines for a composer layout, rendered through the real
@@ -3509,7 +3354,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			this.onNativePullRequest?.(this.#nativePullRequest);
 		}
 
-		const dim = this.#focusedAgentId !== undefined;
 		const facts: NativeNode[] = [];
 		const collect = (side: "left" | "right", ids: readonly StatusLineSegmentId[]): void => {
 			ids.forEach((id, index) => {
@@ -3524,7 +3368,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 				};
 				const action = NATIVE_SEGMENT_ACTIONS[id];
 				if (action) props.actions = { click: action };
-				facts.push(describeSeg(id, props, view, dim));
+				facts.push(describeSeg(id, props, view));
 			});
 		};
 		collect("left", leftSegments);
@@ -3535,7 +3379,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 				const text = sanitizeStatusText(status);
 				if (!text) return;
 				const props: TspProps<"seg"> = { role: "omp.composer.fact", priority: 0 };
-				facts.push(describeSeg(`hook-${index}`, props, { spans: [span(text)] }, dim));
+				facts.push(describeSeg(`hook-${index}`, props, { spans: [span(text)] }));
 			});
 		}
 
@@ -3655,7 +3499,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			gitEnabled && hasPrSegment(segments),
 			nowMs,
 		);
-		const dim = this.#focusedAgentId !== undefined;
 		const segs: NativeNode[] = [];
 		const push = (key: string, side: "left" | "right", priority: number, view: SegmentView): void => {
 			const pinned = PINNED_NATIVE_SEGMENTS[key] === true;
@@ -3668,22 +3511,14 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			if (key === "path") props.min = { w: "12ch" };
 			const action = NATIVE_SEGMENT_ACTIONS[key];
 			if (action) props.actions = { click: action };
-			segs.push(describeSeg(key, props, view, dim));
+			segs.push(describeSeg(key, props, view));
 		};
-		const subagentBadge = this.#subagentCount > 0;
 		leftSegments.forEach((id, index) => {
-			if (subagentBadge && id === "subagents") return;
 			const view = describeSegment(id, ctx);
 			if (view) push(id, "left", statusSegmentPriority("left", index, leftSegments.length), view);
 		});
 		// Live-work badges lead the right group, as in the ANSI bar; they sit on
 		// the inner edge, so they drop before any configured segment.
-		if (subagentBadge) {
-			push("subagent-badge", "right", 0, {
-				spans: [{ t: `${this.#subagentCount}`, s: "statusLineSubagents" }],
-				icon: "agents",
-			});
-		}
 		const runningBackgroundJobs = this.runningBackgroundJobCount();
 		if (runningBackgroundJobs > 0) {
 			push("jobs", "right", 0, {
@@ -3692,7 +3527,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			});
 		}
 		rightSegments.forEach((id, index) => {
-			if (subagentBadge && id === "subagents") return;
 			const view = describeSegment(id, ctx);
 			if (view) push(id, "right", statusSegmentPriority("right", index, rightSegments.length), view);
 		});

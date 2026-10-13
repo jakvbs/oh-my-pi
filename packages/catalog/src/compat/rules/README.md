@@ -120,7 +120,7 @@ collapse {
     effort-family "example-provider" "gpt-5.6-luna"
     routing-variant-suffix "-wm" "openai-codex" "openai-codex-device"
     variant-family "example-provider" "claude-opus-5" name="Claude Opus 5" { /* reviewed routing */ }
-    variant-family "google-antigravity" "gemini-{rev}-flash" name="Gemini {rev} Flash" revision=">=3.6" { /* per-revision template */ }
+    variant-family "example-provider" "gemini-{rev}-flash" name="Gemini {rev} Flash" revision=">=3.6" { /* per-revision template */ }
     provider-alias "example-provider" "opus" "claude-opus-5"
 }
 ```
@@ -195,6 +195,8 @@ An `on-api` nested inside `on` under a class requires both the selected provider
 
 A `models` string without `*` is an exact, case-sensitive match against the provider-relative model identifier. A string containing `*` is an anchored, ASCII-case-insensitive wildcard match. Prefer taxonomy ranks; retain exact/glob lists only when they isolate the census member set exactly, and keep a `// residue:` comment explaining why ranks do not.
 
+A row whose own id classifies as `unknown` but whose `requestModelId` does not resolves under the wire id: classification and `models` matching both use it, so the model the row sends gets its own rules. Devin Fusion pairings (`fusion-<lead>-sidekick-*`) resolve as their lead this way.
+
 `priority=N` is an optional signed integer property on the block that owns axis assignments. Its default is zero. Use it only to resolve an intentional equal-specificity overlap; do not use it to encode declaration order.
 
 `buildDiscoveredModel(spec, providerType)` resolves the catalog `discovery-api` axis before materializing compatibility. It preserves the credential-bearing provider ID and records `providerType` as the backend used for provider selectors on subsequent rebuilds. Ordinary `buildModel` preserves its input API. This lets custom-named llama.cpp deployments reuse the same rules without model-specific discovery code.
@@ -212,15 +214,23 @@ The three value shapes are:
 - **Object**: no arguments and a child block, including an empty block. Child names are kebab-case: an axis-directive spelling compiles to its resolved axis key (`template-reasoning-effort` → `qwenTemplateReasoningEffort`), anything else converts mechanically (`input-threshold` → `inputThreshold`); camelCase names are a compile error. `extra-body` payloads (top-level or nested) are the exception — their child names are literal wire JSON keys copied verbatim (`enable_thinking`). Each child is either one scalar or another object; arrays are not representable inside an object payload.
 
 A rule cannot assign the same resolved axis twice in one block.
-One object axis carries a computed form: `long-context-cost` accepts either the absolute rates (`input-threshold` + `input`/`output`/`cache-read`/`cache-write`) or `input-threshold` + `multiplier` (with optional `input-threshold-inclusive`), which derives the tier from the row's base price at build time, after `cost-patch` and `cost-fallback`, so the rule tracks upstream list-price updates (xAI's SuperGrok 200K tier). Rows without a token price carry no tier. An empty `long-context-cost {}` adds no tier; a more specific rule uses it to opt a host out of a broader rule's band (GitHub Copilot's Haiku 5.5 rows, whose long tier is the `-1m` sibling).
+One object axis carries a computed form: `long-context-cost` accepts either the absolute rates (`input-threshold` + `input`/`output`/`cache-read`/`cache-write`) or `input-threshold` + `multiplier` (with optional `input-threshold-inclusive`, and `output-multiplier` when the tier raises output by a different factor than the other legs), which derives the tier from the row's base price at build time, after `cost-patch` and `cost-fallback`, so the rule tracks upstream list-price updates (xAI's SuperGrok 200K tier). Rows without a token price carry no tier. An empty `long-context-cost {}` adds no tier; a more specific rule uses it to opt a host out of a broader rule's band (GitHub Copilot's Haiku 5.5 rows, whose long tier is the `-1m` sibling).
+
+`cost-patch` and `cost-fallback` accept an optional `effective-rates` block of named dated cards, each with a distinct ISO UTC `effective-from` (`YYYY-MM-DDTHH:mm:ssZ` or with three fractional-second digits) and any of `input`/`output`/`cache-read`/`cache-write` as nonnegative rates; a malformed card fails `buildModel` rather than leaving the old price in force. A card overwrites those legs from its date: for `cost-patch` over whatever upstream reports, for `cost-fallback` only when it seeded the row. A patch may carry the dated cards alone, leaving the upstream price in place until the first one starts; pin the current price beside them when upstream may later report the new one, or a row built after that loses the earlier period (Gemini 4 Argon's 2026-12-01 list-price increase in [`classes/gemini.kdl`](classes/gemini.kdl) pins both). `buildModel` sets the row's legs to the card due when it is built, and compiles every price period into `ModelCost.timeBased.effectiveRates` (complete cards, long-context tier and cache-rate derivations included, with a leading card for the price before the first change) under a schedule with no peak windows and a 1x off-peak multiplier. Requests are therefore priced at the card in force when they were made, even on rows built before a change (bundles, caches, long sessions); price displays read `getEffectiveTokenCost`, which selects the same card, and such a schedule reports no peak/off-peak period. Rebuilding a row that already carries such a schedule (dynamic merges, overrides) starts from the card due at the rebuild, and Cursor lanes priced from a sibling slug's card keep that card's schedule, scaled by the lane's multiplier. Cards that leave the price unchanged (a fallback the upstream price outranks) add no schedule. A rule cannot combine these cards with `time-based-cost` `effective-rates`; it may add them to a recurring `time-based-cost` tariff without its own.
 
 `context-window-authoritative #true` preserves a host's supplied context window through runtime model selection instead of applying inferred expansion or reference-price-tier caps. Explicit user context overrides still apply afterward. It applies to rows materialized through `buildModel` (discovery and regenerated bundles).
 
-`inline-image-byte-budget` caps retained base64 image characters for a deployment's request body. It leaves room for tool schemas and text beneath the provider's body-size limit; the coding agent reads it through `resolveInlineImageByteBudget` before sending live history. The budget applies only while `compat.officialEndpoint` holds: a custom `baseUrl` imposes its own body limit.
+`inline-image-byte-budget` caps retained base64 image characters for a deployment's request body. It leaves room for tool schemas and text beneath the provider's body-size limit; the coding agent reads it through `resolveInlineImageByteBudget` before sending live history, and snapcompact gives its archive frames half of it (`frameDataBytesBudget`). The budget applies only while the request reaches the official endpoint (the Anthropic API, first-party OpenAI, or the Codex backend at its default URL), which callers decide with pi-ai's `reachesOfficialEndpoint`: `compat.officialEndpoint` for the configured `baseUrl`, and for first-party Anthropic models also the `ANTHROPIC_BASE_URL` or Foundry `FOUNDRY_BASE_URL` reroute applied at request time. A custom or rerouted endpoint imposes its own body limit.
+
+`image-count-budget` is the most images one request may carry, archive frames, screenshots and imaged tool results combined. The coding agent reads it through `resolveImageCountBudget`, drops the oldest images past it, and caps snapcompact frames at it; unassigned hosts get a floor of 5. `official-image-count-budget` replaces it while the request reaches the official endpoint (same gate as `inline-image-byte-budget`), for limits established on the host's own endpoint (Anthropic: 600, 100 on 200k-window models; Codex: 2,000); a custom or rerouted endpoint keeps `image-count-budget` (Anthropic 90, Codex 200).
 
 `judgment-questions-max` is the most questions one System One judgment request may carry (razorback16/openjev: 256; Cloudflare Clef on Workers AI and through OpenRouter Decisions: 64; unidentified `*openjev*` deployments: 16). The coding agent reads it through `resolveJudgmentQuestionsMax` and `NativeJudge` splits larger requests into parallel chunks; unassigned means the endpoint takes any batch size. [`providers/judgment-questions.kdl`](providers/judgment-questions.kdl) lists the servers verified uncapped or not isolatable.
 
 `prompt-cache-lookback` is how many block positions back from a cache breakpoint the model's prompt cache looks for an earlier request's entry (Claude: 20, counting the breakpoint; a run of consecutive `tool_use` or `tool_result` blocks is one position). The coding agent reads it through `resolvePromptCacheLookback` and keeps warm-cache tool-result pruning inside the window; unassigned means no known bound.
+
+`image-max-edge` is the longest image edge, in pixels, a host passes to the model; it downscales larger images to fit first. Snapcompact reads it through `resolveImageMaxEdge` and renders frames no wider, so their glyphs reach the model at the size they were drawn; unassigned means the host keeps the image's size.
+
+`snapcompact-image-reads #true` opts a reader in to getting a fresh `read` result as snapcompact frames when `snapcompact.toolResults` is on. Frames lose exact indentation, which a weaker reader then miscopies into its edits (Haiku 5.5: 22 of 54 first edits exact, against 53 of 54 from text); Opus 5.5 edited exactly from frames, so Opus 5.5+ opts in ([`classes/anthropic.kdl`](classes/anthropic.kdl)). Unassigned: `read` results stay text; other tools' results are imaged either way.
 
 ### Time-based pricing
 
@@ -277,7 +287,7 @@ The highest-ranked matching assignment wins for that axis. Two distinct rules th
 
 ### Capability gating
 
-Wire axes are considered for every matching target. Thinking axes require `reasoning`, except that an exact model selector declaring `thinking-efforts` opens the gate for reviewed corrections. A winning `thinking-upgrade-neutral #true` scoped to a recognized class, family, revision, or model selector also opens it when a matching effort ladder exists; provider-wide opt-in alone does not. Materializing a neutral spec as reasoning-capable requires that opt-in and no explicit thinking vocabulary. Family and revision selectors never match targets missing that rank. An unmatched target resolves to empty maps; the cascade does not infer negative capabilities from absence.
+Wire axes are considered for every matching target. Thinking axes require `reasoning`, except that an exact model selector declaring `thinking-efforts` opens the gate for reviewed corrections. A winning `thinking-upgrade-neutral #true` scoped to a recognized class, family, revision, or model selector also opens it when a matching effort ladder exists; provider-wide opt-in alone does not. Materializing a neutral spec as reasoning-capable requires that opt-in and no explicit thinking vocabulary. A winning `thinking-unverified #true` (scoped `class "unknown"` on hosts whose model list carries no capability metadata) instead offers an unclassified neutral spec its ladder as `ThinkingConfig.unverified`: off until the user picks an effort, and sent as non-reasoning without one; it never changes compat. Family and revision selectors never match targets missing that rank. An unmatched target resolves to empty maps; the cascade does not infer negative capabilities from absence.
 
 ## Runtime behavior grammar
 
@@ -305,7 +315,7 @@ behavior {
     exclude-models provider="nanogpt" substring="embed" substring="tts"
     plan-requirement provider="openai-codex" { tier "pro" substring="-spark" }
     retry-reset-timezone provider="zai" offset="+08:00"
-    pricing-peer provider="google-antigravity" peers="google" "google-vertex" {
+    pricing-peer provider="example-provider" peers="google" "google-vertex" {
         alias "gemini-3-pro" peer-id="gemini-3-pro-preview"
     }
 }
@@ -414,8 +424,6 @@ provider "muse-code" {
 
 Only `discovery` enrolls a provider in `generate-models.ts`; providers without it are never fetched at generation time (see the `charm-hyper` entry for why a live gateway deliberately omits it).
 
-`automatic-default #false` keeps a provider available for explicit selection but excludes it from startup fallback and automatic model presets. The default is `#true`; `apple` opts out because its on-device context cannot accommodate the standard coding-agent prompt in many projects.
-
 `kind-apis { <kind> "<api>" }` maps each non-chat kind (`image`, `tts`, `stt`, `embedding`, `rerank`, `video`) to the API discovery assigns rows of that kind. A runner API must sit under the kind it serves (`RUNNER_API_KINDS` in `src/types.ts`); chat APIs, which serve hosted image generation, and multi-kind `local-inference` may back any kind.
 
 ### Seed rows
@@ -433,7 +441,7 @@ A `seed` _defines_ bundled rows for providers whose catalog cannot be discovered
 | `empty`    | Only when no other source produced a row for the provider.                |
 | `never`    | Never; the provider's runtime model manager is the only consumer.         |
 
-`precedence="seed"` prepends the rows after the previous-snapshot merge and cross-provider reference fills, so the authored row wins dedup and same-id rows on other hosts never overwrite its name or capabilities (QwenCloud Token Plan, Meta). The default `upstream` precedence appends before the snapshot merge, so the current seed — not a stale snapshot copy — is the fallback row.
+`precedence="seed"` prepends the rows after the previous-snapshot merge and cross-provider reference fills, so the authored row wins dedup and same-id rows on other hosts never overwrite its name or capabilities (Meta). The default `upstream` precedence appends before the snapshot merge, so the current seed — not a stale snapshot copy — is the fallback row.
 
 ## Vendoring provenance
 

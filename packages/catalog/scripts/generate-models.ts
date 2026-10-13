@@ -12,8 +12,6 @@ const COPILOT_PREMIUM_MULTIPLIERS: Record<string, number> = {
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { discoverAuthStorage } from "@oh-my-pi/pi-ai/auth-broker/discover";
-import type { OAuthAccess } from "@oh-my-pi/pi-ai/auth-storage";
-import type { OAuthProvider } from "@oh-my-pi/pi-ai/oauth/types";
 import { getProviderDefinition } from "@oh-my-pi/pi-ai/registry";
 import { $env } from "@oh-my-pi/pi-utils";
 import { buildModel } from "../src/build";
@@ -21,7 +19,6 @@ import { isRetiredProvider } from "../src/compat/behavior";
 import { collapseVariants } from "../src/compat/collapse";
 import { providerEntries, providerEntry, seedModels } from "../src/compat/providers";
 import type { CompiledProvider } from "../src/compat/types";
-import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "../src/discovery/antigravity";
 import { createModelManager } from "../src/model-manager";
 import { resolveModelTokenizer } from "../src/model-tokenizer";
 import prevModelsJson from "../src/models.json" with { type: "json" };
@@ -190,7 +187,7 @@ async function resolveProviderApiKey(providerId: string, catalog: CatalogDiscove
 
 	return undefined;
 }
-type CatalogProviderFetchResult = { models: ModelSpec[]; succeeded: boolean };
+type CatalogProviderFetchResult = { models: ModelSpec[] };
 
 async function fetchProviderModelsFromCatalog(
 	descriptor: CatalogProviderDescriptor,
@@ -199,7 +196,7 @@ async function fetchProviderModelsFromCatalog(
 
 	if (!apiKey && !allowsUnauthenticatedCatalogDiscovery(descriptor)) {
 		console.log(`No ${descriptor.catalogDiscovery.label} credentials found (env or agent.db), using fallback models`);
-		return { models: [], succeeded: false };
+		return { models: [] };
 	}
 
 	try {
@@ -221,19 +218,19 @@ async function fetchProviderModelsFromCatalog(
 			console.warn(
 				`${descriptor.catalogDiscovery.label} dynamic fetch failed (stale cache merge), using fallback models`,
 			);
-			return { models: [], succeeded: false };
+			return { models: [] };
 		}
 		const models = result.models.filter(model => model.provider === descriptor.providerId);
 		if (models.length === 0) {
 			console.warn(`${descriptor.catalogDiscovery.label} discovery returned no models`);
-			return { models: [], succeeded: true };
+			return { models: [] };
 		}
 		console.log(`Fetched ${models.length} models from ${descriptor.catalogDiscovery.label} model manager`);
 		// Keep discovery rows as specs until policies finish; the final bundle is fully materialized below.
-		return { models: models.map(model => toModelSpec(model)), succeeded: true };
+		return { models: models.map(model => toModelSpec(model)) };
 	} catch (error) {
 		console.error(`Failed to fetch ${descriptor.catalogDiscovery.label} models:`, error);
-		return { models: [], succeeded: false };
+		return { models: [] };
 	}
 }
 
@@ -289,20 +286,6 @@ function applyGlobalModelsDevFallback(
 			// Providers whose discovery is the deployment truth and whose
 			// corrections live in KDL opt out of same-id reference fills.
 			providerEntry(model.provider)?.skipCrossProviderReferenceFills === true
-		) {
-			return model;
-		}
-		// ClinePass free-tier entries arrive manager-complete: enriched from the
-		// bundled upstream reference and carrying a tier-marked name. The same-id
-		// overlay would overwrite their names with the reference's display name
-		// (dropping the "(free)" marker) and flip reasoning from unrelated
-		// same-id data, diverging the bundle from the runtime roster. Their raw
-		// wire tag marks them as manager-complete. (`.api` equality narrows the
-		// generic, making the compat field access sound.)
-		if (
-			model.provider === "cline-pass" &&
-			model.api === "openai-completions" &&
-			(model as ModelSpec<"openai-completions">).compat?.wireModelIdMode === "raw"
 		) {
 			return model;
 		}
@@ -433,75 +416,6 @@ function applyFireworksDeepSeekReasoningShape(models: readonly ModelSpec[]): Mod
 	});
 }
 
-function normalizeAntigravityEndpoint(models: readonly ModelSpec[]): ModelSpec[] {
-	return models.map(model => {
-		if (model.provider === "google-antigravity" && model.baseUrl) {
-			return { ...model, baseUrl: ANTIGRAVITY_PRIMARY_ENDPOINT };
-		}
-		return model;
-	});
-}
-
-const ANTIGRAVITY_ENDPOINT = ANTIGRAVITY_PRIMARY_ENDPOINT;
-
-async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuthAccess | null> {
-	try {
-		const authStorage = await discoverAuthStorage();
-		try {
-			// `getOAuthAccess` runs the full AuthStorage refresh pipeline so an
-			// expired-but-refreshable credential gets rotated before discovery,
-			// and identity metadata (accountId/projectId/email) flows through
-			// for Codex/Antigravity downstream calls.
-			let access = await authStorage.oauth.access(provider);
-			if (!access && provider === "google-antigravity") {
-				access = await authStorage.oauth.access("google-gemini-cli");
-			}
-			return access ?? null;
-		} finally {
-			authStorage.close();
-		}
-	} catch (err) {
-		console.warn(
-			`Warning: Failed to retrieve credentials for ${provider}:`,
-			err instanceof Error ? err.message : String(err),
-		);
-		return null;
-	}
-}
-
-/**
- * Fetch available Antigravity models from the API using the discovery module.
- * Returns empty array if no auth is available (previous models used as fallback).
- */
-async function fetchAntigravityModels(): Promise<ModelSpec<"google-gemini-cli">[]> {
-	const access = await getOAuthAccessFromStorage("google-antigravity");
-	if (!access) {
-		console.log("No Antigravity or Gemini CLI credentials found, will use previous models.");
-		console.log("Tip: If you are logged in under a specific profile, run with OMP_PROFILE=<name>.");
-		return [];
-	}
-	try {
-		console.log("Fetching models from Antigravity API...");
-		const discovered = await fetchAntigravityDiscoveryModels({
-			token: access.accessToken,
-			endpoint: ANTIGRAVITY_ENDPOINT,
-		});
-		if (discovered === null || discovered.rejectedStatus !== undefined) {
-			console.warn("Antigravity API fetch failed, will use previous models");
-			return [];
-		}
-		if (discovered.models.length > 0) {
-			console.log(`Fetched ${discovered.models.length} models from Antigravity API`);
-			return discovered.models;
-		}
-		console.warn("Antigravity API returned no models, will use previous models");
-		return [];
-	} catch (error) {
-		console.error("Failed to fetch Antigravity models:", error);
-		return [];
-	}
-}
-
 /**
  * Resolve every stored Codex OAuth account and union their account-scoped
  * `/models` catalogs through the same manager path the runtime uses (#6265).
@@ -566,16 +480,10 @@ async function generateModels(selectedProvider?: string) {
 	// A provider is authoritative once its endpoint snapshot can replace the
 	// stencil.so / previous-snapshot rows. Requiring fetched models keeps a
 	// flaky empty-but-200 discovery from silently wiping another provider's
-	// bundled catalog; only alibaba-token-plan treats an empty success as
-	// authoritative, because its `/models` allowlist reflects the subscribed
-	// edition and must not be widened by the curated seed below.
+	// bundled catalog.
 	const authoritativeCatalogProviders = new Set(
 		catalogProviderModelBatches
-			.filter(
-				batch =>
-					batch.descriptor.dynamicModelsAuthoritative === true &&
-					(batch.models.length > 0 || (batch.succeeded && batch.descriptor.providerId === "alibaba-token-plan")),
-			)
+			.filter(batch => batch.descriptor.dynamicModelsAuthoritative === true && batch.models.length > 0)
 			.map(batch => batch.descriptor.providerId),
 	);
 	const catalogProviderModels = catalogProviderModelBatches.flatMap(batch => batch.models);
@@ -597,7 +505,6 @@ async function generateModels(selectedProvider?: string) {
 	allModels.push(...buildFireworksFastSeed());
 
 	const specialDiscoverySources = [
-		{ label: "Antigravity", providerId: "google-antigravity", authoritative: false, fetch: fetchAntigravityModels },
 		{ label: "Codex", providerId: "openai-codex", authoritative: true, fetch: fetchCodexDiscoveryModels },
 	] as const;
 	const specialDiscoveries = await Promise.all(
@@ -666,9 +573,8 @@ async function generateModels(selectedProvider?: string) {
 	allModels = applyKimiMaxTokensCap(allModels);
 	allModels = applyFireworksDeepSeekReasoningShape(allModels);
 	allModels = filterModelsDevCatalogRows(allModels);
-	allModels = normalizeAntigravityEndpoint(allModels);
 	// Normalize display names: gateway author prefixes ("OpenAI: …"), alias
-	// markers ("(latest)"), provider attribution ("(Antigravity)"), and
+	// markers ("(latest)"), provider attribution, and
 	// price/promo tags are model-extrinsic — strip them from the bundle.
 	allModels = allModels.map(model => {
 		const name = cleanModelName(model.name);

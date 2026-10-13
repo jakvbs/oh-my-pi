@@ -56,9 +56,6 @@ function createInitialRenderHarness(): { ctx: InteractiveModeContext; helpers: U
 				getEntries: () => [],
 			},
 		},
-		get viewSession() {
-			return (this as typeof ctx).session;
-		},
 		clearTransientSessionUi: () => {},
 		toolOutputExpanded: false,
 		hideThinkingBlock: false,
@@ -147,7 +144,7 @@ describe("InteractiveMode.showStatus", () => {
 			transcriptMessageComponents: new WeakMap(),
 			pendingTools: new Map(),
 			ui: { requestRender: vi.fn() },
-			viewSession: { isStreaming: false },
+			session: { isStreaming: false },
 			optimisticUserMessageSignature: "hello\u00001",
 		} as unknown as InteractiveModeContext;
 		const helpers = new UiHelpers(ctx);

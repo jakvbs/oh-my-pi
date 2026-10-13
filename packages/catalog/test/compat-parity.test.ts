@@ -31,14 +31,10 @@ const NEW_COMPAT_FIELDS = new Set([
 	"dropUnsignedThinking",
 	"ccaLegacyParametersSchema",
 	"multimodalFunctionResponse",
-	"flashStreamLeakWorkaround",
-	"claudeThinkingBetaHeader",
-	"antigravityClaudeToolMode",
-	"antigravityUsageLabel",
 ]);
 
 /** APIs whose compat record is new with the engine (no baked baseline). */
-const NEW_COMPAT_APIS = new Set(["google-generative-ai", "google-vertex", "google-gemini-cli"]);
+const NEW_COMPAT_APIS = new Set(["google-generative-ai", "google-vertex"]);
 
 function jsonClone<T>(value: T): unknown {
 	return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -86,14 +82,6 @@ interface RowLike {
 function keepsExplicitThinking(row: RowLike): boolean {
 	if (isCollapsedVariantSpec(row as unknown as ModelSpec<Api>)) return true;
 	if (row.compatConfig?.thinkingFormat === "chat-template" && row.thinking) return true;
-	if (
-		row.provider === "alibaba-token-plan" &&
-		(row.id === "qwen3.8-max-preview" || row.id === "qwen3.8-max") &&
-		row.thinking
-	) {
-		return true;
-	}
-	if (row.provider === "cline-pass" && row.thinking) return true;
 	if (row.compatConfig?.trustExplicitThinkingOnly === true) return true;
 	if (row.provider === "openrouter" && row.thinking?.requiresEffort === true) return true;
 	return false;

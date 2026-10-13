@@ -13,7 +13,6 @@ import {
 	EXTENSION_HANDLER_TIMEOUT_MS,
 	testSetExtensionHandlerTimeoutMs,
 } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import { ExtensionToolWrapper } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/wrapper";
 import type { MCPManager } from "@oh-my-pi/pi-coding-agent/mcp/manager";
 import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
 import {
@@ -24,7 +23,6 @@ import {
 	type ExtensionFactory,
 } from "@oh-my-pi/pi-coding-agent/sdk";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { resetYieldTurnState } from "@oh-my-pi/pi-coding-agent/tools/yield";
 import { logger, removeSyncWithRetries, Snowflake, untilAborted } from "@oh-my-pi/pi-utils";
 
 import { cfgExternalThinking } from "@oh-my-pi/pi-coding-agent/session/settings";
@@ -166,8 +164,8 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			expect(session.systemPrompt.join("\n")).toContain("default_active_tool");
 			expect(session.systemPrompt.join("\n")).not.toContain("default_inactive_tool");
 
-			// Presentation lookup must survive Code Mode clearing the live mount set
-			// so historical prefixed calls retain their canonical renderer.
+			// Presentation lookup must survive clearing the live mount set so
+			// historical prefixed calls retain their canonical renderer.
 			await session.setActiveToolPresentation(session.getActiveToolNames(), []);
 			expect(session.getMountedXdevToolNames()).not.toContain("default_active_tool");
 			expect(session.getToolByName("xd://default_active_tool")?.name).toBe("default_active_tool");
@@ -1689,30 +1687,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	it("resets reused yield state through the SDK extension wrapper", async () => {
-		const tempDir = makeTempDir();
-		const { session } = await createAgentSession({
-			...baseOptions(tempDir),
-			requireYieldTool: true,
-			toolNames: ["yield"],
-		});
-
-		try {
-			const yieldTool = session.getToolByName("yield");
-			if (!yieldTool) throw new Error("expected wrapped yield tool");
-			expect(yieldTool).toBeInstanceOf(ExtensionToolWrapper);
-
-			await yieldTool.execute("run1-section", { type: ["findings"], data: "one finding" });
-			const keptWithinRun = await yieldTool.execute("run1-finalize", { type: "result" });
-			expect(keptWithinRun.content).toEqual([{ type: "text", text: "Result submitted." }]);
-
-			resetYieldTurnState(yieldTool);
-			await expect(yieldTool.execute("run2-empty", { type: "result" })).rejects.toThrow(/no text \(thinking only\)/);
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	it("normalizes legacy builtin toolNames before selecting the active SDK tools", async () => {
 		const tempDir = makeTempDir();
 
@@ -1895,7 +1869,6 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			enableMCP: true,
 			mcpManager: inheritedManager,
 			enableLsp: true,
-			enableIrc: true,
 		});
 
 		try {

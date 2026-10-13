@@ -4,7 +4,8 @@ import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/eve
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { UiHelpers } from "@oh-my-pi/pi-coding-agent/modes/utils/ui-helpers";
 import type { CustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
-import type { Component } from "@oh-my-pi/pi-tui";
+import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
+import { createAssistantMessage } from "../../helpers/agent-session-setup";
 import { createInteractiveModeContext } from "../../helpers/interactive-mode-context";
 
 beforeAll(() => {
@@ -163,109 +164,38 @@ describe("EventController message_start (user role)", () => {
 	});
 });
 
-function createIrcMessage(timestamp: number): CustomMessage<{ from: string; message: string }> {
-	return {
-		role: "custom",
-		customType: "irc:incoming",
-		content: "Ready",
-		display: true,
-		details: { from: "0-Main", message: `Ready ${timestamp}` },
-		timestamp,
-	};
-}
-
-function createIrcContext(options: { liveBlockAbove?: boolean } = {}) {
-	const ctx = createInteractiveModeContext();
-	const { chatContainer } = ctx;
-	if (options.liveBlockAbove) {
-		// A still-running tool above the cards: they sit in the live region,
-		// where their rows cannot have committed to native scrollback.
-		chatContainer.addChild({
-			render: () => ["running tool"],
-			invalidate: () => {},
-			isTranscriptBlockFinalized: () => false,
-		} as Component);
-	}
-	const helpers = new UiHelpers(ctx);
-	ctx.addMessageToChat = vi.fn((message, options) => helpers.addMessageToChat(message, options));
-	return {
-		ctx,
-		chatContainer,
-		requestRender: ctx.ui.requestRender,
-		addMessageToChat: ctx.addMessageToChat,
-	};
-}
-
-describe("EventController IRC expiry", () => {
-	afterEach(() => {
-		vi.useRealTimers();
-		vi.restoreAllMocks();
-	});
-
-	it("renders IRC messages immediately and removes live-region cards after the TTL", async () => {
-		vi.useFakeTimers();
-		const message = createIrcMessage(1);
-		const { ctx, chatContainer, requestRender } = createIrcContext({ liveBlockAbove: true });
-		const controller = new EventController(ctx);
-
-		await controller.handleEvent({ type: "irc_message", message });
-
-		expect(chatContainer.children).toHaveLength(2);
-		// One requestRender from the IRC handler mounting the card. The blanket
-		// pre-render that `handleEvent` used to fire before every dispatch was
-		// removed in #4353 (it doubled the paint rate during streaming and did no
-		// visible work beyond what the handlers already trigger).
-		expect(requestRender).toHaveBeenCalledTimes(1);
-
-		vi.advanceTimersByTime(9_999);
-		expect(chatContainer.children).toHaveLength(2);
-
-		vi.advanceTimersByTime(1);
-		expect(chatContainer.children).toHaveLength(1);
-		expect(requestRender).toHaveBeenCalledTimes(2);
-	});
-
-	it("evicts the oldest live-region card beyond the cap", async () => {
-		vi.useFakeTimers();
-		const { ctx, chatContainer } = createIrcContext({ liveBlockAbove: true });
-		const controller = new EventController(ctx);
-
-		for (let i = 0; i < 5; i++) {
-			await controller.handleEvent({ type: "irc_message", message: createIrcMessage(100 + i) });
+describe("EventController message_start (displayOnly during a streaming reply)", () => {
+	async function paintReport(options: { replyInScrollback: boolean }): Promise<string[]> {
+		const reply = new AssistantMessageComponent();
+		const ctx = createInteractiveModeContext({ session: { isStreaming: true }, streamingComponent: reply });
+		ctx.chatContainer.addChild(reply);
+		// Each streamed paragraph freezes the one before it into stable rows that may retire.
+		for (let text = ""; text.length < 60; text += `Paragraph ${text.length}.\n\n`) {
+			reply.updateContent(createAssistantMessage(`${text}Pending`), { transient: true });
+			reply.render(80);
 		}
-		// live block + MAX_LIVE_IRC_CARDS (4): the 5th card evicted the 1st.
-		expect(chatContainer.children).toHaveLength(5);
-		const rendered = chatContainer.children.map(child => child.render(80).join("\n"));
-		expect(rendered.some(text => text.includes("100"))).toBe(false);
-		expect(rendered.some(text => text.includes("104"))).toBe(true);
+		const batch = options.replyInScrollback ? ctx.chatContainer.peekFinalizedBatch(80, 2) : undefined;
+		if (batch) ctx.chatContainer.acknowledgeFinalizedBatch(batch.id);
+		const helpers = new UiHelpers(ctx);
+		ctx.addMessageToChat = vi.fn((message, opts) => helpers.addMessageToChat(message, opts));
+		const report: CustomMessage<undefined> = {
+			role: "custom",
+			customType: "progress-report",
+			content: "Agent read the workflow sources",
+			display: true,
+			details: undefined,
+			excludeFromContext: true,
+			timestamp: 1,
+		};
+		await new EventController(ctx).handleEvent({ type: "message_start", message: report });
+		return ctx.chatContainer.children.map(child => (child === reply ? "reply" : "report"));
+	}
+
+	it("mounts the message above the reply, where the session file stores it", async () => {
+		expect(await paintReport({ replyInScrollback: false })).toEqual(["report", "reply"]);
 	});
 
-	it("does not schedule duplicate expiry for duplicate IRC events", async () => {
-		vi.useFakeTimers();
-		const message = createIrcMessage(2);
-		const { ctx, chatContainer, addMessageToChat } = createIrcContext({ liveBlockAbove: true });
-		const controller = new EventController(ctx);
-
-		await controller.handleEvent({ type: "irc_message", message });
-		await controller.handleEvent({ type: "irc_message", message });
-
-		expect(addMessageToChat).toHaveBeenCalledTimes(1);
-		expect(chatContainer.children).toHaveLength(2);
-		vi.advanceTimersByTime(10_000);
-		expect(chatContainer.children).toHaveLength(1);
-	});
-
-	it("clears pending IRC expiry timers on dispose", async () => {
-		vi.useFakeTimers();
-		const message = createIrcMessage(3);
-		const { ctx, chatContainer, requestRender } = createIrcContext();
-		const controller = new EventController(ctx);
-
-		await controller.handleEvent({ type: "irc_message", message });
-		controller.dispose();
-		vi.advanceTimersByTime(10_000);
-
-		expect(chatContainer.children).toHaveLength(1);
-		expect(requestRender).toHaveBeenCalledTimes(1);
+	it("keeps the message below a reply whose rows already went to scrollback", async () => {
+		expect(await paintReport({ replyInScrollback: true })).toEqual(["reply", "report"]);
 	});
 });

@@ -1,14 +1,14 @@
 // Model-lineage compat for "deepseek"; regenerated from the frozen census using class taxonomy selectors.
 
 class "deepseek" {
-	on "aiand" "aimlapi" "alibaba-token-plan" "baseten" "coreweave" "deepseek" "fireworks" \
-		"huggingface" "kilo" "nanogpt" "novita" "nvidia" "opencode-go" "opencode-zen" "together" \
+	on "aiand" "aimlapi" "baseten" "deepseek" "fireworks" \
+		"huggingface" "nanogpt" "novita" "nvidia" "opencode-go" "opencode-zen" "together" \
 		"venice" "wafer-serverless" "zenmux" {
 		family "pro" {
 			thinking-efforts "low" "high" "max"
 		}
 	}
-	on "aiand" "aimlapi" "coreweave" "deepseek" "fireworks" "gmi-cloud" "huggingface" "kilo" \
+	on "aiand" "aimlapi" "deepseek" "fireworks" "gmi-cloud" "huggingface" \
 		"nanogpt" "novita" "nvidia" "ollama-cloud" "opencode-go" "opencode-zen" "openrouter" \
 		"together" "venice" "wafer-serverless" "zenmux" {
 		family "flash" {
@@ -56,7 +56,7 @@ class "deepseek" {
 			thinking-efforts "high"
 		}
 	}
-	on "alibaba-token-plan" "deepseek" {
+	on "deepseek" {
 		supports-developer-role #false
 	}
 	on "deepseek" "opencode-go" {

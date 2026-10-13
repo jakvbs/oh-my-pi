@@ -25,7 +25,6 @@ import { createMockModel, type MockModel, type MockResponse } from "@oh-my-pi/pi
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { IrcMessage } from "@oh-my-pi/pi-tui/tools/irc";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages";
@@ -730,95 +729,5 @@ describe("AgentSession advisor auto-resume suppression", () => {
 		releaseReview.resolve();
 		expect(await session.waitForAdvisorCatchup(1000)).toBe(true);
 		expect(mock.calls.length).toBe(1);
-	});
-
-	it("wakes a turn for an IRC aside stranded across a user interrupt", async () => {
-		const { session, mock, streamStarted } = await createParkedSession([{ content: ["replying to peer"] }]);
-		const running = session.prompt("do the thing");
-		await streamStarted;
-		// IRC arrives mid-turn → queued as a non-interrupting aside.
-		await session.deliverIrcMessage({ id: "m1", from: "peer", to: "me", body: "ping", ts: Date.now() } as IrcMessage);
-		// The user interrupt skips the loop's final aside poll, stranding the aside with no loop to
-		// drain it. The settle drain must wake a turn so the peer still gets a response.
-		await session.abort({ reason: USER_INTERRUPT_LABEL });
-		await session.waitForIdle();
-		await running.catch(() => {});
-
-		const sawIrc = session.agent.state.messages.some(
-			m => m.role === "custom" && (m as { customType?: string }).customType === "irc:incoming",
-		);
-		expect(sawIrc).toBe(true);
-		expect(mock.calls.length).toBe(2);
-	});
-
-	it("stops an idle IRC wake after a terminal yield", async () => {
-		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
-		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
-		let providerCalls = 0;
-		const mock = createMockModel({
-			handler: () => {
-				providerCalls++;
-				if (providerCalls > 1) {
-					throw new Error("terminal yield must not start a second provider call");
-				}
-				return createYieldMockResponse({ data: { ok: true } });
-			},
-		});
-		const agent = new Agent({
-			getApiKey: () => "test-key",
-			initialState: { model, systemPrompt: ["Test"], tools: [createMockYieldTool()] },
-			streamFn: mock.stream,
-		});
-		const sessionManager = SessionManager.inMemory();
-		const settings = Settings.isolated({ "compaction.enabled": false });
-		const authStorage = await AuthStorage.create(":memory:");
-		authStorages.push(authStorage);
-		authStorage.keys.setRuntime("anthropic", "test-key");
-		const modelRegistry = new ModelRegistry(authStorage, tempDir.join("models.yml"));
-		session = new AgentSession({ agent, sessionManager, settings, modelRegistry });
-		const msg: IrcMessage = { id: "m-yield", from: "peer", to: "me", body: "status?", ts: Date.now() };
-
-		const outcome = await session.deliverIrcMessage(msg);
-		await session.waitForIdle();
-
-		expect(outcome).toBe("woken");
-		expect(providerCalls).toBe(1);
-		expect(mock.calls.length).toBe(1);
-	});
-
-	it("flushes an accepted IRC aside on dispose instead of dropping it", async () => {
-		const { session, streamStarted } = await createParkedSession();
-		const running = session.prompt("do the thing");
-		await streamStarted;
-		await session.deliverIrcMessage({ id: "m1", from: "peer", to: "me", body: "ping", ts: Date.now() } as IrcMessage);
-		// Dispose mid-flight persists the accepted aside to the transcript rather than dropping it.
-		session.beginDispose();
-		const sawIrc = session.agent.state.messages.some(
-			m => m.role === "custom" && (m as { customType?: string }).customType === "irc:incoming",
-		);
-		expect(sawIrc).toBe(true);
-		running.catch(() => {});
-	});
-
-	it("responds to a stranded IRC aside while keeping a blocked follow-up queued", async () => {
-		const { session, mock, streamStarted } = await createParkedSession([{ content: ["replying to peer"] }]);
-		const running = session.prompt("do the thing");
-		await streamStarted;
-		// The user queues a follow-up (Ctrl+Enter) and an IRC ping lands as an aside...
-		await session.prompt("then add the test", { streamingBehavior: "followUp" });
-		await session.deliverIrcMessage({ id: "m2", from: "peer", to: "me", body: "ping", ts: Date.now() } as IrcMessage);
-		// ...then the user interrupts. The IRC must still get a response, but the user's queued
-		// follow-up must NOT auto-run (seam #5) even though the IRC wake turn leaves a valid tail.
-		await session.abort({ reason: USER_INTERRUPT_LABEL });
-		await session.waitForIdle();
-		await running.catch(() => {});
-
-		const sawIrc = session.agent.state.messages.some(
-			m => m.role === "custom" && (m as { customType?: string }).customType === "irc:incoming",
-		);
-		expect(sawIrc).toBe(true);
-		expect(userMessageText([...session.agent.peekFollowUpQueue()])).toContain("then add the test");
-		expect(userMessageText(session.agent.state.messages)).not.toContain("then add the test");
-		expect(mock.calls.length).toBe(2);
 	});
 });

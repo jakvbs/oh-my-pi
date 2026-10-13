@@ -387,13 +387,6 @@ export type GoalStatus = "active" | "paused" | "budget-limited" | "complete" | "
 
 export type SlashCommandSource = "builtin" | "skill" | "extension" | "custom" | "mcp_prompt" | "file";
 
-/** Forwarded subagent frames: none, lifecycle and progress, or also raw session events. */
-export type SubagentSubscriptionLevel = "off" | "progress" | "events";
-
-export type AgentSource = "bundled" | "user" | "project";
-
-export type SubagentStatus = "pending" | "running" | "completed" | "failed" | "aborted";
-
 export interface TodoItem {
 	content: string;
 	status: TodoStatus;
@@ -680,34 +673,6 @@ export interface SessionTree {
 	leafId: string | null;
 }
 
-export interface SubagentSnapshot {
-	id: string;
-	index: number;
-	agent: string;
-	agentSource: AgentSource;
-	status: SubagentStatus;
-	lastUpdate: number;
-	description?: string;
-	task?: string;
-	assignment?: string;
-	sessionFile?: string;
-	/** Raw `AgentProgress` record. */
-	progress?: Record<string, unknown>;
-	parentToolCallId?: string;
-}
-
-/** Incremental subagent transcript read. */
-export interface SubagentMessages {
-	sessionFile: string;
-	fromByte: number;
-	/** Pass as the next `fromByte` to read incrementally. */
-	nextByte: number;
-	/** `fromByte` exceeded the file size and reading restarted at zero. */
-	reset: boolean;
-	entries: Record<string, unknown>[];
-	messages: AgentMessage[];
-}
-
 /** Side-question turn lifecycle; `interrupted` marks a turn whose process died while it ran. */
 export type BtwStatus = "running" | "complete" | "cancelled" | "error" | "interrupted";
 
@@ -955,11 +920,6 @@ export interface TodoAutoClearEvent {
 	type: "todo_auto_clear";
 }
 
-export interface IrcMessageEvent {
-	type: "irc_message";
-	message: CustomMessage;
-}
-
 export interface NoticeEvent {
 	type: "notice";
 	level: NotifyType;
@@ -994,7 +954,7 @@ export interface QueueUpdateEvent {
 }
 
 /** A session event, discriminated by `type`; `set_event_filter` selects which are sent. */
-export type RpcAgentEvent = AgentStartEvent | AgentEndEvent | TurnStartEvent | TurnEndEvent | MessageStartEvent | MessageUpdateEvent | MessageEndEvent | ToolExecutionStartEvent | ToolExecutionUpdateEvent | ToolStreamUpdateEvent | ToolExecutionEndEvent | AutoCompactionStartEvent | AutoCompactionEndEvent | AutoRetryStartEvent | AutoRetryEndEvent | CacheWarmingStartEvent | CacheWarmingEndEvent | RetryFallbackAppliedEvent | RetryFallbackSucceededEvent | ModelChangedEvent | ConfigWarningsChangedEvent | AdvisorCostChangedEvent | AdvisorYieldedEvent | TtsrTriggeredEvent | TodoReminderEvent | TodoAutoClearEvent | IrcMessageEvent | NoticeEvent | ThinkingLevelChangedEvent | GoalUpdatedEvent | QueueUpdateEvent;
+export type RpcAgentEvent = AgentStartEvent | AgentEndEvent | TurnStartEvent | TurnEndEvent | MessageStartEvent | MessageUpdateEvent | MessageEndEvent | ToolExecutionStartEvent | ToolExecutionUpdateEvent | ToolStreamUpdateEvent | ToolExecutionEndEvent | AutoCompactionStartEvent | AutoCompactionEndEvent | AutoRetryStartEvent | AutoRetryEndEvent | CacheWarmingStartEvent | CacheWarmingEndEvent | RetryFallbackAppliedEvent | RetryFallbackSucceededEvent | ModelChangedEvent | ConfigWarningsChangedEvent | AdvisorCostChangedEvent | AdvisorYieldedEvent | TtsrTriggeredEvent | TodoReminderEvent | TodoAutoClearEvent | NoticeEvent | ThinkingLevelChangedEvent | GoalUpdatedEvent | QueueUpdateEvent;
 
 /** First frame after startup; transport fields are absent on servers without protocol v2. */
 export interface ReadyEvent {
@@ -1044,57 +1004,6 @@ export interface ExtensionError {
 export interface AvailableCommandsUpdateEvent {
 	type: "available_commands_update";
 	commands: AvailableSlashCommand[];
-}
-
-export type SubagentLifecycleStatus = "started" | "completed" | "failed" | "aborted";
-
-export interface SubagentLifecyclePayload {
-	id: string;
-	agent: string;
-	agentSource: AgentSource;
-	status: SubagentLifecycleStatus;
-	index: number;
-	description?: string;
-	sessionFile?: string;
-	parentToolCallId?: string;
-	/** The subagent runs as a detached background job. */
-	detached?: boolean;
-}
-
-export interface SubagentProgressPayload {
-	index: number;
-	agent: string;
-	agentSource: AgentSource;
-	task: string;
-	/** Raw `AgentProgress` record. */
-	progress: Record<string, unknown>;
-	parentToolCallId?: string;
-	assignment?: string;
-	sessionFile?: string;
-	detached?: boolean;
-}
-
-export interface SubagentEventPayload {
-	id: string;
-	event: RpcAgentEvent;
-}
-
-/** A subagent started or ended; sent at subscription level "progress" or "events". */
-export interface SubagentLifecycleEvent {
-	type: "subagent_lifecycle";
-	payload: SubagentLifecyclePayload;
-}
-
-/** Aggregated subagent progress; sent at subscription level "progress" or "events". */
-export interface SubagentProgressEvent {
-	type: "subagent_progress";
-	payload: SubagentProgressPayload;
-}
-
-/** A subagent's own session event; sent only at subscription level "events". */
-export interface SubagentEvent {
-	type: "subagent_event";
-	payload: SubagentEventPayload;
 }
 
 /** Text appended to the running side question's latest answer. */
@@ -1415,7 +1324,7 @@ export interface HostUriSchemeDefinition {
 }
 
 /** Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`. */
-export type RpcNotification = ReadyEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
+export type RpcNotification = ReadyEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
 
 /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
 export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;
@@ -1530,14 +1439,6 @@ export interface SetHostUriSchemesResult {
 	schemes: string[];
 }
 
-export interface SetSubagentSubscriptionParams {
-	level: SubagentSubscriptionLevel;
-}
-
-export interface SetSubagentSubscriptionResult {
-	level: SubagentSubscriptionLevel;
-}
-
 export interface SetEventFilterParams {
 	events: string[] | null;
 	messageUpdates?: MessageUpdates;
@@ -1546,29 +1447,6 @@ export interface SetEventFilterParams {
 export interface SetEventFilterResult {
 	events: string[] | null;
 	messageUpdates?: MessageUpdates;
-}
-
-export interface GetSubagentsResult {
-	subagents: SubagentSnapshot[];
-}
-
-export interface GetSubagentMessagesParams {
-	subagentId?: string;
-	sessionFile?: string;
-	fromByte?: number;
-}
-
-export interface CancelSubagentParams {
-	subagentId: string;
-}
-
-export interface CancelSubagentResult {
-	cancelled: boolean;
-}
-
-export interface SteerSubagentParams {
-	subagentId: string;
-	message: string;
 }
 
 export interface SetModelParams {
@@ -1761,12 +1639,7 @@ export interface RpcWireCommands {
 	set_todos: { params: SetTodosParams; result: SetTodosResult };
 	set_host_tools: { params: SetHostToolsParams; result: SetHostToolsResult };
 	set_host_uri_schemes: { params: SetHostUriSchemesParams; result: SetHostUriSchemesResult };
-	set_subagent_subscription: { params: SetSubagentSubscriptionParams; result: SetSubagentSubscriptionResult };
 	set_event_filter: { params: SetEventFilterParams; result: SetEventFilterResult };
-	get_subagents: { params: undefined; result: GetSubagentsResult };
-	get_subagent_messages: { params: GetSubagentMessagesParams; result: SubagentMessages };
-	cancel_subagent: { params: CancelSubagentParams; result: CancelSubagentResult };
-	steer_subagent: { params: SteerSubagentParams; result: undefined };
 	set_model: { params: SetModelParams; result: ModelInfo };
 	cycle_model: { params: undefined; result: ModelCycleResult | null };
 	get_available_models: { params: undefined; result: GetAvailableModelsResult };

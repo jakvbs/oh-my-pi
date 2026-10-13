@@ -6,7 +6,7 @@ OpenAI-shaped HTTP protocol. A request is shaped by four layers at once:
 1. endpoint family: `openai-completions`, `openai-responses`,
    `openai-codex-responses`, `anthropic-messages`, etc.
 2. gateway/auth surface: OpenRouter, Vercel AI Gateway, Azure OpenAI, Copilot,
-   Alibaba Coding Plan, Kimi Code, Fireworks/Firepass, and similar hosts
+   Kimi Code, Fireworks/Firepass, and similar hosts
 3. model metadata and `compat` overrides
 4. request context: tools, images, reasoning mode, stateful session, service tier
 
@@ -160,18 +160,6 @@ routing, model ids, or usage accounting.
   and `cache_ttl`; a `1h` TTL requires long cache retention.
 - Do not reuse OpenRouter's `provider` object.
 
-### Alibaba Coding Plan
-
-- API key bytes may be JSON carrying `{ token, enterpriseUrl }`.
-- Auth and base URL resolution are provider-specific.
-
-### Alibaba Token Plan
-
-- Uses a dedicated Token Plan credential rather than a generic `OPENAI_API_KEY`
-  fallback.
-- A structured credential can supply both the token and its regional base URL.
-- Keep it separate from Alibaba Coding Plan's enterprise-URL encoding.
-
 ### Amazon Bedrock Mantle
 
 - Uses OpenAI Responses with AWS-owned authentication, not the Converse protocol.
@@ -183,19 +171,6 @@ routing, model ids, or usage accounting.
 
 - The OpenAI-compatible path needs common Kimi headers.
 - It also participates in the OpenAI/Anthropic dual-surface shim.
-
-### ClinePass
-
-- Requests carry the official Cline CLI client identity (`X-CLIENT-TYPE`, `X-CLIENT-VERSION`, `X-PLATFORM`, `X-CORE-VERSION`, `User-Agent`, and related headers). Inference also carries OMP's stable session key as `X-Task-ID`; account and discovery calls omit it. This is the supported identification contract for Cline-gated roster entries.
-- Public catalog ids omit the gateway's `cline-pass/` namespace; Chat Completions adds it on the wire. Free-tier ids retain their full OpenRouter-style namespace because the gateway already receives them in wire form.
-- The public `recommended-models` endpoint is authoritative for membership. The required `clinePass` bucket supplies subscription models and the optional `free` bucket supplies free models. A missing subscription bucket or one with no valid IDs is rejected so the generated fallback survives; invalid individual entries are skipped.
-- Known IDs use a Cline-authored metadata snapshot for exact limits, subscription pricing, input modalities, and reasoning controls. Unknown IDs are enriched from bundled upstream references and live OpenRouter metadata, then fall back to conservative limits without invented reasoning controls.
-- Subscription models display Cline's API-equivalent list price, but streamed `usage.cost` is the authoritative billed/discounted charge. Free-tier models remain genuinely $0.
-- Reasoning is model-specific: effort models send only their advertised wire tiers, Qwen3.7 Plus maps OMP efforts to Cline's nested `reasoning.max_tokens` budget, and thinking-off sends `reasoning: { enabled: false }` where Cline advertises a toggle.
-- Cline-hosted Qwen and Anthropic routes receive Anthropic-style ephemeral cache breakpoints. Required reasoning history replays in assistant `reasoning`; incoming reasoning text is read from `delta.reasoning`.
-- Login validates the key against `/users/me`, without a completion probe or subscription-quota charge. It does not prove access to every roster model.
-- Subscription-window exhaustion (`clinepass limit`) and free-tier caps (`free limit reached on model ...`) classify as usage limits. Roster rotation and account-policy errors receive provider-specific recovery guidance.
-- The dashboard's `/users/me/plan/usage-limits` route accepts the inference API key and reports five-hour, weekly, and monthly utilization; `/users/me` supplies the account label. Usage reporting does not require account OAuth.
 
 ### Command Code
 
@@ -221,8 +196,8 @@ routing, model ids, or usage accounting.
 Check these before adding or forwarding a field:
 
 - **Model id.** Some models resolve a wire id from reasoning effort.
-  ClinePass, Firepass, and Fireworks transform ids. OpenRouter suffix handling
-  is path-segment aware.
+  Firepass and Fireworks transform ids. OpenRouter suffix handling is
+  path-segment aware.
 - **Max output tokens.** Kimi-family models may require a max-token field even
   when the caller did not set one. OpenRouter should omit catalog defaults unless
   explicit, except when `alwaysSendMaxTokens` requires a cap. Codex drops caller
@@ -467,8 +442,8 @@ deltas, then emit one final concat-safe JSON delta.
   separate cache-write charge. Do not double-count it.
 - GitHub Copilot `premiumRequests` must survive when usage is populated or
   replaced.
-- OpenRouter and ClinePass `usage.cost` is authoritative when reported; preserve
-  it rather than replacing it with catalog estimates.
+- OpenRouter `usage.cost` is authoritative when reported; preserve it rather
+  than replacing it with catalog estimates.
 - Service-tier pricing uses the served tier echoed by the response, falling back
   to the request only when absent. Standard Responses adjusts only the `openai`
   provider; Codex uses its own resolved tariff metadata.

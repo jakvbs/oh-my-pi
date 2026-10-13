@@ -105,9 +105,9 @@ Interactive sessions and RPC/RPC-UI hosts watch the main global file, project se
 
 Symlinked configs follow edits to their target and replacement of any intermediate file or directory symlink, including profile links. After a link switches targets, subsequent edits to the new target are watched too.
 
-Reloading changes the settings values available to consumers; startup-only work is not rerun. Provider-source switches take effect on the next discovery pass. Task dispatch also reloads persisted settings before resolving a subagent's policy.
+Reloading changes the settings values available to consumers; startup-only work is not rerun. Provider-source switches take effect on the next discovery pass.
 
-Routing changes to `modelRoles`, `retry.fallbackChains`, and `task.agentModelOverrides` apply to subsequent subagent launches and fallback decisions without restarting the host. `auth.accountPolicies` and `retry.usageReservePct` also update the long-lived account router for subsequent credential selection and quota checks. Reloading does not restart running subagents or switch a healthy active session's model; explicit runtime overrides still take precedence.
+Routing changes to `modelRoles` and `retry.fallbackChains` apply to subsequent fallback decisions without restarting the host. `auth.accountPolicies` and `retry.usageReservePct` also update the long-lived account router for subsequent credential selection and quota checks. Reloading does not switch a healthy active session's model; explicit runtime overrides still take precedence.
 
 ## Precedence
 
@@ -416,7 +416,7 @@ enabledModels:
   - claude-sonnet-4-5
 ```
 
-Built-in chat roles are `default`, `smol`, `slow`, `vision`, `commit`, `tiny`, `task`, and `advisor`. The `tiny` role accepts both `tiny` catalog models and ordinary chat models. Built-in model-kind roles are `image`, `web`, and `judge`; they select image, search/grounded-chat, and judgment runners respectively. `judge` also accepts tiny and chat models, which is why aliases such as `@tiny` are valid fallbacks. Catalog kinds are `chat`, `tiny`, `image`, `tts`, `stt`, `search`, and `judge`; a custom model with no `kind` remains a chat model.
+Built-in chat roles are `default`, `smol`, `slow`, `vision`, `commit`, `tiny`, and `advisor`. The `tiny` role accepts both `tiny` catalog models and ordinary chat models. Built-in model-kind roles are `image`, `web`, and `judge`; they select image, search/grounded-chat, and judgment runners respectively. `judge` also accepts tiny and chat models, which is why aliases such as `@tiny` are valid fallbacks. Catalog kinds are `chat`, `tiny`, `image`, `tts`, `stt`, `search`, and `judge`; a custom model with no `kind` remains a chat model.
 
 Open `/model` and enter the **Roles** view to assign roles and edit their fallback rows. Chat roles and model-kind roles appear in separate capability sections, and the picker filters assignments to models accepted by the selected role. List the same catalog directly with `omp models --kind chat`, `omp models --kind tiny`, `omp models --kind image`, `omp models --kind tts`, `omp models --kind stt`, `omp models --kind search`, or `omp models --kind judge`; use `--kind all` for everything.
 
@@ -451,7 +451,6 @@ Advisors review primary turns on a configurable cadence and can inject advice. E
 | Key                   | Type    | Default | Notes                                                                                                                                                |
 | --------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `advisor.enabled`     | boolean | `false` | Enable the advisor runtime when `modelRoles.advisor` resolves to an available model.                                                                 |
-| `task.agentAdvisor`   | record  | `{}`    | Per-agent subagent advisor: agent name → `"on"` / `"off"` / advisor model pattern; configured from the `/agents` hub. |
 | `advisor.syncBacklog` | enum    | `off`   | Default catch-up policy. `off` never waits; `1`, `3`, or `5` wait up to 30 seconds at that backlog threshold; `strict` waits for scheduled reviews without a wall-clock cap. Abort, failure, quota pause, transition, and disposal release waits. Optional `WATCHDOG.yml` per-advisor `syncBacklog` overrides this policy; omission inherits it. |
 | `advisor.immuneTurns` | number  | `3`     | After a concern or blocker interrupts, route further concerns as non-interrupting asides for this many primary turns, including tool-loop continuations. Blockers remain exempt. |
 | `advisor.reviewMode` | enum | `turn` | Default advisor cadence when no `WATCHDOG.yml` roster exists: review every primary turn, or only final yields with `agent-end`. Roster entries set their own `reviewMode` (default `turn`). Applies live. |
@@ -473,7 +472,7 @@ thinkingBudgets:
   max: 32768
 ```
 
-`thinkingBudgets.<level>` overrides the token budget for the selected thinking level on transports that accept a reasoning token budget (including Anthropic, Google/Gemini, Bedrock Claude, the Anthropic shim, the auth gateway, and budget-mode `cline-pass`). It does not control effort-based OpenAI-compatible requests: `openai-completions` providers such as local llama.cpp and Ollama use their own thinking/effort controls instead, so changing these budgets has no effect on their request bodies. Use `defaultThinkingLevel` or `--thinking` to select an available effort level for those models.
+`thinkingBudgets.<level>` overrides the token budget for the selected thinking level on transports that accept a reasoning token budget (including Anthropic, Google/Gemini, Bedrock Claude, the Anthropic shim, and the auth gateway). It does not control effort-based OpenAI-compatible requests: `openai-completions` providers such as local llama.cpp and Ollama use their own thinking/effort controls instead, so changing these budgets has no effect on their request bodies. Use `defaultThinkingLevel` or `--thinking` to select an available effort level for those models.
 
 | Key                               | Type    | Default | Values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------------------------- | ------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -503,8 +502,6 @@ For the numeric sampling settings, a negative value (normally `-1`) means "use t
 | `tier.openai`       | enum   | `none`    | `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Sent as `service_tier` for OpenAI / OpenAI-Codex and OpenAI-family OpenRouter models. `ultrafast` is sent only to the OpenAI API and to Codex models whose discovery advertises it (`/fast ultra`). Launch with `--service-tier <value>` for a one-session OpenAI override; the flag is not persisted (`none` omits `service_tier`). |
 | `tier.anthropic`    | enum   | `none`    | `none`, `priority`. `priority` realizes fast mode on supported direct Claude models (ignored on Bedrock/Vertex and via OpenRouter).                                                                                                                                            |
 | `tier.google`       | enum   | `none`    | `none`, `flex`, `priority`. Gemini API sends it in the body; Vertex sends `priority` via header (`flex` is a no-op on Vertex).                                                                                                                                                 |
-| `tier.subagent`     | enum   | `inherit` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Applied to the spawned model's family; `inherit` tracks the main agent.                                                                                                                                     |
-| `task.agentServiceTierOverrides` | record | `{}` | Sparse exact-name overrides for agents spawned by task dispatch. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. An entry overrides `tier.subagent`; concrete values apply only when supported by the resolved model's provider family. A non-mapping value fails settings load. |
 | `tier.advisor`      | enum   | `none`    | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`, `ultrafast`. Applied to the advisor model's family.                                                                                                                                                                      |
 
 ### Retry and fallback
@@ -539,11 +536,10 @@ retry:
       - google-vertex/gemini-3-pro
     # A `provider/*` KEY covers every model of a provider — current or
     # future. A `provider/*` ENTRY keeps the failing model's id and swaps
-    # the provider: google-antigravity/x -> google/x -> google-vertex/x.
+    # the provider: google/x -> google-vertex/x.
     # Ids missing on the target provider are skipped (near-miss ids resolve
     # fuzzily); exact model keys override the wildcard for a specific model.
-    google-antigravity/*:
-      - google/*
+    google/*:
       - google-vertex/*
 
 providers:
@@ -558,16 +554,16 @@ providers:
 | `retry.baseDelayMs`                      | number  | `500`             | Initial backoff.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `retry.maxDelayMs`                       | number  | `300000`          | Backoff ceiling (5 min). Provider-stated waits longer than this fail fast when no credential or model fallback succeeds, unless `retry.waitForUsageReset` admits an authoritative quota-reset wait. `0` disables the cap.                                                                                                                                                                                                                                                                                                                  |
 | `retry.modelFallback`                    | boolean | `true`            | Fall back to another chat model when one is unavailable. Role-driven helpers that honor this switch, including online session-title generation, stop after their first resolvable candidate when it is `false`.                                                                                                                                                                                                                                                                                                                                  |
-| `retry.fallbackOn` | enum | `any` | Which failed requests in a session turn (subagents included) or advisor turn may walk `retry.fallbackChains`. `any` switches on every provider error. `usage-limit` switches only on usage limits (quota windows, spend caps, exhausted balances); in a session turn other retryable errors retry the same model with the normal backoff up to `retry.maxRetries` and then surface, and non-retryable errors, refusals included, surface at once. `except-usage-limit` switches on everything else and waits out or surfaces usage limits. Advisors kept off the chain keep their own retry and drop behaviour (see `docs/advisor-watchdog.md`). Credential rotation and `retry.usageAwareFallback` are unaffected. |
+| `retry.fallbackOn` | enum | `any` | Which failed requests in a session turn or advisor turn may walk `retry.fallbackChains`. `any` switches on every provider error. `usage-limit` switches only on usage limits (quota windows, spend caps, exhausted balances); in a session turn other retryable errors retry the same model with the normal backoff up to `retry.maxRetries` and then surface, and non-retryable errors, refusals included, surface at once. `except-usage-limit` switches on everything else and waits out or surfaces usage limits. Advisors kept off the chain keep their own retry and drop behaviour (see `docs/advisor-watchdog.md`). Credential rotation and `retry.usageAwareFallback` are unaffected. |
 | `retry.fallbackChains`                   | record  | `{}`              | Maps roles, model selectors, or `provider/*` wildcards to ordered fallback selectors. Keys containing `/` are model-oriented and win over roles: `provider/model-id` matches that exact model, `provider/*` matches every model of the provider. A `provider/*` _entry_ keeps the failing model's id and swaps the provider. Model-kind roles use their built-in chain when unset and no fallbacks when set to `[]`; the `default` chain never applies to them. Unknown models/providers or malformed chains are reported as config warnings at startup. |
 | `retry.fallbackRevertPolicy`             | enum    | `cooldown-expiry` | `cooldown-expiry` returns to the primary model once its suppression window ends; `never` stays on the fallback until switched manually.                                                                                                                                                                                                                                                                                                                                                     |
-| `retry.waitForUsageReset` | boolean | `false` | Allow provider-stated usage-limit waits past `retry.maxDelayMs` when a reset hint or complete usage report supplies authoritative timing. Waits are abortable but can also hold subagents. |
+| `retry.waitForUsageReset` | boolean | `false` | Allow provider-stated usage-limit waits past `retry.maxDelayMs` when a reset hint or complete usage report supplies authoritative timing. Waits are abortable. |
 | `retry.usageAwareFallback` | boolean | `false` | Before a turn, use reliable coding-plan quota reports to prefer healthy same-provider accounts and then configured fallback models. Unknown usage keeps the current model; ordinary API keys are excluded. |
 | `retry.usageReservePct` | number | `10` | Remaining quota percentage protected by usage-aware fallback. |
 | `retry.usageReservePolicy` | enum | `confirm` | `confirm`, `auto`, `fail-closed`. At reserve, `confirm` asks when an interactive confirmer is available and otherwise auto-falls back; exhausted quota can fall back without confirmation. `fail-closed` blocks known reserve/depleted quota rather than spending it. |
 | `providers.anthropic.serverSideFallback` | boolean | `false`           | Opt in to Anthropic's `server-side-fallback-2026-06-01` beta for eligible direct Claude Fable/Mythos requests. The catalog-owned server-side chain currently targets `claude-opus-5`, not `claude-opus-5-5`; unsupported models and hosts have no chain.                                                                                                                                          |
 
-When the active chat model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that owns the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default` — which also owns a live model that belongs to no role (`/model` switch, ephemeral hop). The effective chain is the owning role's primary followed by its configured entries, and a live selector that appears nowhere in it is offered the whole chain. If several roles assign the same model, yaml key order does not decide: the live session role wins, and `default` wins over other matching chat roles when the session is not on those roles. It skips chat candidates whose selectors are still cooling down and switches for the rest of the turn. Model-kind runners resolve their named role chain separately and never consume `default`. Subagents get their own per-spawn chains when their agent definition lists multiple model patterns — the first resolvable pattern is primary and the rest become its fallbacks; there is no `agent:<name>` key in `fallbackChains`.
+When the active chat model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that owns the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default` — which also owns a live model that belongs to no role (`/model` switch, ephemeral hop). The effective chain is the owning role's primary followed by its configured entries, and a live selector that appears nowhere in it is offered the whole chain. If several roles assign the same model, yaml key order does not decide: the live session role wins, and `default` wins over other matching chat roles when the session is not on those roles. It skips chat candidates whose selectors are still cooling down and switches for the rest of the turn. Model-kind runners resolve their named role chain separately and never consume `default`.
 
 A prefixed wildcard such as `openrouter/google/*` can be used as a chain key or entry: it matches ids under that prefix or prepends the prefix to the failing model's bare id when changing providers. Bare fallback entries inherit the failing turn's thinking level; an explicit suffix can replace it. When a chain is exhausted, recovery can consult the current fallback model's own chain as well, and each hop still consumes a retry attempt. See [Retry policy](./non-compaction-retry-policy.md) for recovery ordering and quota behavior.
 
@@ -600,7 +596,7 @@ tools:
 | `tools.xdev` | boolean | `true` | Mount discoverable tools under `xd://` device URLs instead of exposing every schema directly. Disabling it exposes enabled tools top-level. |
 | `tools.xdevDocs` | enum | `catalog` | `inline` includes all mounted docs/schemas, `builtins` inlines built-ins only, `catalog` lists devices with docs fetched on demand. |
 | `tools.xdevInlineDevices` | array | `[]` | Dynamic-device name globs to inline in `builtins` mode; ignored in `catalog` mode. |
-| `async.enabled` | boolean | `true` | Enable async bash commands and background task execution. |
+| `async.enabled` | boolean | `true` | Enable async bash commands and background job execution. |
 | `async.maxJobs` | number | `100` | Running background-job cap, floored to at least 1; parked/queued jobs do not consume execution slots. |
 
 Mounting still follows the session's explicit tool allow-list. A session that permits `read` but omits `write` can receive a device-only write transport; this does not grant filesystem writes.
@@ -715,13 +711,12 @@ compaction:
 | `contextPromotion.enabled`    | boolean | `false`                                  | Promote to the active model's explicit `contextPromotionTarget` on context overflow.                                                                                                                                                      |
 | `compaction.enabled`          | boolean | `true`                                   | Automatic conversation compaction.                                                                                                                                                                                                        |
 | `compaction.asyncEnabled`     | boolean | `true`                                   | Speculatively summarize in the background as context nears the compaction threshold, then splice the ready result in when the threshold is crossed.                                                                                        |
-| `compaction.midTurnEnabled`   | boolean | `true`                                   | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. Setting it to `false` affects only the session it is configured on; subagents always check, since their whole assignment is one turn.                |
+| `compaction.midTurnEnabled`   | boolean | `true`                                   | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. Setting it to `false` affects only the session it is configured on.                |
 | `compaction.methodOrder`      | array   | `remote, snapcompact, handoff, shake, soft` | Ordered fallbacks. `remote` uses provider-native server compaction (OpenAI Responses compact, Anthropic compaction beta); unavailable or failed methods advance. |
 | `compaction.thresholdPercent` | number  | `-1`                                     | Percent-of-context trigger; `-1` = reserve-based default.                                                                                                                                                                                 |
 | `compaction.thresholdTokens`  | number  | `-1`                                     | Fixed token trigger when `> 0`.                                                                                                                                                                                                           |
 | `compaction.modelThresholds`  | record  | `{}`                                     | Per-model compaction limit keyed by `provider/model-id` or a `*`-terminated prefix (`deepseek/*`): a token base the compaction policy scales (`90000`), a fixed token trigger (`"f90000"`), or a percentage of the window (`"80%"`). See below. |
-| `compaction.modelThresholdsEnabled` | boolean | `true`                             | Whether `compaction.modelThresholds` applies. Subagents with a `task.agentCompactionThresholdOverrides` entry run with it off. |
-| `task.agentCompactionThresholdOverrides` | record | `{}` | Exact-name task agent → compaction trigger: a positive token count (`90000`) or a percentage string (`"80%"`). See below. |
+| `compaction.modelThresholdsEnabled` | boolean | `true`                             | Whether `compaction.modelThresholds` applies. |
 | `compaction.reserveTokens`    | number  | _(unset)_                                | Absolute reserve floor. When unset, the effective reserve is the larger of `16384` and 15% of the context window; if that default would leave no practical small-window budget, it falls back to the 15% reserve.                         |
 | `compaction.keepRecentTokens` | number  | `20000`                                  | Recent-history token budget for summary compaction.                                                                                                                                                                                                           |
 | `compaction.autoContinue`     | boolean | `true`                                   | Continue automatically after compaction.                                                                                                                                                                                                  |
@@ -746,29 +741,10 @@ compaction:
 ```
 
 - An exact `provider/model-id` key wins; otherwise the longest matching `*`-terminated prefix applies. `*` is only allowed at the end, and every key needs a `provider/` part.
-- Entry values are parsed like `task.agentCompactionThresholdOverrides` below (`null` clears a lower-layer entry), plus the `"fN"` fixed form; an agent entry's token count is always the exact trigger, and the `f` prefix is not accepted there.
+- Entry values are a token base (`90000`), a fixed token trigger (`"fN"`), or a percentage of the window (`"N%"`); `null` clears a lower-layer entry.
 - The trigger follows the active model: switching models, context promotion, and advisors each use their own model's entry.
-- A `task.agentCompactionThresholdOverrides` entry outranks model entries for that agent, including entries added while it runs.
 - The hub refuses an edit when the project config sets the same model key; change it in the project config instead.
-- A token base larger than the model's standard window, or a fixed trigger at or past it, opts that model into its extended window (the window `extendedContext` would give it, including long-context pricing tiers) without turning `extendedContext` on. A base is the window size you want, so it opens the extended window even when its scaled trigger lands inside the standard one (a `300k` base on a 272K model compacts at 255K but runs on the larger window, keeping the reserve as headroom); use a base at or below the standard window, or an `f` trigger below it, to stay on the standard window. The hub warns first and saves on a second Enter; it rejects a base larger than the largest window the model can run with, and a fixed trigger at or past it. A subagent whose `task.agentCompactionThresholdOverrides` entry applies ignores model entries, so it keeps the standard window.
-
-Per-agent compaction triggers for task subagents. This keeps the main session at 40,000 tokens while an `explore` agent compacts at 80% of its window and `task` at 90,000 tokens:
-
-```yaml
-compaction:
-  thresholdTokens: 40000
-
-task:
-  agentCompactionThresholdOverrides:
-    explore: "80%"
-    task: 90000
-```
-
-- Keys are exact, case-sensitive agent names (`explore` does not match `Explore`).
-- A number is a fixed token trigger (positive integer); a `"N%"` string is a percentage of the context window, `0 < N ≤ 100`. An entry replaces both `compaction.thresholdTokens` and `compaction.thresholdPercent` for that agent.
-- `null` clears an entry set by a lower-priority settings layer. Any other value fails settings load.
-- Agents without an entry — including agents spawned by an overridden agent — use the main session's `compaction.*` thresholds. The main session is unaffected.
-- The resolved trigger is stored with the subagent session and reused when it is revived.
+- A token base larger than the model's standard window, or a fixed trigger at or past it, opts that model into its extended window (the window `extendedContext` would give it, including long-context pricing tiers) without turning `extendedContext` on. A base is the window size you want, so it opens the extended window even when its scaled trigger lands inside the standard one (a `300k` base on a 272K model compacts at 255K but runs on the larger window, keeping the reserve as headroom); use a base at or below the standard window, or an `f` trigger below it, to stay on the standard window. The hub warns first and saves on a second Enter; it rejects a base larger than the largest window the model can run with, and a fixed trigger at or past it.
 
 ### Appearance and terminal
 
@@ -810,10 +786,8 @@ tui:
 | `images.autoResize`           | boolean | `true`           | Resize large images for model compatibility.                              |
 | `images.blockImages`          | boolean | `false`          | Never send images to providers.                                           |
 | `tui.hyperlinks`              | enum    | `auto`           | `off`, `auto`, `always`.                                                  |
-| `tui.autoGraph`               | enum    | `always`         | Chart numeric tables in the agent's answers, in the theme's colors, on terminals that show graphics: `always` uses the built-in best guess, `smart` lets the judge model refine each chart (kind, columns, row names and grouping, scales and reference row, which way each measure is better, the focus row, and the title) for tables with several numeric columns or numbered rows, `off` leaves tables alone. Tern receives the chart as SVG. Applies to the main session in the TUI only: subagent transcripts, print, RPC, and ACP output stay plain, and their system prompts omit the diagram and chart guidance. |
+| `tui.autoGraph`               | enum    | `always`         | Chart numeric tables in the agent's answers, in the theme's colors, on terminals that show graphics: `always` uses the built-in best guess, `smart` lets the judge model refine each chart (kind, columns, row names and grouping, scales and reference row, which way each measure is better, the focus row, and the title) for tables with several numeric columns or numbered rows, `off` leaves tables alone. Tern receives the chart as SVG. Applies to the main session in the TUI only: print, RPC, and ACP output stay plain, and their system prompts omit the diagram and chart guidance. |
 | `tui.mouse`                   | boolean | `false`          | Capture mouse clicks in the main session so live subagent cards and HUD rows focus on click, with a hover highlight on the target. Native text selection becomes Shift+drag and wheel scroll becomes Shift+wheel while on. |
-| `display.pinnedAgents`        | enum    | `collapsed`      | Pinned live-agent jump list above the editor: `off` hides it, `collapsed` shows a few rows with an expander, `full` lists all. |
-| `display.subagentLivePreview` | boolean | `false`          | Show each pinned subagent's current (or most recent) tool call beneath its jump-list row. |
 | `tui.resizeScrollback`        | enum    | `rebuild`        | How a settled width resize refreshes transcript rows kept in terminal scrollback: `append` replays the transcript at the new width below retained history, `rebuild` erases pane scrollback then replays one current-width copy, `preserve` repaints only the viewport. |
 
 For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. Include `status` in either segment list to render extension statuses registered through `ctx.ui.setStatus()`, ordered by key and joined inline. Set `statusLine.showHookStatus: false` to suppress the same statuses in the footer.
@@ -894,7 +868,6 @@ searxng:
 | `searxng.token`                     | string  | _(unset)_ | SearXNG token; also `searxng.basicUsername`/`searxng.basicPassword`/`searxng.categories`/`searxng.language`/`searxng.engines` (comma-separated engine names or bang shortcuts, e.g. `ddg, br, startpage`, sent as the API's `engines=` parameter)/`searxng.safesearch`.                                                                                                                                                                                                                                                                                                 |
 | `auth.broker.url`                   | string  | _(unset)_ | Auth-broker URL. The actual credential connection uses env then the main global config, not project/config-overlay values.                                                                                                                                                                                                                                                                                                                                                                                  |
 | `auth.broker.token`                 | string  | _(unset)_ | Auth-broker token. `OMP_AUTH_BROKER_TOKEN` wins over the main global config; the broker token file is a fallback. Project/config-overlay values do not redirect credentials.                                                                                                                                                                                                                                                                                                                                                                              |
-| `task.agentAccountPools`            | record  | `{}`      | Exact-name task agent → provider id → OAuth identity keys (the `identityKey` values of [client account pools](./auth-broker-gateway.md#client-account-pools-routing-not-authorization), e.g. `email:<address>\|org:<id>` for Anthropic; `omp usage accounts` lists them). The agent authenticates for each listed provider only with those accounts, never another account or an API key, and fails when none can serve; an empty list allows no account. A malformed entry fails settings load. See [Task agent discovery](./task-agent-discovery.md#model-and-structured-output-precedence). |
 | `secrets.enabled`                   | boolean | `false`   | Enable configured secret obfuscation and built-in credential-shaped token redaction before provider requests. See [Secret obfuscation](./secrets.md).                                                                                                                                                                                                                                                                                  |
 
 Provider credentials and custom model definitions are configured separately — see [Providers](./providers.md) and [Models](./models.md).
@@ -915,7 +888,7 @@ To spend one by hand, use `/usage reset` in a session or `omp usage reset` from 
 
 Every schema path not individually tabulated in this catalog is explicitly deferred to `omp config list`. Additional groups include:
 
-- Agent behavior and safety: `ask.*`, `dev.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `task.*`, `tools.*`, and `vault.*`.
+- Agent behavior and safety: `ask.*`, `dev.*`, `features.*`, `goal.*`, `loop.*`, `model.loopGuard.*`, `model.toolCallLoopGuard.*`, `prewalk.*`, `recap.*`, `tools.*`, and `vault.*`.
 - Execution and content: `commit.*`, `completion.*`, `edit.*`, `error.*`, `extensionHandlers.*`, `git.*`, `images.*`, `paste.*`, `power.*`, `read.*`, `shellMinimizer.*`, `terminal.*`, and `title.*`.
 - Interface and startup: `composer.*`, `display.*`, `input.*`, `marketplace.*`, `spelling.*`, `statusLine.*`, `startup.*`, `tui.*`, `ttsr.*`, and `update.*`.
 - Discovery, sharing, and auth: `auth.*`, `browser.*`, `claudeResets.*`, `codexResets.*`, `commands.*`, `contextFiles.*`, `gc.*`, `mcp.*`, `share.*`, `skills.*`, `stream.*`, and `telemetry.*`. `contextFiles.extra` is documented in [Context files](./context-files.md#extra-filenames).
@@ -948,9 +921,6 @@ Selected migrations applied whenever raw settings are loaded (global, project, o
 | `inspect_image.timeoutMs`                                                | `images.questionTimeoutMs`                                                                                   |
 | `queueMode`                                                              | `steeringMode`                                                                                               |
 | flat `theme: "<name>"` string                                            | `theme.dark` / `theme.light` (slot chosen by luminance; built-in `light`/`dark` are dropped to use defaults) |
-| legacy `task.isolation.mode: none`                                       | `task.isolation.enabled: false`                                                                              |
-| legacy `task.isolation.mode: <backend>`                                  | `task.isolation.enabled: true` + `isolation.backend: <backend>`                                              |
-| `task.simple`                                                            | removed                                                                                                      |
 | legacy isolation backends (`worktree`, `fuse-overlay`, `fuse-projfs`)    | `rcopy`, `overlayfs`, `projfs`                                                                               |
 | `lastChangelogVersion`                                                   | moved to a marker file and stripped from `config.yml`                                                        |
 | `doubleEscapeAction: branch` | `doubleEscapeAction: rewind` |
@@ -959,13 +929,12 @@ Selected migrations applied whenever raw settings are loaded (global, project, o
 | `readHashLines` | removed; hash anchors follow `edit.mode` |
 | `compaction.strategy` / `compaction.remoteEnabled` | `compaction.methodOrder`, preserving explicit strategy/remote opt-outs |
 | `snapcompact.systemPrompt` boolean | `all` / `none` |
-| `task.eager` / `todo.eager` boolean | `always` / `default` |
+| `todo.eager` boolean | `always` / `default` |
 | `features.unexpectedStopDetection` boolean | `smart` / `none` |
 | `inlineToolDescriptors` / `find.enabled` boolean | `on` / `off` |
 | `spelling.autocomplete` boolean | `auto` / `off` |
 | `search.enabled` / `search.contextBefore` / `search.contextAfter` | corresponding `grep.*` keys |
-| `serviceTier` / `serviceTierSubagent` / `serviceTierAdvisor` | per-family `tier.*`; `fastModeScope` removed |
-| `advisor.subagents` | `task.agentAdvisor.task` (`on` / `off`) |
+| `serviceTier` / `serviceTierAdvisor` | per-family `tier.*`; `serviceTierSubagent` and `fastModeScope` removed |
 | `dev.autoqa.consent` / `todo.reminders.max` | `dev.autoqaConsent` / `todo.remindersMax` |
 | `providers.parallelFetch` | removed; use `providers.fetch` |
 | `providers` model/backend selectors, `tts.localModel`, `stt.modelName` | role/chain migrations described in [Models](#models); retired keys removed |

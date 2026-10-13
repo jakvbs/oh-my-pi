@@ -1,3 +1,4 @@
+import type { GoalModeState } from "@oh-my-pi/pi-coding-agent/goals/state";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { type } from "@oh-my-pi/omptype";
@@ -9,13 +10,10 @@ import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { ExtensionRuntime, loadExtensionFromFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
 import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import type { GoalModeState } from "@oh-my-pi/pi-coding-agent/goals/state";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { createSubagentSettings } from "@oh-my-pi/pi-coding-agent/task/executor";
 import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
@@ -98,8 +96,6 @@ describe("AgentSession mid-run threshold compaction", () => {
 			configureAgent?: (agent: Agent) => void;
 			toolResultDetails?: unknown;
 			tool?: AgentTool;
-			/** Derive the session's settings from the resolved parent settings (subagent chains). */
-			wrapSettings?: (parent: Settings) => Settings;
 		} = {},
 	): Promise<{
 		session: AgentSession;
@@ -111,7 +107,7 @@ describe("AgentSession mid-run threshold compaction", () => {
 		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
 
 		const modelRegistry = sharedModelRegistry;
-		const parentSettings = Settings.isolated({
+		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.methodOrder": ["soft"],
 			"compaction.autoContinue": true,
@@ -123,7 +119,6 @@ describe("AgentSession mid-run threshold compaction", () => {
 			"todo.reminders": false,
 			...settingsOverride,
 		});
-		const settings = options.wrapSettings?.(parentSettings) ?? parentSettings;
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
 		const mockBashTool: AgentTool = options.tool ?? {
@@ -285,137 +280,6 @@ describe("AgentSession mid-run threshold compaction", () => {
 		expect(providerOutcome).toBe("dispatched");
 		expect(promptOutcome).toBe("settled");
 		expect(compactSpy).not.toHaveBeenCalled();
-	});
-
-	it("delivers parent steering after interrupting a tool despite a stalled result listener", async () => {
-		const toolStarted = Promise.withResolvers<void>();
-		const finishWait = Promise.withResolvers<void>();
-		const resultListenerEntered = Promise.withResolvers<void>();
-		const releaseResultListener = Promise.withResolvers<void>();
-		const nextProviderCall = Promise.withResolvers<void>();
-		const extensionRuntime = new ExtensionRuntime();
-		const extension = await loadExtensionFromFactory(
-			pi => {
-				pi.on("message_end", async event => {
-					if (event.message.role !== "toolResult") return;
-					resultListenerEntered.resolve();
-					await releaseResultListener.promise;
-				});
-			},
-			tempDir.path(),
-			new EventBus(),
-			extensionRuntime,
-			"stalled-interrupted-result",
-		);
-		const extensionRunner = new ExtensionRunner(
-			[extension],
-			extensionRuntime,
-			tempDir.path(),
-			SessionManager.inMemory(),
-			sharedModelRegistry,
-		);
-		const waitTool: AgentTool = {
-			name: "wait",
-			label: "Wait",
-			description: "Wait until interrupted",
-			parameters: type({}),
-			interruptible: true,
-			async execute(_id, _args, signal) {
-				if (!signal) throw new Error("Missing tool signal");
-				const onAbort = () => finishWait.resolve();
-				signal.addEventListener("abort", onAbort, { once: true });
-				toolStarted.resolve();
-				try {
-					await finishWait.promise;
-					signal.throwIfAborted();
-					return { content: [], details: undefined };
-				} finally {
-					signal.removeEventListener("abort", onAbort);
-				}
-			},
-		};
-		const { session, observedContexts } = await createHarness(
-			{ "retry.enabled": false, "retry.usageAwareFallback": false },
-			{
-				extensionRunner,
-				tool: waitTool,
-				onProviderCall: index => {
-					if (index === 1) nextProviderCall.resolve();
-				},
-			},
-		);
-		mockCompaction("INTERRUPTED-TURN-COMPACTED");
-		const finalDisplayed = Promise.withResolvers<void>();
-		session.subscribe(event => {
-			if (
-				event.type === "message_end" &&
-				event.message.role === "assistant" &&
-				event.message.content.some(block => block.type === "text" && block.text === "All done.")
-			) {
-				finalDisplayed.resolve();
-			}
-		});
-		const registry = AgentRegistry.global();
-		const childId = `steering-${tempDir.path()}`;
-		const ref = registry.register({ id: childId, displayName: "task", kind: "sub", parentId: "Main", session });
-		const prompt = session.prompt("Wait for instructions");
-		try {
-			expect(
-				await raceWithTimeout(
-					toolStarted.promise.then(() => true),
-					2_000,
-					false,
-				),
-			).toBe(true);
-			await session.deliverIrcMessage({
-				id: "parent-interrupt",
-				from: "Main",
-				to: childId,
-				body: "Handle the changed assignment",
-				ts: Date.now(),
-			});
-			expect(
-				await raceWithTimeout(
-					resultListenerEntered.promise.then(() => true),
-					2_000,
-					false,
-				),
-			).toBe(true);
-			expect(
-				await raceWithTimeout(
-					nextProviderCall.promise.then(() => true),
-					2_000,
-					false,
-				),
-			).toBe(true);
-
-			const context = observedContexts[1].join("\n");
-			expect(context).toContain("Handle the changed assignment");
-			expect(context).toContain("INTERRUPTED-TURN-COMPACTED");
-			expect(session.agent.peekSteeringQueue()).toEqual([]);
-			expect(
-				await raceWithTimeout(
-					finalDisplayed.promise.then(() => true),
-					2_000,
-					false,
-				),
-			).toBe(true);
-			expect(
-				await raceWithTimeout(
-					prompt.then(() => true),
-					2_000,
-					false,
-				),
-			).toBe(true);
-		} finally {
-			finishWait.resolve();
-			releaseResultListener.resolve();
-			try {
-				await prompt;
-			} finally {
-				registry.unregister(childId, ref);
-			}
-		}
 	});
 
 	it("persists a tool result when its message_end listener rejects below the mid-run threshold", async () => {
@@ -785,35 +649,6 @@ describe("AgentSession mid-run threshold compaction", () => {
 	it("does not compact mid-run during active goal mode when disabled", async () => {
 		const { session } = await createHarness({ "compaction.midTurnEnabled": false });
 		session.setGoalModeState(activeGoalState());
-		const compactSpy = mockCompaction("SHOULD-NOT-RUN");
-
-		await session.prompt("work on the release");
-
-		expect(compactSpy).not.toHaveBeenCalled();
-	});
-
-	// A subagent assignment is a single turn: post-turn `checkCompaction` only runs
-	// once the run is already over, so mid-run maintenance is its only proactive
-	// compaction. Inheriting the parent's interactive `midTurnEnabled: false` left
-	// long worker runs uncompacted until provider overflow (#13211).
-	it("compacts mid-run in a subagent session even when the parent disabled mid-turn compaction", async () => {
-		const { session, observedContexts } = await createHarness(
-			{ "compaction.midTurnEnabled": false },
-			{ wrapSettings: parent => createSubagentSettings(parent) },
-		);
-		const compactSpy = mockCompaction("SUBAGENT-MID-RUN-COMPACTED");
-
-		await session.prompt("work on the release");
-
-		expect(compactSpy).toHaveBeenCalledTimes(1);
-		expect(observedContexts[1].join("\n")).toContain("SUBAGENT-MID-RUN-COMPACTED");
-	});
-
-	it("lets a per-spawn override disable mid-run compaction for one subagent", async () => {
-		const { session } = await createHarness(
-			{},
-			{ wrapSettings: parent => createSubagentSettings(parent, { "compaction.midTurnEnabled": false }) },
-		);
 		const compactSpy = mockCompaction("SHOULD-NOT-RUN");
 
 		await session.prompt("work on the release");

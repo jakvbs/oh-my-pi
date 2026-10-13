@@ -16,7 +16,6 @@ import type { postmortem } from "@oh-my-pi/pi-utils";
 import type { AdvisorConfig } from "@oh-my-pi/pi-tui/overlays/advisor-config";
 import type { AsyncJob, AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import type { EffectiveExtensionRoots } from "../capability/types";
-import type { AgentDefinition } from "../task/types";
 import type { SessionAccountPoolScope } from "../config/account-pools";
 import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -58,10 +57,7 @@ export interface AgentSessionDisposeOptions {
 /** Listener notified when command metadata changes. */
 export type CommandMetadataChangedListener = () => void | Promise<void>;
 /** Public summary of an asynchronous job. */
-export type AsyncJobSnapshotItem = Pick<
-	AsyncJob,
-	"id" | "type" | "status" | "label" | "startTime" | "endTime" | "agentId"
-> & {
+export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "label" | "startTime" | "endTime"> & {
 	/** Full command line of a job that runs a process; `label` is cut to 120 characters. */
 	command?: string;
 };
@@ -158,13 +154,11 @@ export interface AgentSessionConfig {
 	disableExtensionDiscovery?: boolean;
 	/** Whether the caller explicitly requested yolo/auto-approve behavior for this session. */
 	autoApprove?: boolean;
-	/** User-authorized model agents inherited from the parent session for nested delegation. */
-	inheritedSessionAgents?: readonly AgentDefinition[];
 	/** Models to cycle through with Ctrl+P (from --models flag). */
 	scopedModels?: Array<{ model: Model; thinkingLevel?: ThinkingLevel }>;
 	/** Initial session thinking selector. */
 	thinkingLevel?: ConfiguredThinkingLevel;
-	/** Hard ceiling on the session's thinking effort (e.g. a task spawn's `task.maxEffort`-capped hint); every later change, including retry-fallback recovery, is re-clamped to it. */
+	/** Hard ceiling on the session's thinking effort (e.g. an embedder-capped hint); every later change, including retry-fallback recovery, is re-clamped to it. */
 	thinkingLevelCeiling?: Effort;
 	/** Retry chain ownership when startup selected one of its fallback entries. */
 	initialRetryFallback?: InitialRetryFallbackState;

@@ -50,7 +50,6 @@ function createModelContext(advisorActive: boolean): SegmentContext {
 		autoCompactEnabled: false,
 		compactionSpeculation: "idle",
 		speculationBlinkOn: true,
-		subagentCount: 0,
 		activeMs: 0,
 		turnElapsedMs: null,
 		activeRepo: null,

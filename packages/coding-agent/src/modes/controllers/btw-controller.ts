@@ -76,7 +76,6 @@ export class BtwController {
 	#storePromise: Promise<BtwHistoryStore> | undefined;
 	#storeSessionId: string | undefined;
 	#storeArtifactsDir: string | undefined;
-	#storeScope: string | undefined;
 	#historyPanel: BtwHistoryPanel | undefined;
 	#historyOverlay: OverlayHandle | undefined;
 	readonly #writes = new Set<Promise<boolean>>();
@@ -84,14 +83,8 @@ export class BtwController {
 
 	constructor(private readonly ctx: InteractiveModeContext) {}
 
-	/** /btw asks about the transcript on screen: the focused agent's session, else main. */
 	get #sessionManager(): InteractiveModeContext["sessionManager"] {
-		return this.ctx.focusedAgentId ? this.ctx.viewSession.sessionManager : this.ctx.sessionManager;
-	}
-
-	/** Focused agents share main's artifacts directory; scope their history by session id. */
-	get #historyScope(): string | undefined {
-		return this.ctx.focusedAgentId ? this.#sessionManager.getSessionId() : undefined;
+		return this.ctx.sessionManager;
 	}
 
 	/** Whether the inline panel owns Escape. */
@@ -107,8 +100,7 @@ export class BtwController {
 	handlesBranchKey(): boolean {
 		if (this.#branchInFlight) return true;
 		if (!this.#visible || this.#activeRequest?.component.isBranchable() !== true) return false;
-		// Branch promotion rewrites the main session; focused-subagent answers stay side-only.
-		if (this.#activeRequest.session !== this.ctx.session || this.ctx.focusedAgentId) return false;
+		if (this.#activeRequest.session !== this.ctx.session) return false;
 		return (
 			this.#lastQuestion !== undefined &&
 			this.#lastReplyText !== undefined &&
@@ -122,8 +114,7 @@ export class BtwController {
 		if (this.#branchInFlight) return "a branch is already in progress";
 		if (this.#transitionCount > 0) return "a session operation is in progress";
 		if (!this.#visible || this.#activeRequest?.component.isBranchable() !== true) return "the answer is not ready";
-		if (this.#activeRequest.session !== this.ctx.session || this.ctx.focusedAgentId)
-			return "only main-session answers can be branched";
+		if (this.#activeRequest.session !== this.ctx.session) return "only main-session answers can be branched";
 		// Inline branch promotion carries one pair; do not drop earlier side turns.
 		if (this.#activeRequest.history?.length) return "multi-turn side conversations remain in BTW history";
 		if (!this.#lastQuestion || !this.#lastReplyText || !this.#lastAssistantMessage)
@@ -260,7 +251,6 @@ export class BtwController {
 			this.#storePromise = undefined;
 			this.#storeSessionId = undefined;
 			this.#storeArtifactsDir = undefined;
-			this.#storeScope = undefined;
 		} finally {
 			this.#transitionCount--;
 		}
@@ -319,25 +309,18 @@ export class BtwController {
 	async #loadHistory(): Promise<BtwHistoryStore> {
 		const sessionId = this.#sessionManager.getSessionId();
 		const artifactsDir = this.#sessionManager.getArtifactsDir() ?? undefined;
-		const scope = this.#historyScope;
-		if (
-			this.#storeSessionId !== sessionId ||
-			this.#storeArtifactsDir !== artifactsDir ||
-			this.#storeScope !== scope
-		) {
+		if (this.#storeSessionId !== sessionId || this.#storeArtifactsDir !== artifactsDir) {
 			await this.dispose();
 			if (
 				this.#sessionManager.getSessionId() !== sessionId ||
-				(this.#sessionManager.getArtifactsDir() ?? undefined) !== artifactsDir ||
-				this.#historyScope !== scope
+				(this.#sessionManager.getArtifactsDir() ?? undefined) !== artifactsDir
 			) {
 				throw new Error("The session changed while opening BTW history.");
 			}
 			this.#storeSessionId = sessionId;
 			this.#storeArtifactsDir = artifactsDir;
-			this.#storeScope = scope;
 		}
-		this.#storePromise ??= BtwHistoryStore.open(artifactsDir, scope);
+		this.#storePromise ??= BtwHistoryStore.open(artifactsDir);
 		const pending = this.#storePromise;
 		try {
 			const store = await pending;
@@ -365,7 +348,7 @@ export class BtwController {
 			this.ctx.showStatus("A /btw action is in progress. Please wait.", { dim: true });
 			return false;
 		}
-		const viewSession = this.ctx.focusedAgentId ? this.ctx.viewSession : this.ctx.session;
+		const viewSession = this.ctx.session;
 		const active = this.#activeRequest;
 		if (active && getBtwLatestTurn(active.record).status === "running") {
 			if (active.session !== viewSession) {

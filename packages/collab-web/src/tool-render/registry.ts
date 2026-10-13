@@ -16,7 +16,6 @@ import { lspRenderer } from "./tools/lsp";
 import { readRenderer } from "./tools/read";
 import { reportToolIssueRenderer } from "./tools/report-tool-issue";
 import { resolveRenderer } from "./tools/resolve";
-import { taskRenderer } from "./tools/task";
 import { todoRenderer } from "./tools/todo";
 import { webSearchRenderer } from "./tools/web-search";
 import { writeRenderer } from "./tools/write";
@@ -41,7 +40,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	reject: resolveRenderer,
 	grep: grepRenderer,
 	search: grepRenderer,
-	task: taskRenderer,
 	todo: todoRenderer,
 	web_search: webSearchRenderer,
 	write: writeRenderer,

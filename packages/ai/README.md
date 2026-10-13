@@ -66,25 +66,16 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 - **Venice** (requires `VENICE_API_KEY`)
 - **Wafer Serverless** (requires `WAFER_SERVERLESS_API_KEY`; pay-as-you-go)
 - **OpenRouter**
-- **Kilo Gateway** (supports OAuth `/login kilo` or `KILO_API_KEY`)
 - **LiteLLM** (requires `LITELLM_API_KEY`)
 - **zAI** (requires `ZAI_API_KEY`)
 - **Umans AI Coding Plan** (supports `/login umans` or `UMANS_AI_CODING_PLAN_API_KEY`)
-- **MiniMax Token Plan** (requires `MINIMAX_CODE_API_KEY` or `MINIMAX_CODE_CN_API_KEY`)
-- **Xiaomi MiMo** (requires `XIAOMI_API_KEY`)
 - **ZenMux** (requires `ZENMUX_API_KEY`)
-- **Qwen Portal** (supports `QWEN_OAUTH_TOKEN` or `QWEN_PORTAL_API_KEY`)
-- **QwenCloud Token Plan** (supports `/login alibaba-token-plan`, `ALIBABA_TOKEN_PLAN_API_KEY`, or `BAILIAN_TOKEN_PLAN_API_KEY`; interactive login first selects a region — International (Singapore, default), China (Beijing) for 百炼 Token Plan keys, or a custom base URL — since region keys are non-interchangeable, then optionally stores a `home.qwencloud.com` Cookie request header for best-effort 5-hour and 7-day quota reporting)
-  To enable quota reporting, sign in to the Token Plan dashboard, copy the `Cookie` request-header value from a `home.qwencloud.com` request in browser developer tools, and paste it at the second login prompt. Press Enter to skip; the Cookie is sensitive and session-lived, so rerun login when it expires.
 - **Cloudflare AI Gateway** (supports `/login cloudflare-ai-gateway`, or `CLOUDFLARE_AI_GATEWAY_API_KEY` with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID`)
-- **Snowflake Cortex** (browser `/login snowflake`, or `SNOWFLAKE_ACCOUNT` + `SNOWFLAKE_PAT`; account-billed Cortex REST API)
 - **Ollama** (local OpenAI-compatible runtime; optional `OLLAMA_API_KEY`)
 - **Ollama Cloud** (hosted native Ollama API; requires `OLLAMA_CLOUD_API_KEY`)
 - **llama.cpp** (local OpenAI and Anthropic compatible inference server)
 - **vLLM** (OpenAI-compatible server; `VLLM_API_KEY` for secured deployments)
 - **GitHub Copilot** (requires OAuth, see below)
-- **Google Gemini CLI** (requires OAuth, see below)
-- **Antigravity** (requires OAuth, see below)
 - **Any OpenAI-compatible API**: LM Studio, custom proxies, etc.
 
 ## Installation
@@ -953,16 +944,11 @@ In Node.js environments, you can set environment variables to avoid passing API 
 | LiteLLM               | `LITELLM_API_KEY`                                                                                                   |
 | Ollama                | `OLLAMA_API_KEY` (optional for local deployments)                                                                   |
 | Ollama Cloud          | `OLLAMA_CLOUD_API_KEY`                                                                                              |
-| Qwen Portal           | `QWEN_OAUTH_TOKEN` or `QWEN_PORTAL_API_KEY`                                                                         |
-| QwenCloud Token Plan  | `ALIBABA_TOKEN_PLAN_API_KEY` or `BAILIAN_TOKEN_PLAN_API_KEY`                                                        |
 | zAI                   | `ZAI_API_KEY`                                                                                                       |
 | Umans AI Coding Plan  | `UMANS_AI_CODING_PLAN_API_KEY`                                                                                      |
-| MiniMax Code          | `MINIMAX_CODE_API_KEY` (international) or `MINIMAX_CODE_CN_API_KEY` (China)                                         |
-| Xiaomi MiMo           | `XIAOMI_API_KEY`                                                                                                    |
 | ZenMux                | `ZENMUX_API_KEY`                                                                                                    |
 | vLLM                  | `VLLM_API_KEY`                                                                                                      |
 | Cloudflare AI Gateway | `CLOUDFLARE_AI_GATEWAY_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_GATEWAY_ID`                                 |
-| Snowflake Cortex      | `SNOWFLAKE_PAT` + `SNOWFLAKE_ACCOUNT`                                                                               |
 | GitHub Copilot        | `COPILOT_GITHUB_TOKEN` or `GH_TOKEN` or `GITHUB_TOKEN`                                                              |
 
 `/login cloudflare-ai-gateway` collects and stores the gateway token, account ID, and gateway ID. For environment configuration, set all three Cloudflare values above. OMP derives provider endpoints from the account and gateway IDs.
@@ -989,7 +975,6 @@ Provider endpoint defaults for the current OpenAI-compatible integrations:
 - DeepInfra: `https://api.deepinfra.com/v1/openai`
 - Hugging Face Inference: `https://router.huggingface.co/v1`
 - Venice: `https://api.venice.ai/api/v1`
-- Xiaomi MiMo: `https://api.xiaomimimo.com/anthropic`
 - ZenMux (OpenAI): `https://zenmux.ai/api/v1`
 - ZenMux (Anthropic models): `https://zenmux.ai/api/anthropic`
 - Umans AI Coding Plan: `https://api.code.umans.ai`
@@ -998,7 +983,6 @@ Provider endpoint defaults for the current OpenAI-compatible integrations:
 - Ollama Cloud: native Ollama API host (`https://ollama.com/api`, configured here as base URL `https://ollama.com`)
 - LiteLLM: `http://localhost:4000/v1`
 - Cloudflare AI Gateway: native Anthropic, OpenAI, and Workers AI routes under `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>`
-- Qwen Portal: `https://portal.qwen.ai/v1`
   When set, the library automatically uses these keys:
 
 ```typescript
@@ -1028,24 +1012,6 @@ Several providers support OAuth authentication (some also support static API key
 - **Anthropic** (Claude Pro/Max subscription)
 - **OpenAI Codex** (ChatGPT Plus/Pro subscription, access to GPT-5.x Codex models)
 - **GitHub Copilot** (Copilot subscription)
-- **Google Gemini CLI** (Gemini 2.0/2.5 via Google Cloud Code Assist; free tier or paid subscription)
-- **Antigravity** (Free Gemini 3, Claude, GPT-OSS via Google Cloud)
-- **Qwen Portal** (Qwen OAuth token or API key)
-- **Snowflake Cortex** (Snowflake account OAuth with PKCE and refresh, subject to the account's local-application integration)
-
-For paid Cloud Code Assist subscriptions, set `GOOGLE_CLOUD_PROJECT` or `GOOGLE_CLOUD_PROJECT_ID` to your project ID.
-
-### Snowflake Cortex
-
-`/login snowflake` prompts for an account identifier (for example, `myorg-myaccount`), an HTTPS Snowflake account URL, or a Snowsight account link. It opens Snowflake's built-in `SNOWFLAKE$LOCAL_APPLICATION` OAuth flow using PKCE and a `127.0.0.1` callback (port 54551, with an ephemeral-port fallback). The stored account selects the inference endpoint; OAuth credentials cannot be sent to a different account through a custom model endpoint.
-
-The default inference role must hold either `SNOWFLAKE.CORTEX_USER` or the narrower, REST-only `SNOWFLAKE.CORTEX_REST_API_USER` (recommended for least privilege). `CORTEX_REST_API_USER` cannot be granted to a user directly; grant it to a custom role, and revoke `CORTEX_USER` from users who already hold it so the narrower control applies. The Cortex REST API is not available in China-region (`.snowflakecomputing.cn`) accounts. An administrator can check local-app availability with `SHOW SECURITY INTEGRATIONS LIKE 'SNOWFLAKE$LOCAL_APPLICATION'` and enable the integration or refresh issuance if necessary. When Snowflake issues a refresh token, omp refreshes the access token automatically. Without one, login remains valid until expiry; then sign in again or use the PAT environment alternative.
-
-For PAT authentication, set both `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_PAT`. Prefer a short-lived PAT restricted to a dedicated inference role and the required user-scoped network allowlist; do not disable network-policy enforcement. See [Snowflake PAT setup](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens) and [local-application OAuth](https://docs.snowflake.com/en/user-guide/oauth-local-applications).
-
-Claude models use `/api/v2/cortex/v1/messages`; OpenAI models use `/api/v2/cortex/v1/chat/completions`. Both reuse omp's streaming transports and local tool execution. The 15 bundled models are a documented roster, not an account entitlement check: availability still depends on Cortex REST API enablement, role grants, model allowlists, and region. If authentication succeeds but Cortex returns `003001` ("This account is not allowed to access this endpoint"), Snowflake has not enabled Cortex REST for the account. [Self-service trial accounts disable AI features until a credit card is added](https://docs.snowflake.com/en/user-guide/admin-trial-account#label-trial-account-ai-features) (adding one does not end the trial); REST access can remain disabled even after AI SQL functions work, in which case Snowflake support must enable it. Cross-region inference requires an account administrator's explicit decision. `omp models snowflake --json` lists available models only after credentials are configured.
-
-This provider uses the [public, account-billed Cortex REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api). CoCo-subscription coverage is unverified. Catalog prices are per-million-token estimates from [Consumption Table 6(b)](https://www.snowflake.com/legal-files/CreditConsumptionTable.pdf) at [$2 per AI Credit](https://docs.snowflake.com/en/user-guide/snowflake-cortex/pricing) for on-demand global routing, not your contract price. Output is capped at the REST API's documented 16,384-token maximum; context windows are conservative AI_COMPLETE limits, not verified REST maxima. Cortex compatibility rules limit explicit cache retention to five minutes. Paste an account identifier or current Snowsight link; legacy `app.snowflake.com/<region>/<locator>` links are rejected because they don't map uniformly to an account host.
 
 ### Vertex AI (ADC)
 
@@ -1101,9 +1067,9 @@ Credentials are saved to `agent.db` in the agent directory. `/login qianfan` ope
 
 If SQLite reports corruption during startup, the damaged database and remaining journal sidecars are preserved beside it as private `agent.db.corrupt-<timestamp>-<id>*` backups before a fresh database is created. The log records the backup path. This restores startup, not unreadable credentials: log in again; retain the backups for manual data recovery. Lock contention and other non-corruption errors never reset the database.
 
-`login` supports OAuth providers (Anthropic, OpenAI Codex, GitHub Copilot, Gemini CLI, Antigravity) and API-key onboarding flows.
+`login` supports OAuth providers (Anthropic, OpenAI Codex, GitHub Copilot) and API-key onboarding flows.
 
-For the current API-key onboarding flows, the library covers Together, Moonshot, Qianfan, NVIDIA, NanoGPT, Novita, DeepInfra, Hugging Face, Venice, Xiaomi, vLLM, LiteLLM, Cloudflare AI Gateway, Qwen Portal, and Ollama Cloud. Ollama remains the local runtime integration; set `OLLAMA_API_KEY` only when your local or self-hosted deployment enforces bearer auth.
+For the current API-key onboarding flows, the library covers Together, Moonshot, Qianfan, NVIDIA, NanoGPT, Novita, DeepInfra, Hugging Face, Venice, vLLM, LiteLLM, Cloudflare AI Gateway, and Ollama Cloud. Ollama remains the local runtime integration; set `OLLAMA_API_KEY` only when your local or self-hosted deployment enforces bearer auth.
 
 ### Programmatic OAuth
 
@@ -1193,8 +1159,6 @@ usage polling do not imply that reason.
 **OpenAI Codex**: Requires a ChatGPT Plus or Pro subscription. Provides access to GPT-5.x Codex models with extended context windows and reasoning capabilities. The library automatically handles session-based prompt caching when `sessionId` is provided in stream options.
 
 **GitHub Copilot**: If you get "The requested model is not supported" error, enable the model manually in VS Code: open Copilot Chat, click the model selector, select the model (warning icon), and click "Enable".
-
-**Google Gemini CLI / Antigravity**: These use Google Cloud OAuth. The `apiKey` returned by `getOAuthApiKey()` is a JSON string containing both the token and project ID, which the library handles automatically.
 
 ## License
 

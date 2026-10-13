@@ -1,0 +1,77 @@
+import { beforeAll, describe, expect, it } from "bun:test";
+import { getNativeBlob } from "@oh-my-pi/pi-tui/native/blobs";
+import type { DescribeContext, NativeNode } from "@oh-my-pi/pi-tui/native/node";
+import { SnapcompactShapePreview } from "@oh-my-pi/pi-tui/overlays/snapcompact-shape-preview";
+import { getThemeByName, setThemeInstance } from "@oh-my-pi/pi-tui/theme";
+import type { ShapeTarget } from "@oh-my-pi/snapcompact";
+
+const CX: DescribeContext = { cols: 100, reduceMotion: false, dark: true, supports: () => true, feature: () => true };
+const CLAUDE: ShapeTarget = { provider: "anthropic", api: "anthropic-messages", id: "claude-opus-5" };
+
+beforeAll(async () => {
+	const theme = await getThemeByName("dark");
+	if (!theme) throw new Error("Failed to load dark theme for tests");
+	setThemeInstance(theme);
+});
+
+/** A preview whose async sample renders can be awaited. */
+interface PreviewHarness {
+	component: SnapcompactShapePreview;
+	/** Resolves at the component's next `requestRender`, i.e. when a sample render settles. */
+	rendered: () => Promise<void>;
+}
+
+function preview(model: ShapeTarget): PreviewHarness {
+	let settled = Promise.withResolvers<void>();
+	const component = new SnapcompactShapePreview("auto", { model, requestRender: () => settled.resolve() });
+	return {
+		component,
+		rendered: () => {
+			settled = Promise.withResolvers<void>();
+			return settled.promise;
+		},
+	};
+}
+
+/** Select `value` and describe until its sample settles: the caption line and the sample's PNG bytes. */
+async function show(
+	{ component, rendered }: PreviewHarness,
+	value: string,
+): Promise<{ caption: string; png: Uint8Array }> {
+	component.setValue(value);
+	for (;;) {
+		const [caption, sample] = component.describe(CX).c as NativeNode[];
+		if (sample.k === "spinner") {
+			await rendered();
+			continue;
+		}
+		if (caption.k !== "text" || sample.k !== "image")
+			throw new Error(`no ${value} sample: ${JSON.stringify(sample)}`);
+		const png = sample.p?.blob ? getNativeBlob(sample.p.blob)?.bytes : undefined;
+		if (!png) throw new Error(`no ${value} sample bytes`);
+		return { caption: (caption.p?.spans ?? []).map(span => span.t).join(""), png };
+	}
+}
+
+describe("snapcompact shape preview", () => {
+	it("names each variant rather than its frame edge", async () => {
+		const claude = preview(CLAUDE);
+		for (const variant of ["11on16-bw", "silver16-bw", "8on22-bw", "5x8-bw", "doc-8on16-bw"]) {
+			expect((await show(claude, variant)).caption).toContain(`· ${variant} · full frame`);
+		}
+	});
+
+	it("names auto's geometry on a model line that widens the frame", async () => {
+		const opus = preview({ provider: "anthropic", api: "anthropic-messages", id: "claude-opus-5" });
+		expect((await show(opus, "auto")).caption).toContain("· auto → 11on16-bw · full frame 175×120 cells");
+	});
+
+	it("renders a separate sample for each variant", async () => {
+		const claude = preview(CLAUDE);
+		const tracked = await show(claude, "11on16-bw");
+		const silver = await show(claude, "silver16-bw");
+		expect(Buffer.from(silver.png).equals(Buffer.from(tracked.png))).toBe(false);
+		// auto resolves to 11on16-bw here, so it shares that sample.
+		expect(Buffer.from((await show(claude, "auto")).png).equals(Buffer.from(tracked.png))).toBe(true);
+	});
+});

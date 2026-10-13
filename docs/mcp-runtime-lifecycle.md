@@ -14,7 +14,7 @@ This document describes how MCP servers are discovered, connected, exposed as to
 5. **SDK wiring** merges MCP tools into runtime tool registry for the session.
 6. **Post-connect enrichment** best-effort loads resources, resource templates, prompts, and optional resource subscriptions.
 7. **Live session** receives late tool changes through the manager callback; `/mcp reload` does `disconnectAll` + rediscovery + `session.refreshMCPTools`, while transport close and `/mcp reconnect` use the per-server reconnect path.
-8. **Teardown** happens on explicit manager disconnects and automatically when an owning `AgentSession` is disposed; borrowed parent managers are not disconnected by subagents.
+8. **Teardown** happens on explicit manager disconnects and automatically when an owning `AgentSession` is disposed; borrowed managers are not disconnected by the borrowing session.
 
 ## Discovery and load phase
 
@@ -142,7 +142,7 @@ Each pending `toolsPromise` also has a background continuation that eventually:
 
 Server and tool name components are lowercased and sanitized to letters, digits, and underscores; repeated/edge underscores are collapsed/trimmed, and a redundant server prefix on the tool is stripped. Names longer than 64 characters are capped with a deterministic hash suffix. If two distinct origins mint the same runtime name, OMP logs the collision and keeps a deterministic winner based on the original server/tool identity, so reconnect ordering cannot change ownership.
 
-Connected manager tools become enabled immediately. Presentation is reconciled with the session's current tool policy: tools may be mounted under `xd://` rather than exposed as top-level function definitions; Code Mode can route them through the Eval bridge. Registry identity and original server/tool ownership remain intact regardless of presentation.
+Connected manager tools become enabled immediately. Presentation is reconciled with the session's current tool policy: tools may be mounted under `xd://` rather than exposed as top-level function definitions. Registry identity and original server/tool ownership remain intact regardless of presentation.
 
 ### Tool calls
 
@@ -227,7 +227,7 @@ Operationally:
 - detaches `onClose` for all active transports, then closes them with `Promise.allSettled`,
 - clears pending maps, sources, saved configs, connections, subscriptions, resource refreshes, reconnect history, and manager tools.
 
-Top-level sessions own managers they create. `AgentSession.dispose()` disconnects that owned manager with a 3-second cleanup timeout and logs cleanup failure; a subagent/session given `options.mcpManager` borrows the parent manager and does not disconnect it. `/mcp reload` deliberately reuses the manager object after `disconnectAll`, so installed callbacks/listeners remain available for the next discovery cycle.
+Top-level sessions own managers they create. `AgentSession.dispose()` disconnects that owned manager with a 3-second cleanup timeout and logs cleanup failure; a session given `options.mcpManager` borrows the parent manager and does not disconnect it. `/mcp reload` deliberately reuses the manager object after `disconnectAll`, so installed callbacks/listeners remain available for the next discovery cycle.
 
 ## Failure modes and guarantees
 
@@ -261,4 +261,3 @@ Top-level sessions own managers they create. `AgentSession.dispose()` disconnect
 - [`src/session/session-tools.ts`](../packages/coding-agent/src/session/session-tools.ts) — serialized MCP registry rebinding and tool presentation.
 - [`src/mcp/errors.ts`](../packages/coding-agent/src/mcp/errors.ts) — structured transport failures and tool diagnostics.
 - [`src/modes/controllers/mcp-command-controller.ts`](../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts) — interactive reload/reconnect flows.
-- [`src/task/executor.ts`](../packages/coding-agent/src/task/executor.ts) — subagent MCP proxying via parent manager connections.

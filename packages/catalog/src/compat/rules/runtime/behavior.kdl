@@ -20,12 +20,6 @@ behavior {
 	// `opencode` provider in the picker.
 	retired-providers "wafer-pass" "wandb" "opencode"
 
-	// ClinePass exposes gateway-specific limits, pricing, and reasoning
-	// controls; matching them by bare model id contaminates unrelated proxy
-	// models (a LiteLLM proxy serving `glm-5.3-flash`), so its rows are barred
-	// from seeding cross-provider bare-id enrichment references (#10932).
-	reference-isolated-providers "cline-pass"
-
 	// Discovered Responses/Codex models receive these additional operations.
 	model-operations provider="openai" {
 		exact "o3"
@@ -38,32 +32,6 @@ behavior {
 		operation "generate_image"
 	}
 
-	// Exact quota bucket memberships reported by Google Gemini CLI.
-	quota-tiers provider="google-gemini-cli" {
-		tier "3-Flash" "gemini-3-flash-preview" "gemini-3-flash" "gemini-3.5-flash"
-		tier "Flash" "gemini-2.5-flash" "gemini-2.5-flash-lite" "gemini-2.0-flash" \
-			"gemini-1.5-flash"
-		tier "Pro" "gemini-2.5-pro" "gemini-3-pro-preview" "gemini-3.1-pro-preview" \
-			"gemini-3-pro" "gemini-3.1-pro" "gemini-pro-agent" "gemini-1.5-pro"
-		// Unknown discovered quota ids retain the upstream display heuristic.
-		fallback "Flash" substring="flash"
-		fallback "Pro" substring="pro"
-	}
-	// Antigravity reports independent backend-family counters. Exact memberships
-	// cover bundled/current ids; fallbacks preserve the same counter for newly
-	// discovered family ids.
-	quota-tiers provider="google-antigravity" {
-		tier "anthropic" "claude-opus-4-6"
-		tier "google" "gemini-3-pro" "gemma-3" "tab_flash_lite_preview" \
-			"tab_jump_flash_lite_preview"
-		tier "openai" "gpt-oss-120b" "openai/gpt-oss-120b"
-		fallback "anthropic" substring="claude-"
-		fallback "google" substring="gemini-"
-		fallback "google" substring="gemma-"
-		fallback "google" substring="tab_"
-		fallback "openai" substring="gpt-"
-		fallback "openai" substring="openai/"
-	}
 	// Codex Spark consumes an independent meter. The broad chat fallback follows
 	// Spark so the specific suffix wins for discovered ids.
 	quota-tiers provider="openai-codex" {
@@ -80,10 +48,9 @@ behavior {
 			glob="*/gpt-5.6-sol-pro" glob="*/gpt-5.6-luna" glob="*/gpt-5.6-luna-pro"
 	}
 
-	// Z.AI and Zhipu emit timezone-naive account-reset wall clocks in Beijing
+	// Z.AI emits timezone-naive account-reset wall clocks in Beijing
 	// time. Provider-aware retry paths append this offset before parsing.
 	retry-reset-timezone provider="zai" offset="+08:00"
-	retry-reset-timezone provider="zhipu-coding-plan" offset="+08:00"
 
 	// Cloudflare AI Gateway namespace routing. The Workers AI prefix remains
 	// on the request id; the upstream namespaces are stripped.
@@ -115,11 +82,6 @@ behavior {
 	// Control-plane resource ids are not accepted by the inference API.
 	exclude-models provider="fireworks" prefix="accounts/fireworks/"
 	exclude-models provider="firepass" prefix="accounts/fireworks/"
-	// Text-chat transports cannot serve Xiaomi's audio-only models.
-	exclude-models provider="xiaomi" substring="-tts" substring="-asr"
-	exclude-models provider="xiaomi-token-plan-ams" substring="-tts" substring="-asr"
-	exclude-models provider="xiaomi-token-plan-cn" substring="-tts" substring="-asr"
-	exclude-models provider="xiaomi-token-plan-sgp" substring="-tts" substring="-asr"
 	// Text-chat transports cannot serve StepFun's audio-only and image-editing
 	// SKUs, which its /v1/models roster interleaves with the chat models.
 	exclude-models provider="stepfun" prefix="stepaudio-" prefix="step-image-" prefix="step-tts-" prefix="step-2x-large"
@@ -131,9 +93,9 @@ behavior {
 	exclude-models provider="xai-oauth" exact="grok-imagine-image-quality" exact="grok-imagine-image-2.0" \
 		prefix="grok-imagine-video" prefix="grok-stt-" prefix="grok-voice-"
 	// Meta's /v1/models lists image generation and transcription SKUs beside
-	// the Muse Spark chat models.
-	exclude-models provider="meta" prefix="muse-image-" prefix="muse-voice-"
-	exclude-models provider="muse-code" prefix="muse-image-" prefix="muse-voice-"
+	// the Muse Spark chat models, and SAM segmentation beside them.
+	exclude-models provider="meta" prefix="muse-image-" prefix="muse-voice-" prefix="sam-"
+	exclude-models provider="muse-code" prefix="muse-image-" prefix="muse-voice-" prefix="sam-"
 	// NanoGPT's roster interleaves non-text SKUs by name token.
 	exclude-models provider="nanogpt" substring="embedding" substring="image" substring="vision" \
 		substring="audio" substring="speech" substring="transcribe" substring="moderation" \
@@ -151,10 +113,6 @@ behavior {
 		substring="sensevoice" substring="cosyvoice" substring="fish-speech" substring="indextts" \
 		substring="sovits" substring="whisper" substring="hunyuanvideo" substring="wan2" \
 		substring="ltx-video" substring="speech" substring="moderator" substring="tts"
-	// Alibaba Token Plan serves ASR/image/embedding SKUs the chat picker
-	// cannot route.
-	exclude-models provider="alibaba-token-plan" prefix="fun-asr" prefix="happyhorse-" \
-		prefix="qwen-audio-" prefix="qwen-image-" prefix="text-embedding-" prefix="wan2.7-"
 	// Copilot's /models listing carries no transport field; route Claude ids
 	// to Anthropic Messages, the reviewed Responses roster to Responses, and
 	// everything else to chat completions. Every Grok Copilot has served since
@@ -236,9 +194,6 @@ behavior {
 		limits "gpt-5.4-mini" context=272000 max-tokens=128000
 		limits "grok-code-fast-1" context=192000 max-tokens=64000
 	}
-	// Alibaba Token Plan discovery carries no limit fields; values come from
-	// official model documentation. Unknown future models keep null limits
-	// rather than unsafe guesses.
 	// Moonshot serves K3 at its documented 1M/131K window when /models omits
 	// limit fields (#5756).
 	model-limits provider="moonshot" {
@@ -258,49 +213,11 @@ behavior {
 	// tool-calling: Jamba, Titan Text Express, and Mistral 7B v0.
 	exclude-models provider="amazon-bedrock" prefix="ai21.jamba" prefix="amazon.titan-text-express" \
 		prefix="mistral.mistral-7b-instruct-v0"
-	model-limits provider="alibaba-token-plan" {
-		limits "qwen3.6-plus" context=1000000 max-tokens=65536
-		limits "qwen3.8-max" context=1000000 max-tokens=131072
-		limits "deepseek-v4-flash" context=1000000 max-tokens=384000
-		limits "deepseek-v4-flash-0731" context=1000000 max-tokens=384000
-		limits "deepseek-v4-pro-0813" context=1000000 max-tokens=384000
-		limits "deepseek-v3.2" context=131072 max-tokens=65536
-		limits "glm-5.1" context=202752 max-tokens=128000
-		limits "glm-5" context=202752 max-tokens=16384
-		limits "kimi-k2.7-code" context=262144 max-tokens=262144
-		limits "kimi-k2.6" context=262144 max-tokens=262144
-		limits "kimi-k2.5" context=262144 max-tokens=98304
-		limits "minimax-m2.5" context=196608 max-tokens=32768
-	}
 
-	// Antigravity discovery reports no pricing (the subscription bills through
-	// Google); price rows at their first-party equivalents, Vertex before
-	// Anthropic for Claude ids. Aliases map ids whose peer ships differently.
-	pricing-peer provider="google-antigravity" peers="google" "google-vertex" "anthropic" {
-		alias "gemini-3-flash" peer-id="gemini-3-flash-preview"
-		alias "gemini-3-pro" peer-id="gemini-3-pro-preview"
-		alias "gemini-3.1-pro" peer-id="gemini-3.1-pro-preview"
-		alias "claude-opus-4-5" peer-id="claude-opus-4-5@20251101"
-		alias "claude-opus-4-6" peer-id="claude-opus-4-6@default"
-		alias "claude-sonnet-4-5" peer-id="claude-sonnet-4-5@20250929"
-		alias "claude-sonnet-4-6" peer-id="claude-sonnet-4-6@default"
-		alias "claude-opus-5-5" peer-id="claude-opus-5-5@default"
-		alias "claude-sonnet-5-5" peer-id="claude-sonnet-5-5@default"
-	}
 	// SuperGrok surfaces a few models under IDs that differ from their public
 	// xai equivalent, so the exact-id price mirror misses them.
 	pricing-peer provider="xai-oauth" peers="xai" {
 		alias "grok-4.20-multi-agent-0309" peer-id="grok-4.20-multi-agent-beta-latest"
-	}
-	// Token Plan rows report zero cost upstream; like the Antigravity and
-	// SuperGrok rules above, they show the pay-as-you-go equivalent (Credits
-	// overflow is billed at the PAYG list price). MiniMax-M3.1-Flash-Preview has
-	// no published price and borrows the MiniMax-M3 rate as an estimate.
-	pricing-peer provider="minimax-code" peers="minimax" {
-		alias "MiniMax-M3.1-Flash-Preview" peer-id="MiniMax-M3"
-	}
-	pricing-peer provider="minimax-code-cn" peers="minimax-cn" "minimax" {
-		alias "MiniMax-M3.1-Flash-Preview" peer-id="MiniMax-M3"
 	}
 	hosted-default provider="zai-search" model="glm-4.7"
 	hosted-default provider="synthetic-search" model="auto"

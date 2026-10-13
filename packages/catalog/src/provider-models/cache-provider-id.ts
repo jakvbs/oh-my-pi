@@ -126,7 +126,7 @@ export function resolveModelCacheProviderId(providerId: string, options: ModelCa
 		case "litellm": {
 			const baseUrl = options.baseUrl ?? getDefaultModelDiscoveryBaseUrl(providerId)!;
 			// rich-v12 invalidates namespaced ids that missed bare catalog references.
-			// rich-v11 excluded ClinePass gateway metadata (issue #10932). rich-v10
+			// rich-v11 excluded gateway-isolated metadata (issue #10932). rich-v10
 			// filtered known non-conversational LiteLLM modes, unioned compat across
 			// the management endpoints, and keyed the deployment's `supports_vision`
 			// declaration into it; earlier versions invalidated rows whose

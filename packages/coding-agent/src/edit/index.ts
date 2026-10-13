@@ -653,7 +653,7 @@ export class EditTool implements AgentTool<TInput> {
 	/**
 	 * Host answer for one internal-URL edit target: its backing file, or a model-facing refusal.
 	 * Only file-written mutable schemes ({@link InternalUrlRouter.fileWritable}) are editable;
-	 * handler-owned writes (agent:// messages, proc:// stdin, ...) never patch their backing file.
+	 * handler-owned writes (proc:// stdin, ...) never patch their backing file.
 	 * A line/partial selector is refused ({@link InternalUrlRouter.peelWriteSelector}): edits
 	 * address whole files.
 	 */

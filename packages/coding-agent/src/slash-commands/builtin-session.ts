@@ -566,15 +566,6 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
-		name: "agents",
-		icon: "agents",
-		description: "Open the agents hub (per-agent model, prewalk, and advisor)",
-		handleTui: (_command, runtime) => {
-			runtime.ctx.showAgentsDashboard();
-			clearSubmittedText(runtime);
-		},
-	},
-	{
 		name: "git",
 		icon: "branch",
 		description: "Open the git UI (split diff viewer, staging, commit composer)",
@@ -582,15 +573,6 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		allowArgs: true,
 		handleTui: (command, runtime) => {
 			runtime.ctx.showGitUi(command.args.trim() || undefined);
-			clearSubmittedText(runtime);
-		},
-	},
-	{
-		name: "hub",
-		icon: "agents",
-		description: "Open the live Agent Hub",
-		handleTui: (_command, runtime) => {
-			runtime.ctx.showAgentHub({ initialSection: "activity" });
 			clearSubmittedText(runtime);
 		},
 	},

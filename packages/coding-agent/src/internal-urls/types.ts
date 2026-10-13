@@ -17,7 +17,6 @@ import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
 import type { Settings } from "../config/settings";
 import type { Rule } from "../capability/rule";
 import type { Skill } from "../extensibility/skills";
-import type { AgentRegistry } from "../registry/agent-registry";
 import type { LocalProtocolOptions } from "./local-protocol";
 import type { SessionEntry } from "../session/session-entries";
 import type { ToolSession } from "../tools";
@@ -69,10 +68,9 @@ export type SchemeSelectors = "lines" | "none" | "opaque";
  * Mutation class of a writable scheme; drives the device-only `write` gate.
  * - `workspace`: mutates user/external state; blocked in device-only sessions.
  * - `sandbox`: session scratch space (local://); allowed in device-only sessions.
- * - `coordination`: peer messaging (agent://); always allowed. {@link SchemeWritePolicy.cancels} grants the same per URL.
  * - `device`: tool-device dispatch (xd://); always allowed, the device enforces its own policy.
  */
-export type SchemeWriteScope = "workspace" | "sandbox" | "coordination" | "device";
+export type SchemeWriteScope = "workspace" | "sandbox" | "device";
 
 /** Write policy for a writable scheme. Absent on read-only schemes. */
 export interface SchemeWritePolicy {
@@ -97,7 +95,7 @@ export interface SchemeWritePolicy {
 	contentOptional?(url: InternalUrl): boolean;
 	/**
 	 * True when this URL's write only cancels background work (`proc://<id>/kill`), so it
-	 * passes the device-only gate like a `coordination`-scoped write. Approval
+	 * passes the device-only gate. Approval
 	 * still follows {@link SchemeWritePolicy.tier}.
 	 */
 	cancels?(url: InternalUrl): boolean;
@@ -183,7 +181,7 @@ export interface InternalResource {
 		display?: { text: string; startLine: number; lineNumbers?: Array<number | null> };
 	};
 	/**
-	 * `value` marks a discrete extracted value (agent://<id>/<json-path>) that
+	 * `value` marks a discrete extracted value (a single field of a structured resource) that
 	 * `read` returns as-is: no line selectors, no paging.
 	 * Default `document`.
 	 */
@@ -254,16 +252,9 @@ export interface ResolveContext {
 	/** Working directory of the calling session. */
 	cwd?: string;
 	/**
-	 * Calling session's session file. Handlers that resolve agent ids which may
-	 * be parked (`history://<id>`, `agent://<id>`) refresh the caller's
-	 * persisted roster against this root before registry lookup, so a
-	 * same-named id restored by another root's scan never shadows this
-	 * caller's own transcript or output. Absent when the caller has no session
-	 * file: those handlers keep their existing in-memory behavior.
+	 * Calling session's session file. Absent when the caller has no session file.
 	 */
 	sessionFile?: string;
-	/** Registry that owns the calling session; defaults to the process-wide registry. */
-	agentRegistry?: AgentRegistry;
 	/** Settings of the calling session (used by `issue://`/`pr://` for cache TTLs). */
 	settings?: Settings;
 	/** Caller's abort signal. */
@@ -329,8 +320,7 @@ export interface WriteContext {
 	/** Calling session's `local://` root mapping — see {@link ResolveContext.localProtocolOptions}. */
 	localProtocolOptions?: LocalProtocolOptions;
 	/**
-	 * Calling tool session. Session-bound writes (`agent://` messages,
-	 * `proc://` stdin/stop/mode, `xd://` devices) require it and throw when it is absent.
+	 * Calling tool session. Session-bound writes (`proc://` stdin/stop/mode, `xd://` devices) require it and throw when it is absent.
 	 */
 	session?: ToolSession;
 	/** The `write` tool call dispatching this write; device dispatch (`xd://`) forwards it to the wrapped tool. */
@@ -342,7 +332,7 @@ export interface WriteContext {
 }
 
 /**
- * Handler for a specific internal URL scheme (e.g., agent://, skill://, xd://).
+ * Handler for a specific internal URL scheme (e.g., skill://, xd://).
  */
 export interface ProtocolHandler {
 	/** The scheme this handler processes (without trailing ://) */

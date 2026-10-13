@@ -38,6 +38,7 @@ interface AppKeybindings {
 	"app.tools.expand": true;
 	"app.tools.toggleVisibility": true;
 	"app.ask.hide": true;
+	"app.approval.approve": true;
 	"app.editor.external": true;
 	"app.message.followUp": true;
 	"app.retry": true;
@@ -46,19 +47,17 @@ interface AppKeybindings {
 	"app.clipboard.pasteTextRaw": true;
 	"app.clipboard.copyLine": true;
 	"app.clipboard.copyPrompt": true;
-	"app.agents.hub": true;
 	"app.session.new": true;
 	"app.session.tree": true;
 	"app.session.fork": true;
 	"app.session.resume": true;
-	"app.session.observe": true;
 	"app.session.togglePath": true;
 	"app.session.toggleSort": true;
 	"app.session.rename": true;
 	"app.session.delete": true;
 	"app.session.deleteNoninvasive": true;
-	"app.tree.foldOrUp": true;
-	"app.tree.unfoldOrDown": true;
+	"app.tree.previousBranch": true;
+	"app.tree.nextBranch": true;
 	"app.history.search": true;
 }
 
@@ -139,6 +138,12 @@ export const KEYBINDINGS = {
 		defaultKeys: "alt+h",
 		description: "Hide or show a pending ask dialog",
 	},
+	"app.approval.approve": {
+		// A chord, not Enter: an Enter typed for the composer as the prompt appears must not approve.
+		// Ctrl+Q backs up Ctrl+Enter, which Windows Terminal cannot deliver (#1903).
+		defaultKeys: ["ctrl+enter", "ctrl+q"],
+		description: "Approve a pending tool call",
+	},
 	"app.editor.external": {
 		defaultKeys: "ctrl+g",
 		description: "Open external editor",
@@ -195,14 +200,6 @@ export const KEYBINDINGS = {
 		defaultKeys: [],
 		description: "Resume session",
 	},
-	"app.agents.hub": {
-		defaultKeys: "alt+a",
-		description: "Open the agent hub",
-	},
-	"app.session.observe": {
-		defaultKeys: "ctrl+s",
-		description: "Open the agent hub",
-	},
 	"app.session.togglePath": {
 		defaultKeys: "ctrl+p",
 		description: "Toggle session path display",
@@ -223,13 +220,13 @@ export const KEYBINDINGS = {
 		defaultKeys: "ctrl+backspace",
 		description: "Delete session (non-invasive)",
 	},
-	"app.tree.foldOrUp": {
-		defaultKeys: ["ctrl+left", "alt+left"],
-		description: "Fold or move up",
+	"app.tree.previousBranch": {
+		defaultKeys: [],
+		description: "Jump to the previous branch in /tree",
 	},
-	"app.tree.unfoldOrDown": {
-		defaultKeys: ["ctrl+right", "alt+right"],
-		description: "Unfold or move down",
+	"app.tree.nextBranch": {
+		defaultKeys: [],
+		description: "Jump to the next branch in /tree",
 	},
 	"app.history.search": {
 		defaultKeys: "ctrl+r",
@@ -267,7 +264,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	tree: "app.session.tree",
 	fork: "app.session.fork",
 	resume: "app.session.resume",
-	observeSessions: "app.session.observe",
 	// TUI editor (old names for backward compatibility)
 	cursorUp: "tui.editor.cursorUp",
 	cursorDown: "tui.editor.cursorDown",

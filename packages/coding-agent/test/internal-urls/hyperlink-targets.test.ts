@@ -13,9 +13,8 @@ import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry
 import { getMarkdownTheme, initTheme } from "@oh-my-pi/pi-tui/theme";
 import * as terminalCaps from "@oh-my-pi/pi-tui";
 import { isHyperlinkEnabled } from "@oh-my-pi/pi-tui/render/hyperlink";
-import { isFeedModelBadgeEnabled, resolveImageOptions } from "@oh-my-pi/pi-tui/render/render-utils";
+import { resolveImageOptions } from "@oh-my-pi/pi-tui/render/render-utils";
 
-import { cfgTaskShowResolvedModelBadge } from "@oh-my-pi/pi-coding-agent/task/settings";
 import {
 	cfgTuiHyperlinks,
 	cfgTuiMaxInlineImageColumns,
@@ -78,26 +77,20 @@ describe("renderer settings propagation", () => {
 			await Settings.init({ inMemory: true });
 			cfgTuiMaxInlineImageColumns.set(settings, 64);
 			cfgTuiMaxInlineImageRows.set(settings, 7);
-			cfgTaskShowResolvedModelBadge.set(settings, true);
 			cfgTuiHyperlinks.set(settings, "always");
 			expect(resolveImageOptions()).toEqual({ maxWidthCells: 64, maxHeightCells: 7 });
-			expect(isFeedModelBadgeEnabled()).toBe(true);
 			expect(isHyperlinkEnabled()).toBe(true);
 
 			cfgTuiMaxInlineImageColumns.override(settings, 72);
 			cfgTuiMaxInlineImageRows.override(settings, 0);
-			cfgTaskShowResolvedModelBadge.override(settings, false);
 			cfgTuiHyperlinks.override(settings, "off");
 			expect(resolveImageOptions()).toEqual({ maxWidthCells: 72, maxHeightCells: 24 });
-			expect(isFeedModelBadgeEnabled()).toBe(false);
 			expect(isHyperlinkEnabled()).toBe(false);
 
 			cfgTuiMaxInlineImageColumns.clearOverride(settings);
 			cfgTuiMaxInlineImageRows.clearOverride(settings);
-			cfgTaskShowResolvedModelBadge.clearOverride(settings);
 			cfgTuiHyperlinks.clearOverride(settings);
 			expect(resolveImageOptions()).toEqual({ maxWidthCells: 64, maxHeightCells: 7 });
-			expect(isFeedModelBadgeEnabled()).toBe(true);
 			expect(isHyperlinkEnabled()).toBe(true);
 		} finally {
 			if (originalRows) Object.defineProperty(process.stdout, "rows", originalRows);

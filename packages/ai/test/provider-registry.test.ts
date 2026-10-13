@@ -13,13 +13,12 @@ import { getEnvApiKey } from "@oh-my-pi/pi-ai/env-api-key";
 
 const FIXTURE_SOURCE = "provider-registry-test";
 const ENV_KEYS = [
-	"COREWEAVE_API_KEY",
 	"ZENMUX_API_KEY",
 	"EXA_API_KEY",
 	"XAI_OAUTH_TOKEN",
+	"XAI_API_KEY",
 	"UMANS_AI_CODING_PLAN_API_KEY",
 	"LLAMA_CPP_API_KEY",
-	"WANDB_API_KEY",
 ] as const;
 const originalEnv = new Map(ENV_KEYS.map(key => [key, Bun.env[key]]));
 
@@ -51,13 +50,11 @@ describe("provider registry auth surface", () => {
 	});
 
 	test("multi-var catalog env fallback picks names in order", () => {
+		delete Bun.env.XAI_OAUTH_TOKEN;
+		Bun.env.XAI_API_KEY = "xai-env";
+		expect(getEnvApiKey("xai-oauth")).toBe("xai-env");
 		Bun.env.XAI_OAUTH_TOKEN = "xai-oauth-env";
 		expect(getEnvApiKey("xai-oauth")).toBe("xai-oauth-env");
-
-		Bun.env.WANDB_API_KEY = "wandb-env";
-		expect(getEnvApiKey("coreweave")).toBe("wandb-env");
-		Bun.env.COREWEAVE_API_KEY = "coreweave-env";
-		expect(getEnvApiKey("coreweave")).toBe("coreweave-env");
 	});
 
 	test("login list contains loginable providers and excludes env-only model providers", () => {
@@ -73,16 +70,7 @@ describe("provider registry auth surface", () => {
 
 	test("paste-code login set is derived from pasteCodeFlow", () => {
 		expect([...PASTE_CODE_LOGIN_PROVIDERS].sort()).toEqual(
-			[
-				"anthropic",
-				"google-antigravity",
-				"google-gemini-cli",
-				"openai-codex",
-				"openrouter",
-				"snowflake",
-				"stencil",
-				"zai-coding-plan",
-			].sort(),
+			["anthropic", "openai-codex", "openrouter", "stencil", "zai-coding-plan"].sort(),
 		);
 		expect(PASTE_CODE_LOGIN_PROVIDERS.has("zenmux")).toBe(false);
 	});

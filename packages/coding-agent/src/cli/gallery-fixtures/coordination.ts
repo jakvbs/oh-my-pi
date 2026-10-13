@@ -17,55 +17,6 @@ const job = { id: "build-42", type: "bash", status: "cancelled", label: "Build a
 const failure = (text: string) => ({ content: [{ type: "text", text }], isError: true });
 
 export const coordinationFixtures: Record<string, GalleryFixture> = {
-	write_agent: {
-		label: "Peer message",
-		renderer: "write",
-		streamingArgs: { path: "agent://Reviewer", content: "Please review" },
-		args: { path: "agent://Reviewer", content: "Please review the parser.\nCheck the error boundary." },
-		result: {
-			content: [{ type: "text", text: "Delivered to Reviewer." }],
-			details: { message: { op: "send", to: "Reviewer", receipts: [{ to: "Reviewer", outcome: "injected" }] } },
-		},
-		errorResult: failure("Peer messaging is unavailable in this session."),
-	},
-	write_agent_broadcast: {
-		label: "Peer broadcast",
-		renderer: "write",
-		streamingArgs: { path: "agent://all", content: "Heads up" },
-		args: { path: "agent://all", content: "Heads up: tests are ready." },
-		result: {
-			content: [{ type: "text", text: "Broadcast delivered to 2 of 3 peer(s)." }],
-			details: {
-				message: {
-					op: "send",
-					to: "all",
-					receipts: [
-						{ to: "A", outcome: "injected" },
-						{ to: "B", outcome: "revived" },
-						{ to: "C", outcome: "failed", error: "not running" },
-					],
-				},
-			},
-		},
-		errorResult: failure("No recipient accepted this broadcast."),
-	},
-	write_agent_failed_receipt: {
-		label: "Undelivered message",
-		renderer: "write",
-		streamingArgs: { path: "agent://Missing", content: "Can you help?" },
-		args: { path: "agent://Missing", content: "Can you help?" },
-		result: {
-			content: [{ type: "text", text: "Failed: Missing is not running." }],
-			details: {
-				message: {
-					op: "send",
-					to: "Missing",
-					receipts: [{ to: "Missing", outcome: "failed", error: "not running" }],
-				},
-			},
-		},
-		errorResult: failure("Peer messaging is unavailable in this session."),
-	},
 	write_proc_cancel: {
 		label: "Cancel job",
 		renderer: "write",

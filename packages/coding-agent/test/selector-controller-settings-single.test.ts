@@ -2,7 +2,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn, vi } from 
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { SelectorController } from "@oh-my-pi/pi-coding-agent/modes/controllers/selector-controller";
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@oh-my-pi/pi-tui";
-import { AgentsHubComponent } from "@oh-my-pi/pi-tui/overlays/agents-hub";
 import * as activityClient from "@oh-my-pi/pi-coding-agent/stats/activity-client";
 import * as themeModule from "@oh-my-pi/pi-tui/theme";
 import { createInteractiveModeContext } from "./helpers/interactive-mode-context";
@@ -132,24 +131,6 @@ describe("single-instance menus", () => {
 		controller.showModelSelector({ temporaryOnly: true });
 		expect(overlayStack).toHaveLength(2);
 		expect(overlayStack.at(-1)?.component).toBe(picker);
-	});
-
-	it("opens one agents dashboard while it loads, and opens again after a failed load", async () => {
-		const { ui, shown } = overlayUi();
-		const controller = new SelectorController(createInteractiveModeContext({ ui }));
-		const failed = Promise.withResolvers<AgentsHubComponent>();
-		const create = spyOn(AgentsHubComponent, "create").mockReturnValue(failed.promise);
-
-		const first = controller.showAgentsDashboard();
-		await controller.showAgentsDashboard();
-		expect(create).toHaveBeenCalledTimes(1);
-		failed.reject(new Error("discovery failed"));
-		await expect(first).rejects.toThrow("discovery failed");
-
-		create.mockResolvedValue(Object.create(AgentsHubComponent.prototype));
-		await controller.showAgentsDashboard();
-		expect(create).toHaveBeenCalledTimes(2);
-		expect(shown).toHaveLength(1);
 	});
 
 	// Regression: a second /usage (or status-line cost click) while the dashboard

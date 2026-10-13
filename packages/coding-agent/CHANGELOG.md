@@ -4,22 +4,21 @@
 
 ### Breaking Changes
 
-- Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; task and eval spawns require an explicit agent name.
-- Removed `spawns` allowlists from agent definitions, SDK session options, and persisted session initialization. Only root sessions can spawn agents; legacy `spawns` metadata no longer controls delegation or selects a default agent.
-- Replaced SDK `taskDepth` and session-memory `memoryTaskDepth` options with boolean `isSubagent` and `memoryIsSubagent`. Child sessions, including cold-revived historical descendants, cannot delegate or start root-only memory workflows.
+- Removed the `task` tool and everything built on it: in-process subagents and agent definitions, the Agents Hub, `/tan`, IRC messaging between agents, `agent://` URLs (read and write), the `before_subagent_spawn` extension event, the `orchestrate` magic keyword, the `task` model role, the RPC subagent commands and frames, and the `/review`, `/security`, agentic commit, cleanse, and vibe workflows that depended on subagents. Delegate through external tooling instead.
 - The system prompt is now three blocks, `[harness, policy, context]`. The harness (`prompts/system/harness-prompt.md`, renamed from `system-prompt.md`) carries runtime mechanics only; its role, personality, tool-policy, workflow, delivery, and critical sections are gone. The policy block is `--system-prompt`, SDK `systemPrompt`, or `~/.agents/AGENTS.md`. The context block holds project context files, always-apply rules, and generated MCP and auto-learn notices.
 - Removed `SYSTEM.md` and `SYSTEM_TEMPLATE.md` discovery from every provider, `APPEND_SYSTEM.md`, `--system-prompt-template`, `--append-system-prompt`, and the SDK `systemPromptTemplate`, `customSystemPrompt`, and `appendSystemPrompt` options. Move their content into `~/.agents/AGENTS.md`.
 - SDK `systemPrompt` is now the policy text (`string | () => string`) instead of a full replacement or a callback over the generated blocks. `fixedSystemPrompt: readonly string[]` replaces every block verbatim.
 - `~/.agents/AGENTS.md` is the policy block, at a fixed path that ignores profiles and the agent dir; `~/.omp/agent/AGENTS.md` is no longer read, and neither file is a context file. User-level context files are no longer loaded from any provider (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`, `~/.agent(s)/AGENTS.md`, `contextFiles.extra` in the agent directory), and `<agentDir>/RULES.md` is no longer a sticky rule. Project `.omp/RULES.md` is unchanged.
 - Removed the `personality` setting, `PERSONALITY.md`, and the bundled personality presets.
-- Task subagents keep the harness and context blocks; their rendered agent prompt is the policy block, so the main session's `AGENTS.md` no longer reaches them.
 - Removed every discovery provider that read another agent tool's configuration: `claude`, `claude-md`, `codex`, `gemini`, `opencode`, `cursor`, `windsurf`, `cline`, `github`, and `vscode`. `CLAUDE.md`, `GEMINI.md`, `copilot-instructions.md`, `.cursorrules`, `.clinerules`, and the `.claude`, `.codex`, `.gemini`, `.opencode`, `.cursor`, `.windsurf`, `.github`, and `.vscode` trees no longer contribute context files, rules, skills, commands, hooks, tools, MCP servers, LSP configs, extensions, or settings. Only `.omp`, `.agents`, `AGENTS.md`, root `mcp.json`, and installed plugins are discovered.
 - Removed the `enabledProviders` setting, the `/extensions` "Load ~/ config" toggle, the `skills.enableCodexUser`/`enableClaudeUser`/`enableClaudeProject` and `commands.enableClaude*`/`enableOpencode*` settings, and `CLAUDE_CONFIG_DIR` support. The marketplace reads only OMP plugin registries; Claude Code's `~/.claude/plugins` registry and `enabledPlugins` are no longer read.
 - Removed `--from-claude`, `--from-codex`, and the Claude Code/Codex prompt-history seeding of text prediction.
+- Removed the `task.*` settings, `display.pinnedAgents`, `display.subagentLivePreview`, `tier.subagent`, the `app.agents.hub` and `app.session.observe` keybindings, and the `enableIrc` SDK option; existing values are ignored. `isolation.backend` and `worktree.*` stay for `/wt`, `gh pr checkout`, and `omp worktree`.
+- Removed the `@oh-my-pi/pi-coding-agent/task` and `@oh-my-pi/pi-coding-agent/task/*` package exports.
 
 ### Added
 
-- SDK embedders can drive a session they own to its structured result with `runSessionToYield` (`@oh-my-pi/pi-coding-agent/task/executor`): it uses the same reminder ladder as subagents and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
+- SDK embedders can drive a session they own to its structured result with `runSessionToYield` (exported from `@oh-my-pi/pi-coding-agent`): it re-prompts with a reminder ladder until the session yields, and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
 - Context budget reminders: the agent gets one hidden `<system-reminder>` with its token count and the limit when context first reaches 25, 50, 70 or 85% of the auto-compaction threshold (the model window when compaction is off). Disable with `compaction.budgetReminders: false`.
 - `ContextUsage` (from `ctx.getContextUsage()`, session stats and RPC state) carries `compactionThreshold`, the token count at which auto-compaction triggers for the active model including `compaction.modelThresholds`; it is absent when compaction is off.
 - `pi.sendMessage(..., { deliverAs: "displayOnly" })` persists and paints a custom message in the transcript without ever adding it to the model context; `CustomMessageEntry.excludeFromContext` marks such entries on reload.
@@ -39,11 +38,82 @@
 - Long single-line `--system-prompt` text no longer prevents sessions from starting with `ENAMETOOLONG`.
 - Fixed SDK consumers losing asynchronous cleanup on SIGINT and SIGTERM while preserving the CLI's signal shutdown behavior.
 - A session started with `--system-prompt` keeps it when resumed without the flag and in sessions started with `/new`, and switching sessions renders each session's own policy. A file is re-read on every prompt rebuild, so edits reach the session; a recorded file that no longer exists stops startup with an error instead of falling back to `~/.agents/AGENTS.md`.
-
 - Fixed the `bash` tool rejecting `name` together with `async` ("Service mode does not accept async or timeout"), which sent models into a retry loop; the call now runs as a background job and notes the ignored `name`/`ready`, and a `timeout` next to `name` is ignored instead of failing.
 - Fixed overlapping TypeScript language servers when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server handles its file types and the built-in `typescript-native` handles only the remaining types.
 - Fixed `read` listing a stale archive after an in-place rewrite that kept the size and restored the mtime within one filesystem timestamp tick (coarse ctime on Linux kernels before multigrain timestamps); archives changed within 2s before indexing are no longer cached.
 - Cancelling startup through an extension now exits without submitting the CLI prompt or opening the composer.
+- A `deliverAs: "displayOnly"` message sent while the assistant reply streams now shows above that reply, as after a reload, instead of below the finished answer.
+
+### Removed
+
+- Removed the `task` tool and its Agents Hub, `/tan`, IRC, and `agent://` surfaces (see Breaking Changes).
+
+## [18.10.4] - 2026-10-13
+
+### Added
+
+- Extensions can observe and answer the interactive plan review, including refinement feedback and save-and-quit ([#14250](https://github.com/can1357/oh-my-pi/pull/14250) by [@rlfleming93](https://github.com/rlfleming93))
+- Added opt-in `omp gc --compress` (or `gc.compress`), which stores sessions idle for `gc.compressAfterDays` (default 7) with filesystem transparent compression (APFS, NTFS); they stay resumable and searchable ([#15600](https://github.com/can1357/oh-my-pi/pull/15600) by [@wolfiesch](https://github.com/wolfiesch))
+- Extensions can reopen a dismissed plan review while the session is idle (`ctx.openPlanReview()`) and pick the execution tier on `ctx.resolvePlanReview` (`input.role`); `plan_review_requested` now reports the slider's tiers ([#15552](https://github.com/can1357/oh-my-pi/pull/15552) by [@Shadorain](https://github.com/Shadorain))
+
+### Changed
+
+- Tool approval prompts now replace the composer like `ask`, show one row per detail, and approve with `Ctrl+Enter` (or `Ctrl+Q`) instead of `Enter` ([#15548](https://github.com/can1357/oh-my-pi/pull/15548) by [@H4vC](https://github.com/H4vC))
+
+### Fixed
+
+- Fixed late completion probes rewinding resumed conversations and stale history scans lowering parked subagent costs ([#15594](https://github.com/can1357/oh-my-pi/pull/15594) by [@anatoli-tsinovoy](https://github.com/anatoli-tsinovoy)).
+- Fixed `read.renderMarkdown` having no effect on plain-file reads: inline read previews now render Markdown files as formatted Markdown instead of numbered source ([#15007](https://github.com/can1357/oh-my-pi/issues/15007)).
+- Fixed Claude refusing every turn (`reasoning_extraction`) in a session snapcompacted under Codex, Grok or another reasoning model, after a switch or resume; Claude turns, `/btw`, `/handoff` and compaction now read a reasoning-free copy of the archive ([#15436](https://github.com/can1357/oh-my-pi/pull/15436) by [@will-bogusz](https://github.com/will-bogusz))
+- Fixed the project-shared browser (headless or headed) reopening every page its previous run left open whenever it relaunched (after a crash, an out-of-memory kill, a normal stop, or a restart from `omp ps`); no session owned those pages, so they were never closed and piled up across restarts. Detaching it through `proc://<name>/mode`, which relaunched it the same way, is now refused ([#15561](https://github.com/can1357/oh-my-pi/pull/15561) by [@eggpeat](https://github.com/eggpeat))
+- Fixed `omp models --json` reporting a scheduled model's superseded price in `cost`; it reports the price in force, such as DeepSeek V4 Pro's $0.30 / $1.20 card since 2026-09-14 ([#15620](https://github.com/can1357/oh-my-pi/pull/15620) by [@eggpeat](https://github.com/eggpeat))
+
+### Removed
+
+- Removed Codex Code Mode and its `providers.openai-codex.codeMode` / `providers.openai-codex.codeModeDirectTools` settings; Codex models always use the full direct tool surface.
+
+## [18.10.3] - 2026-10-12
+
+### Added
+
+- Added `task.agentSoftRequestBudget` to give named subagents their own soft request budget, so a long-running agent can get more requests (or `0` for no guard) while scout, sonic and other agents keep theirs ([#15419](https://github.com/can1357/oh-my-pi/pull/15419) by [@will-bogusz](https://github.com/will-bogusz))
+- Added `o200k` as a `tokenizer` value for custom models and overrides in `models.yml` ([#15447](https://github.com/can1357/oh-my-pi/pull/15447) by [@will-bogusz](https://github.com/will-bogusz))
+
+### Changed
+
+- Sized snapcompact archives for Claude 4.7+ and GPT-5.5 to 6.1 (gpt-6-astra included) at each frame's measured price instead of at least 5,024 tokens, so Codex archives can hold up to 1.7× as many frames when the room under the compaction trigger is the limit ([#15442](https://github.com/can1357/oh-my-pi/pull/15442) by [@will-bogusz](https://github.com/will-bogusz))
+- Enabled sibling subagent prompt-cache sharing for Muse Code's Spark 1.3, Wonder 1.0, and Wonder Full 1.0 variants while keeping their conversations separate ([#15467](https://github.com/can1357/oh-my-pi/pull/15467) by [@iliaal](https://github.com/iliaal), based on [#15285](https://github.com/can1357/oh-my-pi/pull/15285) by [@YueyuHoshizora](https://github.com/YueyuHoshizora))
+- Reduced tool-result tokens by omitting subsecond bash timing and redundant task size metadata ([#15468](https://github.com/can1357/oh-my-pi/pull/15468) by [@iliaal](https://github.com/iliaal); [#15265](https://github.com/can1357/oh-my-pi/issues/15265); based on [#15284](https://github.com/can1357/oh-my-pi/pull/15284) by [@YueyuHoshizora](https://github.com/YueyuHoshizora))
+- On the official Anthropic and Codex endpoints, snapcompact archives may carry up to 12 MB of frames instead of 3 MB, Anthropic requests keep up to 600 images (100 on 200k-window models) instead of 90, and Codex requests up to 2,000 instead of 200; custom base URLs, including Anthropic requests rerouted by `ANTHROPIC_BASE_URL` or Foundry's `FOUNDRY_BASE_URL`, keep the previous limits and no longer get Anthropic's 24 MB inline image byte limit ([#15434](https://github.com/can1357/oh-my-pi/pull/15434) by [@will-bogusz](https://github.com/will-bogusz))
+
+### Fixed
+
+- Fixed `snapcompact.toolResults` re-sending each large tool result as images a turn after it went out as text, which broke the prompt cache and Anthropic signed thinking every turn; results are now imaged from their first send, and `read` results stay text unless the model is known to edit exactly from images (Opus 5.5+) ([#14249](https://github.com/can1357/oh-my-pi/pull/14249) by [@will-bogusz](https://github.com/will-bogusz))
+- Fixed compaction on Claude sessions with thinking sometimes keeping about half the recent history `compaction.keepRecentTokens` asks for, because each kept turn was counted at its signature's size ([#15446](https://github.com/can1357/oh-my-pi/pull/15446) by [@will-bogusz](https://github.com/will-bogusz))
+- Fixed retry fallback rejecting a model with a smaller window by charging it the reasoning the active model's provider usage replayed, and the output cap charging reasoning a cold Responses session leaves out of its first request ([#15447](https://github.com/can1357/oh-my-pi/pull/15447) by [@will-bogusz](https://github.com/will-bogusz))
+- Fixed anonymized session exports losing whether bash timing was shown ([#15468](https://github.com/can1357/oh-my-pi/pull/15468) by [@iliaal](https://github.com/iliaal))
+- Added `omp --restore <session>`: resumes a session like `--resume`, then goes on with what its last process left unfinished when it crashed or was killed, both the interrupted turn and the subagents it was running (their results reach the parent as usual); Tern's session daemon now restarts omp with it after a crash
+- Kept private prompt-cache routing keys out of shared sessions and HTML exports ([#15467](https://github.com/can1357/oh-my-pi/pull/15467) by [@iliaal](https://github.com/iliaal))
+
+## [18.10.2] - 2026-10-12
+
+### Added
+
+- Added `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` support: set it to stop Anthropic requests sending experimental beta fields that a company `ANTHROPIC_BASE_URL` gateway rejects, such as the Sonnet 5.5 `thinking.adaptive.block_binding` 400 ([#15458](https://github.com/can1357/oh-my-pi/pull/15458) by [@H4vC](https://github.com/H4vC))
+- Added the `task.structured` setting (default off) for structured task results: when on, the task tool accepts `outputSchema`/`schemaMode` and subagents return results through `yield` as before
+
+### Changed
+
+- Subagents spawned by the task tool now return their final message as plain text, with no `yield` tool, output schemas, or "Submit Result" fields; eval `agent()`/workpool spawns still return structured results
+- In Tern, a backgrounded `bash` command or `eval` cell keeps filling its own card with live output (In background, with a running clock) and settles it with the job's outcome, Cancelled when the job is killed; `wait` lists each job on one line (type, id, label, duration) instead of repeating its output
+- ACP clients now see a backgrounded call's job output stream into its tool call, which settles completed or failed with the job
+
+### Fixed
+
+- Fails unstructured task runs that conclude without a final message
+- Background task cards no longer stop updating once the agent ends its turn while the task is still running
+- Transparent images the model receives (small icons, oversized screenshots) keep their transparency instead of turning into a black square, and resized edges no longer pick up a dark fringe
+
 ## [18.10.1] - 2026-10-12
 
 ### Added

@@ -8,17 +8,17 @@ import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { prompt, TempDir } from "@oh-my-pi/pi-utils";
-import submitReminderTemplate from "../src/prompts/system/subagent-yield-reminder.md" with { type: "text" };
+import yieldReminderTemplate from "../src/prompts/system/yield-reminder.md" with { type: "text" };
 import { createAssistantMessage, createInMemoryAuthStorage } from "./helpers/agent-session-setup";
 
 const sessions: AgentSession[] = [];
 const roots: TempDir[] = [];
 const stores: ModelRegistry[] = [];
 
-function reminder(budgetStop = false): AgentMessage {
+function reminder(): AgentMessage {
 	return {
 		role: "developer",
-		content: prompt.render(submitReminderTemplate, { retryCount: 1, maxRetries: 3, budgetStop }),
+		content: prompt.render(yieldReminderTemplate, { retryCount: 1, maxRetries: 3 }),
 		timestamp: Date.now(),
 	};
 }
@@ -72,9 +72,7 @@ async function harness(
 		enableLsp: false,
 		requireYieldTool: true,
 		toolNames: ["yield"],
-		parentTaskPrefix: "report-child",
 		agentId: "report-child",
-		isSubagent: true,
 		outputSchema: options.outputSchema,
 		extensions: delayed
 			? [
@@ -106,19 +104,18 @@ async function harness(
 }
 
 describe("SDK data-less yield report", () => {
-	for (const [doneOnly, delayed, budgetStop] of [
-		[false, false, false],
-		[true, false, false],
-		[false, true, false],
-		[false, false, true],
+	for (const [doneOnly, delayed] of [
+		[false, false],
+		[true, false],
+		[false, true],
 	]) {
-		it(`submits preceding prose through the real loop (done-only=${doneOnly}, delayed=${delayed}, budget-stop=${budgetStop})`, async () => {
+		it(`submits preceding prose through the real loop (done-only=${doneOnly}, delayed=${delayed})`, async () => {
 			const { session, releaseUpdate } = await harness({ doneOnly, delayed });
 			const report = "# Review\nNo confirmed defects.\n";
 			const history: AgentMessage[] = [
 				{ role: "user", content: "Review the source", timestamp: Date.now() },
 				createAssistantMessage(report),
-				reminder(budgetStop),
+				reminder(),
 			];
 			session.agent.replaceMessages(history);
 			try {
@@ -197,15 +194,6 @@ describe("SDK data-less yield report", () => {
 		const result = session.messages.find(message => message.role === "toolResult");
 		expect(result).toMatchObject({ isError: true });
 		expect(JSON.stringify(result)).not.toContain("Other child's report");
-	});
-
-	it("does not reuse preceding prose for incremental sections", async () => {
-		const { session } = await harness({ input: { type: ["notes"] } });
-		session.agent.replaceMessages([createAssistantMessage("Earlier report"), reminder()]);
-		await session.agent.continue();
-		const result = session.messages.find(message => message.role === "toolResult");
-		expect(result).toMatchObject({ isError: true });
-		expect(JSON.stringify(result)).not.toContain("Earlier report");
 	});
 
 	it("retains strict-mode null-as-omitted semantics", async () => {

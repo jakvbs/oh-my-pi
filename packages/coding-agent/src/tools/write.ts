@@ -35,7 +35,7 @@ import writeDeviceOnlyDescription from "../prompts/tools/write-device-only.md" w
 import type { ToolSession } from "../sdk";
 
 import { routeWriteThroughBridge, shouldRouteWriteThroughBridge } from "./acp-bridge";
-import { truncateForPrompt } from "./approval";
+import { type ApprovalDetailsOptions, truncateApprovalDetail, truncateForPrompt } from "./approval";
 import { assertEditableFile } from "./auto-generated-guard";
 
 import { isReadTruncationNotice } from "@oh-my-pi/pi-tui/tools/hashline-format";
@@ -465,11 +465,11 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			this.session,
 		);
 	};
-	readonly formatApprovalDetails = (args: unknown): string[] => {
+	readonly formatApprovalDetails = (args: unknown, options?: ApprovalDetailsOptions): string[] => {
 		const params = args as Partial<WriteParams>;
 		const targetPath = typeof params.path === "string" ? params.path : "(missing)";
 		const content = typeof params.content === "string" ? params.content : "";
-		return [`Path: ${truncateForPrompt(targetPath)}`, `Content:\n${truncateForPrompt(content)}`];
+		return [`Path: ${truncateForPrompt(targetPath)}`, `Content:\n${truncateApprovalDetail(content, options)}`];
 	};
 	readonly label = "Write";
 	get description(): string {
@@ -780,18 +780,16 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			throw new ToolError(`content is required for ${path}.`);
 		}
 		const content = rawContent ?? "";
-		// Coordination writes (peer messages, background-work cancellation) touch no
-		// files, so neither gate below applies to them.
-		const coordination =
-			policy?.scope === "coordination" || (target !== undefined && policy?.cancels?.(target.url) === true);
+		// Background-work cancellation touches no files, so neither gate below applies to it.
+		const cancelsWork = target !== undefined && policy?.cancels?.(target.url) === true;
 		// A device-only session grants `write` purely as the device transport (see
-		// createTools): device dispatches, coordination writes, and the session's
+		// createTools): device dispatches, work cancellation, and the session's
 		// local:// sandbox proceed; every other target is rejected before any
 		// handler, guard, conflict resolver, or bridge sees it.
 		if (
 			this.session.deviceOnlyWrite === true &&
 			policy?.scope !== "device" &&
-			!coordination &&
+			!cancelsWork &&
 			!(await targetsLocalSandbox(this.session, path, signal))
 		) {
 			throw new ToolError(

@@ -34,7 +34,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	full: {
-		leftSegments: ["pi", "vim", "hostname", "model", "mode", "path", "git", "pr", "subagents"],
+		leftSegments: ["pi", "vim", "hostname", "model", "mode", "path", "git", "pr"],
 		rightSegments: [
 			"session_name",
 			"cache_hit",
@@ -58,7 +58,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	nerd: {
 		// Full preset with all Nerd Font icons
-		leftSegments: ["pi", "vim", "hostname", "model", "mode", "path", "git", "pr", "session", "subagents"],
+		leftSegments: ["pi", "vim", "hostname", "model", "mode", "path", "git", "pr", "session"],
 		rightSegments: [
 			"session_name",
 			"token_in",

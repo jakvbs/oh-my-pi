@@ -18,10 +18,8 @@ import type {
 } from "@oh-my-pi/pi-ai/types";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { clampThinkingLevelForModel, getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import type { ResolvedOpenAICompat } from "@oh-my-pi/pi-catalog/types";
-import { serializeAlibabaTokenPlanCredential } from "@oh-my-pi/pi-catalog/wire/alibaba-token-plan";
 
 const gpt4oMiniSpec: ModelSpec<"openai-completions"> = (() => {
 	const {
@@ -81,8 +79,8 @@ function zaiGlm52Model(): Model<"openai-completions"> {
 		id: "glm-5.2",
 		name: "GLM-5.2",
 		api: "openai-completions",
-		provider: "zhipu-coding-plan",
-		baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+		provider: "zai",
+		baseUrl: "https://api.z.ai/api/coding/paas/v4",
 		reasoning: true,
 		compat: {
 			thinkingFormat: "zai",
@@ -96,8 +94,6 @@ function zaiGlm52Model(): Model<"openai-completions"> {
 	} satisfies ModelSpec<"openai-completions">);
 }
 
-const alibabaQwen38Flash = getBundledModel<"openai-completions">("alibaba-token-plan", "qwen3.8-flash");
-const alibabaTokenPlanApiKey = serializeAlibabaTokenPlanCredential("sk-sp-test", "session_id=test");
 const mistralSmallLatest = getBundledModel<"openai-completions">("mistral", "mistral-small-latest");
 
 function kimiZaiModel(): Model<"openai-completions"> {
@@ -527,7 +523,7 @@ describe("openai-completions compatibility", () => {
 		const model: Model<"openai-completions"> = buildModel({
 			...gpt4oMiniSpec,
 			api: "openai-completions",
-			provider: "minimax-code" as Model["provider"],
+			provider: "minimax",
 			baseUrl: "https://api.minimax.io/v1",
 		} as ModelSpec<"openai-completions">);
 
@@ -920,65 +916,6 @@ describe("openai-completions compatibility", () => {
 		}
 	});
 
-	it("sends Alibaba Qwen 3.8 Flash reasoning effort on the wire", async () => {
-		expect(getSupportedEfforts(alibabaQwen38Flash)).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
-		const selectedEffort = clampThinkingLevelForModel(alibabaQwen38Flash, Effort.Minimal);
-		expect(selectedEffort).toBe(Effort.Minimal);
-		const payload = toObject(
-			await captureOpenAICompletionsPayload(alibabaQwen38Flash, undefined, {
-				apiKey: alibabaTokenPlanApiKey,
-				reasoning: selectedEffort,
-			}),
-		);
-
-		expect(payload?.enable_thinking).toBe(true);
-		expect(payload?.reasoning_effort).toBe("minimal");
-		expect(payload?.thinking_budget).toBeUndefined();
-	});
-
-	it("replays Alibaba Qwen 3.8 Flash reasoning history", async () => {
-		const model = alibabaQwen38Flash;
-		const priorAssistant: AssistantMessage = {
-			role: "assistant",
-			content: [
-				{
-					type: "thinking",
-					thinking: "Keep this decision for the next turn.",
-					thinkingSignature: "reasoning_content",
-				},
-				{ type: "text", text: "I chose the indexed path." },
-			],
-			api: model.api,
-			provider: model.provider,
-			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: "stop",
-			timestamp: Date.now(),
-		};
-		const payload = await captureOpenAICompletionsPayload(
-			model,
-			{
-				messages: [
-					{ role: "user", content: "Choose an implementation.", timestamp: Date.now() },
-					priorAssistant,
-					{ role: "user", content: "Continue.", timestamp: Date.now() },
-				],
-			},
-			{ apiKey: alibabaTokenPlanApiKey },
-		);
-		const assistant = getPayloadMessages(payload).find(message => message.role === "assistant");
-
-		expect(assistant?.reasoning_content).toBe("Keep this decision for the next turn.");
-		expect(assistant?.content).toBe("I chose the indexed path.");
-	});
-
 	it("sends reasoning_effort:max for the real Z.AI max tier and enables tool streaming", async () => {
 		const model = zaiGlm52Model();
 		const readTool: Tool = {
@@ -1335,8 +1272,8 @@ describe("kimi model detection via detectCompat", () => {
 	// `reasoning_effort`. The generic Kimi model-id match MUST NOT default
 	// proxies to "zai": doing so regressed #827 (opencode-go strips
 	// reasoning_effort under forced tool_choice) and the Fire Pass xhigh capture
-	// (#1199), and would mis-shape 14+ gateways (Fireworks, OpenCode, Kilo,
-	// NVIDIA, Together, Vercel, …). Hosts that genuinely speak zai pin
+	// (#1199), and would mis-shape 14+ gateways (Fireworks, OpenCode, NVIDIA,
+	// Together, Vercel, …). Hosts that genuinely speak zai pin
 	// `compat.thinkingFormat` per catalog entry (e.g. kimi-code, wafer-serverless).
 	it("reserves zai for native Kimi hosts and defaults proxies to OpenAI reasoning_effort", () => {
 		// Native Moonshot surface → z.ai binary thinking.
@@ -1351,15 +1288,6 @@ describe("kimi model detection via detectCompat", () => {
 		const opencodeK26 = kimiOpenCodeModel("kimi-k2.6").compat;
 		expect(opencodeK26.thinkingFormat).toBe("openai");
 		expect(opencodeK26.thinkingKeep).toBeUndefined();
-		const kiloKimi: Model<"openai-completions"> = buildModel({
-			...gpt4oMiniSpec,
-			api: "openai-completions",
-			provider: "kilo",
-			baseUrl: "https://api.kilo.ai/api/gateway",
-			id: "moonshotai/kimi-k2.6",
-			reasoning: true,
-		} as ModelSpec<"openai-completions">);
-		expect(kiloKimi.compat.thinkingFormat).toBe("openai");
 
 		// OpenRouter normalizes reasoning via its own object and keeps precedence
 		// over the generic Kimi id match.

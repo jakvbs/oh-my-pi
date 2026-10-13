@@ -1,9 +1,8 @@
+import { getEditStore } from "@oh-my-pi/pi-coding-agent/edit/store";
 import { afterEach, describe, expect, it } from "bun:test";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { getEditStore } from "@oh-my-pi/pi-coding-agent/edit/store";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
@@ -43,7 +42,6 @@ describe("sdk edit-store session reset", () => {
 			cwd: tempDir.path(),
 			agentDir: tempDir.path(),
 			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
-			agentRegistry: new AgentRegistry(),
 			authStorage,
 			modelRegistry,
 			settings,

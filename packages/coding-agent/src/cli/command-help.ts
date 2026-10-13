@@ -6,7 +6,7 @@ export const acpHelp = {
 
 export const anonymizeHelp = {
 	description:
-		"Write a shareable copy of a session and its subagents: turn contents redacted, metadata kept, paths and literals replaced by consistent mock tokens",
+		"Write a shareable copy of a session: turn contents redacted, metadata kept, paths and literals replaced by consistent mock tokens",
 } satisfies CommandMetadata;
 
 export const authHelp = {

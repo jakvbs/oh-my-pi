@@ -18,8 +18,6 @@ function createContext() {
 			get isStreaming() {
 				return streamState.isStreaming;
 			},
-		},
-		viewSession: {
 			isCompacting: false,
 			getLastAssistantMessage: () => undefined,
 		},

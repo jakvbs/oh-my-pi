@@ -49,6 +49,8 @@ export interface Args {
 	externalThinking?: boolean;
 	continue?: boolean;
 	resume?: string | true;
+	/** Resume the interrupted turn and subagents from the selected session. */
+	restore?: boolean;
 	help?: boolean;
 	version?: boolean;
 	mode?: Mode;
@@ -119,6 +121,32 @@ export function validateGoalLaunch(args: Args, interactive: boolean): void {
 	}
 	if (args.continue || args.resume || args.fork) {
 		throw new CliUsageError("--goal requires a fresh session (no resume, continue, or fork).");
+	}
+}
+
+/**
+ * Reject a `--restore` launch that cannot go on with an interrupted session: it
+ * needs the interactive TUI and exactly the session it names. Judged on the
+ * startup parse, before session resolution, like {@link validateGoalLaunch}.
+ */
+export function validateRestoreLaunch(args: Args, interactive: boolean): void {
+	if (!args.restore) return;
+	if (!interactive) {
+		throw new CliUsageError("--restore requires an interactive terminal (not --print or --mode).");
+	}
+	if (args.continue || args.fork || args.noSession || args.goal !== undefined) {
+		throw new CliUsageError("--restore resumes one existing session (no continue, fork, goal, or --no-session).");
+	}
+}
+
+/**
+ * Reject a `--restore` launch that also carries a prompt: the restored session
+ * goes on with its interrupted turn instead. Runs on the extension-aware
+ * reparse, where positionals are settled.
+ */
+export function validateRestorePrompt(args: Args): void {
+	if (args.restore && (args.messages.length > 0 || args.fileArgs.length > 0)) {
+		throw new CliUsageError("--restore takes no prompt: the session goes on with its interrupted turn.");
 	}
 }
 

@@ -5,12 +5,10 @@
  * here keeps the two byte-for-byte identical.
  */
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { type Component } from "../tui";
 import { formatBytes, formatDuration } from "@oh-my-pi/pi-utils";
 import type { JobSnapshot } from "../tools/wait";
 import type { DaemonSnapshot } from "../tools/daemon";
 import { type CustomMessage, type FileMentionMessage, resolveAbortLabel, shouldRenderAbortReason } from "./messages";
-import { createIrcMessageCard } from "../tools/wait";
 import { formatArtifactErrorNotice, type OutputMeta } from "../tools/output-meta";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../render/render-utils";
 import { canonicalizeMessage } from "./thinking-display";
@@ -108,47 +106,6 @@ export function buildLaunchCompletionBlock(message: CustomOrHookMessage): ToolAc
 		});
 	}
 	return new ToolActivityContainer(new TranscriptStatusBlock(rows));
-}
-
-/**
- * Render a live IRC traffic custom message (`irc:incoming` / `irc:autoreply` /
- * `irc:relay`) as a transcript card. `getExpanded` supplies the live
- * expanded-state getter for the cached card.
- */
-export function buildIrcMessageCard(message: CustomOrHookMessage, getExpanded: () => boolean): Component {
-	const details = (
-		message as CustomMessage<{
-			from?: string;
-			to?: string;
-			message?: string;
-			body?: string;
-			replyTo?: string;
-			pool?: string;
-			mode?: string;
-		}>
-	).details;
-	const kind =
-		message.customType === "irc:incoming"
-			? ("incoming" as const)
-			: message.customType === "irc:autoreply"
-				? ("autoreply" as const)
-				: message.customType === "irc:workpool"
-					? ("workpool" as const)
-					: ("relay" as const);
-	return createIrcMessageCard(
-		{
-			kind,
-			from: details?.from,
-			to: details?.to,
-			body: kind === "incoming" ? details?.message : details?.body,
-			replyTo: details?.replyTo,
-			timestamp: message.timestamp,
-			pool: details?.pool,
-			mode: details?.mode,
-		},
-		getExpanded,
-		theme,
-	);
 }
 
 /**

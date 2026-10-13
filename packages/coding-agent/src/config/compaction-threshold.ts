@@ -1,8 +1,7 @@
 import { isRecord } from "@oh-my-pi/pi-utils";
 
 /**
- * One `task.agentCompactionThresholdOverrides` or `compaction.modelThresholds`
- * entry: a positive token count (`90000`) or a percentage string (`"80%"`).
+ * One `compaction.modelThresholds` entry: a positive token count (`90000`) or a percentage string (`"80%"`).
  * Model entries also accept a fixed token trigger (`"f90000"`). `null` clears
  * an entry inherited from a lower-priority settings layer.
  */
@@ -75,11 +74,6 @@ function validateThresholdMap(
 		thresholds[key] = threshold;
 	}
 	return thresholds;
-}
-
-/** Validate the exact-agent compaction threshold map and normalize each entry to both threshold fields. */
-export function validateAgentCompactionThresholdOverrides(value: unknown): Record<string, CompactionThresholdPair> {
-	return validateThresholdMap("task.agentCompactionThresholdOverrides", "agent name", value, { allowFixed: false });
 }
 
 function checkModelThresholdKey(key: string): string | undefined {

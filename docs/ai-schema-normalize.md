@@ -7,19 +7,19 @@ remains in `packages/ai/src/providers/anthropic.ts`. The operational contract is
 `packages/ai/src/utils/schema/CONSTRAINTS.md`.
 
 There is no separate `strict-mode.ts` module — OpenAI strict-mode sanitization,
-OpenAI Responses rewriting, Google/Vertex/Gemini-CLI sanitization, Cloud Code
+OpenAI Responses rewriting, Google/Vertex sanitization, Cloud Code
 Assist Claude sanitization, and MCP sanitization are
 consolidated in `normalize.ts`. Google, CCA, MCP, and Moonshot use its
 option-driven `normalizeSchema` walk; the other paths have specialized walkers.
-Apple Foundation Models lowering lives in `foundation-models.ts`.
 
 ## Entry points
 
 All exports live under `@oh-my-pi/pi-ai/utils/schema`:
 
 - `normalizeSchema(value, options)` — generic option-driven walker.
-- `normalizeSchemaForGoogle(value)` — Gemini / Vertex / Gemini CLI.
-- `normalizeSchemaForCCA(value)` — Cloud Code Assist Claude (Antigravity + GCA).
+- `normalizeSchemaForGoogle(value)` — Gemini / Vertex.
+- `normalizeSchemaForCCA(value)` — Cloud Code Assist Claude (models with
+  `compat.ccaLegacyParametersSchema`).
 - `normalizeSchemaForMCP(value)` — MCP inputSchemas before they enter the
   custom-tool registry. `tool-bridge.ts` runs every MCP `inputSchema` through
   this dispatcher.
@@ -41,9 +41,6 @@ All exports live under `@oh-my-pi/pi-ai/utils/schema`:
 - `sanitizeSchemaForGrammar(schema)` — widens boolean subschemas for
   grammar-constrained OpenAI-compatible backends while preserving boolean
   `additionalProperties` / `unevaluatedProperties`.
-- `toFoundationModelsSchema(schema, name)` / `decodeFoundationModelsArguments(args, encodedPaths)`
-  from `./foundation-models` — lower tool schemas into Apple's
-  `GenerationSchema` dialect and decode values that must travel as JSON strings.
 
 Removed in the unified-flow refactor:
 
@@ -65,15 +62,13 @@ Removed in the unified-flow refactor:
 | Moonshot/Kimi native hosts using MFJS (`toolSchemaFlavor: "moonshot-mfjs"`) | `normalizeSchemaForMoonshot`                                |
 | Grammar-flavored OpenAI-compatible hosts (`toolSchemaFlavor: "grammar"`) | `sanitizeSchemaForGrammar`                                     |
 | `ollama-chat` (`ollama` / `ollama-cloud`) tool parameters           | `toolWireSchema` → `sanitizeSchemaForOllama`                                 |
-| `google-generative-ai`, `google-vertex`, Gemini CLI                | `normalizeSchemaForGoogle`                                                   |
+| `google-generative-ai`, `google-vertex`                            | `normalizeSchemaForGoogle`                                                   |
 | Google-family models with `compat.ccaLegacyParametersSchema`       | `normalizeSchemaForCCA` on the legacy `parameters` path                     |
-| `apple-foundation-models`                                         | `toolWireSchema` → `toFoundationModelsSchema`; argument decoding afterward  |
 | MCP `inputSchema` ingestion                                        | `normalizeSchemaForMCP`                                                      |
 | `anthropic-messages` (native, not CCA)                             | per-provider whitelist in `anthropic.ts`                                     |
 
-Gemini CLI / Antigravity CCA MUST run the full `normalizeSchemaForCCA`
-pipeline (not just the first keyword-stripping pass) to keep parity with the
-shared Google Claude path.
+The CCA path MUST run the full `normalizeSchemaForCCA` pipeline (not just the
+first keyword-stripping pass).
 
 ## Walk semantics
 

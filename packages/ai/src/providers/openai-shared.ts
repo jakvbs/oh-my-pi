@@ -1,4 +1,3 @@
-import { toClinePassWireModelId } from "@oh-my-pi/pi-catalog/cline-pass-model-id";
 import type { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { toFirepassWireModelId, toFireworksWireModelId } from "@oh-my-pi/pi-catalog/fireworks-model-id";
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
@@ -13,13 +12,6 @@ import type {
 	ResolvedOpenAISharedCompat,
 	VercelGatewayRouting,
 } from "@oh-my-pi/pi-catalog/types";
-import { parseAlibabaTokenPlanCredential } from "@oh-my-pi/pi-catalog/wire/alibaba-token-plan";
-import {
-	COREWEAVE_PROJECT_HEADER,
-	coreWeaveProjectHeaders,
-	hasCoreWeaveProjectHeader,
-	removeBlankCoreWeaveProjectHeaders,
-} from "@oh-my-pi/pi-catalog/wire/coreweave";
 import { parseGitHubCopilotApiKey } from "@oh-my-pi/pi-catalog/wire/github-copilot";
 import {
 	$env,
@@ -166,7 +158,6 @@ export interface OpenAIRequestSetupOptions {
 	messages: Message[];
 	defaultBaseUrl?: string;
 	prependHeaders?: () => Record<string, string>;
-	alibabaCodingPlanAuth?: boolean;
 	azureChatCompletions?: {
 		apiVersion: string;
 		deploymentName: string;
@@ -202,17 +193,6 @@ function resolveSakanaRequestBaseUrl(): string | undefined {
 	return normalizeSakanaRequestBaseUrl($env.SAKANA_BASE_URL) ?? normalizeSakanaRequestBaseUrl($env.FUGU_BASE_URL);
 }
 
-function applyCoreWeaveProjectHeader(headers: Record<string, string>): void {
-	removeBlankCoreWeaveProjectHeaders(headers);
-	if (hasCoreWeaveProjectHeader(headers)) {
-		return;
-	}
-	const projectHeaders = coreWeaveProjectHeaders($env);
-	if (projectHeaders) {
-		headers[COREWEAVE_PROJECT_HEADER] = projectHeaders[COREWEAVE_PROJECT_HEADER];
-	}
-}
-
 export function resolveOpenAIRequestSetup(
 	model: OpenAIRequestSetupModel,
 	options: OpenAIRequestSetupOptions,
@@ -233,9 +213,6 @@ export function resolveOpenAIRequestSetup(
 		Object.assign(headers, getOpenRouterHeaders());
 	}
 	Object.assign(headers, options.extraHeaders);
-	if (model.provider === "coreweave") {
-		applyCoreWeaveProjectHeader(headers);
-	}
 	if (options.prependHeaders) {
 		headers = { ...options.prependHeaders(), ...headers };
 	}
@@ -283,33 +260,6 @@ export function resolveOpenAIRequestSetup(
 		copilotPremiumRequests = copilot.premiumRequests;
 		baseUrl = copilotBaseUrl;
 		copilotCacheSnapshot = copilotCached ?? null;
-	}
-
-	if (model.provider === "alibaba-token-plan") {
-		// Require an explicitly resolved Token Plan credential. The generic
-		// `$env.OPENAI_API_KEY` fallback above matches the broad `sk-*` token
-		// grammar and would otherwise be sent to QwenCloud as bearer material.
-		if (!options.apiKey) {
-			throw new AIError.MissingApiKeyError("alibaba-token-plan");
-		}
-		const credential = parseAlibabaTokenPlanCredential(rawApiKey);
-		if (!credential) throw new AIError.ConfigurationError("Invalid QwenCloud Token Plan credential");
-		apiKey = credential.token;
-		if (credential.baseUrl) baseUrl = credential.baseUrl;
-	}
-
-	if (options.alibabaCodingPlanAuth && model.provider === "alibaba-coding-plan") {
-		try {
-			const parsed = JSON.parse(rawApiKey);
-			if (typeof parsed?.token === "string") {
-				apiKey = parsed.token;
-			}
-			if (typeof parsed?.enterpriseUrl === "string") {
-				baseUrl = parsed.enterpriseUrl;
-			}
-		} catch {
-			// Not JSON — use raw apiKey and catalog baseUrl.
-		}
 	}
 
 	let query: Record<string, string> | undefined;
@@ -428,12 +378,7 @@ export function applyOpenAIResponsesServiceTierCost(
  * so both are covered.
  */
 export function applyProviderReportedCost(model: Pick<Model, "provider">, usage: Usage, rawUsage: unknown): void {
-	if (
-		(model.provider !== "openrouter" && model.provider !== "cline-pass") ||
-		typeof rawUsage !== "object" ||
-		rawUsage === null
-	)
-		return;
+	if (model.provider !== "openrouter" || typeof rawUsage !== "object" || rawUsage === null) return;
 	let reportedCost = Reflect.get(rawUsage, "cost");
 	// BYOK turns run on the account's own provider key: `cost` carries only the
 	// credits charge OpenRouter bills the turn (its BYOK fee, plan-dependent and
@@ -614,8 +559,6 @@ export function applyWireModelIdTransform(
 	openrouterVariant?: string,
 ): string {
 	switch (mode) {
-		case "cline-pass":
-			return toClinePassWireModelId(baseId);
 		case "firepass":
 			return toFirepassWireModelId(baseId);
 		case "fireworks":
@@ -860,7 +803,6 @@ export type OpenAICompletionsParams = Omit<ChatCompletionCreateParamsStreaming, 
 export interface ChatCompletionsReasoningOptions {
 	reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	disableReasoning?: boolean;
-	thinkingBudgets?: Partial<Record<Effort, number>>;
 }
 
 export type OpenAICompatEndpoint = "chat-completions" | "responses";
@@ -1108,7 +1050,6 @@ function encodeChatCompletionsDisabledReasoning(
 			params.chat_template_kwargs = { ...params.chat_template_kwargs, thinking: false };
 			break;
 		case "openrouter-enabled-false":
-		case "cline-enabled-false":
 			params.reasoning = { enabled: false };
 			break;
 		case "venice-disable-thinking":
@@ -1266,18 +1207,6 @@ export function applyChatCompletionsReasoningParams(
 		hasTools: options?.hasTools,
 	});
 	applyChatCompletionsCompatPolicy(params, policy);
-	if (
-		model.provider !== "cline-pass" ||
-		!policy.reasoning.enabled ||
-		model.thinking?.mode !== "budget" ||
-		options?.reasoning === undefined
-	) {
-		return;
-	}
-	const budget = options.thinkingBudgets?.[options.reasoning] ?? model.thinking.effortBudgets?.[options.reasoning];
-	if (budget === undefined) return;
-	delete params.reasoning_effort;
-	params.reasoning = { ...params.reasoning, max_tokens: budget };
 }
 
 export function disableChatCompletionsReasoningForDialect(
@@ -1290,9 +1219,9 @@ export function disableChatCompletionsReasoningForDialect(
 /**
  * Z.AI/GLM-5.2 reasoning-effort dialect predicate. GLM-5.2 models served on a
  * Z.AI-format host (thinkingFormat "zai") accept `reasoning_effort`, stream tool
- * calls via `tool_stream`, and clamp output to the model cap. Moonshot Kimi and
- * Xiaomi MiMo also resolve to thinkingFormat "zai" with supportsReasoningEffort
- * true but are NOT GLM-5.2, so the model-id check is load-bearing — never swap it
+ * calls via `tool_stream`, and clamp output to the model cap. Moonshot Kimi also
+ * resolves to thinkingFormat "zai" with supportsReasoningEffort true but is NOT
+ * GLM-5.2, so the model-id check is load-bearing — never swap it
  * for `compat.supportsReasoningEffort`.
  */
 function isZaiReasoningEffortDialect(_model: Model<"openai-completions">, compat: ResolvedOpenAICompat): boolean {
@@ -1303,17 +1232,14 @@ function isZaiReasoningEffortDialect(_model: Model<"openai-completions">, compat
  * Provider-specific Chat Completions output clamp.
  *
  * Most OpenAI-compatible endpoints retain the conservative 64k ceiling from
- * {@link resolveOpenAIOutputTokenParam}. ClinePass, Z.AI/GLM-5.2 reasoning,
- * and native Moonshot K3 explicitly accept their full advertised model caps,
+ * {@link resolveOpenAIOutputTokenParam}. Z.AI/GLM-5.2 reasoning and native
+ * Moonshot K3 explicitly accept their full advertised model caps,
  * so those routes clamp to `model.maxTokens` instead.
  */
 export function resolveOpenAICompletionsOutputClamp(
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
 ): number | undefined {
-	if (model.provider === "cline-pass") {
-		return model.maxTokens ?? OPENAI_MAX_OUTPUT_TOKENS;
-	}
 	if (isZaiReasoningEffortDialect(model, compat)) {
 		return model.maxTokens ?? OPENAI_MAX_OUTPUT_TOKENS;
 	}
@@ -2064,7 +1990,7 @@ export function escapeReplayedControlTokens(items: ResponseInput): ResponseInput
  * Summary-only reasoning keeps the rebuild: it is no evidence of a server that
  * returns plaintext reasoning.
  */
-function isColdReplayableResponsesTurn(items: ResponseInput): boolean {
+export function isColdReplayableResponsesTurn(items: ResponseInput): boolean {
 	let hasReasoning = false;
 	for (const item of items) {
 		if ("id" in item && typeof item.id === "string") return false;

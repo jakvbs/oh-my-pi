@@ -10,7 +10,6 @@ import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { createSubagentSettings } from "@oh-my-pi/pi-coding-agent/task/executor";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
 const MODEL_PERF_FLUSH_DELAY_MS = 60_000;
@@ -185,24 +184,6 @@ describe("AgentStorage model perf aggregates", () => {
 		void storage.recordModelPerf("openai/gpt-5", { outputTokens: 600, durationMs: 3000 });
 
 		expect(storage.getModelPerf().get("openai/gpt-5")?.tps).toBeCloseTo(200, 5);
-	});
-
-	it("records task subagent samples in the shared model performance aggregate", async () => {
-		tempDir = TempDir.createSync("@omp-subagent-perf-");
-		const parent = await Settings.loadIsolated({ cwd: tempDir.path(), agentDir: tempDir.path() });
-		const subagent = createSubagentSettings(parent);
-
-		const write = subagent.getStorage()!.recordModelPerf("opencode-go/deepseek-v4-flash", {
-			outputTokens: 130,
-			durationMs: 2989.23775,
-			ttftMs: 2324.873,
-		});
-		await flushPerf(write);
-
-		const stats = parent.getStorage()?.getModelPerf().get("opencode-go/deepseek-v4-flash");
-		expect(stats?.samples).toBe(1);
-		expect(stats?.tps).toBeCloseTo(130000 / 2989.23775, 5);
-		expect(stats?.ttftMs).toBeCloseTo(2324.873, 5);
 	});
 
 	it("keeps TTFT null when no sample reported one and uses full duration for TPS", async () => {

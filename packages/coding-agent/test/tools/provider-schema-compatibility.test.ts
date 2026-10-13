@@ -77,18 +77,14 @@ function formatCompatibilityIssues(
 }
 
 describe("builtin tool schemas provider compatibility", () => {
-	it("keeps todo strict and marks task non-strict for free-form output schemas", async () => {
+	it("keeps todo strict", async () => {
 		const tools = await builtinToolsPromise;
-		const task = tools.find(tool => tool.name === "task");
 		const todo = tools.find(tool => tool.name === "todo");
-		expect(task).toBeDefined();
 		expect(todo).toBeDefined();
-		if (!task || !todo) {
+		if (!todo) {
 			return;
 		}
 
-		expect(task.strict).toBe(false);
-		expect(adaptSchemaForStrict(toolWireSchema(task), task.strict !== false).strict).toBe(false);
 		expect(adaptSchemaForStrict(toolWireSchema(todo), todo.strict !== false).strict).toBe(true);
 	});
 

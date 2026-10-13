@@ -55,7 +55,7 @@ describe("CfgProtocolHandler", () => {
 		expect(cfgAdvisorEnabled.get(settings)).toBe(false);
 	});
 
-	it("refuses subagent and headless writes without prompting the user", async () => {
+	it("refuses headless writes without prompting the user", async () => {
 		const settings = Settings.isolated();
 		const asked: CfgChangeRequest[] = [];
 		setCfgApprovalHost({
@@ -64,9 +64,6 @@ describe("CfgProtocolHandler", () => {
 			persistentSettings: settings,
 		});
 
-		await expect(write("cfg://advisor/enabled", "true", settings, { isSubagent: true })).rejects.toThrow(
-			"Subagents cannot change settings",
-		);
 		await expect(write("cfg://advisor/enabled/save", "true", settings, { settingsApproval: false })).rejects.toThrow(
 			"no interactive UI",
 		);

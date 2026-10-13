@@ -2,27 +2,27 @@
 
 class "glm" {
 	// Replaces provider-keyed GLM 5+ coding-plan stream-idle dispatch.
-	on "zhipu-coding-plan" "opencode-go" "opencode-zen" {
+	on "opencode-go" "opencode-zen" {
 		revision ">=5" {
 			stream-idle-timeout-ms 600000
 		}
 	}
 	// GLM-5.2 exposes the default lower tiers plus a genuine max on generic
 	// OpenAI-compatible hosts; the zai-dialect and Anthropic-route hosts
-	// (Z.ai, Zhipu, Umans, Ollama Cloud, Baseten) serve only high/max.
+	// (Z.ai, Umans, Ollama Cloud, Baseten) serve only high/max.
 	// priority breaks the intentional overlap with provider-level blanket GLM
-	// ladders authored for the pre-5.2 census (e.g. alibaba-coding-plan.kdl),
-	// so the 5.2 lineage ladder wins on generic hosts that lack a 5.2 residue.
+	// ladders authored for the pre-5.2 census, so the 5.2 lineage ladder wins
+	// on generic hosts that lack a 5.2 residue.
 	revision ">=5.2 <5.3" priority=10 {
 		thinking-efforts "minimal" "low" "medium" "high" "max"
 	}
-	on "zai" "zhipu-coding-plan" {
+	on "zai" {
 		revision ">=5.2 <5.3" {
 			zai-reasoning-effort-dialect #true
 			clamp-output-to-model-max #true
 		}
 	}
-	on "zai" "zhipu-coding-plan" "umans" "ollama-cloud" "baseten" {
+	on "zai" "umans" "ollama-cloud" "baseten" {
 		revision ">=5.2 <5.3" {
 			thinking-efforts "high" "max"
 		}
@@ -64,7 +64,7 @@ class "glm" {
 	}
 	// GLM Coding Plan: the selectable 1M-context served ids; pin them so
 	// endpoint discovery or older bundled fallbacks cannot regress to 200k.
-	on "zai" "zhipu-coding-plan" {
+	on "zai" {
 		models "glm-5.2" "glm-5.3" "glm-5.3-flash" "glm-5.3-flashx" {
 			limits-patch {
 				context-window 1000000
@@ -85,15 +85,15 @@ class "glm" {
 		}
 	}
 	// GLM-5.3 Flash and FlashX accept native image input on their coding routes.
-	on "zai" "zhipu-coding-plan" {
+	on "zai" {
 		models "glm-5.3-flash" "glm-5.3-flashx" {
 			input-modalities "text" "image"
 		}
 	}
-	on "alibaba-coding-plan" "alibaba-token-plan" "wafer-serverless" {
+	on "wafer-serverless" {
 		supports-developer-role #false
 	}
-	on "openrouter" "zhipu-coding-plan" {
+	on "openrouter" {
 		family "air" {
 			thinking-efforts "minimal" "low" "medium" "high"
 		}

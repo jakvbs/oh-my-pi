@@ -67,7 +67,6 @@ import type { SessionInfo as StoredSessionInfo } from "../../session/session-lis
 import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
-import { refreshAgentDiscovery } from "../../task";
 import { AUTO_THINKING, parseConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import { OTHER_OPTION } from "../../tools/ask";
 import { canonicalizeMessage } from "@oh-my-pi/pi-tui/chat/thinking-display";
@@ -1885,7 +1884,6 @@ export class AcpAgent implements Agent {
 		const cwd = record.session.sessionManager.getCwd();
 		const projectPath = await resolveActiveProjectRegistryPath(cwd);
 		clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
-		await refreshAgentDiscovery(cwd, record.session.effectiveExtensionRoots);
 		await record.session.refreshSkillsAndCommands();
 		await this.#emitAvailableCommandsUpdate(record);
 	}
@@ -1929,7 +1927,6 @@ export class AcpAgent implements Agent {
 			orchestrationCacheRead: usage.orchestrationCacheRead,
 			premiumRequests: usage.premiumRequests,
 			cost: usage.cost,
-			subagentCost: usage.subagentCost,
 		};
 	}
 

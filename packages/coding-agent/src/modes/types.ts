@@ -99,12 +99,6 @@ export interface ShowStatusOptions {
 	toast?: boolean;
 }
 
-export interface AgentHubOpenOptions {
-	requireContent?: boolean;
-	armCloseTap?: boolean;
-	initialSection?: "agents" | "activity";
-}
-
 export interface InteractiveModeContext {
 	// UI access
 	ui: TUI;
@@ -114,7 +108,6 @@ export interface InteractiveModeContext {
 	/** Whether the status/working row rendered lines in the latest frame; the band composer's editor top gap collapses only then. */
 	readonly statusRowOccupied: boolean;
 	todoContainer: Container;
-	subagentContainer: Container;
 	btwContainer: Container;
 	omfgContainer: Container;
 	errorBannerContainer: Container;
@@ -134,24 +127,6 @@ export interface InteractiveModeContext {
 	sessionManager: SessionManager;
 	/** The current session display name / title. */
 	readonly sessionName: string | undefined;
-	/** Session the transcript/editor/status are attached to: the focused agent's, else `session`. */
-	readonly viewSession: AgentSession;
-	/** Id of the focused agent, undefined when the main session is attached. */
-	readonly focusedAgentId: string | undefined;
-	/** Focus the main view on an agent's live session (delegates to SessionFocusController.focusAgent). */
-	focusAgentSession(id: string): Promise<void>;
-	/** Focus the focused agent's parent session, falling back to main (delegates to focusParent). */
-	focusParentSession(): Promise<void>;
-	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
-	unfocusSession(): Promise<void>;
-	/** Drop pending focus requests without changing the view (delegates to SessionFocusController.invalidatePendingFocus). */
-	invalidatePendingFocus(): void;
-	/** Candidate subagent ids under a mutable-viewport line, for click-to-focus. Empty when the line has no target. */
-	resolveViewportClickCandidates(index: number): string[];
-	/** Flip the pinned jump list between its collapsed few and the full list. */
-	togglePinnedHudExpanded(): void;
-	/** Point the inline hover band at a click-candidate id (or clear it). */
-	setClickHoverId(id: string | undefined): void;
 	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */
 	clearTransientSessionUi(): void;
 	settings: Settings;
@@ -162,8 +137,6 @@ export interface InteractiveModeContext {
 	lspServers?: LspStartupServerInfo[];
 	eventController: EventController;
 	eventBus?: EventBus;
-	/** Root-scoped bus carrying this session tree's `task:subagent:*` frames. */
-	subagentEventBus?: EventBus;
 
 	// State
 	isInitialized: boolean;
@@ -239,7 +212,6 @@ export interface InteractiveModeContext {
 	lastEscapeTime: number;
 	/** Owns Esc for every `/mcp test` that is active or whose cancellation hint may still be visible. */
 	mcpTestEscapeHandlers: Set<() => void>;
-	lastLeftTapTime: number;
 	shutdownRequested: boolean;
 	/** True once `shutdown()` has started. Read-only from the context;
 	 *  controllers use this to skip work that races with teardown. */
@@ -398,8 +370,6 @@ export interface InteractiveModeContext {
 	truncateTranscriptFromMessage(message: AgentMessage): boolean;
 	findLastAssistantMessage(): AssistantMessage | undefined;
 	extractAssistantText(message: AssistantMessage): string;
-	/** Refresh the running-subagents status badge from the local registry. */
-	syncRunningSubagentBadge(): void;
 	updateEditorBorderColor(): void;
 	rebuildChatFromMessages(options?: { reuseSettledComponents?: boolean }): void;
 	setTodos(todos: TodoItem[] | TodoPhase[]): void;
@@ -465,7 +435,6 @@ export interface InteractiveModeContext {
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
-	showAgentsDashboard(): void;
 	/** Open the fullscreen git UI, optionally pinned to a revision (`/git <rev>`). */
 	showGitUi(revision?: string): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
@@ -488,8 +457,6 @@ export interface InteractiveModeContext {
 	showProviderSetup(): Promise<void>;
 	showHookConfirm(title: string, message: string, dialogOptions?: InteractiveSelectorDialogOptions): Promise<boolean>;
 	showDebugSelector(): Promise<void>;
-	showAgentHub(options?: AgentHubOpenOptions): void;
-	resetObserverRegistry(): void;
 
 	// Input handling
 	handleCtrlC(): void;
@@ -511,7 +478,6 @@ export interface InteractiveModeContext {
 		detached?: Pick<SubmittedUserInput, "text" | "images" | "imageLinks">,
 	): Promise<void>;
 	handleBtwCommand(question: string): Promise<void>;
-	handleTanCommand(work: string): Promise<void>;
 	hasActiveBtw(): boolean;
 	handleBtwEscape(): boolean;
 	handleBtwBranchKey(): Promise<boolean>;

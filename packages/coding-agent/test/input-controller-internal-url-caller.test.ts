@@ -39,7 +39,7 @@ test("internal URL suggestions follow the receiving session when focus changes w
 		},
 	});
 	let receivingSession = main.session;
-	Object.defineProperty(main, "viewSession", { get: () => receivingSession });
+	Object.defineProperty(main, "session", { get: () => receivingSession });
 	const provider = new InputController(main).createAutocompleteProvider([], cwd);
 	const line = "read callerfixture://";
 	const forMain = await provider.getSuggestions([line], 0, line.length);

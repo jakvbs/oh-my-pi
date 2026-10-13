@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Agent } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
-import { resolveDelegationBias } from "@oh-my-pi/pi-catalog/compat/delegation";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
@@ -158,26 +157,6 @@ describe("AgentSession model-change prompt refresh", () => {
 		return [first, second];
 	}
 
-	function pickTwoModelsWithSameTaskPolicy(): [Model, Model] {
-		const all = modelRegistry.getAll();
-		const first = all[0];
-		const second = all.find(
-			model =>
-				(model.provider !== first.provider || model.id !== first.id) &&
-				resolveDelegationBias(model) === resolveDelegationBias(first),
-		);
-		if (!first || !second) throw new Error("Expected two distinct models with the same delegation bias");
-		return [first, second];
-	}
-
-	function pickModelsAcrossTaskPolicies(): [Model, Model] {
-		const all = modelRegistry.getAll();
-		const eager = all.find(model => resolveDelegationBias(model) === "eager");
-		const restrained = all.find(model => resolveDelegationBias(model) === "restrained");
-		if (!eager || !restrained) throw new Error("Expected eager and restrained delegation models");
-		return [eager, restrained];
-	}
-
 	function newSession(
 		model: Model,
 		settings: Settings,
@@ -219,8 +198,8 @@ describe("AgentSession model-change prompt refresh", () => {
 		expect(rebuildCount).toBe(1);
 	});
 
-	it("does not rebuild a hidden-model prompt when the task policy stays the same", async () => {
-		const [modelA, modelB] = pickTwoModelsWithSameTaskPolicy();
+	it("does not rebuild a hidden-model prompt on a model change", async () => {
+		const [modelA, modelB] = pickTwoModels();
 		authStorage.keys.setRuntime(modelA.provider, "key-a");
 		authStorage.keys.setRuntime(modelB.provider, "key-b");
 
@@ -237,25 +216,5 @@ describe("AgentSession model-change prompt refresh", () => {
 		await session.setModel(modelB);
 		expect(rebuildCount).toBe(0);
 		expect(session.agent.state.systemPrompt).toEqual(["initial"]);
-	});
-
-	it("rebuilds a hidden-model prompt when the task policy changes", async () => {
-		const [modelA, modelB] = pickModelsAcrossTaskPolicies();
-		authStorage.keys.setRuntime(modelA.provider, "key-a");
-		authStorage.keys.setRuntime(modelB.provider, "key-b");
-
-		let rebuildCount = 0;
-		session = newSession(
-			modelA,
-			Settings.isolated({ "compaction.enabled": false, includeModelInPrompt: false }),
-			async () => {
-				rebuildCount++;
-				return { systemPrompt: ["policy changed"] };
-			},
-		);
-
-		await session.setModel(modelB);
-		expect(rebuildCount).toBe(1);
-		expect(session.agent.state.systemPrompt).toEqual(["policy changed"]);
 	});
 });

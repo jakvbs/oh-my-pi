@@ -16,7 +16,6 @@ import { lspToolRenderer } from "./lsp";
 import { readToolRenderer } from "./read";
 import type { ToolRenderer } from "./renderer";
 import { resolveRenderer } from "./resolve";
-import { taskToolRenderer } from "./task";
 import { thinkToolRenderer } from "./think";
 import { todoToolRenderer } from "./todo";
 import { webSearchToolRenderer } from "./web-search";
@@ -43,7 +42,6 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	// through the `resolve` entry. Both devices carry the same ResolveDetails.
 	resolve: resolveRenderer,
 	reject: resolveRenderer,
-	task: taskToolRenderer,
 	think: thinkToolRenderer,
 	todo: todoToolRenderer,
 	github: githubToolRenderer,

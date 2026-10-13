@@ -93,7 +93,9 @@ Tools can add approval-prompt body lines with `formatApprovalDetails(args)`. The
 - `Allow tool: <name>`
 - `Origin: MCP server tool` for unannotated `mcp__...` tools
 - `Reason: <reason>` when the tool decision supplies one
-- tool-specific details such as command, path, code, browser action, or subagent assignment
+- tool-specific details such as command, path, code, or browser action
+
+In the interactive UI the prompt replaces the composer until answered: `Ctrl+Enter` (or `Ctrl+Q`; rebind `app.approval.approve`) approves, `Esc` denies, and plain `Enter` does nothing, so typing into the composer as the prompt appears cannot approve a call. The approve key is ignored for the first half second, since it is also the follow-up key. The prompt shows one row per detail, with multi-line values (file content, code) reduced to a line count, since the tool call in the transcript shows them in full; with `display.hideToolActivity` on, it shows the full details instead. RPC, ACP, and other hosts without an approval dialog get an Approve/Deny select with the full details.
 
 ## Defining approval on tools
 
@@ -159,7 +161,3 @@ Precedence is the normal settings precedence: runtime flags (`--approval-mode`, 
 `tools.approvalMode: yolo` fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips ordinary tier-based OMP prompts and also skips the ACP client permission gate for `bash` and destructive `edit`/`delete`/`move` actions unless a per-tool policy requires that gate. Explicit tool policies and provider safety checks still apply. The schema default is `yolo`, but default-config ACP sessions still keep the client permission gate; set `tools.approvalMode: yolo` explicitly when the client wants unattended execution.
 
 When ACP approval is required, OMP routes it through the ACP client instead of the terminal TUI. Client-gated `bash`, `delete`, `move`, and `edit` patches containing deletion or rename operations use ACP `session/request_permission`; ordinary file-content edits do not use this extra destructive-action gate. Generic approval prompts use form elicitation when the client advertises `elicitation.form`. A rejected, cancelled, or unsupported prompt rejects/cancels the tool call; OMP does not silently allow it.
-
-## Subagents
-
-Subagents run headless with `tools.approvalMode: yolo` so ordinary tier-based prompts do not stall them. The parent `task` approval is the authorization boundary. Per-tool policies still use the normal resolver: user `deny` remains absolute, and any call that resolves to `prompt` rejects because a headless subagent cannot satisfy it.

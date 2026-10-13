@@ -2,7 +2,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { KeybindingsManager } from "../src/app-keybindings";
 import { MoveOverlay, type MoveOverlayResult } from "../src/overlays/move-overlay";
 import { AnnotationOverlay } from "../src/overlays/annotation-overlay";
-import { AgentTranscriptViewer, type AgentTranscriptViewerDeps } from "../src/overlays/agent-transcript-viewer";
 import { BtwHistoryPanel } from "../src/overlays/btw-history-panel";
 import type { BtwHistoryRecord } from "../src/overlays/btw-history";
 import { CodexResetFireworksController } from "../src/overlays/codex-reset-fireworks";
@@ -105,43 +104,6 @@ describe("AnnotationOverlay native esc", () => {
 		expect(overlay.getTextAnnotations()).toEqual([]);
 		overlay.handleNativeEvent(CLOSE_CLICK);
 		expect(onComplete).toHaveBeenCalledWith(undefined);
-	});
-});
-
-describe("AgentTranscriptViewer native esc", () => {
-	it("clears a typed draft first, then closes the viewer", () => {
-		const onClose = vi.fn();
-		const missing = (): never => {
-			throw Object.assign(new Error("missing"), { code: "ENOENT" });
-		};
-		const deps = {
-			agentId: "a1",
-			transcript: {
-				sessionFile: () => undefined,
-				fs: { openSync: missing, closeSync: missing, readSync: missing, readFileSync: missing, statSync: missing },
-				parseEntries: () => [],
-			},
-			registry: { get: () => ({ id: "a1", kind: "task", status: "running" }) },
-			lifecycle: () => ({}),
-			ui: { terminal: { rows: 40, columns: 100 }, requestRender: () => {} },
-			cwd: "/",
-			expandKeys: ["ctrl+o"],
-			hubKeys: [],
-			requestRender: () => {},
-			onClose,
-			onHubClose: () => {},
-		} as unknown as AgentTranscriptViewerDeps;
-		const viewer = new AgentTranscriptViewer(deps);
-		try {
-			viewer.handleInput("h");
-			viewer.handleInput("i");
-			viewer.handleNativeEvent(CLOSE_CLICK);
-			expect(onClose).not.toHaveBeenCalled();
-			viewer.handleNativeEvent(CLOSE_CLICK);
-			expect(onClose).toHaveBeenCalledTimes(1);
-		} finally {
-			viewer.dispose();
-		}
 	});
 });
 
@@ -249,7 +211,15 @@ describe("BtwHistoryPanel native events", () => {
 		});
 		const click = (act: string): void =>
 			history.handleNativeEvent({ type: "action", key: `actions/${act}`, act, mods: [] });
-		click("copy");
+		// Click the act the rendered button carries: `copy` would be the terminal-local
+		// action, which copies the button's own label and never reaches the panel.
+		const copyAct = findNode(
+			history.describe(),
+			node => node.p?.role === "omp.btn" && String(node.p?.title).startsWith("Copy answer"),
+		)?.p?.actions?.click;
+		expect(copyAct).toBeDefined();
+		expect(copyAct).not.toBe("copy");
+		click(copyAct!);
 		expect(onCopy).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
 		click("follow-up");
 		expect(findNode(history.describe(), node => node.key === "composer")).toBeDefined();

@@ -7,14 +7,14 @@ class "minimax" {
 	}
 	// Replaces the MiniMax lineage branch in both OpenAI baselines.
 	reasoning-deltas-may-be-cumulative #true
-	on "aimlapi" "coreweave" "fireworks" "huggingface" "kilo" "nanogpt" "novita" "nvidia" \
+	on "aimlapi" "fireworks" "huggingface" "nanogpt" "novita" "nvidia" \
 		"opencode-go" "opencode-zen" "together" "venice" "wafer-serverless" "zenmux" {
 		family "m3" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}
 	}
-	on "alibaba-coding-plan" "amazon-bedrock" "coreweave" "fireworks" "huggingface" "kilo" \
-		"minimax" "minimax-cn" "minimax-code" "minimax-code-cn" "nanogpt" "novita" "nvidia" \
+	on "amazon-bedrock" "fireworks" "huggingface" \
+		"minimax" "minimax-cn" "nanogpt" "novita" "nvidia" \
 		"ollama-cloud" "opencode-go" "opencode-zen" "openrouter" "together" "venice" "vercel-ai-gateway" \
 		"zenmux" {
 		family "m2" {
@@ -30,7 +30,7 @@ class "minimax" {
 	// upstream metadata, not the model ceiling (documented: 1M in / 128K out).
 	// Exact selectors are case-sensitive, so both served spellings are listed:
 	// MiniMax hosts publish `MiniMax-M3`, Charm Hyper publishes `minimax-m3`.
-	on "charm-hyper" "minimax" "minimax-cn" "minimax-code" "minimax-code-cn" {
+	on "charm-hyper" "minimax" "minimax-cn" {
 		models "MiniMax-M3" "minimax-m3" {
 			limits-patch {
 				context-window 1000000
@@ -38,7 +38,7 @@ class "minimax" {
 			}
 		}
 	}
-	on "alibaba-coding-plan" "minimax-code" "minimax-code-cn" "wafer-serverless" {
+	on "wafer-serverless" {
 		supports-developer-role #false
 	}
 	// pi ladders these hosts on the generic four-tier scale; priority resolves
@@ -46,12 +46,12 @@ class "minimax" {
 	on "amazon-bedrock" "ollama-cloud" priority=1 {
 		thinking-efforts "minimal" "low" "medium" "high"
 	}
-	on "kilo" "novita" {
+	on "novita" {
 		family "m1" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}
 	}
-	on "minimax" "minimax-cn" "minimax-code" "minimax-code-cn" "vercel-ai-gateway" {
+	on "minimax" "minimax-cn" "vercel-ai-gateway" {
 		thinking-mode "anthropic-adaptive"
 		family "m2" {
 			// Replaces the Anthropic-route MiniMax effort remap table.
@@ -78,7 +78,7 @@ class "minimax" {
 	// level reaches the wire. Like the M2 family, thinking cannot be turned off:
 	// `thinking-requires-effort` hides the off level and clamps forced-off
 	// requests to the lowest effort instead of sending `disabled`.
-	on "minimax" "minimax-cn" "minimax-code" "minimax-code-cn" {
+	on "minimax" "minimax-cn" {
 		models "MiniMax-M3.1-Flash-Preview" {
 			thinking-requires-effort #true
 			thinking-efforts "low" "medium" "high" "xhigh" "max"
@@ -89,13 +89,7 @@ class "minimax" {
 			}
 		}
 	}
-	// Token Plan rows ride the Anthropic route; these OpenAI-only wire axes
-	// serve the legacy lightning rows that stay on the OpenAI-compatible one.
-	on "minimax-code" "minimax-code-cn" {
-		supports-reasoning-effort #false
-		supports-store #false
-	}
-	on "minimax-code" "minimax-code-cn" "wafer-serverless" {
+	on "wafer-serverless" {
 		reasoning-content-field "reasoning_content"
 	}
 	// M3 reasoning reaches omp as its plaintext trace on every host, and

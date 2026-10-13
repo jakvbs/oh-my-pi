@@ -1,7 +1,6 @@
 /**
- * Transcript renderer for the subagent `yield` tool ("Submit Result"). Its
- * reply ("Result submitted.") is for the model; the card shows what was
- * submitted: the section labels or workpool item in the head, the data as a
+ * Transcript renderer for the `yield` tool ("Submit Result"). Its reply ("Result
+ * submitted.") is for the model; the card shows what was submitted: the data as a
  * JSON tree (Markdown when it is a string), and the reported or rejected error.
  */
 import { formatCount, isRecord, sanitizeText } from "@oh-my-pi/pi-utils";
@@ -33,7 +32,20 @@ import type {
 	ToolRenderer,
 	ToolRenderResult,
 } from "./renderer";
-import type { YieldItem } from "./task";
+
+/** Details of an accepted `yield` tool call, as carried in the tool result. */
+export interface YieldItem {
+	data?: unknown;
+	status?: "success" | "aborted";
+	error?: string;
+	/** Resolve this yield's payload from the latest durable assistant text instead of `data`. */
+	useLastTurn?: boolean;
+	/**
+	 * Set by the in-tool yield validator when it exhausted its retry budget and
+	 * accepted schema-invalid data anyway.
+	 */
+	schemaOverridden?: boolean;
+}
 
 const TITLE = "Submit Result";
 
@@ -42,17 +54,12 @@ const TEXT_ROWS_COLLAPSED = 4;
 
 /** `yield` arguments as sent; strict-mode providers send omitted optionals as `null`. */
 interface YieldRenderArgs {
-	type?: string | string[] | null;
 	data?: unknown;
 	error?: string | null;
-	/** 1-based workpool item number. */
-	key?: number;
 }
 
 /** One `yield` call as its card shows it, read from the args and, once settled, the result. */
 interface Submission {
-	/** Section labels or workpool item the call fills; absent for a whole result. */
-	target?: string;
 	/** The accepted (normalized) data once settled, else the data as sent. */
 	data: unknown;
 	/** The failure the call reports, or why the tool rejected it. */
@@ -69,25 +76,17 @@ function readSubmission(
 	result: ToolRenderResult<YieldItem> | undefined,
 ): Submission {
 	const details = result?.isError ? undefined : result?.details;
-	const type = details?.type ?? args?.type ?? undefined;
-	const incremental = Array.isArray(type) && type.length > 0;
 	const data = details?.data !== undefined ? details.data : (args?.data ?? undefined);
 	let error = args?.error || undefined;
 	if (result?.isError) error = resultText(result) || `${TITLE} failed`;
 	else if (result && details?.status === "aborted") error = details.error || resultText(result) || "Aborted";
 	const settled = result !== undefined;
 	return {
-		target: typeof args?.key === "number" ? `item ${args.key}` : incremental ? type.join(", ") : undefined,
 		data,
 		error,
 		settled,
 		overridden: details?.schemaOverridden === true,
-		note:
-			settled && error === undefined && data === undefined
-				? incremental
-					? "Takes the last message as this section"
-					: "Ends with the sections submitted earlier, or the last message"
-				: undefined,
+		note: settled && error === undefined && data === undefined ? "Takes the last message as the result" : undefined,
 	};
 }
 
@@ -111,8 +110,6 @@ function describeSubmission(s: Submission, streaming: boolean): NativeToolView {
 	return {
 		tool: {
 			title: TITLE,
-			target: s.target,
-			targetKind: s.target ? "text" : undefined,
 			meta: size ? [size] : undefined,
 			badges: s.overridden ? [{ text: "schema overridden", tone: "warning" }] : undefined,
 		},
@@ -164,7 +161,6 @@ function renderSubmission(s: Submission, options: RenderResultOptions, theme: Th
 				icon: !s.settled ? (running ? "running" : "pending") : failed ? "error" : "done",
 				spinnerFrame: options.spinnerFrame,
 				title: TITLE,
-				description: s.target,
 				badge: s.overridden ? { label: "schema overridden", color: "warning" } : undefined,
 				meta: size ? [size] : undefined,
 			};

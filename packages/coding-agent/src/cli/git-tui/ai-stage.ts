@@ -17,7 +17,7 @@ import { isEnoent, logger } from "@oh-my-pi/pi-utils";
 import { parseFileDiffs, parseFileHunks } from "../../commit/git/diff";
 import { openStandaloneJudge } from "../../judgment/standalone";
 import questionFile from "../../prompts/judge/git-stage.json" with { type: "json" };
-import { mapWithConcurrencyLimitAllSettled } from "../../task/parallel";
+import { mapWithConcurrencyLimitAllSettled } from "../../utils/parallel";
 import type { ChangedFile } from "@oh-my-pi/pi-tui/apps/git/state";
 import type { AiStageOutcome } from "@oh-my-pi/pi-tui/apps/git/git-tui";
 

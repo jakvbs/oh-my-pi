@@ -704,26 +704,6 @@ export declare function __ompSetGrammarDir(dir: string): void
 export declare function __piNativesBuildVersion(): string | null
 
 /**
- * Reports whether the on-device model can generate, as an `availability`
- * event JSON: `{available, reason?, contextSize?, variant?, vision?,
- * toolCalling?}`.
- */
-export declare function appleFmAvailability(): Promise<string>
-
-/**
- * Cancels a generation; its stream then ends with a `cancelled` error event.
- * Unknown or finished handles are ignored.
- */
-export declare function appleFmCancel(handle: number): void
-
-/**
- * Starts one model turn for a JSON request and streams JSON events to
- * `on_event` until a terminal `done` or `error` event. Returns a handle for
- * [`apple_fm_cancel`].
- */
-export declare function appleFmGenerate(request: string, onEvent: (err: null | Error, event: string) => void): number
-
-/**
  * Applies an `HDiffPatch` single-stream patch to `oldPath`, writing `outPath`.
  *
  * Accepts HDIFFSF20 patches, zstd-compressed or uncompressed; `outPath` is

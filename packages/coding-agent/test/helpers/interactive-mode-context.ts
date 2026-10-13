@@ -20,7 +20,7 @@
  * Overrides are partial at every depth. Plain-object overrides merge onto the
  * default (getters preserved), so `session: { isStreaming: true }` keeps the
  * stub's other members; class instances replace the default wholesale.
- * `viewSession` aliases `session` unless overridden separately. Function
+ * Function
  * members keep their real signature, so a signature drift in `AgentSession`
  * or `InteractiveModeContext` fails `bun check` here instead of at runtime
  * across every fixture.
@@ -189,7 +189,7 @@ function resolveSettings(override: ContextOverrides["settings"]): Settings {
 	return isolated;
 }
 
-const RESOLVED_AHEAD: Record<string, true> = { session: true, viewSession: true, sessionManager: true, settings: true };
+const RESOLVED_AHEAD: Record<string, true> = { session: true, sessionManager: true, settings: true };
 
 /** Build a controller-ready context; see the module doc for override semantics. */
 export function createInteractiveModeContext(overrides: ContextOverrides = {}): InteractiveModeContext {
@@ -198,10 +198,6 @@ export function createInteractiveModeContext(overrides: ContextOverrides = {}): 
 	const sessionManager = resolveSessionManager(overrides.sessionManager);
 	const contextSettings = resolveSettings(overrides.settings);
 	const session = createSessionStub(sessionManager, contextSettings, overrides.session);
-	const viewSession =
-		overrides.viewSession === undefined
-			? undefined
-			: createSessionStub(sessionManager, contextSettings, overrides.viewSession);
 	const chatContainer = new TranscriptContainer();
 	const ui = {
 		requestRender: vi.fn(),
@@ -227,14 +223,9 @@ export function createInteractiveModeContext(overrides: ContextOverrides = {}): 
 			invalidate: vi.fn(),
 			markActivityStart: vi.fn(),
 			markActivityEnd: vi.fn(),
-			setSession: vi.fn(),
 		},
 		session,
-		get viewSession() {
-			return viewSession ?? this.session;
-		},
 		sessionManager,
-		focusedAgentId: undefined,
 		settings: contextSettings,
 		mcpManager: undefined,
 		oauthManualInput: new OAuthManualInputManager(),

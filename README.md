@@ -148,16 +148,6 @@ Your rules sit dormant until the model goes off-script. A regex match aborts the
 
 _[Watch the capture ↗](https://omp.sh/clips/ttsr.mp4)_
 
-### 3 · First-class subagents
-
-Split a job across workers and get typed results back. task fans out into isolated worktrees, each worker runs its own tool surface, and the final yield is a schema-validated object the parent reads directly. No prose to parse, no merge conflicts between siblings, no orphaned edits.
-
-![omp TUI showing `task` spawning two subagents `ComponentsExports` and `RoutesExports`, the constraints block requiring an IRC DM between peers, the per-subagent status cards with cost and duration, and a final Findings section listing both exports plus an honest 'IRC coordination note' about a one-sided handshake.](https://omp.sh/clips/irc-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/irc.mp4)_
-
-Watch the fan-out while it runs: `Alt+A` opens [Agent Hub](docs/agent-hub.md), where the roster shows current activity and usage for every subagent. Open one to read its live transcript, type a steering message, revive a parked worker, or kill a stuck one without aborting the parent session.
-
 ### 4 · A second model, watching every turn.
 
 Pair a reviewer model to the 'advisor' role and it reads every turn the main agent takes, injecting notes inline — a quiet aside, a concern, or a hard blocker. It runs on its own context and its own model, so it catches what the doer rushed past. The main agent sees the note and course-corrects, or tells you why it won't.
@@ -178,11 +168,9 @@ _[Watch the capture ↗](https://omp.sh/clips/web.mp4)_
 
 Other agents shell out to rg, grep, find, and bash. On many machines those binaries don't exist, and on the ones where they do, every call costs a fork-exec round-trip. omp links the real implementations into the process. ripgrep, glob, find: in-process. brush is the bash — with sessions that survive across calls, and 58 command-line utilities (ls, sed, sort, xargs, even jq) ported into the builtins crate and run in-process, zero fork/exec. The same omp binary runs on macOS, Linux, and Windows — no WSL bridge.
 
-### 7 · Code review with priorities and a verdict
+### 7 · Review a diff by pinning notes to lines
 
-Get a clear verdict on whether the change ships, with every issue ranked P0 through P3 and scored for confidence. /review spawns dedicated reviewer subagents that sweep branches, single commits, or uncommitted work in parallel. You tackle what blocks release first; nothing important hides in a wall of prose.
-
-Want to steer the review yourself? `/annotate code-review` opens the diff so you can pin notes to lines before the reviewers run. `/annotate` also takes the latest reply, a session message, a file, or quoted text and pastes your notes into the prompt. See [`/annotate`](docs/slash-command-internals.md#12-bundled-command-note-annotate).
+`/annotate code-review` opens the diff of a branch, single commit, or uncommitted work so you can pin notes to lines. `/annotate` also takes the latest reply, a session message, a file, or quoted text and pastes your notes into the prompt. See [`/annotate`](docs/slash-command-internals.md#12-bundled-command-note-annotate).
 
 ### 8 · Hashline: edit by content hash
 
@@ -200,9 +188,9 @@ Run omp inside Zed and you get the same agent you drive from the terminal — re
 
 omp reads the working tree through git_overview, git_file_diff, and git_hunk, then splits unrelated changes into atomic commits ordered by their dependencies. Cycles are rejected before anything is written. Source files score above tests, docs, and configs, so the headline commit is the one that matters. Lock files are excluded from analysis entirely.
 
-### 13 · Read PRs. _Walk skills._ Pull JSON out of subagents.
+### 13 · Read PRs. _Walk skills._
 
-Sixteen internal schemes — `pr://`, `issue://`, `agent://`, `skill://`, `ssh://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `grep` walks a diff like a directory. `agent://<id>/findings.0.path` pulls a field out of a subagent's output by path.
+Sixteen internal schemes — `pr://`, `issue://`, `skill://`, `ssh://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `grep` walks a diff like a directory.
 
 ### 14 · Conflict resolution, made easy.
 
@@ -234,8 +222,7 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 
 **Coordination**
 
-- `task` — fan out subagents in parallel, optionally workspace-isolated.
-- `wait` — block until the next background result, peer message, or steering interrupt; message peers and control jobs via `agent://` and `proc://`.
+- `wait` — block until the next background result, service exit, or steering interrupt; control jobs via `proc://`.
 - `todo` — ordered mutations over the session todo list with phase tracking.
 - `ask` — structured follow-up questions for interactive runs.
 
@@ -256,13 +243,11 @@ Setting-gated, off by default: `github`, `checkpoint`, and `rewind`.
 
 ### Prompt controls
 
-Three standalone, lowercase words opt a turn into specialized agent behavior:
+One standalone, lowercase word opts a turn into specialized agent behavior:
 
 - `ultrathink` — request careful multi-step reasoning and the highest supported automatic thinking effort.
-- `orchestrate` — run substantial independent work through parallel subagents and verify each phase.
-- `workflowz` — build a deterministic multi-subagent workflow with the active `task` tool.
 
-They trigger only in prose, not inside code spans, fenced code blocks, XML/HTML sections, identifiers, or paths. See [Magic keywords](docs/magic-keywords.md) for exact matching rules and configuration.
+It triggers only in prose, not inside code spans, fenced code blocks, XML/HTML sections, identifiers, or paths. See [Magic keywords](docs/magic-keywords.md) for exact matching rules and configuration.
 
 ### Session controls
 
@@ -272,7 +257,7 @@ Slash commands shift how a whole session runs:
 
 ## Sixty-plus providers, a thousand models, _one /model away_.
 
-Eight roles route work by intent. `default` for normal turns. `smol` for cheap subagent fan-out. `slow` for deep reasoning. `commit` for changelogs. Plus `vision`, `task`, `advisor`, and `tiny` for their namesakes. Override at launch with `--smol` or `--slow`; cycle through the configured models for the active role with `Ctrl+P`. Swap the active model mid-session with the `/model` slash command.
+Seven roles route work by intent. `default` for normal turns. `smol` for cheap, fast turns. `slow` for deep reasoning. `commit` for changelogs. Plus `vision`, `advisor`, and `tiny` for their namesakes. Override at launch with `--smol` or `--slow`; cycle through the configured models for the active role with `Ctrl+P`. Swap the active model mid-session with the `/model` slash command.
 
 Auth tags below: `oauth` signs in with your provider account, `plan` routes through a coding-plan subscription, `local` runs against a local server with the key optional.
 
@@ -280,13 +265,13 @@ Auth tags below: `oauth` signs in with your provider account, `plan` routes thro
 
 Direct APIs and gateways. Mix providers per role.
 
-Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Vertex · Google Antigravity `oauth` · xAI · SuperGrok `oauth` · DeepSeek · Mistral · Groq · Cerebras · Fireworks · Together · Baseten · DeepInfra · Hugging Face · NVIDIA · Meta · Amazon Bedrock · Azure OpenAI · SiliconFlow · GMI Cloud · CoreWeave · Sakana AI · Command Code · Charm Hyper · StepFun · Helmcode · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless
+Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Vertex · xAI · SuperGrok `oauth` · DeepSeek · Mistral · Groq · Cerebras · Fireworks · Together · Baseten · DeepInfra · Hugging Face · NVIDIA · Meta · Amazon Bedrock · Azure OpenAI · SiliconFlow · GMI Cloud · Sakana AI · Command Code · Charm Hyper · StepFun · Helmcode · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless
 
 ### Coding plans
 
 Subscription-routed. `/login` attaches the session.
 
-GitHub Copilot `oauth` · Kimi Code `plan` · Moonshot · MiniMax Coding Plan `plan` · MiniMax Coding Plan CN `plan` · Alibaba Coding Plan `plan` · Qwen Portal `oauth` · Z.AI / GLM Coding Plan `plan` · Zhipu Coding Plan `plan` · Xiaomi MiMo · Qianfan · Umans `plan` · NanoGPT · Novita · Venice · Kilo · ZenMux · OpenCode Go · OpenCode Zen
+GitHub Copilot `oauth` · Kimi Code `plan` · Moonshot · Z.AI / GLM Coding Plan `plan` · Qianfan · Umans `plan` · NanoGPT · Novita · Venice · ZenMux · OpenCode Go · OpenCode Zen
 
 ### Run it yourself
 
@@ -322,7 +307,7 @@ modelRoles:
 
 ### Four knobs that make routing useful
 
-- **Custom providers** — Declare anything that speaks `openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `bedrock-converse-stream`, `google-generative-ai`, `google-gemini-cli`, `google-vertex`, `typesafe`, `openrouter-decisions`, `openai-decisions`, or `workers-ai-systemone` (the judge APIs) in `~/.omp/agent/models.yml`.
+- **Custom providers** — Declare anything that speaks `openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `bedrock-converse-stream`, `google-generative-ai`, `google-vertex`, `typesafe`, `openrouter-decisions`, `openai-decisions`, or `workers-ai-systemone` (the judge APIs) in `~/.omp/agent/models.yml`.
 - **Fallback chains** — Per-role or per-model chains under `retry.fallbackChains`. When the primary throws 429s or hits a quota wall, the next entry takes the rest of the turn — restored on cooldown.
 - **Path-scoped models** — Scope `enabledModels` and `disabledProviders` entries to a `path:` prefix to pin a different model set on one repo without touching the global config. Scoped entries cover the path and everything under it.
 - **Round-robin credentials** — Stack API keys per provider and the runtime rotates with session affinity and per-credential backoff. Useful when one key would burn its quota by lunch.
@@ -503,7 +488,7 @@ Full reference: [omp.sh/docs/sdk](https://omp.sh/docs/sdk).
 
 Pick it up at **[omp.sh](https://omp.sh)**.
 
-omp is a fork of [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner), rewritten as a coding-first surface: sessions, subagents, slash commands, extensions — all TypeScript, all MIT, all on [GitHub](https://github.com/can1357/oh-my-pi). Shape it from config, hook it from outside, or read the source when you need to.
+omp is a fork of [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner), rewritten as a coding-first surface: sessions, slash commands, extensions — all TypeScript, all MIT, all on [GitHub](https://github.com/can1357/oh-my-pi). Shape it from config, hook it from outside, or read the source when you need to.
 
 ### Primitives
 
@@ -524,7 +509,7 @@ omp is a fork of [pi-mono](https://github.com/badlogic/pi-mono) by [Mario Zechne
 Key ideas:
 
 - Keep interactive terminal-first UX for real coding work
-- Include practical built-ins (tools, sessions, branching, subagents, extensibility)
+- Include practical built-ins (tools, sessions, branching, extensibility)
 - Make advanced behavior configurable rather than hidden
 
 ### Project inputs and trust
@@ -607,7 +592,7 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[pi-natives](crates/pi-natives)**                | Core Rust native addon (N-API `cdylib`) used by `@oh-my-pi/pi-natives`; aggregates the crates below |
 | **[pi-shell](crates/pi-shell)**                    | Embedded shell / PTY / process management split out of `pi-natives` (wraps `brush-*`)               |
 | **[pi-ast](crates/pi-ast)**                        | tree-sitter-based code summarizer and AST utilities (50+ language grammars)                         |
-| **[pi-iso](crates/pi-iso)**                        | Task isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |
+| **[pi-iso](crates/pi-iso)**                        | Worktree isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |
 | **[pi-walker](crates/pi-walker)**                  | Parallel ignore-aware filesystem walker with the scan cache shared by grep, glob, and workspace     |
 | **[pi-edit](crates/pi-edit)**                      | Edit engine behind the `edit` tool: line-anchored patch/hashline modes, streaming previews, atomic apply |
 | **[brush-core](crates/vendor/brush-core)**         | Vendored fork of [brush-shell](https://github.com/reubeno/brush) for embedded bash execution        |

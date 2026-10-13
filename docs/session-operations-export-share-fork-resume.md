@@ -48,15 +48,10 @@ Flow:
 3. `AgentSession.exportToHtml()` calls `exportSessionToHtml(sessionManager, state, { outputPath, palette, themeNames })`.
 4. The TUI shows the path and opens the file in a browser. Headless command execution prints the path without opening it.
 
-In the TUI, `/export` targets `viewSession`: a focused subagent exports its own
-transcript and descendants, not the main session. `/dump` and `/share` still
-target the main session.
-
 Behavior details:
 
 - `--copy`, `clipboard`, and `copy` arguments are explicitly rejected with a warning to use `/dump`.
 - Export embeds session header/entries/leaf plus current `systemPrompt` and tool descriptions from agent state. `previousSessionFiles` is omitted from exported headers.
-- Subagent transcripts stored next to the session file (`<session>/<AgentId>.jsonl`, recursively for nested spawns) are embedded as `subSessions` (`collectSubSessions` in `src/session/sub-sessions.ts`; disable with `includeSubSessions: false` in `ExportOptions`). Discovery skips advisor transcripts (`__advisor*.jsonl`), descends only into real child directories, and flags tombstoned (killed) agents as `aborted`. In the page, agent ids in task tool cards open a breadcrumbed sub-session overlay.
 - Tool calls render through the `<omp-tool-view>` web component — the React per-tool renderers shared with collab-web (`packages/collab-web/src/tool-render/`), prebuilt into `src/export/html/tool-views.generated.js` by `bun run gen:tool-views`.
 - No session entries are appended during export.
 - The default filename is `omp-session-<session-file-stem>.html` in the current directory. HTML export is not secret-redacted or encrypted; it can contain raw context, image data, and extension payloads.
@@ -78,7 +73,7 @@ Behavior details:
 
 - Missing input file surfaces as `File not found: <path>`; empty/malformed-header files fail without creating or replacing the input.
 - This path does not create an `AgentSession`, update terminal breadcrumbs, or mutate any running session.
-- Standalone export has no live agent state, so it does not add current system-prompt/tool descriptions. It embeds the loaded entries and subagent transcripts.
+- Standalone export has no live agent state, so it does not add current system-prompt/tool descriptions. It embeds the loaded entries.
 
 ### `/dump` (clipboard/headless text export)
 
@@ -113,9 +108,8 @@ No session persistence entries are appended by dumping.
 
 - `session.md` — the same main transcript `/dump` copies
 - `llm-request.json` — the same payload as the `/dump` sidecar (best-effort; omitted if conversion fails)
-- `subagents/<path>.md` — one file per persisted subagent found by `collectSubSessions` (e.g. `subagents/Scout.md`, `subagents/Scout/Helper.md`), headed `# Subagent: <path>` with the persisted model, thinking level, `Status: aborted` for killed agents, and the messages on the subagent's last-entry branch, deobfuscated like the main session
 
-Subagent system prompts and tool inventories are not persisted, so subagent files omit them. Subagents with no messages are skipped. If subagent discovery fails, the archive still holds the main dump and the report says why subagents are missing. The TUI copies the archive path to the clipboard and lists its members; headless/ACP returns the same report as command output. Like the sidecar, the archive persists and can contain raw context or secrets.
+The TUI copies the archive path to the clipboard and lists its members; headless/ACP returns the same report as command output. Like the sidecar, the archive persists and can contain raw context or secrets.
 
 ## Share
 
@@ -163,9 +157,8 @@ For headless execution, or in the TUI only when no custom share handler is found
 
 1. Builds the main-session snapshot (`header`, `entries`, `leafId`, plus current
    `systemPrompt` and tool descriptions from agent state), omitting header
-   `previousSessionFiles`. Unlike HTML export, this flow does not collect
-   subagent transcript files.
-2. If `share.redactSecrets` is enabled (default) and the obfuscator has configured or regex-discovered secrets, a typed per-field redaction pass rewrites text-bearing header, prompt, tool, entry, sub-session, and message fields. Inline image bytes remain for the later size pass. Opaque provider replay fields and untyped extension payloads (`details`, `data`, `outputSchema`, compaction preserve data) are dropped rather than traversed.
+   `previousSessionFiles`. 
+2. If `share.redactSecrets` is enabled (default) and the obfuscator has configured or regex-discovered secrets, a typed per-field redaction pass rewrites text-bearing header, prompt, tool, entry, and message fields. Inline image bytes remain for the later size pass. Opaque provider replay fields and untyped extension payloads (`details`, `data`, `outputSchema`, compaction preserve data) are dropped rather than traversed.
 3. The JSON is gzipped and sealed with a fresh AES-256-GCM key
    (`[12B IV][ciphertext+tag]`).
 4. Upload target is chosen by `share.store`:
@@ -210,7 +203,7 @@ The new session keeps the current model/settings and configured thinking
 selector, but clears conversation/queues, todo/checkpoint/tool state, inherited
 cache identity, advisor spend, and promoted memory context. Workspace roots are
 seeded from current settings, and project instructions are refreshed from disk.
-The TUI leaves a focused subagent view and clears its transcript.
+The TUI clears its transcript.
 
 `/delete` uses the same transition with `drop: true`. It requires a session-file
 path, attempts to delete the old JSONL and artifact tree instead of retaining
@@ -445,13 +438,35 @@ The same enterability policy applies to picker selections. A missing direct path
 fails with `Session "<path>" not found.`; an existing empty file or malformed
 non-empty headers fail closed without modifying the file.
 
+## CLI `--restore`
+
+`--restore [value]` selects and opens its session exactly as `--resume [value]`
+does, then, once the interactive TUI is up, goes on with what the session's last
+process left unfinished when it died (`AgentSession.restoreInterruptedTurn`). Tern's
+session daemon relaunches omp panes with it after a crash: omp reports
+`omp_restore=1` (OSC 1337 user variable) beside its session file to say it
+understands the flag.
+
+A turn cut off without a `session_exit` record (a crash, SIGKILL or power loss
+records none) is first closed the way exit recovery closes one whose exit was
+recorded: unfinished tool calls get "outcome unknown" results and an
+interrupted-turn abort ends it. That turn is then retried as `/retry` does: a
+batch whose every call was cut off runs again; otherwise the model answers from
+where the transcript stops.
+
+Nothing is continued when the last turn finished, failed, or the user interrupted
+it, or when a normal exit was recorded after it (the user quit with it
+interrupted). `--restore` is interactive only, takes no prompt, and cannot be
+combined with `--continue`, `--fork`, imports, `--goal` or `--no-session`.
+`/restart` drops it like the other one-shot selectors.
+
 ## CLI `--continue`
 
 `SessionManager.continueRecent(cwd, sessionDir)`:
 
 1. Resolves the session directory for the current cwd.
 2. Reads the terminal-scoped breadcrumb. A fresh breadcrumb whose lazy JSONL is still absent starts fresh rather than reopening an older conversation. Explicit `newSession()` boundaries already have a durable header.
-3. If it points into a nested artifact/subagent session, resolution walks up to the top-level interactive parent session (up to eight levels).
+3. If it points into a nested artifact session, resolution walks up to the top-level interactive parent session (up to eight levels).
 4. A matching-cwd breadcrumb is used when it lies within an explicitly supplied session directory, if any. Otherwise discovery chooses the newest session with resumable content, skipping untitled, prompt-less zero-turn stubs.
 5. For a different, missing recorded cwd, automatic re-rooting additionally requires the current directory's device/inode to match the breadcrumb's recorded directory identity and no genuine current-project session to take precedence. A deleted/unmounted path, legacy breadcrumb without identity, or cross-filesystem move is not enough evidence to relocate history.
 6. Opens the chosen session, or creates a new one when no candidate exists.

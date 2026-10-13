@@ -10,6 +10,8 @@ import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { GrepTool } from "@oh-my-pi/pi-coding-agent/tools/grep";
 import { ArtifactManager } from "@oh-my-pi/pi-coding-agent/session/artifacts";
 import { Shell } from "@oh-my-pi/pi-natives";
+import { getThemeByName } from "@oh-my-pi/pi-tui/theme";
+import { bashToolRenderer } from "@oh-my-pi/pi-tui/tools/bash";
 
 afterEach(() => {
 	mock.restore();
@@ -58,6 +60,41 @@ describe("BashTool execution results", () => {
 		} finally {
 			await manager.dispose({ timeoutMs: 1000 });
 			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it.each([
+		{ wallTimeMs: 0, noticeCount: 1 },
+		{ wallTimeMs: 1000, noticeCount: 2 },
+	])("preserves timing-like stdout in shell views at $wallTimeMs ms", async ({ wallTimeMs, noticeCount }) => {
+		let now = 0;
+		spyOn(performance, "now").mockImplementation(() => now);
+		const realRun = Shell.prototype.run;
+		spyOn(Shell.prototype, "run").mockImplementation(async function (this: Shell, options, onChunk) {
+			const result = await realRun.call(this, options, onChunk);
+			now = wallTimeMs;
+			return result;
+		});
+		const tool = new BashTool(makeSession());
+		const args = { command: `printf 'Wall time: %.2f seconds\\n' ${wallTimeMs / 1000}` };
+		const result = await tool.execute("call-timing-output", args);
+		const timingOutput = `Wall time: ${(wallTimeMs / 1000).toFixed(2)} seconds`;
+		const text = result.content.find(c => c.type === "text")?.text ?? "";
+		expect(result.details?.wallTimeMs).toBe(wallTimeMs);
+		expect(text.match(/Wall time: \d+\.\d{2} seconds/gu)).toHaveLength(noticeCount);
+		const theme = await getThemeByName("dark");
+		if (!theme) throw new Error("Expected dark theme");
+
+		for (const expanded of [false, true]) {
+			const options = { expanded, isPartial: false };
+			const component = bashToolRenderer.renderResult(result, options, theme, args);
+			const rendered = Bun.stripANSI(component.render(120).join("\n"));
+			expect(rendered.match(/Wall time: \d+\.\d{2} seconds/gu)).toEqual([timingOutput]);
+			const view = bashToolRenderer.describeResult(result, options, args);
+			const output = (view.body ?? [])
+				.flatMap(node => ("k" in node ? (node.c ?? []) : []))
+				.find(node => "k" in node && node.k === "ansi");
+			expect(output).toMatchObject({ p: { role: "omp.tool.bash.output", text: timingOutput } });
 		}
 	});
 

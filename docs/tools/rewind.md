@@ -14,7 +14,7 @@
 ## Registration / Visibility
 - Tool metadata: `approval = "read"`, `strict = true`, `loadMode = "discoverable"`. Execution is single-shot; rewind side effects are deferred rather than streamed as progress updates.
 - Registration requires `checkpoint.enabled = true` (default `false`).
-- Top-level sessions receive the tool when enabled. Subagents do not discover it by default, but may receive it through an explicit `tools:`/requested-tools list.
+- Sessions receive the tool when `checkpoint.enabled` is set.
 - `checkpoint` and `rewind` are a safety pair: explicitly requesting either while the feature is enabled automatically includes the other.
 - In an ordinary `tools.xdev` session, discoverable built-ins may be presented as `xd://rewind`; an explicitly requested tool remains top-level.
 
@@ -37,7 +37,7 @@ The tool returns a single text result plus structured details:
 The returned tool result is not the final rewind. `AgentSession` waits until `turn_end`, then applies the rewind side effects asynchronously.
 
 ## Flow
-1. Tool registration in `packages/coding-agent/src/tools/index.ts` enforces `checkpoint.enabled` and the top-level/explicit-subagent visibility rules. `RewindTool.createIf()` itself always constructs the tool.
+1. Tool registration in `packages/coding-agent/src/tools/index.ts` enforces `checkpoint.enabled`. `RewindTool.createIf()` itself always constructs the tool.
 2. Without an active checkpoint, `execute()` distinguishes two states:
    - a retained completed rewind exists: `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")`
    - no completed rewind exists: `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`
@@ -75,7 +75,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 
 ## Limits & Caps
 - Availability is gated by `checkpoint.enabled`, default `false`.
-- Subagents require an explicit requested-tools entry; requesting either checkpoint tool auto-includes its sister.
+- Requesting either checkpoint tool in an explicit tool list auto-includes its sister.
 - A session has at most one active checkpoint; there is no path to name or choose among multiple checkpoints.
 - Report text must be non-empty after `trim()`.
 - Rewind restores only active conversation/session-tree context; there is no file, artifact, blob, process, or git restore path.

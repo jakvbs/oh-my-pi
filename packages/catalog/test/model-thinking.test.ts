@@ -107,12 +107,6 @@ describe("model thinking derivation", () => {
 				effortMap: { minimal: "low", xhigh: "high" },
 			},
 		});
-		const nativeXiaomi = createModel({
-			id: "mimo-v2.5-pro",
-			api: "openai-completions",
-			provider: "xiaomi",
-			baseUrl: "https://api.xiaomimimo.com/v1",
-		});
 
 		const expectedThinking = {
 			mode: "effort" as const,
@@ -131,8 +125,6 @@ describe("model thinking derivation", () => {
 		expect(() => requireSupportedEffort(mimo, Effort.XHigh)).toThrow(/Supported efforts: low, medium, high/);
 		expect(clampThinkingLevelForModel(mimo, Effort.Minimal)).toBe(Effort.Low);
 		expect(clampThinkingLevelForModel(mimo, Effort.XHigh)).toBe(Effort.High);
-
-		expect(nativeXiaomi.thinking?.efforts).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
 	});
 
 	it("preserves stale explicit MiniMax M2 / GPT-OSS effort metadata from caches", () => {
@@ -480,24 +472,6 @@ describe("model thinking derivation", () => {
 		]);
 		expect(zenOther.thinking?.requiresEffort).toBeUndefined();
 
-		// Other hosts proxying an ox-alpha SKU expose their own vocabularies and
-		// must not inherit the gateway ladder.
-		const kiloOxAlpha = createModel({
-			id: "stealth/ox-alpha",
-			api: "openai-completions",
-			provider: "kilo",
-			baseUrl: "https://api.kilo.ai/api/gateway",
-			thinking: staleThinking,
-		});
-		expect(getSupportedEfforts(kiloOxAlpha)).toEqual([
-			Effort.Minimal,
-			Effort.Low,
-			Effort.Medium,
-			Effort.High,
-			Effort.XHigh,
-		]);
-		expect(kiloOxAlpha.thinking?.requiresEffort).toBeUndefined();
-
 		// The name match needs a trailing boundary too: "Ox Alphabet" merely
 		// shares the prefix and must keep its shipped ladder.
 		const oxAlphabet = createModel({
@@ -538,8 +512,8 @@ describe("model thinking derivation", () => {
 	it("maps minimal to LOW when a collapsed family aliases it onto the low wire id", () => {
 		const model = createModel({
 			id: "gemini-3.7-flash",
-			api: "google-gemini-cli",
-			provider: "google-antigravity",
+			api: "google-generative-ai",
+			provider: "google",
 			thinking: {
 				mode: "google-level",
 				efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
@@ -1260,24 +1234,6 @@ describe("model thinking runtime helpers", () => {
 			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
 		});
 		expect(() => requireSupportedEffort(model, Effort.XHigh)).not.toThrow();
-	});
-
-	it("exposes the Z.AI GLM-5.2 high/max wire pair directly", () => {
-		const model = createModel({
-			id: "glm-5.2",
-			api: "openai-completions",
-			provider: "zhipu-coding-plan",
-			baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
-			compat: { thinkingFormat: "zai" },
-		});
-
-		expect(model.thinking).toEqual({
-			mode: "effort",
-			efforts: [Effort.High, Effort.Max],
-		});
-		expect(() => requireSupportedEffort(model, Effort.XHigh)).toThrow(/Supported efforts: high, max/);
-		// Selecting a retired tier clamps down instead of erroring in UI flows.
-		expect(clampThinkingLevelForModel(model, Effort.XHigh)).toBe(Effort.High);
 	});
 
 	it("exposes Ollama Cloud GLM-5.2 high/max and hides unsupported lower efforts", () => {

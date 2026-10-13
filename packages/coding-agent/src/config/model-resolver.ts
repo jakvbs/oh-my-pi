@@ -27,7 +27,6 @@ import type { ModelRoleLookup } from "@oh-my-pi/pi-tui/overlays/model-browser";
 import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@oh-my-pi/pi-ai";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { resolveBareVariantSelector, resolveVariantSelector } from "@oh-my-pi/pi-catalog/compat/collapse";
-import { providerEntry } from "@oh-my-pi/pi-catalog/compat/providers";
 import { collapseVariantId, stripThinkingVariantSuffix } from "@oh-my-pi/pi-catalog/compat/taxonomy";
 import { modelMatchesHost } from "@oh-my-pi/pi-catalog/hosts";
 import { buildModelProviderPriorityRank } from "@oh-my-pi/pi-catalog/identity";
@@ -46,7 +45,7 @@ import {
 	parseConfiguredThinkingLevel,
 	resolveThinkingLevelForModel,
 } from "@oh-my-pi/pi-tui/thinking";
-import { isAuthenticated, kNoAuth, type ModelRegistry } from "./model-registry";
+import type { ModelRegistry } from "./model-registry";
 import {
 	DEFAULT_MODEL_ROLE_ALIAS,
 	formatModelRoleAlias,
@@ -82,27 +81,24 @@ function isKnownProvider(provider: string): provider is KnownProvider {
  * If multiple providers expose that same default id, rank only that shared-id
  * group by canonical provider priority so native/OAuth transports beat mirrors
  * without changing unrelated provider fallback precedence.
- * Providers with `automatic-default #false` remain available to explicit model
- * selectors but cannot become the startup fallback.
  */
 export function pickDefaultAvailableModel(
 	availableModels: Model<Api>[],
 	hasConcreteCredential?: (provider: string) => boolean,
 ): Model<Api> | undefined {
-	const autoSelectable = availableModels.filter(model => providerEntry(model.provider)?.automaticDefault !== false);
 	const models =
 		hasConcreteCredential === undefined
-			? autoSelectable
+			? availableModels
 			: (() => {
 					const concreteAuthByProvider = new Map<string, boolean>();
-					const concrete = autoSelectable.filter(model => {
+					const concrete = availableModels.filter(model => {
 						const cached = concreteAuthByProvider.get(model.provider);
 						if (cached !== undefined) return cached;
 						const hasConcreteAuth = hasConcreteCredential(model.provider);
 						concreteAuthByProvider.set(model.provider, hasConcreteAuth);
 						return hasConcreteAuth;
 					});
-					return concrete.length > 0 ? concrete : autoSelectable;
+					return concrete.length > 0 ? concrete : availableModels;
 				})();
 	const accountDefaultProviders = new Set(
 		models.filter(model => model.isProviderDefault).map(model => model.provider),
@@ -1066,39 +1062,6 @@ export function normalizeModelPatternList(value: string | string[] | undefined):
 	return patterns.map(pattern => pattern.trim()).filter(Boolean);
 }
 
-/**
- * Extract the first explicit model-role alias from a raw model selection.
- *
- * This intentionally runs before role expansion so callers can retain the
- * source identity (`@smol`, `pi/slow`, or `*`) even when it resolves to a
- * concrete provider/model or inherited fallback. Bare role names and explicit
- * provider/model selectors are not role aliases.
- */
-export function resolveExplicitModelRole(
-	value: string | string[] | undefined,
-	settings?: ModelRoleLookup,
-): string | undefined {
-	for (const pattern of normalizeModelPatternList(value)) {
-		const prefixLength = modelRoleAliasPrefixLength(pattern);
-		if (prefixLength === undefined) continue;
-		const { base } = splitThinkingSuffix(pattern, prefixLength, MAX_THINKING_SUFFIX_OPTIONS);
-		const role = getModelRoleAlias(base, settings);
-		if (role) return role;
-	}
-	return undefined;
-}
-
-function isSessionInheritedAgentPattern(value: string): boolean {
-	return (
-		value === DEFAULT_MODEL_ROLE ||
-		value === formatModelRoleAlias(DEFAULT_MODEL_ROLE) ||
-		value === DEFAULT_MODEL_ROLE_ALIAS ||
-		value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}${DEFAULT_MODEL_ROLE}` ||
-		value === formatModelRoleAlias("task") ||
-		value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`
-	);
-}
-
 function shouldInheritDefaultBeforePriority(role: ModelRole): boolean {
 	return role === "smol" || role === "slow";
 }
@@ -1255,140 +1218,8 @@ export function resolveConfiguredModelPatterns(
 		return resolved ?? [];
 	});
 }
-export interface AgentModelPatternResolutionOptions {
-	/** Highest-priority request selector, when supplied by a caller. */
-	requestModel?: string | string[];
-	settingsOverride?: string | string[];
-	agentModel?: string | string[];
-	settings?: Settings;
-	activeModelPattern?: string;
-	fallbackModelPattern?: string;
-}
-
-interface EffectiveAgentModelSelection {
-	source?: string | string[];
-	patterns: string[];
-}
-
-function resolveEffectiveAgentModelSelection(
-	options: AgentModelPatternResolutionOptions,
-): EffectiveAgentModelSelection {
-	const { requestModel, settingsOverride, agentModel, settings, activeModelPattern, fallbackModelPattern } = options;
-
-	const requestPatterns = resolveConfiguredModelPatterns(requestModel, settings);
-	if (requestPatterns.length > 0) {
-		return { source: requestModel, patterns: requestPatterns };
-	}
-
-	const overridePatterns = resolveConfiguredModelPatterns(settingsOverride, settings);
-	if (overridePatterns.length > 0) {
-		return { source: settingsOverride, patterns: overridePatterns };
-	}
-
-	const normalizedAgentPatterns = normalizeModelPatternList(agentModel);
-	const configuredAgentPatterns = resolveConfiguredModelPatterns(agentModel, settings);
-	const singleAgentPattern = normalizedAgentPatterns.length === 1 ? normalizedAgentPatterns[0] : undefined;
-	const agentInheritsSessionModel = singleAgentPattern ? isSessionInheritedAgentPattern(singleAgentPattern) : false;
-	if (configuredAgentPatterns.length > 0) {
-		if (
-			singleAgentPattern === formatModelRoleAlias("task") ||
-			singleAgentPattern === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`
-		) {
-			return { source: agentModel, patterns: configuredAgentPatterns };
-		}
-		if (!agentInheritsSessionModel) return { source: agentModel, patterns: configuredAgentPatterns };
-	}
-
-	const fallback =
-		activeModelPattern?.trim() || fallbackModelPattern?.trim() || settings?.getModelRole("default")?.trim() || "";
-	return { patterns: resolveConfiguredModelPatterns(fallback, settings) };
-}
-
-/** Effective agent model patterns paired with the pre-expansion role alias behind them. */
-export interface AgentModelSelection {
-	/** Expanded model patterns to spawn with. */
-	patterns: string[];
-	/** Role alias the patterns came from (`@task` -> `task`), when the source named one. */
-	role: string | undefined;
-}
-
-/**
- * Resolve an agent's model patterns together with the role identity they were
- * expanded from. Spawn paths MUST take both from this single call: the child's
- * inherited retry-fallback chain is keyed off the role, which the expansion
- * discards, and deriving the two halves separately is how they drift apart.
- */
-export function resolveAgentModelSelection(options: AgentModelPatternResolutionOptions): AgentModelSelection {
-	const { source, patterns } = resolveEffectiveAgentModelSelection(options);
-	return { patterns, role: resolveExplicitModelRole(source, options.settings) };
-}
-
-/** Effective agent model patterns alone, for callers with no interest in role identity. */
-export function resolveAgentModelPatterns(options: AgentModelPatternResolutionOptions): string[] {
-	return resolveEffectiveAgentModelSelection(options).patterns;
-}
-
 /** Default prewalk hand-off target when no explicit target is configured. */
 export const DEFAULT_PREWALK_TARGET = "@smol";
-
-export interface AgentPrewalkResolutionOptions {
-	/** `task.agentPrewalk` settings value for this agent: `"on"`, `"off"`, or a model pattern. */
-	settingsOverride?: string;
-}
-
-/**
- * Effective prewalk target pattern for a subagent, or `undefined` when prewalk
- * is disabled: "on" selects {@link DEFAULT_PREWALK_TARGET}, any other non-off
- * value is a custom target pattern. Role aliases in the returned pattern are
- * expanded later by {@link resolveModelOverride}.
- */
-export function resolveAgentPrewalkPattern(options: AgentPrewalkResolutionOptions): string | undefined {
-	const override = options.settingsOverride?.trim();
-	if (!override) return undefined;
-	const lowered = override.toLowerCase();
-	if (lowered === "off" || lowered === "false") return undefined;
-	if (lowered === "on" || lowered === "true") return DEFAULT_PREWALK_TARGET;
-	return override;
-}
-
-export interface AgentAdvisorResolutionOptions {
-	/** `task.agentAdvisor` settings value for this agent: `"on"`, `"off"`, or a model pattern. */
-	settingsOverride?: string;
-}
-
-/** Effective advisor for one spawned agent: absent `model` resolves through the `advisor` role. */
-export interface AgentAdvisorSelection {
-	model?: string;
-}
-
-/**
- * Effective advisor selection for a subagent, or `undefined` when the agent
- * runs unadvised: "on" uses the `advisor` role, any other non-off value is a
- * custom model pattern. Callers expand a returned pattern against the owner's
- * roles (`resolveAgentAdvisorRolePattern`) before it lands on the spawned
- * session's `modelRoles.advisor`, so `@advisor` cannot point at itself.
- */
-export function resolveAgentAdvisorSelection(
-	options: AgentAdvisorResolutionOptions,
-): AgentAdvisorSelection | undefined {
-	const override = options.settingsOverride?.trim();
-	if (!override) return undefined;
-	const lowered = override.toLowerCase();
-	if (lowered === "off" || lowered === "false") return undefined;
-	if (lowered === "on" || lowered === "true") return {};
-	return { model: override };
-}
-
-/**
- * Expand an agent advisor pattern against the owner's role lookup before it is
- * stamped onto a spawned session's `modelRoles.advisor`. Without this, a
- * self-referential `@advisor` lands as the child's own advisor role, trips the
- * cycle guard, and silently degrades to the built-in `slow` priority list.
- */
-export function resolveAgentAdvisorRolePattern(pattern: string, settings?: ModelRoleLookup): string {
-	const expanded = resolveConfiguredModelPatterns(pattern, settings);
-	return expanded.length > 0 ? expanded.join(",") : pattern;
-}
 
 /**
  * Resolve a model role value into a concrete model and thinking metadata.
@@ -1665,79 +1496,6 @@ export function sessionModelDiscoveryProviders(
 		if (provider && !disabledProviders.has(provider)) providers.add(provider);
 	}
 	return providers;
-}
-
-/**
- * Resolve a list of override patterns to the first matching model, with an
- * auth-aware fallback to the parent session's active model.
- *
- * Providers disabled through settings are removed before matching so ordered
- * overrides skip them and an all-disabled list resolves to no model.
- *
- * If the resolved subagent model has no working credentials (provider has no
- * usable auth), and the parent's active model resolves with working auth,
- * use the parent's model instead. This prevents subagent dispatch from
- * silently routing to a provider the user can't actually call (e.g.
- * `modelRoles.task` pointing at an unqualified id whose only available
- * provider variant has no configured credentials — see #985).
- *
- * `sessionId` is forwarded to `getApiKey` so that session-sticky OAuth
- * credentials resolve correctly during the pre-flight auth check. Without it,
- * providers with multiple OAuth accounts may return `undefined` even though
- * the credential is usable once the subagent session starts — see #5325.
- *
- * Keyless-by-design providers (llama.cpp, ollama, lm-studio) advertise the
- * `kNoAuth` sentinel from `getApiKey` to signal that they do not require
- * credentials. Those are treated as authenticated here so an explicitly
- * configured local model is never silently rerouted to the parent's remote
- * provider (see #1008).
- *
- * If neither the subagent nor the parent has working auth, returns the
- * primary resolution unchanged so the existing error path still surfaces
- * a meaningful failure downstream.
- */
-export async function resolveModelOverrideWithAuthFallback(
-	modelPatterns: string[],
-	parentActiveModelPattern: string | undefined,
-	modelRegistry: ModelLookupRegistry & Pick<ModelRegistry, "getApiKey">,
-	settings?: Settings,
-	sessionId?: string,
-): Promise<{
-	model?: Model<Api>;
-	thinkingLevel?: ConfiguredThinkingLevel;
-	explicitThinkingLevel: boolean;
-	authFallbackUsed: boolean;
-	warning?: string;
-}> {
-	const disabledProviders = disabledProviderIds(settings);
-	let lookupRegistry: ModelLookupRegistry = modelRegistry;
-	if (disabledProviders.size > 0) {
-		const enabledModels = modelRegistry.getAvailable().filter(model => !disabledProviders.has(model.provider));
-		lookupRegistry = { getAvailable: () => enabledModels };
-	}
-	const primary = resolveModelOverride(modelPatterns, lookupRegistry, settings);
-	if (!primary.model || !parentActiveModelPattern) {
-		return { ...primary, authFallbackUsed: false };
-	}
-
-	const primaryKey = await modelRegistry.getApiKey(primary.model, sessionId);
-	if (primaryKey === kNoAuth || isAuthenticated(primaryKey)) {
-		return { ...primary, authFallbackUsed: false };
-	}
-
-	const fallback = resolveModelOverride([parentActiveModelPattern], lookupRegistry, settings);
-	if (!fallback.model) {
-		return { ...primary, authFallbackUsed: false };
-	}
-	if (modelsAreEqual(fallback.model, primary.model)) {
-		return { ...primary, authFallbackUsed: false };
-	}
-	const fallbackKey = await modelRegistry.getApiKey(fallback.model, sessionId);
-	if (!isAuthenticated(fallbackKey)) {
-		return { ...primary, authFallbackUsed: false };
-	}
-
-	return { ...fallback, authFallbackUsed: true, warning: primary.warning ?? fallback.warning };
 }
 
 /**

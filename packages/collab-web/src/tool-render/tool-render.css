@@ -223,27 +223,6 @@
 	color: var(--tv-ok);
 }
 
-.tv-agent-link {
-	border: 0;
-	font: inherit;
-	font-size: 10px;
-	cursor: pointer;
-}
-
-.tv-agent-link:hover {
-	background: color-mix(in oklch, var(--tv-accent) 26%, transparent);
-	text-decoration: underline;
-}
-
-.tv-agent-link:focus-visible {
-	outline: 2px solid var(--tv-ring);
-	outline-offset: 1px;
-}
-
-.tv-agent-link-arrow {
-	opacity: 0.7;
-}
-
 .tv-warn-text {
 	color: var(--tv-warn);
 }

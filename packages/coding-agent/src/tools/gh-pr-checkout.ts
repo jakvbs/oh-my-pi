@@ -6,7 +6,6 @@ import type { IsoBackendKind, VcsGitRepo, VcsWorktreeEntry } from "@oh-my-pi/pi-
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { getWorktreeDir, hashPath, isEnoent, logger } from "@oh-my-pi/pi-utils";
 import { github } from "../utils/github";
-import { formatIsolationBackend, parseIsolationBackend } from "../task/worktree";
 import { withRepoLock } from "../utils/repo-lock";
 import type { ToolSession } from ".";
 import type { GhPrCheckoutSummary, GhToolDetails } from "@oh-my-pi/pi-tui/tools/github";
@@ -32,7 +31,12 @@ import { invalidateAllForNumber } from "./github-cache";
 import { throwIfAborted } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 
-import { cfgIsolationBackend, cfgWorktreeClone } from "../task/settings";
+import {
+	cfgIsolationBackend,
+	cfgWorktreeClone,
+	formatIsolationBackend,
+	parseIsolationBackend,
+} from "../session/worktree-settings";
 
 export const GH_REPO_CLONE_FIELDS = ["nameWithOwner", "sshUrl", "url"];
 export const GH_PR_CHECKOUT_FIELDS = [

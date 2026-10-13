@@ -7,7 +7,6 @@
  *
  * Keep this file in sync with the actual request/response surface of:
  *   - `POST {generativelanguage,aiplatform}.googleapis.com/.../models/{model}:streamGenerateContent?alt=sse`
- *   - The Cloud Code Assist endpoint used by `google-gemini-cli.ts`
  */
 /** Mirror of `@google/genai`'s `FinishReason` string enum. */
 export type FinishReason =

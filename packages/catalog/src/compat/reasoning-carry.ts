@@ -10,7 +10,7 @@
  * earlier reasoning is derived by the request encoders in `@oh-my-pi/pi-ai`,
  * not declared here.
  *
- * Resolved through the cascade on demand (like delegation bias) because
+ * Resolved through the cascade on demand because
  * bundled rows are frozen by the generator; results are memoized per
  * deployment.
  */

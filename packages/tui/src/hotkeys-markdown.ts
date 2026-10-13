@@ -134,21 +134,11 @@ function hotkeyGroups(bindings: HotkeysMarkdownBindings): HotkeyGroup[] {
 				{ keys: [act("app.tools.expand")], action: "Toggle tool output expansion" },
 				{ keys: [act("app.tools.toggleVisibility")], action: "Toggle tool activity visibility" },
 				{ keys: [act("app.ask.hide")], action: "Hide/show a pending ask question" },
+				{ keys: [act("app.approval.approve")], action: "Approve a pending tool call" },
 				{ keys: [act("app.thinking.toggle")], action: "Toggle thinking block visibility" },
 				{ keys: [act("app.editor.external")], action: "Edit message in external editor" },
 				{ keys: [act("app.retry")], action: "Retry last failed assistant turn" },
 				{ keys: [act("app.clipboard.pasteImage")], action: "Paste image or text from clipboard" },
-				{
-					keys: [
-						act("app.agents.hub"),
-						{ text: " / " },
-						act("app.session.observe"),
-						{ text: " / double-tap " },
-						hints(["left"]),
-						{ text: " (empty editor)" },
-					],
-					action: "Open the agent hub",
-				},
 				{ keys: [{ token: "#<number>" }], action: "GitHub issue/PR reference (e.g. `#3164` → `pr://`/`issue://`)" },
 				{
 					keys: [{ token: "#" }, { text: " / " }, { token: "#<text>" }],

@@ -2,7 +2,6 @@
  * JSON tree rendering utilities shared across tool renderers.
  */
 import { INTENT_FIELD, type TspSpan, type TspTreeNode } from "@oh-my-pi/pi-wire";
-import { sanitizeText } from "@oh-my-pi/pi-utils";
 import { TreeView, treeRowPrefix } from "../components/tree-view";
 import { truncateToWidth } from "../render/render-utils";
 import type { Theme, ThemeColor } from "../theme/theme";
@@ -135,24 +134,6 @@ export function formatArgsInline(
 		width = current + pieceW;
 	}
 	return result;
-}
-
-const OUTPUT_INLINE_OPTIONS: InlineFormatOptions = {
-	sanitizeText,
-	multilineSummary: true,
-	characterBudget: true,
-};
-
-/** Summarize a task's structured output without expanding its JSON tree. */
-export function formatOutputInline(data: unknown, maxWidth = 80): string {
-	const options = OUTPUT_INLINE_OPTIONS;
-	if (data === null || data === undefined) return "Output: none";
-	if (typeof data !== "object") return `Output: ${formatScalar(data, 60, options)}`;
-	if (Array.isArray(data)) {
-		if (data.length === 0) return "Output: []";
-		return `Output: [${data.length} items] ${formatScalar(data[0], 40, options)}${data.length > 1 ? "…" : ""}`;
-	}
-	return `Output: ${formatArgsInline(data as Record<string, unknown>, maxWidth - "Output: ".length, options) || "{}"}`;
 }
 
 /** JSON hierarchy policy accepted by {@link renderJsonTreeLines}. */

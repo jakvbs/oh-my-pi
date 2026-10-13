@@ -51,8 +51,6 @@ import type {
 	BeforeAgentStartEventResult,
 	BeforeProviderRequestEvent,
 	BeforeProviderRequestEventResult,
-	BeforeSubagentSpawnEvent,
-	BeforeSubagentSpawnEventResult,
 	CompactOptions,
 	ContextEvent,
 	ContextEventResult,
@@ -195,6 +193,7 @@ function createHandlerUIContext(
 	timeoutBudget?: HandlerTimeoutBudget,
 ): ExtensionUIContext {
 	const askDialog = ui.askDialog;
+	const approve = ui.approve;
 	const runDialog = async <T>(dialog: () => Promise<T>): Promise<T> => {
 		timeoutBudget?.pause();
 		try {
@@ -213,6 +212,10 @@ function createHandlerUIContext(
 		askDialog: askDialog
 			? (questions, dialogOptions) =>
 					runDialog(() => askDialog.call(ui, questions, attachHandlerSignal(dialogOptions, handlerSignal)))
+			: undefined,
+		approve: approve
+			? (prompt, dialogOptions) =>
+					runDialog(() => approve.call(ui, prompt, attachHandlerSignal(dialogOptions, handlerSignal)))
 			: undefined,
 		custom: async (factory, options) => {
 			let customSettled = false;
@@ -239,7 +242,7 @@ function createHandlerUIContext(
 		},
 		editor: (title, prefill, dialogOptions, editorOptions) =>
 			runDialog(() => ui.editor(title, prefill, attachHandlerSignal(dialogOptions, handlerSignal), editorOptions)),
-	} satisfies Pick<ExtensionUIContext, "select" | "confirm" | "input" | "askDialog" | "custom" | "editor">;
+	} satisfies Pick<ExtensionUIContext, "select" | "confirm" | "input" | "askDialog" | "approve" | "custom" | "editor">;
 	const delegatedMethods = new Map<PropertyKey, unknown>();
 
 	return new Proxy(ui, {
@@ -522,6 +525,7 @@ export class ExtensionRunner {
 	#switchSessionHandler: SwitchSessionHandler = async () => ({ cancelled: false });
 	#reloadHandler: () => Promise<void> = async () => {};
 	#shutdownHandler: ShutdownHandler = () => {};
+
 	#createAnnotations?: ExtensionAnnotationsFactory;
 	#commandDiagnostics: Array<{ type: string; message: string; path: string }> = [];
 	#toolRegistrationScope = new AsyncLocalStorage<ToolRegistrationScope>();
@@ -2159,41 +2163,5 @@ export class ExtensionRunner {
 		}
 
 		return undefined;
-	}
-
-	/**
-	 * Runs `before_subagent_spawn` handlers; a `block` short-circuits, the last defined `model` wins.
-	 * `signal` (the spawn's abort signal) cancels an awaiting handler instead of parking until the timeout.
-	 */
-	async emitBeforeSubagentSpawn(
-		event: BeforeSubagentSpawnEvent,
-		signal?: AbortSignal,
-	): Promise<BeforeSubagentSpawnEventResult | undefined> {
-		if (!this.hasHandlers("before_subagent_spawn")) return undefined;
-		const ctx = this.createContext();
-		let chosen: Pick<BeforeSubagentSpawnEventResult, "model" | "note"> | undefined;
-
-		for (const ext of this.extensions) {
-			const handlers = ext.handlers.get("before_subagent_spawn");
-			if (!handlers || handlers.length === 0) continue;
-
-			for (const handler of handlers) {
-				const handlerResult = await this.#runHandlerWithTimeout(
-					handler,
-					event,
-					ctx,
-					ext,
-					extensionHandlerTimeoutMs,
-					undefined,
-					signal,
-				);
-				if (!handlerResult) continue;
-				const result = handlerResult as BeforeSubagentSpawnEventResult;
-				if (result.block) return result;
-				if (result.model !== undefined) chosen = { model: result.model, note: result.note };
-			}
-		}
-
-		return chosen;
 	}
 }

@@ -4,12 +4,12 @@ import * as path from "node:path";
 import { type RawSettings, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import { cfgRetryFallbackChains } from "@oh-my-pi/pi-coding-agent/session/settings";
-import { cfgTaskDisabledAgents } from "@oh-my-pi/pi-coding-agent/task/settings";
+import { cfgDisabledProviders } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import { acquireFileLock, TempDir } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
-// Editing one fallback chain or one agent must persist only that entry: every entry another layer
+// Editing one fallback chain or one list item must persist only that entry: every entry another layer
 // (a `--config` overlay) supplies stays out of config.yml.
 describe("Settings entry-level writes", () => {
 	let state: SettingsTestState | undefined;
@@ -138,13 +138,13 @@ describe("Settings entry-level writes", () => {
 		expect(await readConfig()).toEqual({ retry: { fallbackChains: { slow: ["user/slow"] } } });
 	});
 
-	it("changes the persisted agent list by the toggled item only while an overlay supplies the list", async () => {
-		const settings = await load({ task: { disabledAgents: ["reviewer"] } }, { task: { disabledAgents: ["scout"] } });
+	it("changes the persisted list by the toggled item only while an overlay supplies the list", async () => {
+		const settings = await load({ disabledProviders: ["reviewer"] }, { disabledProviders: ["scout"] });
 
-		cfgTaskDisabledAgents.setMember(settings, "dev", { member: true });
-		cfgTaskDisabledAgents.setMember(settings, "reviewer", { member: false });
+		cfgDisabledProviders.setMember(settings, "dev", { member: true });
+		cfgDisabledProviders.setMember(settings, "reviewer", { member: false });
 		await settings.flush();
 
-		expect(await readConfig()).toEqual({ task: { disabledAgents: ["dev"] } });
+		expect(await readConfig()).toEqual({ disabledProviders: ["dev"] });
 	});
 });

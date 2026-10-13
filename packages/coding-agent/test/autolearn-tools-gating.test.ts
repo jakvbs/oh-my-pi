@@ -41,28 +41,6 @@ describe("autolearn tool gating", () => {
 		const names = (await createTools(makeSession({ "autolearn.enabled": true }), ["read"])).map(t => t.name);
 		expect(names).toContain("manage_skill");
 	});
-
-	it("excludes manage_skill from a subagent when not in the explicit list", async () => {
-		// The controller never runs here, so a subagent's explicit
-		// whitelist must not be silently widened with write-capable tools.
-		const sub = (await createTools(makeSession({ "autolearn.enabled": true }, { isSubagent: true }), ["read"])).map(
-			t => t.name,
-		);
-		expect(sub).not.toContain("manage_skill");
-
-		// Nor via discovery (no explicit list) at depth.
-		const subDiscovered = (await createTools(makeSession({ "autolearn.enabled": true }, { isSubagent: true }))).map(
-			t => t.name,
-		);
-		expect(subDiscovered).not.toContain("manage_skill");
-	});
-
-	it("allows manage_skill in a subagent when explicitly requested in toolNames", async () => {
-		const sub = (
-			await createTools(makeSession({ "autolearn.enabled": true }, { isSubagent: true }), ["manage_skill"])
-		).map(t => t.name);
-		expect(sub).toContain("manage_skill");
-	});
 });
 
 describe("manage_skill execute", () => {

@@ -55,16 +55,16 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 
 | Flag | Default detection | Wire effect |
 | --- | --- | --- |
-| `supportsReasoningEffort` | Chat baseline: `false` for Grok, MiMo/Xiaomi, and pre-5.2 Z.AI/Zhipu GLM. Responses baseline: `false` on xAI; rules enable the supported first-party Grok SKUs | Gates wire effort emission (`reasoning_effort` / `reasoning.effort`) |
+| `supportsReasoningEffort` | Chat baseline: `false` for Grok and pre-5.2 Z.AI/Zhipu GLM. Responses baseline: `false` on xAI; rules enable the supported first-party Grok SKUs | Gates wire effort emission (`reasoning_effort` / `reasoning.effort`) |
 | `omitReasoningEffort` | `true` when `supportsReasoningEffort` is `false` | Suppresses `reasoning_effort` even when thinking is on (the thinking toggle field still goes out) |
 | `reasoningEffortMap` | Baseline `{}`; KDL adds Kimi K3, MiMo, GLM, and first-party xAI maps | Remaps `Effort` values before the model's `thinking.effortMap` (e.g. Grok `minimal` → `low`; xhigh-capable SKUs preserve `xhigh`) |
-| `thinkingFormat` | Chat baseline: `"zai"` (native Kimi K2.x/Z.AI/Zhipu/MiMo), `"qwen"` (DashScope/Qwen), `"qwen-chat-template"` (NVIDIA Qwen), `"openrouter"`, or `"openai"`; rules also select `"kimi"` / `"chat-template"` | Encodes `thinking: { type: "enabled" }` (zai), `thinking: { type: "enabled", effort }` (kimi), `enable_thinking: true` (qwen), `chat_template_kwargs.enable_thinking: true` (qwen-chat-template), `chat_template_kwargs: { thinking: true, reasoning_effort }` (chat-template), `reasoning: { effort }` (openrouter), or `reasoning_effort` (openai) |
-| `reasoningDisableMode` | Derived from `thinkingFormat`, with endpoint/rule overrides | Explicit off encoding: Venice `disable_thinking`, Z.AI/Kimi disabled `thinking`, Qwen `enable_thinking: false` (top-level or template kwargs), `chat-template-thinking-false` → `chat_template_kwargs.thinking: false`, OpenRouter/Cline `reasoning.enabled: false`, `none-effort`, `lowest-effort`, or `omit` (`encodeChatCompletionsDisabledReasoning`) |
+| `thinkingFormat` | Chat baseline: `"zai"` (native Kimi K2.x/Z.AI/Zhipu), `"qwen"` (DashScope/Qwen), `"qwen-chat-template"` (NVIDIA Qwen), `"openrouter"`, or `"openai"`; rules also select `"kimi"` / `"chat-template"` | Encodes `thinking: { type: "enabled" }` (zai), `thinking: { type: "enabled", effort }` (kimi), `enable_thinking: true` (qwen), `chat_template_kwargs.enable_thinking: true` (qwen-chat-template), `chat_template_kwargs: { thinking: true, reasoning_effort }` (chat-template), `reasoning: { effort }` (openrouter), or `reasoning_effort` (openai) |
+| `reasoningDisableMode` | Derived from `thinkingFormat`, with endpoint/rule overrides | Explicit off encoding: Venice `disable_thinking`, Z.AI/Kimi disabled `thinking`, Qwen `enable_thinking: false` (top-level or template kwargs), `chat-template-thinking-false` → `chat_template_kwargs.thinking: false`, OpenRouter `reasoning.enabled: false`, `none-effort`, `lowest-effort`, or `omit` (`encodeChatCompletionsDisabledReasoning`) |
 | `supportsReasoningParams` | Chat: `false` for GitHub Copilot. Responses: always `true` | When `false`, suppresses **all** reasoning params |
 | `reasoningContentField` | `"reasoning_content"` default; alternatives `"reasoning"`, `"reasoning_text"` | Key used when replaying assistant thinking on history messages |
-| `requiresReasoningContentForToolCalls` | Chat: Kimi (except OpenCode aliases), DeepSeek reasoning, MiMo, OpenRouter reasoning requests. Responses: Kimi/DeepSeek/OpenRouter, only when reasoning-capable | Assistant tool-call turns in history must carry reasoning content (real or synthetic) |
-| `requiresReasoningContentForAllAssistantTurns` | Direct DeepSeek reasoning, MiMo | Extends the above to every assistant turn |
-| `allowsSyntheticReasoningContentForToolCalls` | Chat: `false` for DeepSeek reasoning family and MiMo. Responses: `false` for DeepSeek reasoning | When `true`, a `"."` placeholder may substitute for stripped reasoning; when `false`, only real content is replayed |
+| `requiresReasoningContentForToolCalls` | Chat: Kimi (except OpenCode aliases), DeepSeek reasoning, OpenRouter reasoning requests. Responses: Kimi/DeepSeek/OpenRouter, only when reasoning-capable | Assistant tool-call turns in history must carry reasoning content (real or synthetic) |
+| `requiresReasoningContentForAllAssistantTurns` | Direct DeepSeek reasoning | Extends the above to every assistant turn |
+| `allowsSyntheticReasoningContentForToolCalls` | Chat: `false` for DeepSeek reasoning family. Responses: `false` for DeepSeek reasoning | When `true`, a `"."` placeholder may substitute for stripped reasoning; when `false`, only real content is replayed |
 | `replayReasoningContent` | Chat: `true` for local backends (llama.cpp, LM Studio, vLLM, Ollama, loopback/private baseUrls). Responses: always `false` (reasoning replays via encrypted items instead) | Replays preserved thinking as `reasoning_content` on every assistant turn so local chat templates can rebuild `<think>` blocks and keep prefix KV-cache hits |
 | `qwenPreserveThinking` | Chat: Qwen thinking formats on local backends with `replayReasoningContent`. Responses: always `false` (template knob is chat-completions-only) | Emits `preserve_thinking: true` (top-level and/or in `chat_template_kwargs`) so Qwen 3.6+ templates render `<think>` for older turns too — a history knob, not a per-turn switch (`applyChatCompletionsCompatPolicy`) |
 | `qwenTemplateReasoningEffort` | Qwen 3.8+ on reviewed local backends; selected YOLO rows | Emits template `reasoning_effort` kwargs, plus the top-level field for the `"qwen"` dialect; enables effort selection rather than only a binary toggle |
@@ -77,7 +77,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | Flag | Default detection | Wire effect |
 | --- | --- | --- |
 | `supportsToolChoice` | Chat: `false` for direct DeepSeek reasoning. Responses: always `true` | When `false`, `tool_choice` is omitted entirely |
-| `supportsForcedToolChoice` | Chat: `false` for selected thinking-required models, OpenCode DeepSeek, and Cline Qwen. Responses: `false` for OpenCode Go/Zen | When `false`, `required`/named choices downgrade to `auto` |
+| `supportsForcedToolChoice` | Chat: `false` for selected thinking-required models, and OpenCode DeepSeek. Responses: `false` for OpenCode Go/Zen | When `false`, `required`/named choices downgrade to `auto` |
 | `supportsNamedToolChoice` | `false` for string-only hosts (llama.cpp, LM Studio) | When `false`, a named choice becomes: filter `tools` to that one function + `tool_choice: "required"` |
 | `disableReasoningOnForcedToolChoice` | Chat: Kimi (except native K3) or Anthropic model ids. Responses: all Kimi | Drops reasoning fields when tool choice is forced |
 | `disableReasoningOnToolChoice` | DeepSeek reasoning (except via OpenRouter) | Drops reasoning fields when **any** `tool_choice` is present |
@@ -101,7 +101,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | `sessionHeader` | `"x-litellm-session-id"` on the `litellm` provider and `discovery.type: "litellm"` aliases | Emits that HTTP header with the explicit conversation `sessionId`, independent of prompt caching; a configured header wins |
 | `supportsPromptCacheBreakpoints` / `promptCacheBreakpointTtl` | Official OpenAI GPT-5.6+ | Gates explicit prompt-cache breakpoints; `ConfigurationError` if requested unsupported. TTL default `"30m"` |
 | `isOpenRouterHost` | OpenRouter endpoint detection | Omits default max-token cap (optional fields are routing hints on OpenRouter) and attaches routing |
-| `wireModelIdMode` | `"raw"` baseline; gateway/discovery rules select `"cline-pass"`, `"firepass"`, `"fireworks"`, or `"openrouter"` | Model-id rewriting for gateway dispatch |
+| `wireModelIdMode` | `"raw"` baseline; gateway/discovery rules select `"firepass"`, `"fireworks"`, or `"openrouter"` | Model-id rewriting for gateway dispatch |
 
 #### Stream parsing / watchdogs
 
@@ -112,7 +112,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | `streamMarkupHealingPattern` | `"kimi"` (K2-family or Kimi/Moonshot provider), `"dsml"` (any DeepSeek-class model, on any host including local backends and custom providers), `"thinking"` otherwise; unset on official OpenAI | Selects the leaked-markup healer; `"qwen"` is also an explicit supported pattern |
 | `emptyLengthFinishIsContextError` | Ollama | Empty completion with `finish_reason: "length"` → context-overflow error |
 | `streamFirstEventTimeoutMs` | `0` for local backends | First-event watchdog hint (`0` = unbounded prefill/model-load time) |
-| `streamIdleTimeoutMs` | GLM/Alibaba coding plans 600 s; selected MiMo/Kimi/DeepSeek and local backends 300 s; some deployments use `0` | Fallback idle budget; request options and timeout env vars take precedence |
+| `streamIdleTimeoutMs` | GLM coding plans 600 s; selected Kimi/DeepSeek and local backends 300 s; some deployments use `0` | Fallback idle budget; request options and timeout env vars take precedence |
 | `streamRevision` | Kimi `"possible"`; otherwise unset unless declared | Declares whether already-streamed content may be revised; consumers can avoid committing it prematurely |
 | `thinkingLoopGuard` | Gemini/DeepSeek/xAI class rules | Selects the shared reasoning-loop guard family |
 
@@ -125,7 +125,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | `supportsUsageInStreaming` | `false` for Cerebras | Adds `stream_options: { include_usage: true }` |
 | `maxTokensField` | `"max_tokens"` for Mistral, native Moonshot, Z.AI, Zhipu, Chutes, Fireworks, direct DeepSeek; else `"max_completion_tokens"` | Output-token field name (`resolveOpenAIOutputTokenParam`) |
 | `thinkingKeep` | `"all"` for native Moonshot Kimi K2.6 | Adds `thinking.keep: "all"` |
-| `cacheControlFormat` | `"anthropic"` for OpenRouter Anthropic and Cline Qwen/Anthropic | Adds Anthropic `cache_control: { type: "ephemeral" }` markers; also exists on the Responses view for OpenRouter Anthropic |
+| `cacheControlFormat` | `"anthropic"` for OpenRouter Anthropic | Adds Anthropic `cache_control: { type: "ephemeral" }` markers; also exists on the Responses view for OpenRouter Anthropic |
 | `toolStrictMode` | `"all_strict"` for Cerebras; `"mixed"` default | `all_strict` uses strict only if every tool can be adapted, otherwise collapses to `none`; `none` omits strict fields; `mixed` honors per-tool strictness |
 | `vercelGatewayRouting` / `isVercelGatewayHost` | Vercel AI Gateway hosts (also present on the Responses view) | Routing under `providerOptions.gateway` |
 | `dropThinkingWhenReasoningEffort` | Fireworks | Deletes the `thinking` block when `reasoning_effort` is present (Fireworks rejects both together) |
@@ -321,7 +321,7 @@ type ToolChoice =
 | OpenAI Completions | `tool_choice` | strings + nested function object | String-only named pins → filter tools + `"required"`; native K3 reasoning pins → `"required"` with the full offered list; unsupported forced choices → `"auto"`; absent pins and `"none"` without tools are dropped |
 | OpenAI Responses | `tool_choice` | strings + flat function/custom/computer objects | String-only named pins and unsupported forced choices downgrade per compat; choice validated against tools **surviving schema quarantine** — a pin on a dropped tool is deleted; `{ type: "computer" }` without native support becomes a function pin (also `azure-openai-responses.ts`) |
 | Anthropic | `tool_choice` | `{ type: "auto" \| "none" \| "any" \| "tool", name? }` | Names via `encodeAnthropicToolName`; `!supportsForcedToolChoice` or mandatory prefix-bound thinking → `auto` |
-| Google Gemini/Vertex | `toolConfig.functionCallingConfig` | `mode: AUTO \| NONE \| ANY` (+ `allowedFunctionNames` for pins) | Antigravity/Gemini CLI uses `mode: VALIDATED` default (`google-gemini-cli.ts`) |
+| Google Gemini/Vertex | `toolConfig.functionCallingConfig` | `mode: AUTO \| NONE \| ANY` (+ `allowedFunctionNames` for pins) | — |
 | Bedrock | `toolConfig.toolChoice` | `{ auto: {} } \| { any: {} } \| { tool: { name } }` | `planToolConfig`; `"none"` + tool history + no tools → `NO_TOOLS_SENTINEL` with `{ auto: {} }` |
 | Ollama | `tool_choice` | only `"none"` / `"required"` | Pins emulated by `selectToolsForToolChoice`: filter tools to the target, send `"required"` |
 

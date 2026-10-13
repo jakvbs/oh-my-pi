@@ -14,7 +14,7 @@
 ## Registration / Visibility
 - Tool metadata: `approval = "read"`, `strict = true`, `loadMode = "discoverable"`. Execution is single-shot; the tool does not stream progress updates.
 - Registration requires `checkpoint.enabled = true` (default `false`).
-- Top-level sessions receive the tool when enabled. Subagents do not discover it by default, but may receive it through an explicit `tools:`/requested-tools list.
+- Sessions receive the tool when `checkpoint.enabled` is set.
 - `checkpoint` and `rewind` are a safety pair: when either name is explicitly requested while the feature is enabled, registration automatically includes the other.
 - In an ordinary `tools.xdev` session, discoverable built-ins may be presented as `xd://checkpoint`; an explicitly requested tool remains top-level.
 
@@ -37,7 +37,7 @@ The tool returns a single text result plus structured details:
 No checkpoint ID, artifact URI, job handle, file path, or restore token is returned.
 
 ## Flow
-1. Tool registration in `packages/coding-agent/src/tools/index.ts` enforces `checkpoint.enabled` and the top-level/explicit-subagent visibility rules. `CheckpointTool.createIf()` itself always constructs the tool.
+1. Tool registration in `packages/coding-agent/src/tools/index.ts` enforces `checkpoint.enabled`. `CheckpointTool.createIf()` itself always constructs the tool.
 2. `CheckpointTool.execute()` rejects nested checkpoints with `ToolError("Checkpoint already active.")` when `session.getCheckpointState?.()` is already set.
 3. It creates `startedAt = new Date().toISOString()` and returns a normal `toolResult()` payload. The tool method itself does not mutate checkpoint state.
 4. On successful checkpoint `message_end`, `AgentSession` synchronously captures:
@@ -65,8 +65,8 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
 
 ## Limits & Caps
 - Availability is gated by `checkpoint.enabled`, default `false`.
-- Only one active checkpoint is allowed per session or subagent.
-- Subagents require an explicit requested-tools entry; requesting either checkpoint tool auto-includes its sister.
+- Only one active checkpoint is allowed per session.
+- Requesting either checkpoint tool in an explicit tool list auto-includes its sister.
 - Checkpoint state is not persisted as a dedicated entry. It is reconstructed from the successful checkpoint tool-result entry on the active branch, including after process resume.
 - Session persistence applies to the ordinary checkpoint tool-call/result messages. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `packages/coding-agent/src/session/session-persistence.ts`.
 

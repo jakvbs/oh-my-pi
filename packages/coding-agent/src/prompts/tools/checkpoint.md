@@ -5,7 +5,6 @@ Use for investigations with many intermediate tool calls (`read`/`grep`/`glob`/`
 Rules:
 - MUST `rewind` before yielding after starting a checkpoint.
 - NEVER `checkpoint` while another checkpoint active.
-- Subagents: disabled by default. Enable: agent-definition `tools:` frontmatter lists `checkpoint` or `rewind`; sister tool auto-included; requires `checkpoint.enabled` setting.
 
 Typical flow:
 1. `checkpoint(goal: …)`

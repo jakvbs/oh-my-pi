@@ -33,7 +33,7 @@
       // The entire app lives in bootSession(); its body keeps the original
       // one-level indentation to avoid a whole-file reindent.
       function bootSession(data) {
-      const { header, entries, leafId: defaultLeafId, systemPrompt, tools, subSessions } = data;
+      const { header, entries, leafId: defaultLeafId, systemPrompt, tools } = data;
 
       // Session render context: scopes entry lookups and tool-view host
       // wiring to one transcript (main session or an embedded subagent).
@@ -933,206 +933,9 @@
           name: call.name,
           args: call.arguments || {},
           result: result || undefined,
-          host: {
-            hasAgent: (id) => !!lookupSubSession(sctx.prefix, id),
-            openAgent: (id) => openSubSession(joinKey(sctx.prefix, id)),
-          },
         });
         return '<omp-tool-view class="tool-execution ' + statusClass + '" id="' + blockId + '" data-key="' + key + '" open></omp-tool-view>';
       }
-
-      // ============================================================
-      // SUB-SESSION OVERLAY
-      // ============================================================
-      //
-      // Task tool cards expose agent chips (wired through the payload `host`
-      // above); clicking one opens that subagent's transcript in a stacked
-      // overlay. Keys are slash-joined agent ids relative to the main
-      // session: top-level agent 'ToolAsk', its child 'ToolAsk/Helper'.
-
-      function joinKey(prefix, id) {
-        return prefix ? prefix + '/' + id : id;
-      }
-
-      function lookupSubSession(prefix, id) {
-        return subSessions ? subSessions[joinKey(prefix, id)] : undefined;
-      }
-
-      // Render context per sub-session (entries scoped to that transcript).
-      const subSctxCache = new Map();
-      function getSubSctx(key) {
-        let sctx = subSctxCache.get(key);
-        if (!sctx) {
-          sctx = {
-            entries: subSessions[key].entries,
-            prefix: key,
-            idPrefix: 'sub-' + key.replace(/[^A-Za-z0-9_-]/g, '_') + '-entry-',
-          };
-          subSctxCache.set(key, sctx);
-        }
-        return sctx;
-      }
-
-      /**
-       * Root-to-leaf path through an arbitrary entry list (subagent
-       * transcripts are linear chains; same parent-walk as getPath).
-       */
-      function getPathIn(entryList, targetId) {
-        const map = new Map();
-        for (const e of entryList) map.set(e.id, e);
-        let current = targetId ? map.get(targetId) : undefined;
-        if (!current && entryList.length > 0) current = entryList[entryList.length - 1];
-        const path = [];
-        while (current) {
-          path.unshift(current);
-          if (!current.parentId || current.parentId === current.id) break;
-          current = map.get(current.parentId);
-        }
-        return path;
-      }
-
-      const overlayStack = [];               // slash-joined keys, root-first chain
-      const subSessionBodyCache = new Map(); // key -> rendered body element
-      let subOverlayEl = null;
-      let subOverlayLastFocus = null;
-
-      function ensureSubOverlay() {
-        if (subOverlayEl) return subOverlayEl;
-        subOverlayEl = document.createElement('div');
-        subOverlayEl.id = 'subsession-overlay';
-        subOverlayEl.innerHTML = `
-          <div class="subsession-backdrop"></div>
-          <div class="subsession-panel" role="dialog" aria-modal="true" aria-label="Subagent session" tabindex="-1">
-            <div class="subsession-header">
-              <nav class="subsession-breadcrumb" aria-label="Subagent breadcrumb"></nav>
-              <button type="button" class="subsession-close" title="Close (Esc)" aria-label="Close subagent view">&times;</button>
-            </div>
-            <div class="subsession-meta"></div>
-            <div class="subsession-body"></div>
-          </div>`;
-        subOverlayEl.querySelector('.subsession-backdrop').addEventListener('click', popSubSession);
-        subOverlayEl.querySelector('.subsession-close').addEventListener('click', closeAllSubSessions);
-        document.body.appendChild(subOverlayEl);
-        return subOverlayEl;
-      }
-
-      function buildSubSessionBody(key) {
-        let body = subSessionBodyCache.get(key);
-        if (body) return body;
-        const sub = subSessions[key];
-        const sctx = getSubSctx(key);
-        body = document.createElement('div');
-        body.className = 'subsession-messages';
-        for (const entry of getPathIn(sub.entries, sub.leafId)) {
-          const node = renderEntryToNode(entry, sctx);
-          if (node) body.appendChild(node);
-        }
-        if (!body.firstChild) {
-          const empty = document.createElement('div');
-          empty.className = 'subsession-empty';
-          empty.textContent = '(no renderable entries)';
-          body.appendChild(empty);
-        }
-        subSessionBodyCache.set(key, body);
-        return body;
-      }
-
-      function subSessionMetaText(key) {
-        const sub = subSessions[key];
-        const stats = computeStats(sub.entries);
-        const parts = [];
-        if (stats.models.length > 0) parts.push(stats.models.join(', '));
-        parts.push(sub.entries.length + (sub.entries.length === 1 ? ' entry' : ' entries'));
-        return parts.join(' · ');
-      }
-
-      function renderSubOverlay() {
-        const key = overlayStack[overlayStack.length - 1];
-        const el = ensureSubOverlay();
-
-        const crumbs = el.querySelector('.subsession-breadcrumb');
-        crumbs.innerHTML = '';
-        const segments = key.split('/');
-        for (let i = 0; i < segments.length; i++) {
-          if (i > 0) {
-            const sep = document.createElement('span');
-            sep.className = 'subsession-crumb-sep';
-            sep.textContent = '›';
-            crumbs.appendChild(sep);
-          }
-          if (i === segments.length - 1) {
-            const span = document.createElement('span');
-            span.className = 'subsession-crumb current';
-            span.textContent = segments[i];
-            crumbs.appendChild(span);
-          } else {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'subsession-crumb';
-            btn.textContent = segments[i];
-            const ancestorKey = segments.slice(0, i + 1).join('/');
-            btn.addEventListener('click', () => popSubSessionTo(ancestorKey));
-            crumbs.appendChild(btn);
-          }
-        }
-
-        el.querySelector('.subsession-meta').textContent = subSessionMetaText(key);
-
-        const bodyHost = el.querySelector('.subsession-body');
-        bodyHost.innerHTML = '';
-        bodyHost.appendChild(buildSubSessionBody(key));
-        bodyHost.scrollTop = 0;
-
-        el.classList.add('open');
-        el.querySelector('.subsession-panel').focus();
-      }
-
-      function openSubSession(key) {
-        if (!subSessions || !subSessions[key]) return;
-        if (overlayStack.length === 0) {
-          subOverlayLastFocus = document.activeElement;
-        }
-        overlayStack.push(key);
-        renderSubOverlay();
-      }
-
-      function popSubSession() {
-        if (overlayStack.length === 0) return;
-        overlayStack.pop();
-        if (overlayStack.length === 0) {
-          hideSubOverlay();
-        } else {
-          renderSubOverlay();
-        }
-      }
-
-      function popSubSessionTo(key) {
-        // Rebuild the chain root..key (the stack is always a prefix chain).
-        const segments = key.split('/');
-        overlayStack.length = 0;
-        for (let i = 1; i <= segments.length; i++) {
-          overlayStack.push(segments.slice(0, i).join('/'));
-        }
-        renderSubOverlay();
-      }
-
-      function closeAllSubSessions() {
-        if (overlayStack.length === 0) return;
-        overlayStack.length = 0;
-        hideSubOverlay();
-      }
-
-      function hideSubOverlay() {
-        if (subOverlayEl) {
-          subOverlayEl.classList.remove('open');
-          subOverlayEl.querySelector('.subsession-body').innerHTML = '';
-        }
-        if (subOverlayLastFocus && typeof subOverlayLastFocus.focus === 'function') {
-          subOverlayLastFocus.focus();
-        }
-        subOverlayLastFocus = null;
-      }
-
 
       /**
        * Build a shareable URL for a specific message.
@@ -1775,11 +1578,6 @@
       // Keyboard shortcuts
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-          if (overlayStack.length > 0) {
-            e.preventDefault();
-            popSubSession();
-            return;
-          }
           searchInput.value = '';
           searchQuery = '';
           navigateTo(leafId, 'bottom');

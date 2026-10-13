@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Agent, AgentMessage, AgentTool, AgentToolContext } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
-import { resolveDelegationBias } from "@oh-my-pi/pi-catalog/compat/delegation";
 import { isRecord, prompt, stringProperty, structuredCloneJSON, untilAborted } from "@oh-my-pi/pi-utils";
 import { reset as resetCapabilities } from "../capability";
 import type { EffectiveExtensionRoots } from "../capability/types";
@@ -18,8 +17,6 @@ import { type LocalProtocolOptions } from "../internal-urls";
 import { stripXdUrlPrefix, XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
 import { deduplicateMCPToolsByName, resolveMCPToolAlias } from "../mcp/tool-bridge";
 import { invalidateToolSchemaMetadata } from "@oh-my-pi/pi-tui/status-line/context-usage";
-import type { AgentDefinition } from "../task/types";
-import sessionAgentNoticePrompt from "../prompts/system/session-agent-notice.md" with { type: "text" };
 import toolRosterNoticePrompt from "../prompts/system/tool-roster-notice.md" with { type: "text" };
 import xdevMountNoticePrompt from "../prompts/system/xdev-mount-notice.md" with { type: "text" };
 import { isMCPToolName, normalizeToolNames } from "../tools/builtin-names";
@@ -69,8 +66,6 @@ export interface SessionToolsHost {
 	emitNotice(level: "info" | "warning" | "error", message: string, source?: string): void;
 	notifyCommandMetadataChanged(): void;
 	localProtocolOptions(): LocalProtocolOptions;
-	/** Live user-tagged model agents; candidates for the next base rebuild's advertised snapshot. */
-	sessionAgents(): readonly AgentDefinition[];
 }
 
 /** Registry delta applied by the SDK's settings-gated tool reconcile. */
@@ -198,7 +193,6 @@ export function projectMountedMCPXdevGuidance(routes: Iterable<MountedMCPToolRou
 
 const TOOL_ROSTER_NOTICE_MESSAGE_TYPE = "tool-roster-notice";
 const XDEV_MOUNT_NOTICE_MESSAGE_TYPE = "xdev-mount-notice";
-const SESSION_AGENT_NOTICE_MESSAGE_TYPE = "session-agent-notice";
 
 /** Custom entry holding the digest of the base prompt the branch's primary model calls are built from. */
 const SYSTEM_PROMPT_DIGEST_CUSTOM_TYPE = "system-prompt-digest";
@@ -233,12 +227,6 @@ interface XdevMountNoticeDetails {
 	removed: string[];
 }
 
-/** Agent pseudonyms added/removed by one hidden {@link SESSION_AGENT_NOTICE_MESSAGE_TYPE} message. */
-interface SessionAgentNoticeDetails {
-	added: string[];
-	removed: string[];
-}
-
 /**
  * Prompt-affecting state frozen at each base rebuild. Tools render their
  * provider-visible text from this snapshot instead of live settings, so
@@ -248,8 +236,6 @@ interface SessionAgentNoticeDetails {
 interface PromptSurface {
 	/** Skill-URI hints in `bash`/`read` (mid-session `/skillful` toggles). */
 	skillHintVisible: boolean;
-	/** User-tagged model agents listed in the task description. */
-	sessionAgents: readonly AgentDefinition[];
 }
 
 interface PendingNoticePreview<T> {
@@ -446,8 +432,8 @@ export class SessionTools {
 		this.#promptSurface = this.#derivePromptSurface();
 		// Seed from the construction slate (top-level tools plus xd:// mounts).
 		// Left empty, getEnabledToolNames() falls back to live agent.state.tools,
-		// so an early reconcile (think/Code Mode after the startup model
-		// resolution) landing while the live set is transiently narrow
+		// so an early reconcile (think after the startup model resolution)
+		// landing while the live set is transiently narrow
 		// commits that narrow set as the sticky slate — the session keeps almost
 		// no tools and the prompt rebuild without `read` empties the skill list.
 		for (const tool of host.agent.state.tools) this.#enabledToolNames.add(tool.name);
@@ -532,19 +518,10 @@ export class SessionTools {
 		return (this.#promptSurfaceScope.getStore() ?? this.#promptSurface).skillHintVisible;
 	}
 
-	/**
-	 * User-tagged model agents the task description advertises (see
-	 * {@link #promptSurface}); the candidate inside a rebuild frame.
-	 */
-	get advertisedSessionAgents(): readonly AgentDefinition[] {
-		return (this.#promptSurfaceScope.getStore() ?? this.#promptSurface).sessionAgents;
-	}
-
 	/** Derives the candidate surface from live state without publishing it. */
 	#derivePromptSurface(): PromptSurface {
 		return {
 			skillHintVisible: cfgSkillful.get(this.#host.settings) === true && (this.#skills?.length ?? 0) > 0,
-			sessionAgents: this.#host.sessionAgents(),
 		};
 	}
 	/** Drops cached per-session ACP `allow_always`/`reject_always` decisions. */
@@ -570,7 +547,7 @@ export class SessionTools {
 	getActiveToolNames(): string[] {
 		return this.#host.agent.state.tools.map(t => t.name);
 	}
-	/** Enabled top-level, `xd://`, and Code Mode bridge tool names. */
+	/** Enabled top-level and `xd://` tool names. */
 	getEnabledToolNames(): string[] {
 		// Union live xd:// mounts so devices mounted out-of-band (plugins writing
 		// to xdev state directly) survive the next apply.
@@ -750,7 +727,7 @@ export class SessionTools {
 			cfgInlineToolDescriptors.get(this.#host.settings),
 			activeModel.id,
 		);
-		return `delegation-bias:${resolveDelegationBias(activeModel)}|inline-descriptors:${inlineDescriptors}`;
+		return `inline-descriptors:${inlineDescriptors}`;
 	}
 
 	/** Rebuilds model-dependent tool prompts after a model change. */
@@ -1038,13 +1015,7 @@ export class SessionTools {
 					this.#promptSurfaceScope.run(surface, () =>
 						this.#computeAppliedToolSignature(promptToolNames, promptTools, mountedSignatureTools),
 					);
-				// Model-mention changes alone never trigger a rebuild: they ride their
-				// hidden notice. The trigger keeps the committed set; a rebuild caused
-				// by anything else absorbs the live one.
-				const triggerSignature = computeSignature({
-					...candidate,
-					sessionAgents: this.#promptSurface.sessionAgents,
-				});
+				const triggerSignature = computeSignature(candidate);
 				const freezeImplicitPromptRefresh =
 					!forcePromptRefresh &&
 					triggerSignature !== this.#lastAppliedToolSignature &&
@@ -1090,11 +1061,8 @@ export class SessionTools {
 		try {
 			this.#notifyXdevMountDelta(previousMounted);
 			const currentTools = this.#host.agent.state.tools;
-			if (
-				currentTools.length !== appliedTools.length ||
-				currentTools.some((tool, index) => tool !== appliedTools[index])
-			) {
-				this.#host.agent.setTools(appliedTools);
+			if (currentTools.length !== tools.length || currentTools.some((tool, index) => tool !== tools[index])) {
+				this.#host.agent.setTools(tools);
 			}
 			// The first primary model call can capture the prompt while the rebuild
 			// awaits; that prompt is bound from then on, so an implicit rebuild ends
@@ -1131,7 +1099,7 @@ export class SessionTools {
 				// re-derive from live settings, which could diverge mid-flight.
 				this.#promptSurface = candidateSurface ?? this.#promptSurface;
 			} else if (frozenSignature) {
-				this.#notifyToolRosterDelta(previousActiveToolNames, appliedNames);
+				this.#notifyToolRosterDelta(previousActiveToolNames, validToolNames);
 				this.#lastAppliedToolSignature = frozenSignature;
 			}
 			if (restoreDormantDeviceOnlyWrite) {
@@ -1440,43 +1408,6 @@ export class SessionTools {
 		};
 	}
 
-	/**
-	 * Builds the hidden notice reconciling the user-tagged model agents the task
-	 * description advertises with the live set. Delivered with the next user
-	 * prompt instead of rewriting the task description, so tagging a model
-	 * mid-session keeps the provider cache prefix intact.
-	 *
-	 * Known agents are the committed base snapshot, then every agent notice still
-	 * in context, applied in order.
-	 */
-	takeSessionAgentNotice(): CustomMessage<SessionAgentNoticeDetails> | undefined {
-		const known = new Set(this.#promptSurface.sessionAgents.map(agent => agent.name));
-		for (const message of this.#host.agent.state.messages) {
-			if (message.role !== "custom" || message.customType !== SESSION_AGENT_NOTICE_MESSAGE_TYPE) continue;
-			const details = message.details;
-			if (!isRecord(details) || !Array.isArray(details.added) || !Array.isArray(details.removed)) continue;
-			for (const name of details.added) if (typeof name === "string") known.add(name);
-			for (const name of details.removed) if (typeof name === "string") known.delete(name);
-		}
-		const live = this.#host.sessionAgents();
-		const liveNames = new Set(live.map(agent => agent.name));
-		const added = live.filter(agent => !known.has(agent.name));
-		const removed = [...known].filter(name => !liveNames.has(name));
-		if (added.length === 0 && removed.length === 0) return undefined;
-		return {
-			role: "custom",
-			customType: SESSION_AGENT_NOTICE_MESSAGE_TYPE,
-			content: prompt.render(sessionAgentNoticePrompt, {
-				added: added.map(agent => ({ name: agent.name, description: agent.description })),
-				removed,
-			}),
-			details: { added: added.map(agent => agent.name), removed },
-			attribution: "agent",
-			display: false,
-			timestamp: Date.now(),
-		};
-	}
-
 	/** Previews the hidden `xd://` mount notice and its rendered-content fingerprint. */
 	peekPendingXdevMountNotice(options: {
 		baseCatalogDelivered: boolean;
@@ -1757,8 +1688,8 @@ export class SessionTools {
 	 * `xd://` mounting) against live settings: registers newly allowed tools,
 	 * unregisters disallowed ones, and reapplies the enabled set with one forced
 	 * prompt rebuild — unconditionally unless `refreshPrompt` is false, then only
-	 * when the tool set changed. Unrelated selections, MCP/extension tools, and the
-	 * Code Mode partition are preserved.
+	 * when the tool set changed. Unrelated selections and MCP/extension tools are
+	 * preserved.
 	 */
 	reconcileBuiltinTools({ refreshPrompt = true }: { refreshPrompt?: boolean } = {}): Promise<void> {
 		return this.runToolRegistryMutation(async () => {
@@ -1818,7 +1749,7 @@ export class SessionTools {
 		const built = await this.#promptSurfaceScope.run(candidate, () =>
 			rebuildSystemPrompt(promptToolNames, this.#toolRegistry),
 		);
-		const promptTools = promptToolNames
+		const promptTools = activeToolNames
 			.map(name => this.#toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool != null);
 		const mountedSignatureTools = [...(this.#xdev?.mountedNames ?? [])].flatMap(name => {
@@ -1898,7 +1829,7 @@ export class SessionTools {
 	 *
 	 * Inputs NOT covered: tool input schemas; memory instructions read from disk;
 	 * and SDK-init-time closure constants in `sdk.ts` (`inlineToolDescriptors`,
-	 * `eagerTasks`, `intentField`, `mcpDiscoveryEnabled`). The
+	 * `intentField`, `mcpDiscoveryEnabled`). The
 	 * closure-captured ones cannot change at runtime regardless of skip behavior.
 	 * For everything else, callers must explicitly call {@link refreshBaseSystemPrompt}
 	 * after side-effecting changes; see the memory hooks and {@link syncAfterModelChange}.

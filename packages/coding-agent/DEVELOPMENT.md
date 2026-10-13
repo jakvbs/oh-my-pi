@@ -71,13 +71,13 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/custom-tools.md), [`tools/`](../../docs/tools/) |
 | `exec/`, `ssh/`, `debug/` | Execution backends (shell, ssh) and TUI diagnostics | [bash-tool-runtime.md](../../docs/bash-tool-runtime.md) |
 | `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/lsp-config.md), [tools/lsp.md](../../docs/tools/lsp.md) |
-| `task/`, `swarm/`, `irc/`, `goals/` | Subagent delegation, parallelism, inter-agent IRC, goal mode | [task-agent-discovery.md](../../docs/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
+| `goals/` | Goal mode | — |
 | `web/`, `exa/` | Fetch, search providers, scrapers | [tools/web_search.md](../../docs/tools/web_search.md) |
 | `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/mcp-runtime-lifecycle.md) |
 | `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/extensions.md), [hooks.md](../../docs/hooks.md), [skills.md](../../docs/skills.md) |
 | `capability/`, `discovery/` | Capability registry + provider discovery modules | [extension-loading.md](../../docs/extension-loading.md), [context-files.md](../../docs/context-files.md) |
 | `advisor/`, `autolearn/` | Advisor/watchdog, managed skills | [advisor-watchdog.md](../../docs/advisor-watchdog.md) |
-| `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/tree.md) |
+| `internal-urls/` | Router + handlers (`docs://`, `rule://`, …) | [tree.md](../../docs/tree.md) |
 | `tui/` | Low-level TUI primitives | [tui.md](../../docs/tui.md) |
 | `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-models.md](../../docs/local-models.md) |
 | `async/`, `lib/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
@@ -109,16 +109,12 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - Authoring + registry: [custom-tools.md](../../docs/custom-tools.md)
 - Output/artifacts: [blob-artifact-architecture.md](../../docs/blob-artifact-architecture.md)
 - Gating/approval: [approval-mode.md](../../docs/approval-mode.md), [resolve-tool-runtime.md](../../docs/resolve-tool-runtime.md)
-- Per-tool reference: [`docs/tools/`](../../docs/tools/) — `read`, `write`, `edit`, `ast-edit`, `ast-grep`, `grep`, `glob`, `bash`, `wait`, `lsp`, `debug`, `task`, `web_search`, `browser`, `github`, `ask`, `todo`, `recall`, `retain`, `reflect`, `checkpoint`, `rewind`
+- Per-tool reference: [`docs/tools/`](../../docs/tools/) — `read`, `write`, `edit`, `ast-edit`, `ast-grep`, `grep`, `glob`, `bash`, `wait`, `lsp`, `debug`, `web_search`, `browser`, `github`, `ask`, `todo`, `recall`, `retain`, `reflect`, `checkpoint`, `rewind`
 
 ### Execution backends
 - [bash-tool-runtime.md](../../docs/bash-tool-runtime.md), [tools/bash.md](../../docs/tools/bash.md)
 - [notebook-tool-runtime.md](../../docs/notebook-tool-runtime.md), [tools/wait.md](../../docs/tools/wait.md)
 - [tools/lsp.md](../../docs/tools/lsp.md), [lsp-config.md](../../docs/lsp-config.md)
-
-### Task delegation and subagents
-- [task-agent-discovery.md](../../docs/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md)
-- [agent-hub.md](../../docs/agent-hub.md), [tools/wait.md](../../docs/tools/wait.md)
 
 ### Web I/O and retrieval
 - [tools/web_search.md](../../docs/tools/web_search.md), [tools/github.md](../../docs/tools/github.md)

@@ -12,7 +12,7 @@ import {
 	parseRateLimitReason,
 } from "@oh-my-pi/pi-ai/error/rate-limit";
 
-// MiniMax CN (minimax-code-cn) Token Plan exhaustion (2067): phrased 用量上限,
+// MiniMax CN Token Plan exhaustion (2067): phrased 用量上限,
 // not 使用上限 like Zhipu.
 const MINIMAX_CN_TOKEN_PLAN_429 =
 	'{"type":"error","error":{"type":"rate_limit_error","message":"当前已达到 Token Plan 用量上限。为避免调用中断，请升级 Token Plan 套餐，或购买积分补充用量并开启积分自动消耗。 (2067)"}}';
@@ -45,20 +45,6 @@ describe("parseRateLimitReason", () => {
 	it("classifies Google Quota exceeded as QUOTA_EXHAUSTED", () => {
 		expect(
 			parseRateLimitReason("Cloud Code Assist API error (429): Quota exceeded for aiplatform.googleapis.com"),
-		).toBe("QUOTA_EXHAUSTED");
-	});
-
-	// ClinePass subscription windows and free-tier caps are account-local quota
-	// exhaustion (markers from Cline's own error classifier), not rate limiting.
-	it("classifies ClinePass subscription-window limits as QUOTA_EXHAUSTED", () => {
-		expect(parseRateLimitReason("clinepass limit reached for this window. please try again later.")).toBe(
-			"QUOTA_EXHAUSTED",
-		);
-	});
-
-	it("classifies Cline free-tier model caps as QUOTA_EXHAUSTED", () => {
-		expect(
-			parseRateLimitReason("free limit reached on model deepseek/deepseek-v4-flash. try again in 42 minutes"),
 		).toBe("QUOTA_EXHAUSTED");
 	});
 
@@ -256,8 +242,8 @@ describe("parseRateLimitReason", () => {
 		).toBe("QUOTA_EXHAUSTED");
 	});
 
-	it("classifies Antigravity capacity-exhausted as QUOTA_EXHAUSTED, not transient MODEL_CAPACITY", () => {
-		// Antigravity returns "You have exhausted your capacity on this model. Your
+	it("classifies Google capacity-exhausted as QUOTA_EXHAUSTED, not transient MODEL_CAPACITY", () => {
+		// Google returns "You have exhausted your capacity on this model. Your
 		// quota will reset after 3h6m38s." The literal "capacity" used to win the
 		// classifier race and land in MODEL_CAPACITY_EXHAUSTED (45-75s backoff),
 		// blocking the agent from rotating to another OAuth account even though the
@@ -345,7 +331,7 @@ describe("isUsageLimit", () => {
 		expect(isUsageLimit(message)).toBe(true);
 	});
 
-	it("detects Antigravity capacity-exhausted message as a usage-limit error", () => {
+	it("detects Google capacity-exhausted message as a usage-limit error", () => {
 		// Without this branch `markUsageLimitReached` is never invoked, so the
 		// session sticks to the exhausted OAuth account instead of rotating —
 		// see `agent-session.ts` line 8314 and `auth-storage.ts` line 3457.
@@ -356,13 +342,13 @@ describe("isUsageLimit", () => {
 		).toBe(true);
 	});
 
-	// Antigravity / Cloud Code Assist returns this phrasing for an exhausted
+	// Cloud Code Assist returns this phrasing for an exhausted
 	// project quota; `parseRateLimitReason` already maps it to QUOTA_EXHAUSTED
 	// via the generic `quota` substring, but `isUsageLimitError` decides
 	// whether the auth layer rotates to a sibling OAuth credential, so it
 	// must match too — otherwise the session stays pinned to the exhausted
 	// account (see issue #2198).
-	it("detects Antigravity 'Individual quota reached' as a credential-rotatable usage limit", () => {
+	it("detects Google 'Individual quota reached' as a credential-rotatable usage limit", () => {
 		expect(
 			isUsageLimit(
 				"Cloud Code Assist API error (429): Individual quota reached. Contact your administrator to enable overages.",
@@ -510,14 +496,6 @@ describe("isUsageLimitOutcome", () => {
 		for (const message of ["insufficient_quota", "usage_limit_exceeded", "usage_limit_reached"]) {
 			expect(isUsageLimitOutcome(429, message)).toBe(true);
 		}
-	});
-
-	it("rotates on ClinePass limit markers regardless of status", () => {
-		expect(isUsageLimitOutcome(429, "clinepass limit reached for this window. please try again later.")).toBe(true);
-		expect(isUsageLimitOutcome(undefined, "clinepass limit reached for this window. please try again later.")).toBe(
-			true,
-		);
-		expect(isUsageLimitOutcome(undefined, "free limit reached on model x/y. try again in 5 minutes")).toBe(true);
 	});
 
 	it("rotates on Cursor prepaid-balance exhaustion but not on the changeable pricing gate", () => {

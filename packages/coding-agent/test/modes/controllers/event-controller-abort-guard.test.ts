@@ -3,7 +3,7 @@
  * (`sendCompletionNotification` / `sendErrorNotification`).
  *
  * Both read the settled turn's outcome from the `agent_end` event's own
- * `messages`, not the mutable `viewSession` active context: a classifier-
+ * `messages`, not the mutable active context: a classifier-
  * refusal failure ends with `stopReason === "error"` but is pruned from
  * active context before the public `agent_end` fires (see
  * `#removeAssistantMessageFromActiveContext` in `agent-session.ts`), and a
@@ -83,7 +83,7 @@ function makeAgentEndEvent(messages: AssistantMessage[]): Extract<AgentSessionEv
 function makeTurnEndContext(options: { lastAssistantMessage?: AssistantMessage } = {}) {
 	return createInteractiveModeContext({
 		sessionManager: { getSessionName: () => "test-session" },
-		viewSession: {
+		session: {
 			getLastAssistantMessage: () => options.lastAssistantMessage,
 		},
 	});

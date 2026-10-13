@@ -208,9 +208,9 @@ describe("ModelBrowser search ranking", () => {
 	});
 
 	test("a configured role provider outranks punctuation-biased fuzzy scores", () => {
-		const kilo = makeModel("kilo", "liquid/lfm-2.5-2.6b:free");
+		const gateway = makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free");
 		const ollama = makeModel("ollama", "lfm2:2.6b");
-		const browser = makeBrowser([kilo, ollama], [], {
+		const browser = makeBrowser([gateway, ollama], [], {
 			roles: {
 				slow: {
 					model: ollama,
@@ -227,7 +227,7 @@ describe("ModelBrowser search ranking", () => {
 
 	test("recent use establishes provider affinity across models", () => {
 		const browser = makeBrowser(
-			[makeModel("kilo", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
+			[makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
 			["ollama/qwen2.5:7b"],
 		);
 
@@ -238,8 +238,8 @@ describe("ModelBrowser search ranking", () => {
 
 	test("explicit provider order takes precedence over inferred affinity", () => {
 		const browser = makeBrowser(
-			[makeModel("kilo", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
-			["kilo/qwen2.5:7b"],
+			[makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
+			["vercel-ai-gateway/qwen2.5:7b"],
 			{ providerOrder: ["ollama"] },
 		);
 
@@ -301,14 +301,14 @@ describe("ModelBrowser search ranking", () => {
 		// Both match; the contiguous-literal tier must keep the ":free" id on
 		// top rather than collapsing every zero-cost model into one tier.
 		const browser = makeBrowser(
-			[makeModel("nvidia", "nemotron-3-nano"), makeModel("kilo", "liquid/lfm-2.5-2.6b:free")],
+			[makeModel("nvidia", "nemotron-3-nano"), makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free")],
 			[],
 		);
 
 		browser.setQuery("free");
 
 		expect(browser.visibleCount).toBe(2);
-		expect(browser.getSelected()?.selector).toBe("kilo/liquid/lfm-2.5-2.6b:free");
+		expect(browser.getSelected()?.selector).toBe("vercel-ai-gateway/liquid/lfm-2.5-2.6b:free");
 	});
 
 	test("the cost keyword composes with multi-token search", () => {
@@ -473,6 +473,33 @@ describe("ModelBrowser native model metadata", () => {
 		// A router priced per request is not free, so the `free` filter skips it.
 		browser.setQuery("free");
 		expect(browser.visibleCount).toBe(0);
+	});
+
+	test("shows the rate card in force, not the one current when the row was built", () => {
+		// A row loaded before a dated list-price change took effect: a bundle, a cache, a long session.
+		const repriced = makeModel("google", "dated-list-price", {
+			cost: {
+				input: 2,
+				output: 10,
+				cacheRead: 0.1,
+				cacheWrite: 0,
+				timeBased: {
+					offPeakMultiplier: 1,
+					peakWindows: [],
+					effectiveRates: [
+						{ effectiveFrom: -8_640_000_000_000_000, input: 2, output: 10, cacheRead: 0.1, cacheWrite: 0 },
+						{
+							effectiveFrom: Date.parse("2026-01-01T00:00:00Z"),
+							input: 4,
+							output: 20,
+							cacheRead: 0.2,
+							cacheWrite: 0,
+						},
+					],
+				},
+			},
+		});
+		expect(renderDetail(repriced)).toContain("$4/20 per M");
 	});
 
 	test("price rows preserve free labels and identify invalid rates", () => {

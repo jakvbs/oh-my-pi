@@ -7,7 +7,7 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { StatusLineComponent, type StatusLineSettings } from "@oh-my-pi/pi-tui/status-line";
 import { statusLineHost } from "@oh-my-pi/pi-coding-agent/modes/status-line-host";
 import { STATUS_LINE_PRESETS } from "@oh-my-pi/pi-tui/status-line/presets";
-import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
+import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { visibleWidth } from "@oh-my-pi/pi-tui";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { removeSyncWithRetries, setProjectDir } from "@oh-my-pi/pi-utils";
@@ -207,16 +207,6 @@ describe("StatusLineComponent effective settings cache", () => {
 		const content = stripVTControlCharacters(component.getTopBorder(120).content);
 		expect(content).toContain("Test Model");
 		expect(content).toContain("Cache Session");
-	});
-
-	it("surfaces active subagents even when custom segments omit subagents", () => {
-		const component = makeComponent({ preset: "custom", leftSegments: [], rightSegments: [] });
-
-		component.setRunningSubagents(["sub-1", "sub-2"]);
-
-		const content = stripVTControlCharacters(component.getTopBorder(120).content);
-		expect(content).toContain(`${theme.icon.agents} 2`);
-		expect(content).not.toContain("agents");
 	});
 
 	it("keeps goal and hook state dynamic without settings invalidation", () => {

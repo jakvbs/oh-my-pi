@@ -32,7 +32,6 @@ function runningJob(type: AsyncJobType, index: number): AsyncJobSnapshotItem {
 		status: "running",
 		label: `${type} ${index}`,
 		startTime: index,
-		agentId: type === "task" ? id : undefined,
 	};
 }
 
@@ -85,20 +84,10 @@ function makeComponent(running: AsyncJobSnapshotItem[]): StatusLineComponent {
 }
 
 describe("status-line background-job badge", () => {
-	it("counts non-task jobs without duplicating running task subagents", () => {
-		const running = [runningJob("task", 0), runningJob("bash", 1), runningJob("eval", 2)];
-		const component = makeComponent(running);
-		component.setRunningSubagents(["task-0"]);
+	it("counts every running background job", () => {
+		const component = makeComponent([runningJob("bash", 0), runningJob("eval", 1)]);
 
 		const content = stripVTControlCharacters(component.getTopBorder(120).content);
-		expect(content).toContain(`${theme.icon.agents} 1`);
 		expect(content).toContain(`${theme.icon.job} 2`);
-	});
-
-	it("counts queued task jobs before their subagent is registered", () => {
-		const component = makeComponent([runningJob("task", 0)]);
-		component.setRunningSubagents([]);
-		const content = stripVTControlCharacters(component.getTopBorder(120).content);
-		expect(content).toContain(`${theme.icon.job} 1`);
 	});
 });

@@ -30,7 +30,6 @@ import { SecretValueSet } from "../secrets/placeholder";
 import { type SessionEntry, type SessionHeader, TITLE_CHANGE_ENTRY_TYPE } from "../session/session-entries";
 import type { SessionManager } from "../session/session-manager";
 import type { OutputMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
-import type { SubSession } from "../session/sub-sessions";
 import { buildSessionData, type SessionData } from "./html";
 
 export { DEFAULT_SHARE_URL };
@@ -233,10 +232,6 @@ function collectShareRegexSecretValues(o: SecretObfuscator, data: SessionData): 
 	add(data.systemPrompt);
 	for (const tool of data.tools ?? []) add(tool.description);
 	for (const entry of data.entries) addEntry(entry);
-	for (const sub of Object.values(data.subSessions ?? {})) {
-		addHeader(sub.header);
-		for (const entry of sub.entries) addEntry(entry);
-	}
 	return values;
 }
 
@@ -272,26 +267,6 @@ function redactSessionDataBatch(o: SecretObfuscator, data: SessionData): Session
 			description: o.obfuscate(tool.description, sharedRegexSecretValues),
 		})),
 		entries: data.entries.map(entry => redactShareEntry(o, entry, sharedRegexSecretValues)),
-		subSessions: data.subSessions
-			? Object.fromEntries(
-					Object.entries(data.subSessions).map(([key, sub]) => [
-						key,
-						redactShareSubSession(o, sub, sharedRegexSecretValues),
-					]),
-				)
-			: data.subSessions,
-	};
-}
-
-function redactShareSubSession(
-	o: SecretObfuscator,
-	sub: SubSession,
-	sharedRegexSecretValues: ReadonlySet<string>,
-): SubSession {
-	return {
-		...sub,
-		header: redactShareHeader(o, sub.header, sharedRegexSecretValues),
-		entries: sub.entries.map(entry => redactShareEntry(o, entry, sharedRegexSecretValues)),
 	};
 }
 
@@ -333,8 +308,6 @@ function redactShareEntry(
 						: entry.systemPrompt.map(block => o.obfuscate(block, sharedRegexSecretValues)),
 				task: o.obfuscate(entry.task, sharedRegexSecretValues),
 				outputSchema: undefined,
-				// Revival-only state; its item ids can carry user text.
-				workPoolYieldItems: undefined,
 			};
 		case "label":
 			return {

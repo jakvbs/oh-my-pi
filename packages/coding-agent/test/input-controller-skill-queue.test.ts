@@ -115,9 +115,6 @@ function createStubInputControllerContext(opts: {
 			prompt,
 			promptCustomMessage,
 		},
-		get viewSession() {
-			return (this as typeof ctx).session;
-		},
 		showError,
 		handleGoalModeCommand,
 		goalModeEnabled: false,
@@ -770,14 +767,14 @@ describe("AgentSession derived queued custom display", () => {
 	it("popLastQueuedMessage drops only the popped prompt's preceding companion", async () => {
 		fixture = await createRealSession();
 		const { session } = fixture;
-		// [ultrathink-notice, "first", orchestrate-notice, "second"].
+		// [ultrathink-notice, "first", ultrathink-notice, "second"].
 		queueMagicCompanion(session, "ultrathink-notice");
 		queueUserSteer(session, "first");
-		queueMagicCompanion(session, "orchestrate-notice");
+		queueMagicCompanion(session, "ultrathink-notice");
 		queueUserSteer(session, "second");
 
 		expect(session.popLastQueuedMessage()?.text).toBe("second");
-		// Only the popped prompt's companion (orchestrate-notice) leaves; the earlier
+		// Only the popped prompt's companion (the second ultrathink-notice) leaves; the earlier
 		// prompt and its own companion stay intact.
 		const remaining = session.agent.peekSteeringQueue();
 		expect(remaining.map(m => (m.role === "custom" ? m.customType : m.role))).toEqual(["ultrathink-notice", "user"]);
@@ -786,7 +783,7 @@ describe("AgentSession derived queued custom display", () => {
 
 function createStubInteractiveModeContextForUiHelpers(
 	session: AgentSession,
-	options?: { focusedAgentId?: string; compactionQueuedMessages?: CompactionQueuedMessage[] },
+	options?: { compactionQueuedMessages?: CompactionQueuedMessage[] },
 ) {
 	let editorText = "";
 	const editor: StubEditor = {
@@ -824,8 +821,6 @@ function createStubInteractiveModeContextForUiHelpers(
 		ui: { requestRender, requestComponentRender },
 		pendingMessagesContainer,
 		session,
-		viewSession: session,
-		focusedAgentId: options?.focusedAgentId,
 		compactionQueuedMessages: options?.compactionQueuedMessages ?? [],
 		keybindings: {
 			getKeys: (_action: string) => ["alt+up"],
@@ -889,21 +884,6 @@ describe("UiHelpers / InputController against derived queued custom display", ()
 
 		expect(pendingMessagesContainer.children).toHaveLength(0);
 		expect(requestComponentRender).toHaveBeenNthCalledWith(2, pendingMessagesContainer);
-	});
-
-	it("does not advertise main compaction messages in a focused subagent view", async () => {
-		fixture = await createRealSession();
-		const compactionQueuedMessages: CompactionQueuedMessage[] = [{ text: "main compaction", mode: "steer" }];
-		const focused = createStubInteractiveModeContextForUiHelpers(fixture.session, {
-			focusedAgentId: "Worker",
-			compactionQueuedMessages,
-		});
-		new UiHelpers(focused.ctx).updatePendingMessagesDisplay();
-		expect(focused.pendingMessagesContainer.children).toHaveLength(0);
-
-		const main = createStubInteractiveModeContextForUiHelpers(fixture.session, { compactionQueuedMessages });
-		new UiHelpers(main.ctx).updatePendingMessagesDisplay();
-		expect(Bun.stripANSI(main.pendingMessagesContainer.render(120).join("\n"))).toContain("main compaction");
 	});
 
 	it("groups yield follow-ups under one heading", async () => {

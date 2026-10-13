@@ -410,7 +410,7 @@ export class OutputMetaBuilder {
 		return this;
 	}
 
-	/** Add internal URL source info (skill://, agent://, artifact://). */
+	/** Add internal URL source info (skill://, artifact://). */
 	sourceInternal(value: string): this {
 		this.#meta.source = { type: "internal", value };
 		return this;

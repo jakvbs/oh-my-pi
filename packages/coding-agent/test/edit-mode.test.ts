@@ -102,7 +102,7 @@ describe("resolveEditMode", () => {
 	test("falls back from hashline to replace for Step 3.7 Flash models", () => {
 		delete Bun.env.PI_EDIT_VARIANT;
 
-		expect(resolveEditMode(createSession({ activeModel: "kilo/stepfun/step-3.7-flash:free" }))).toBe("replace");
+		expect(resolveEditMode(createSession({ activeModel: "openrouter/stepfun/step-3.7-flash:free" }))).toBe("replace");
 	});
 
 	test("uses replace for Codex Spark without excluding other Codex models", () => {

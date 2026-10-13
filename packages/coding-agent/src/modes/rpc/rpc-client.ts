@@ -45,12 +45,6 @@ import type {
 	RpcResponse,
 	RpcSessionSettledFrame,
 	RpcSessionState,
-	RpcSubagentEventFrame,
-	RpcSubagentLifecycleFrame,
-	RpcSubagentMessagesResult,
-	RpcSubagentProgressFrame,
-	RpcSubagentSnapshot,
-	RpcSubagentSubscriptionLevel,
 } from "./rpc-types";
 
 /** Distributive Omit that works with union types */
@@ -107,9 +101,6 @@ export type ModelInfo = Pick<Model, "provider" | "id" | "contextWindow" | "reaso
 
 export type RpcEventListener = (event: AgentEvent) => void;
 export type RpcSessionEventListener = (event: AgentSessionEvent) => void;
-export type RpcSubagentLifecycleListener = (payload: RpcSubagentLifecycleFrame["payload"]) => void;
-export type RpcSubagentProgressListener = (payload: RpcSubagentProgressFrame["payload"]) => void;
-export type RpcSubagentEventListener = (payload: RpcSubagentEventFrame["payload"]) => void;
 export type RpcAvailableCommandsUpdateListener = (commands: RpcAvailableSlashCommand[]) => void;
 export type RpcPromptResultListener = (result: RpcPromptResultFrame) => void;
 export type RpcSessionSettledListener = () => void;
@@ -167,7 +158,6 @@ const sessionEventTypes = new Set<AgentSessionEvent["type"]>([
 	"ttsr_triggered",
 	"todo_reminder",
 	"todo_auto_clear",
-	"irc_message",
 	"notice",
 	"thinking_level_changed",
 	"model_changed",
@@ -209,21 +199,6 @@ function isAgentSessionEvent(value: unknown): value is AgentSessionEvent {
 	const type = value.type;
 	if (typeof type !== "string") return false;
 	return sessionEventTypes.has(type as AgentSessionEvent["type"]);
-}
-
-function isRpcSubagentLifecycleFrame(value: unknown): value is RpcSubagentLifecycleFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "subagent_lifecycle" && isRecord(value.payload);
-}
-
-function isRpcSubagentProgressFrame(value: unknown): value is RpcSubagentProgressFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "subagent_progress" && isRecord(value.payload);
-}
-
-function isRpcSubagentEventFrame(value: unknown): value is RpcSubagentEventFrame {
-	if (!isRecord(value)) return false;
-	return value.type === "subagent_event" && isRecord(value.payload);
 }
 
 function isRpcPromptResultFrame(value: unknown): value is RpcPromptResultFrame {
@@ -312,9 +287,6 @@ export class RpcClient {
 	#reaping: Promise<void> | null = null;
 	#eventListeners: RpcEventListener[] = [];
 	#sessionEventListeners: RpcSessionEventListener[] = [];
-	#subagentLifecycleListeners = new Set<RpcSubagentLifecycleListener>();
-	#subagentProgressListeners = new Set<RpcSubagentProgressListener>();
-	#subagentEventListeners = new Set<RpcSubagentEventListener>();
 	#availableCommandsUpdateListeners = new Set<RpcAvailableCommandsUpdateListener>();
 	#btwDeltaListeners = new Set<(frame: RpcBtwDeltaFrame) => void>();
 	#btwRecordListeners = new Set<(record: BtwHistoryRecord) => void>();
@@ -588,30 +560,6 @@ export class RpcClient {
 	}
 
 	/**
-	 * Subscribe to subagent lifecycle frames after setSubagentSubscription("progress" | "events").
-	 */
-	onSubagentLifecycle(listener: RpcSubagentLifecycleListener): () => void {
-		this.#subagentLifecycleListeners.add(listener);
-		return () => this.#subagentLifecycleListeners.delete(listener);
-	}
-
-	/**
-	 * Subscribe to aggregated subagent progress frames after setSubagentSubscription("progress" | "events").
-	 */
-	onSubagentProgress(listener: RpcSubagentProgressListener): () => void {
-		this.#subagentProgressListeners.add(listener);
-		return () => this.#subagentProgressListeners.delete(listener);
-	}
-
-	/**
-	 * Subscribe to raw subagent session events. Call setSubagentSubscription(\"events\") to enable them server-side.
-	 */
-	onSubagentEvent(listener: RpcSubagentEventListener): () => void {
-		this.#subagentEventListeners.add(listener);
-		return () => this.#subagentEventListeners.delete(listener);
-	}
-
-	/**
 	 * Subscribe to slash-command availability updates emitted by the RPC server.
 	 */
 	onAvailableCommandsUpdate(listener: RpcAvailableCommandsUpdateListener): () => void {
@@ -815,61 +763,6 @@ export class RpcClient {
 			token_budget: options?.tokenBudget,
 		});
 		return this.#getData(response);
-	}
-
-	/**
-	 * Configure subagent frames emitted by the RPC server. Servers default to "off".
-	 * "progress" emits lifecycle/progress frames; "events" additionally emits raw subagent session events.
-	 */
-	async setSubagentSubscription(level: RpcSubagentSubscriptionLevel): Promise<RpcSubagentSubscriptionLevel> {
-		const response = await this.#send({ type: "set_subagent_subscription", level });
-		return this.#getData<{ level: RpcSubagentSubscriptionLevel }>(response).level;
-	}
-
-	/**
-	 * Return the RPC server's current subagent snapshot.
-	 */
-	async getSubagents(): Promise<RpcSubagentSnapshot[]> {
-		const response = await this.#send({ type: "get_subagents" });
-		return this.#getData<{ subagents: RpcSubagentSnapshot[] }>(response).subagents;
-	}
-
-	/**
-	 * Read persisted transcript entries for a tracked subagent session.
-	 */
-	async getSubagentMessages(selector: {
-		subagentId?: string;
-		sessionFile?: string;
-		fromByte?: number;
-	}): Promise<RpcSubagentMessagesResult> {
-		const response = await this.#send({
-			type: "get_subagent_messages",
-			subagentId: selector.subagentId,
-			sessionFile: selector.sessionFile,
-			fromByte: selector.fromByte,
-		});
-		return this.#getData<RpcSubagentMessagesResult>(response);
-	}
-
-	/**
-	 * Cancel one running subagent (foreground or background) without aborting
-	 * the session. Resolves `false` when the subagent is unknown or already
-	 * finished.
-	 */
-	async cancelSubagent(subagentId: string): Promise<boolean> {
-		const response = await this.#send({ type: "cancel_subagent", subagentId });
-		return this.#getData<{ cancelled: boolean }>(response).cancelled;
-	}
-
-	/**
-	 * Send a message to a running subagent as its user, the same way Agent Hub
-	 * chat does: a mid-turn subagent is steered at its next step boundary and one
-	 * between turns starts its next turn. Resolves once the message is queued or
-	 * the subagent's turn starts; rejects when the subagent is not running or the
-	 * message is dropped or refused before that.
-	 */
-	async steerSubagent(subagentId: string, message: string): Promise<void> {
-		this.#getData(await this.#send({ type: "steer_subagent", subagentId, message }));
 	}
 
 	/**
@@ -1417,27 +1310,6 @@ export class RpcClient {
 
 		if (isRpcHostToolCancelRequest(data)) {
 			this.#pendingHostToolCalls.get(data.targetId)?.controller.abort();
-			return;
-		}
-
-		if (isRpcSubagentLifecycleFrame(data)) {
-			for (const listener of this.#subagentLifecycleListeners) {
-				listener(data.payload);
-			}
-			return;
-		}
-
-		if (isRpcSubagentProgressFrame(data)) {
-			for (const listener of this.#subagentProgressListeners) {
-				listener(data.payload);
-			}
-			return;
-		}
-
-		if (isRpcSubagentEventFrame(data)) {
-			for (const listener of this.#subagentEventListeners) {
-				listener(data.payload);
-			}
 			return;
 		}
 

@@ -12,9 +12,6 @@
 # //bazel/toolchains/darwin: hermetic clang + ld64.lld + Command Line Tools SDK
 # cc toolchain for {arm64,x86_64}-apple-darwin cross builds from linux (mac
 # hosts keep the host Xcode toolchain).
-#
-# //bazel/toolchains/swift: the Swift toolchain for the Apple Foundation Models
-# bridge, host-detected on mac exec hosts, pinned swift.org on linux ones.
 
 package(default_visibility = ["//visibility:public"])
 
@@ -130,26 +127,3 @@ _DARWIN_TARGETS = {
     for host, exec_cv in _LINUX_EXEC_HOSTS.items()
     for arch, cpu in _DARWIN_TARGETS.items()
 ]
-
-# Apple Foundation Models bridge (arm64 only: the framework needs Apple silicon).
-toolchain(
-    name = "applefm-from-macos",
-    exec_compatible_with = ["@platforms//os:macos"],
-    target_compatible_with = [
-        "@platforms//os:macos",
-        "@platforms//cpu:aarch64",
-    ],
-    toolchain = "//bazel/toolchains/swift:host",
-    toolchain_type = "//bazel/toolchains/swift:toolchain_type",
-)
-
-toolchain(
-    name = "applefm-from-linux",
-    exec_compatible_with = ["@platforms//os:linux"],
-    target_compatible_with = [
-        "@platforms//os:macos",
-        "@platforms//cpu:aarch64",
-    ],
-    toolchain = "//bazel/toolchains/swift:linux",
-    toolchain_type = "//bazel/toolchains/swift:toolchain_type",
-)

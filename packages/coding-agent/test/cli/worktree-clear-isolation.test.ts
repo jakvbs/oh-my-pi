@@ -4,12 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as natives from "@oh-my-pi/pi-natives";
 import { clearWorktrees } from "@oh-my-pi/pi-coding-agent/cli/worktree-cli";
-import {
-	ISOLATION_OWNER_FILE,
-	RETAINED_BACKEND_FILE,
-	writeIsolationOwner,
-	writeRetainedBackend,
-} from "@oh-my-pi/pi-coding-agent/task/isolation-ownership";
+import { ISOLATION_OWNER_FILE, RETAINED_BACKEND_FILE } from "@oh-my-pi/pi-coding-agent/cli/legacy-isolation-owner";
 import { setWorktreesDir } from "@oh-my-pi/pi-utils";
 
 /**
@@ -44,6 +39,15 @@ describe("worktree clear task-isolation ownership", () => {
 		return dir;
 	}
 
+	/** Marker as written by earlier versions' task isolation; the writer no longer exists. */
+	async function writeOwner(dir: string, pid: number, id: string): Promise<void> {
+		await Bun.write(path.join(dir, ISOLATION_OWNER_FILE), JSON.stringify({ pid, id }));
+	}
+
+	async function writeRetainedBackend(dir: string, backend: number): Promise<void> {
+		await Bun.write(path.join(dir, RETAINED_BACKEND_FILE), JSON.stringify({ backend }));
+	}
+
 	/** A pid that has been spawned and reaped, so `kill(pid, 0)` reports ESRCH. */
 	async function deadPid(): Promise<number> {
 		const proc = Bun.spawn(["true"], { stdout: "ignore", stderr: "ignore" });
@@ -53,7 +57,7 @@ describe("worktree clear task-isolation ownership", () => {
 
 	it("keeps live-owned sandboxes and reclaims dead/markerless/corrupt ones", async () => {
 		const live = await makeSandbox("tlive0001");
-		await writeIsolationOwner(live, "live0001"); // marker names this test process
+		await writeOwner(live, process.pid, "live0001"); // marker names this test process
 
 		const dead = await makeSandbox("tdead0002");
 		await Bun.write(path.join(dead, ISOLATION_OWNER_FILE), JSON.stringify({ pid: await deadPid(), id: "dead0002" }));
@@ -67,7 +71,7 @@ describe("worktree clear task-isolation ownership", () => {
 		// dir holds only the live-owner marker and no mount yet.
 		const pending = path.join(base, "tpend0005");
 		await fs.mkdir(pending, { recursive: true });
-		await writeIsolationOwner(pending, "pend0005");
+		await writeOwner(pending, process.pid, "pend0005");
 
 		// Recycled pid: the crashed owner's pid was reassigned to this live test
 		// process, but the recorded start-time token no longer matches.

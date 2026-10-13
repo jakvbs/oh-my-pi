@@ -436,8 +436,7 @@ export class LocalProtocolHandler implements ProtocolHandler {
 	/**
 	 * Install a process-global override that wins over the AgentRegistry-based
 	 * derivation. Used by top-level SDK consumers that wire
-	 * `localProtocolOptions` on `createAgentSession`; subagents keep their
-	 * inherited mapping session-bound.
+	 * `localProtocolOptions` on `createAgentSession`.
 	 */
 	static setOverride(value: LocalProtocolOptions | undefined): void {
 		LocalProtocolHandler.#override = value;
@@ -462,7 +461,7 @@ export class LocalProtocolHandler implements ProtocolHandler {
 	 *    (used by SDK consumers with a custom artifacts/session-id mapping and
 	 *    by code paths that do not have a calling session, e.g. TUI hyperlink
 	 *    resolution).
-	 * 3. The first `main`-kind session in `AgentRegistry.global()`. Its
+	 * 3. The first live session in `AgentRegistry.global()`. Its
 	 *    `SessionManager` supplies both `getArtifactsDir` and `getSessionId`.
 	 *    Last-resort fallback — every caller that has a session reference
 	 *    SHOULD thread it through `context` so this branch is never taken in
@@ -473,10 +472,9 @@ export class LocalProtocolHandler implements ProtocolHandler {
 		if (fromContext) return fromContext;
 		const override = LocalProtocolHandler.#override;
 		if (override) return override;
-		const main = AgentRegistry.global()
+		const sessionManager = AgentRegistry.global()
 			.list()
-			.find(ref => ref.kind === "main");
-		const sessionManager = main?.session?.sessionManager;
+			.find(ref => ref.session)?.session?.sessionManager;
 		if (!sessionManager) return undefined;
 		return {
 			getArtifactsDir: () => sessionManager.getArtifactsDir(),

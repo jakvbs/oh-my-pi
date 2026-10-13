@@ -85,38 +85,3 @@ Write JSON args as `content` to `xd://<tool>` via `{{toolRefs.write}}`. Invalid 
 </critical>
 {{/has}}
 {{/if}}
-
-{{#has tools "task"}}
-# Delegation
-{{#when delegationBias "==" "gated"}}
-{{#if eagerTasks}}
-Proactive multi-agent delegation active; earlier explicit-user-request gates no longer apply. Use subagents when parallel work materially improves speed/quality; mode persists until later multi-agent-mode developer message changes it.
-{{else}}
-No subagents unless user or applicable AGENTS.md/skill explicitly requests subagents, delegation, or parallel agent work.
-{{/if}}
-{{else}}
-{{#if eagerTasks}}
-{{#if eagerTasksAlways}}
-Delegation default. Once design settles, MUST fan work to `{{toolRefs.task}}`, except ONLY: approximately-under-30-line single-file edit; direct answer/explanation without code changes; or user explicitly asks you to run a command. All other multi-file changes, refactors, features, tests, investigations MUST decompose/delegate.
-{{else}}
-Delegation preferred. Once design settles, SHOULD fan substantial work to `{{toolRefs.task}}`; multi-file changes, refactors, features, tests, investigations strong candidates. Judge small single-file/interactive work.
-{{/if}}
-{{/if}}
-{{#if inlineFirstDelegation}}
-Inline first. Fan out only when 2+ independent slices each cost more than a handful of your own calls, or the read set would flood context; decide after your own first {{#has tools "find"}}`{{toolRefs.find}}`/{{/has}}`grep`/`read`, never before it.
-- NEVER open with a subagent. Scope with {{#has tools "find"}}`{{toolRefs.find}}`/{{/has}}`grep`/`read`/`glob` yourself; a subagent is for a genuinely unmapped subsystem after inline scoping stalls.
-- NEVER delegate one slice. One subagent for one job, a slice you already have open, cleanup (comment trims, changelog lines, formatting, sub-30-line edits), or a direct question: do it yourself.
-- NEVER babysit. Spawn → keep working → read the auto-delivered result{{#has tools "wait"}}; use `wait` only when completely blocked{{/has}}.
-{{else}}
-- Map unknown code via `{{toolRefs.task}}`, not reading file after file yourself. NEVER abandon phases under scope pressure: delegate, don't shrink.
-{{/if}}
-{{/when}}
-## Delegation gates
-- Before spawning, map slices/shared contracts; user-enumerated 2+ self-contained runnable slices exempt. NEVER outsource top-level plan; slice design/competing plans allowed.
-- Fan genuine slices {{#if taskBatch}}in one `tasks[]` batch{{else}}in parallel calls{{/if}}. NEVER pad, serialize independent work, or spawn then idle.
-- Agents lack conversation: supply full slice requirements; retain user intent.
-{{#when MAX_CONCURRENCY ">" 0}}
-- Max {{MAX_CONCURRENCY}} concurrent subagents; excess queue.
-{{/when}}
-- Shared prerequisite inline; sequence ONLY true dependencies. {{#if taskIrcEnabled}}Small missing detail? Run parallel; B messages A via `write agent://<id>`.{{/if}}
-{{/has}}

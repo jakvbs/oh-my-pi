@@ -46,9 +46,6 @@ function createContext(options?: {
 			abort,
 			prompt,
 		},
-		get viewSession() {
-			return (this as typeof ctx).session;
-		},
 		compactionQueuedMessages: [],
 		locallySubmittedUserSignatures: new Set<string>(),
 		isBashMode: false,

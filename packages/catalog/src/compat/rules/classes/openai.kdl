@@ -36,17 +36,9 @@ class "openai" {
 		thinking-efforts "low" "medium" "high" "xhigh" "max"
 		requires-reasoning-off-juice-instruction #true
 	}
-	// Delegation appetite is a lineage trait. GPT-5.6 was trained on Codex's
-	// "no subagents unless asked" developer message; GPT-6 fans out on its own
-	// and over-delegates under Claude-calibrated prompts (reflexive scouts,
-	// single-agent babysitting), so it gets the restrained tier instead.
-	revision "=5.6" {
-		delegation-bias "gated"
-	}
 	// GPT-6 accepts `response.steer` over the Responses WebSocket: user input
 	// joins the in-flight response instead of waiting for the next request.
 	revision ">=6" {
-		delegation-bias "restrained"
 		supports-steering #true
 	}
 	// The GPT-6 family changes reasoning effort mid-conversation through a
@@ -95,9 +87,28 @@ class "openai" {
 // Older lines carry no lineage rule and bill at their wire API's fallback
 // (providers/image-tokenization.kdl).
 class "openai" {
-	// gpt-5.6 sizing, shared by later lines. `<10` keeps separator-collapsed
-	// revisions (`openai-gpt-52-codex` parses as 52) off the 5.6+ sizing.
-	revision ">=5.6 <10" {
+	// gpt-5.6 sizing. verified: billing matched this formula on gpt-5.6 through 6.1.
+	revision ">=5.6 <6.2" {
+		image-tokenization {
+			regime "openai-patch"
+			verified #true
+			multiplier 1.2
+			auto "original"
+			low {
+				max-edge 512
+			}
+			high {
+				max-edge 2048
+				patch-budget 2500
+			}
+			original {
+				max-edge 65535
+			}
+		}
+	}
+	// Later lines size like gpt-5.6, unverified until measured. `<10` keeps
+	// separator-collapsed revisions (`openai-gpt-52-codex` parses as 52) off it.
+	revision ">=6.2 <10" {
 		image-tokenization {
 			regime "openai-patch"
 			multiplier 1.2
@@ -114,9 +125,11 @@ class "openai" {
 			}
 		}
 	}
+	// verified: billing matched this formula on gpt-5.5.
 	revision "=5.5" {
 		image-tokenization {
 			regime "openai-patch"
+			verified #true
 			multiplier 1.2
 			auto "original"
 			low {
@@ -173,9 +186,11 @@ class "openai" {
 		}
 	}
 	// residue: astra's limits differ from the rest of its revision.
+	// verified: billing matched this formula on gpt-6-astra.
 	models "*gpt-6-astra*" {
 		image-tokenization {
 			regime "openai-patch"
+			verified #true
 			multiplier 1.2
 			auto "original"
 			low {

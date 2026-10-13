@@ -31,11 +31,10 @@ function sanitizeToolType(toolType: string): string {
  * readable, then swap it into place atomically.
  *
  * Content is staged to a temporary sibling and verified (byte count, on-disk
- * size, readability) before an atomic `rename` publishes it. `agent://<id>`
- * discovers `${id}.md` by scanning the artifacts directory rather than reading
- * `result.outputPath`, so a direct in-place write that fell short would leave a
- * truncated file resolvable as incomplete output and a failed follow-up write
- * would destroy the prior valid artifact. Staging keeps both hazards out: on
+ * size, readability) before an atomic `rename` publishes it. A direct
+ * in-place write that fell short would leave a truncated file resolvable as
+ * complete output and a failed follow-up write would destroy the prior valid
+ * artifact. Staging keeps both hazards out: on
  * any failure the temp file is removed and the existing artifact at `path` is
  * untouched.
  *

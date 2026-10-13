@@ -1,10 +1,8 @@
 import { USER_AGENT, getInstallId } from "@oh-my-pi/pi-utils";
 import * as logger from "@oh-my-pi/pi-utils/logger";
-import { toClinePassPublicModelId } from "../cline-pass-model-id";
 import {
 	apiRouteExactModelIds,
 	apiRouteFor,
-	isBareIdReferenceProvider,
 	isExcludedDiscoveryMode,
 	isExcludedModel,
 	isLikelyOpenAIResponsesId,
@@ -39,13 +37,19 @@ import {
 	type OpenAICompat,
 	type Provider,
 	type ThinkingConfig,
+	type TokenCost,
 } from "../types";
-import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, toPositiveNumber } from "../utils";
-import { ALIBABA_TOKEN_PLAN_BASE_URL, parseAlibabaTokenPlanCredential } from "../wire/alibaba-token-plan";
+import {
+	discoveryFetch,
+	isAnthropicOAuthToken,
+	isRecord,
+	toBoolean,
+	toNumber,
+	toPositiveNumber,
+	toPositiveNumberOrNull,
+} from "../utils";
 import { normalizeCharmHyperBaseUrl } from "../wire/charm-hyper";
-import { CLINEPASS_API_BASE_URL, clinePassClientHeaders } from "../wire/cline-pass";
 import { CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL } from "../wire/cloudflare-ai-gateway";
-import { coreWeaveProjectHeaders } from "../wire/coreweave";
 import {
 	COPILOT_API_HEADERS,
 	COPILOT_DISCOVERY_HEADERS,
@@ -62,7 +66,6 @@ import {
 } from "../wire/singularityapi";
 import { createBundledReferenceMap, createReferenceResolver, toModelSpec } from "./bundled-references";
 import { getDefaultModelDiscoveryBaseUrl, resolveModelCacheProviderId } from "./cache-provider-id";
-import { getClinePassModelMetadata } from "./cline-pass";
 import type { ModelManagerConfig } from "./descriptor-types";
 import { filterModelsDevCatalogRows } from "./models-dev-policies";
 
@@ -547,6 +550,25 @@ function mapWithBundledReference<TApi extends Api>(
 		baseUrl: defaults.baseUrl,
 		contextWindow: toPositiveNumber(entry.context_length, reference.contextWindow),
 		maxTokens: toPositiveNumber(entry.max_completion_tokens, reference.maxTokens),
+	};
+}
+
+/**
+ * Rates from NanoGPT's detailed roster: prompt and completion are USD per
+ * million tokens, the cache legs per thousand. Legs the row does not price
+ * keep `fallback`.
+ */
+function nanoGptPricingCost(pricing: unknown, fallback: TokenCost): TokenCost {
+	if (!isRecord(pricing) || pricing.unit !== "per_million_tokens") return fallback;
+	const perThousand = (value: unknown, fallbackRate: number): number => {
+		const rate = toPositiveNumber(value, 0);
+		return rate > 0 ? rate * 1_000 : fallbackRate;
+	};
+	return {
+		input: toPositiveNumber(pricing.prompt, fallback.input),
+		output: toPositiveNumber(pricing.completion, fallback.output),
+		cacheRead: perThousand(pricing.cacheReadInputPer1kTokens, fallback.cacheRead),
+		cacheWrite: perThousand(pricing.cacheWriteInputPer1kTokens, fallback.cacheWrite),
 	};
 }
 
@@ -2239,58 +2261,6 @@ export function siliconflowCnModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
-// 6.7 Zhipu Coding Plan
-// ---------------------------------------------------------------------------
-
-export interface ZhipuCodingPlanModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function zhipuCodingPlanModelManagerOptions(
-	config?: ZhipuCodingPlanModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	const apiKey = config?.apiKey;
-	const baseUrl = config?.baseUrl ?? "https://open.bigmodel.cn/api/coding/paas/v4";
-	return {
-		providerId: "zhipu-coding-plan",
-		dynamicModelsAuthoritative: true,
-		...(apiKey && {
-			fetchDynamicModels: () =>
-				fetchOpenAICompatibleModels({
-					api: "openai-completions",
-					provider: "zhipu-coding-plan",
-					baseUrl,
-					apiKey,
-					mapModel: (
-						_entry: OpenAICompatibleModelRecord,
-						defaults: ModelSpec<"openai-completions">,
-						_context: OpenAICompatibleModelMapperContext<"openai-completions">,
-					): ModelSpec<"openai-completions"> => {
-						const id = defaults.id;
-						const identity = classifyModel("zhipu-coding-plan", id, { lenient: true });
-						return {
-							...defaults,
-							reasoning:
-								isGlmReasoningIdentity("zhipu-coding-plan", id, "4.5") || identity.thinkingVariant === true,
-							// Vision-capable families are rule-owned (`providers/zhipu-coding-plan.kdl`
-							// input-modalities) and corrected at build time.
-							input: ["text"],
-							compat: {
-								thinkingFormat: "zai",
-								reasoningContentField: "reasoning_content",
-								supportsDeveloperRole: false,
-							},
-						};
-					},
-					fetch: config?.fetch,
-				}),
-		}),
-	};
-}
-
-// ---------------------------------------------------------------------------
 // 7.5 Fireworks
 // ---------------------------------------------------------------------------
 
@@ -2607,9 +2577,6 @@ function createModelsDevReferenceMap<TApi extends Api>(
 	const references = new Map<string, ModelSpec<TApi>>();
 	for (const model of models) {
 		const candidate = model as ModelSpec<TApi>;
-		if (!isBareIdReferenceProvider(candidate.provider)) {
-			continue;
-		}
 		const existing = references.get(candidate.id);
 		if (!existing) {
 			references.set(candidate.id, candidate);
@@ -2724,304 +2691,6 @@ export function firepassModelManagerOptions(
 ): ModelManagerOptions<"openai-completions"> {
 	return {
 		providerId: "firepass",
-	};
-}
-
-const CLINEPASS_MODELS_URL = `${CLINEPASS_API_BASE_URL}/ai/cline/recommended-models`;
-const CLINEPASS_FALLBACK_CONTEXT_WINDOW = 128_000;
-const CLINEPASS_FALLBACK_MAX_TOKENS = 8_192;
-
-function buildClinePassFallbackModel(id: string): ModelSpec<"openai-completions"> {
-	return {
-		id,
-		name: id,
-		api: "openai-completions",
-		provider: "cline-pass",
-		baseUrl: CLINEPASS_API_BASE_URL,
-		reasoning: true,
-		input: ["text"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: CLINEPASS_FALLBACK_CONTEXT_WINDOW,
-		maxTokens: CLINEPASS_FALLBACK_MAX_TOKENS,
-		compat: { supportsReasoningEffort: false },
-	};
-}
-
-/**
- * Live reference catalog mirroring Cline's own client enrichment: the official
- * CLI fills roster metadata from OpenRouter's public `/models` catalog (their
- * gateway routes through it), keyed by full id and by slug. Consulted only for
- * ids the bundled reference has no real upstream entry for: the bundle stays
- * authoritative for known ids, and unknown ids ride fresh live data instead of
- * the conservative constants until the next regen.
- */
-interface ClinePassLiveCatalogEntry {
-	name?: string;
-	contextWindow?: number;
-	maxTokens?: number;
-	cost?: ModelSpec<"openai-completions">["cost"];
-	reasoning?: boolean;
-	input?: ("text" | "image")[];
-}
-
-interface ClinePassLiveCatalog {
-	byId: ReadonlyMap<string, ClinePassLiveCatalogEntry>;
-	bySlug: ReadonlyMap<string, ClinePassLiveCatalogEntry>;
-}
-
-const CLINE_PASS_LIVE_CATALOG_URL = "https://openrouter.ai/api/v1/models";
-
-/** Enrichment tier, never authoritative: any failure degrades to the bundled path. */
-async function fetchClinePassLiveCatalog(fetchImpl: FetchImpl): Promise<ClinePassLiveCatalog | undefined> {
-	try {
-		const response = await withCatalogDiscoveryTimeout(5_000, signal =>
-			fetchImpl(CLINE_PASS_LIVE_CATALOG_URL, { signal }),
-		);
-		if (!response.ok) return undefined;
-		const payload: unknown = await response.json();
-		if (!isRecord(payload) || !Array.isArray(payload.data)) return undefined;
-		const byId = new Map<string, ClinePassLiveCatalogEntry>();
-		const bySlug = new Map<string, ClinePassLiveCatalogEntry>();
-		for (const raw of payload.data) {
-			if (!isRecord(raw) || typeof raw.id !== "string" || !raw.id) continue;
-			const pricing = isRecord(raw.pricing) ? raw.pricing : undefined;
-			const topProvider = isRecord(raw.top_provider) ? raw.top_provider : undefined;
-			const params = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : undefined;
-			const modality = String(isRecord(raw.architecture) ? (raw.architecture.modality ?? "") : "");
-			const contextWindow = toPositiveNumber(raw.context_length, 0);
-			const maxTokens = toPositiveNumber(topProvider?.max_completion_tokens, 0);
-			const entry: ClinePassLiveCatalogEntry = {
-				...(typeof raw.name === "string" && raw.name ? { name: raw.name.replace(/^[^:]+:\s*/, "") } : {}),
-				...(contextWindow > 0 ? { contextWindow } : {}),
-				...(maxTokens > 0 ? { maxTokens } : {}),
-				...(pricing
-					? {
-							cost: {
-								input: parseFloat(String(pricing.prompt ?? "0")) * 1_000_000,
-								output: parseFloat(String(pricing.completion ?? "0")) * 1_000_000,
-								cacheRead: parseFloat(String(pricing.input_cache_read ?? "0")) * 1_000_000,
-								cacheWrite: parseFloat(String(pricing.input_cache_write ?? "0")) * 1_000_000,
-							},
-						}
-					: {}),
-				...(params ? { reasoning: params.includes("reasoning") } : {}),
-				...(modality
-					? { input: modality.includes("image") ? (["text", "image"] as const) : (["text"] as const) }
-					: {}),
-			};
-			byId.set(raw.id, entry);
-			// Cline's `buildModelsNameMap` algorithm: roster ids are lab-less slugs
-			// ("glm-5.2"), so the catalog is also keyed by its last id segment.
-			const slug = raw.id.split("/").at(-1);
-			if (slug) bySlug.set(slug, entry);
-		}
-		return byId.size > 0 ? { byId, bySlug } : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-/** Zero legs mean "unpriced upstream", not "free" — pass models bill quota regardless. */
-function hasClinePassBillableCost(cost: ModelSpec<"openai-completions">["cost"] | undefined): boolean {
-	return cost !== undefined && (cost.input > 0 || cost.output > 0);
-}
-
-function buildCuratedClinePassModel(
-	id: string,
-	tier: "subscription" | "free",
-): ModelSpec<"openai-completions"> | undefined {
-	const metadata = getClinePassModelMetadata(id);
-	if (!metadata || metadata.tier !== tier) return undefined;
-	return {
-		...buildClinePassFallbackModel(id),
-		name: metadata.name,
-		contextWindow: metadata.contextWindow,
-		maxTokens: metadata.maxTokens,
-		input: metadata.input,
-		cost: metadata.cost,
-		reasoning: metadata.reasoning,
-		thinking: metadata.thinking,
-		compat: {
-			...(metadata.thinking === undefined ? { supportsReasoningEffort: false } : {}),
-			...(tier === "free" ? { wireModelIdMode: "raw" as const } : {}),
-		},
-	};
-}
-
-/**
- * Subscription models bill against plan quota, not per token — but the catalog still
- * carries the upstream list price so cost display reads as API-equivalent spend. Same
- * policy as the codex/antigravity generator fixups and the zai PAYG descriptor swap
- * (issue #5598: an all-$0 roster surfaces every model as "free" in the picker, which
- * was treated as a bug there). The price comes from the bundled upstream reference,
- * so it works offline and survives roster refreshes (`preferDiscoveryCost` never lets
- * a zero overwrite it). Ids with no upstream reference keep the honest zero until
- * models.dev prices them.
- */
-function buildClinePassSubscriptionModel(
-	id: string,
-	references: ReadonlyMap<string, ModelSpec<"openai-completions">>,
-	liveCatalog?: ClinePassLiveCatalog,
-): ModelSpec<"openai-completions"> {
-	const curated = buildCuratedClinePassModel(id, "subscription");
-	if (curated) return curated;
-	const base = references.get(id) ?? buildClinePassFallbackModel(id);
-	const reference = resolveModelReference(id, getBundledModelReferenceIndex());
-	// A reference pointing back at the ClinePass bundle means the last regen
-	// knew nothing about the id and encoded fallback constants — treat as none.
-	const upstream = reference && reference.provider !== "cline-pass" ? reference : undefined;
-	// Same degeneracy on the bundle side: a bundled entry whose limits are the
-	// fallback pair was written by a regen that had no upstream data for the id.
-	const baseLimitsAreFallback =
-		base.contextWindow === CLINEPASS_FALLBACK_CONTEXT_WINDOW && base.maxTokens === CLINEPASS_FALLBACK_MAX_TOKENS;
-	if (upstream) {
-		// Known to the bundle with real limits: overlay the list price only.
-		// Otherwise full enrichment, like the free-tier path.
-		return references.has(id) && !baseLimitsAreFallback
-			? { ...base, cost: upstream.cost }
-			: {
-					...base,
-					name: references.has(id) ? base.name : upstream.name,
-					reasoning: upstream.reasoning,
-					input: upstream.input,
-					cost: upstream.cost,
-					contextWindow: upstream.contextWindow,
-					maxTokens: upstream.maxTokens,
-					...(upstream.reasoning ? {} : { thinking: undefined }),
-				};
-	}
-	const live = liveCatalog?.bySlug.get(id);
-	if (!live) return base;
-	return {
-		...base,
-		...(live.name ? { name: live.name } : {}),
-		...(live.contextWindow ? { contextWindow: live.contextWindow } : {}),
-		...(live.maxTokens ? { maxTokens: live.maxTokens } : {}),
-		...(hasClinePassBillableCost(live.cost) ? { cost: live.cost } : {}),
-		...(live.reasoning !== undefined ? { reasoning: live.reasoning } : {}),
-		...(live.input ? { input: live.input } : {}),
-		...(live.reasoning === false ? { thinking: undefined } : {}),
-	};
-}
-
-/**
- * Free-tier entries arrive as full OpenRouter-style ids (`deepseek/deepseek-v4-flash`,
- * `poolside/laguna-s-2.1:free`) and ride usage billing at $0 outside the subscription
- * quota — their cost is genuinely zero, unlike the subscription roster's list-price
- * display. Limits and modalities resolve through the bundled upstream reference (its
- * candidate expansion treats provider prefixes and trailing `:free`-style markers as
- * identity-preserving), so known models self-enrich offline. Compat and thinking are
- * deliberately NOT inherited: those describe the reference's native host, while the
- * Cline gateway dialect is resolved per provider/family. The raw wire tag is
- * bucket-derived — the gateway already namespaces these ids, so the cline-pass prefix
- * transform must never apply to them.
- */
-function buildClinePassFreeModel(id: string, liveCatalog?: ClinePassLiveCatalog): ModelSpec<"openai-completions"> {
-	const curated = buildCuratedClinePassModel(id, "free");
-	if (curated) return curated;
-	const reference = resolveModelReference(id, getBundledModelReferenceIndex());
-	const upstream = reference && reference.provider !== "cline-pass" ? reference : undefined;
-	// Free ids are OpenRouter-native, so the live catalog matches by full id
-	// before falling back to the slug — the official client's own lookup order.
-	const live = liveCatalog?.byId.get(id) ?? liveCatalog?.bySlug.get(id.split("/").at(-1) ?? id);
-	// References can carry their own free markers (e.g. OpenRouter-style
-	// "Laguna S 2.1 (free)"); strip before applying our single tier suffix.
-	const baseName = (upstream?.name ?? live?.name ?? id.split("/").at(-1) ?? id)
-		.replace(/\s*\(free\)\s*$/i, "")
-		.replace(/:free$/i, "")
-		.trim();
-	const fallback = buildClinePassFallbackModel(id);
-	const reasoning = upstream?.reasoning ?? live?.reasoning ?? fallback.reasoning;
-	return {
-		...fallback,
-		name: `${baseName || id} (free)`,
-		reasoning,
-		input: upstream?.input ?? live?.input ?? fallback.input,
-		contextWindow: upstream?.contextWindow ?? live?.contextWindow ?? fallback.contextWindow,
-		maxTokens: upstream?.maxTokens ?? live?.maxTokens ?? fallback.maxTokens,
-		// A non-reasoning reference must not carry the Cline effort ladder.
-		...(reasoning ? {} : { thinking: undefined }),
-		compat: { supportsReasoningEffort: false, wireModelIdMode: "raw" },
-	};
-}
-
-async function fetchClinePassModels(
-	fetchImpl: FetchImpl,
-	references: ReadonlyMap<string, ModelSpec<"openai-completions">>,
-): Promise<ModelSpec<"openai-completions">[]> {
-	// The roster is authoritative for ids; the live reference catalog is a pure
-	// enrichment tier fetched alongside and tolerated away (offline → bundle).
-	const [response, liveCatalog] = await Promise.all([
-		withCatalogDiscoveryTimeout(5_000, signal =>
-			fetchImpl(CLINEPASS_MODELS_URL, { signal, headers: clinePassClientHeaders() }),
-		),
-		fetchClinePassLiveCatalog(fetchImpl),
-	]);
-	if (!response.ok) {
-		throw new Error(`Failed to fetch ClinePass models: HTTP ${response.status}`);
-	}
-	const payload: unknown = await response.json();
-	if (!isRecord(payload) || !Array.isArray(payload.clinePass)) {
-		throw new Error("ClinePass model catalog response is missing clinePass");
-	}
-
-	const models = new Map<string, ModelSpec<"openai-completions">>();
-	for (const entry of payload.clinePass) {
-		if (!isRecord(entry) || typeof entry.id !== "string") {
-			continue;
-		}
-		const wireId = entry.id.trim();
-		if (!wireId.startsWith("cline-pass/")) {
-			continue;
-		}
-		const id = toClinePassPublicModelId(wireId).trim();
-		if (!id) {
-			continue;
-		}
-		models.set(id, buildClinePassSubscriptionModel(id, references, liveCatalog));
-	}
-	if (models.size === 0) {
-		throw new Error("ClinePass model catalog contains no valid model IDs");
-	}
-
-	// Free tier rides the same key and gateway at $0 outside the subscription
-	// quota. Optional overlay: entries validate individually, a cline-pass/-shaped
-	// entry belongs to the pass bucket, pass ids win any collision, and pass-first
-	// insertion order keeps the registry's first-available fallback on a
-	// subscription model.
-	const freeEntries = Array.isArray(payload.free) ? payload.free : [];
-	for (const entry of freeEntries) {
-		if (!isRecord(entry) || typeof entry.id !== "string") {
-			continue;
-		}
-		const id = entry.id.trim();
-		if (!id || id.startsWith("cline-pass/") || models.has(id)) {
-			continue;
-		}
-		models.set(id, buildClinePassFreeModel(id, liveCatalog));
-	}
-	return [...models.values()];
-}
-
-/**
- * Cline's OpenAI-compatible `/models` route is absent, but its public
- * recommended-models endpoint is the authoritative ClinePass roster: the
- * `clinePass` bucket lists subscription models and the optional `free` bucket
- * adds $0 usage-billing models selectable with the same key. Metadata resolves
- * in three tiers: the current Cline-published metadata snapshot first, bundled
- * upstream references and OpenRouter enrichment for future ids second, then
- * conservative constants. Newly added ids remain usable before the next regen;
- * known ids retain exact Cline limits, plan pricing, and reasoning controls.
- */
-export function clinePassModelManagerOptions(config?: ModelManagerConfig): ModelManagerOptions<"openai-completions"> {
-	const references = new Map(
-		(getBundledModels("cline-pass") as Model<"openai-completions">[]).map(model => [model.id, toModelSpec(model)]),
-	);
-	const fetchImpl = discoveryFetch(config?.fetch);
-	return {
-		providerId: "cline-pass",
-		dynamicModelsAuthoritative: true,
-		fetchDynamicModels: () => fetchClinePassModels(fetchImpl, references),
 	};
 }
 
@@ -3871,134 +3540,6 @@ export function zenmuxModelManagerOptions(config?: ZenMuxModelManagerConfig): Mo
 }
 
 // ---------------------------------------------------------------------------
-// 10.6 Kilo Gateway
-// ---------------------------------------------------------------------------
-
-export interface KiloModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function kiloModelManagerOptions(config?: KiloModelManagerConfig): ModelManagerOptions<"openai-completions"> {
-	const apiKey = config?.apiKey;
-	const baseUrl = config?.baseUrl ?? "https://api.kilo.ai/api/gateway";
-	return {
-		providerId: "kilo",
-		fetchDynamicModels: () =>
-			fetchOpenAICompatibleModels({
-				api: "openai-completions",
-				provider: "kilo",
-				baseUrl,
-				apiKey,
-				fetch: config?.fetch,
-			}),
-	};
-}
-
-// ---------------------------------------------------------------------------
-// Alibaba Coding Plan
-// ---------------------------------------------------------------------------
-
-export interface AlibabaCodingPlanModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function alibabaCodingPlanModelManagerOptions(
-	config?: AlibabaCodingPlanModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	return createOpenAICompatibleModelManagerOptions({
-		api: "openai-completions",
-		providerId: "alibaba-coding-plan",
-		defaultBaseUrl: "https://coding-intl.dashscope.aliyuncs.com/v1",
-		config,
-		mapModel: mapWithBundledReference,
-	});
-}
-
-// ---------------------------------------------------------------------------
-// Alibaba Token Plan
-// ---------------------------------------------------------------------------
-
-export { ALIBABA_TOKEN_PLAN_BASE_URL };
-
-function isAlibabaTokenPlanChatModelId(id: string): boolean {
-	const normalized = id.trim().toLowerCase();
-	return normalized.length > 0 && !isExcludedModel("alibaba-token-plan", normalized);
-}
-
-export interface AlibabaTokenPlanModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function alibabaTokenPlanModelManagerOptions(
-	config?: AlibabaTokenPlanModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	const credential = config?.apiKey ? parseAlibabaTokenPlanCredential(config.apiKey) : undefined;
-	const apiKey = credential?.token;
-	// A region-locked credential (China/custom) dictates the discovery endpoint:
-	// its key only authenticates against its own region, so fetching /models from
-	// any other base URL would 401 (#6682).
-	const baseUrl = credential?.baseUrl ?? config?.baseUrl ?? ALIBABA_TOKEN_PLAN_BASE_URL;
-	const staticModels = seedModels<"openai-completions">("alibaba-token-plan");
-	return {
-		providerId: "alibaba-token-plan",
-		dynamicModelsAuthoritative: true,
-		staticModels,
-		...(apiKey && {
-			fetchDynamicModels: () =>
-				fetchOpenAICompatibleModels({
-					api: "openai-completions",
-					provider: "alibaba-token-plan",
-					baseUrl,
-					apiKey,
-					filterModel: (_entry, model) => isAlibabaTokenPlanChatModelId(model.id),
-					mapModel: (_entry, defaults) => {
-						const reference = staticModels.find(model => model.id === defaults.id);
-						if (reference) {
-							return {
-								...reference,
-								id: defaults.id,
-								api: defaults.api,
-								provider: defaults.provider,
-								baseUrl: defaults.baseUrl,
-							};
-						}
-						const normalizedId = defaults.id.trim().toLowerCase();
-						// Discovery carries no limit fields; the `model-limits` behavior
-						// rules pin values from official model documentation.
-						const limits = modelLimitsFor("alibaba-token-plan", normalizedId);
-						const enriched = limits
-							? {
-									...defaults,
-									contextWindow: limits.context ?? defaults.contextWindow,
-									maxTokens: limits.maxTokens ?? defaults.maxTokens,
-								}
-							: defaults;
-
-						if (isDeepseekV4Generation("alibaba-token-plan", normalizedId)) {
-							return {
-								...enriched,
-								reasoning: true,
-								thinking: {
-									mode: "effort" as const,
-									efforts: [Effort.High, Effort.Max],
-								},
-							};
-						}
-						return enriched;
-					},
-					fetch: config?.fetch,
-				}),
-		}),
-	};
-}
-
-// ---------------------------------------------------------------------------
 // 11. Vercel AI Gateway
 // ---------------------------------------------------------------------------
 
@@ -4677,25 +4218,6 @@ export function togetherModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
-// 15.5 CoreWeave Serverless Inference
-// ---------------------------------------------------------------------------
-
-export interface CoreWeaveModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function coreWeaveModelManagerOptions(
-	config?: CoreWeaveModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("coreweave", "https://api.inference.wandb.ai/v1", {
-		...config,
-		headers: () => coreWeaveProjectHeaders(Bun.env),
-	});
-}
-
-// ---------------------------------------------------------------------------
 // 15.75 Meta Model API
 // ---------------------------------------------------------------------------
 
@@ -4725,7 +4247,9 @@ function museSparkLineageSpec(id: string): ModelSpec<"openai-responses"> | undef
 	let templateRevision: readonly [number, number, number] | undefined;
 	for (const model of seedModels<"openai-responses">("meta")) {
 		if ((billingVariantPlain(model.id) !== undefined) !== contributor) continue;
-		const candidate = parseRevision(classifyModel("meta", model.id, { lenient: true }).revision ?? "");
+		const seedIdentity = classifyModel("meta", model.id, { lenient: true });
+		if (seedIdentity.family !== "muse-spark") continue;
+		const candidate = parseRevision(seedIdentity.revision ?? "");
 		if (candidate === undefined) continue;
 		if (templateRevision === undefined || compareRevision(candidate, templateRevision) > 0) {
 			template = model;
@@ -5334,22 +4858,6 @@ export function stepfunModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
-// 17. Qwen Portal
-// ---------------------------------------------------------------------------
-
-export interface QwenPortalModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function qwenPortalModelManagerOptions(
-	config?: QwenPortalModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("qwen-portal", "https://portal.qwen.ai/v1", config);
-}
-
-// ---------------------------------------------------------------------------
 // 18. Qianfan
 // ---------------------------------------------------------------------------
 
@@ -5385,89 +4893,6 @@ export function cloudflareAiGatewayModelManagerOptions(
 	);
 }
 
-// ---------------------------------------------------------------------------
-// 20. Xiaomi
-// ---------------------------------------------------------------------------
-
-/** Region codes for Xiaomi Token Plan clusters exposed as separate login providers. */
-export type XiaomiTokenPlanRegion = "sgp" | "ams" | "cn";
-
-/** Configures Xiaomi standard or regional Token Plan OpenAI-compatible model discovery. */
-export interface XiaomiModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-	providerId?: Provider;
-	tokenPlanRegion?: XiaomiTokenPlanRegion;
-}
-
-const XIAOMI_TOKEN_PLAN_BASE_URLS: Record<XiaomiTokenPlanRegion, string> = {
-	sgp: "https://token-plan-sgp.xiaomimimo.com/v1",
-	ams: "https://token-plan-ams.xiaomimimo.com/v1",
-	cn: "https://token-plan-cn.xiaomimimo.com/v1",
-};
-
-const XIAOMI_TOKEN_PLAN_FALLBACK_BASE_URLS = [
-	XIAOMI_TOKEN_PLAN_BASE_URLS.sgp,
-	XIAOMI_TOKEN_PLAN_BASE_URLS.ams,
-	XIAOMI_TOKEN_PLAN_BASE_URLS.cn,
-];
-
-/** Builds a Xiaomi model manager, preserving Token Plan region provider ids during discovery. */
-export function xiaomiModelManagerOptions(
-	config?: XiaomiModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	const apiKey = config?.apiKey;
-	const providerId = config?.providerId ?? "xiaomi";
-	const tokenPlanBaseUrls = config?.tokenPlanRegion
-		? [XIAOMI_TOKEN_PLAN_BASE_URLS[config.tokenPlanRegion]]
-		: XIAOMI_TOKEN_PLAN_FALLBACK_BASE_URLS;
-	const XIAOMI_STANDARD_BASE_URL = "https://api.xiaomimimo.com/v1";
-	const isTokenPlanProvider = config?.tokenPlanRegion !== undefined || providerId.startsWith("xiaomi-token-plan-");
-	const isTokenPlanKey = isTokenPlanProvider || apiKey?.startsWith("tp-");
-	// Token-plan keys always use a TP cluster; config?.baseUrl (from catalog)
-	// would incorrectly pin to the standard endpoint (api.xiaomimimo.com).
-	const baseUrl = isTokenPlanKey ? tokenPlanBaseUrls[0] : (config?.baseUrl ?? XIAOMI_STANDARD_BASE_URL);
-	const references = createBundledReferenceMap<"openai-completions">("xiaomi");
-	for (const seed of seedModels<"openai-completions">(providerId)) {
-		references.set(seed.id, seed);
-	}
-	const fetchModels = (url: string) =>
-		fetchOpenAICompatibleModels({
-			api: "openai-completions",
-			provider: providerId,
-			baseUrl: url,
-			apiKey,
-			filterModel: (_entry, model) => !isExcludedModel(providerId, model.id),
-			mapModel: (entry, defaults) => {
-				const reference = references.get(defaults.id);
-				const model = mapWithBundledReference(entry, defaults, reference);
-				return {
-					...model,
-					api: "openai-completions",
-					provider: providerId,
-					baseUrl: defaults.baseUrl,
-					name: toModelName(entry.display_name, model.name),
-				};
-			},
-			fetch: config?.fetch,
-		});
-	return {
-		providerId,
-		...(apiKey && {
-			fetchDynamicModels: async () => {
-				if (!isTokenPlanKey) {
-					return fetchModels(baseUrl);
-				}
-				for (const url of tokenPlanBaseUrls) {
-					const result = await fetchModels(url);
-					if (result) return result;
-				}
-				return null;
-			},
-		}),
-	};
-}
 // ---------------------------------------------------------------------------
 // 21. LiteLLM
 // ---------------------------------------------------------------------------
@@ -6155,7 +5580,7 @@ export function litellmModelManagerOptions(config?: LiteLLMModelManagerConfig): 
 	return {
 		providerId: "litellm",
 		// rich-v12 invalidates namespaced proxy ids that missed bare catalog
-		// references. rich-v11 excluded ClinePass gateway metadata (issue #10932).
+		// references. rich-v11 excluded gateway-isolated metadata (issue #10932).
 		// rich-v10 filtered known non-conversational LiteLLM modes, keyed the
 		// deployment's `supports_vision` declaration into cached compat, and
 		// unioned compat across management endpoints instead of letting a later
@@ -6280,10 +5705,29 @@ export function nanoGptModelManagerOptions(
 					provider: "nanogpt",
 					baseUrl,
 					apiKey,
+					// Only the detailed roster carries per-model pricing, names, and limits.
+					query: { detailed: "true" },
 					mapModel: (entry, defaults) => {
 						const reference = resolveReference(defaults.id);
-						const mapped = mapWithBundledReference(entry, defaults, reference);
-						return { ...mapped, api: "openai-completions", provider: "nanogpt" };
+						// The detailed roster names its output cap `max_output_tokens`.
+						const maxOutputTokens = entry.max_output_tokens ?? entry.max_completion_tokens;
+						const mapped = mapWithBundledReference(
+							{ ...entry, max_completion_tokens: maxOutputTokens },
+							reference
+								? defaults
+								: {
+										...defaults,
+										contextWindow: toPositiveNumberOrNull(entry.context_length),
+										maxTokens: toPositiveNumberOrNull(maxOutputTokens),
+									},
+							reference,
+						);
+						return {
+							...mapped,
+							api: "openai-completions",
+							provider: "nanogpt",
+							cost: { ...mapped.cost, ...nanoGptPricingCost(entry.pricing, mapped.cost) },
+						};
 					},
 					filterModel: (_entry, model) => {
 						const match = NANO_GPT_THINKING_SUFFIX_RE.exec(model.id);
@@ -7169,40 +6613,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_BEDROCK: readonly ModelsDevProviderDescrip
 	},
 ];
 
-const CLINEPASS_REASONING_BUDGET_RATIOS: Readonly<Record<Effort, number>> = {
-	[Effort.Minimal]: 0.1,
-	[Effort.Low]: 0.2,
-	[Effort.Medium]: 0.5,
-	[Effort.High]: 0.8,
-	[Effort.XHigh]: 0.95,
-	[Effort.Max]: 1,
-};
-
-function buildClinePassThinking(raw: ModelsDevModel, model: ModelSpec<Api>): ThinkingConfig | undefined {
-	const effortValues = raw.reasoning_options?.find(option => option.type === "effort")?.values;
-	if (effortValues) {
-		const efforts = THINKING_EFFORTS.filter(effort => effortValues.includes(effort));
-		return efforts.length > 0 ? { mode: "effort", efforts } : undefined;
-	}
-
-	const budget = raw.reasoning_options?.find(option => option.type === "budget_tokens");
-	if (!budget) return undefined;
-	const modelMaxTokens = model.maxTokens ?? CLINEPASS_FALLBACK_MAX_TOKENS;
-	const maximum = toPositiveNumber(budget.max, modelMaxTokens) ?? modelMaxTokens;
-	const minimum = toPositiveNumber(budget.min, 1) ?? 1;
-	const scale = Math.min(modelMaxTokens, maximum);
-	return {
-		mode: "budget",
-		efforts: THINKING_EFFORTS,
-		effortBudgets: Object.fromEntries(
-			THINKING_EFFORTS.map(effort => [
-				effort,
-				Math.min(Math.max(Math.floor(scale * CLINEPASS_REASONING_BUDGET_RATIOS[effort]), minimum), maximum),
-			]),
-		),
-	};
-}
-
 /**
  * DeepSeek's V4-generation lineage (`v4`, `v4-flash`, `v4.1-pro`) by
  * structured family. The native roster serves only V4-era SKUs today; the
@@ -7235,49 +6645,8 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CORE: readonly ModelsDevProviderDescriptor
 	openAiCompletionsDescriptor("groq", "groq", "https://api.groq.com/openai/v1"),
 	// --- Cerebras ---
 	openAiCompletionsDescriptor("cerebras", "cerebras", "https://api.cerebras.ai/v1"),
-	// --- ClinePass ---
-	// The live roster owns membership; this snapshot pins Cline's exact limits,
-	// pricing, modalities, and per-model reasoning controls for known ids.
-	openAiCompletionsDescriptor("cline-pass", "cline-pass", "https://api.cline.bot/api/v1", {
-		transformModel: (model, modelId, raw) => {
-			const id = toClinePassPublicModelId(modelId);
-			const metadata = getClinePassModelMetadata(id);
-			if (metadata) {
-				return {
-					...model,
-					id,
-					name: metadata.name,
-					contextWindow: metadata.contextWindow,
-					maxTokens: metadata.maxTokens,
-					input: metadata.input,
-					cost: metadata.cost,
-					reasoning: metadata.reasoning,
-					thinking: metadata.thinking,
-					compat:
-						metadata.thinking === undefined ? { ...model.compat, supportsReasoningEffort: false } : model.compat,
-				};
-			}
-			return {
-				...model,
-				id,
-				name: id,
-				thinking: model.reasoning ? buildClinePassThinking(raw, model) : undefined,
-			};
-		},
-	}),
 	// --- Together ---
 	openAiCompletionsDescriptor("togetherai", "together", "https://api.together.xyz/v1"),
-	// --- CoreWeave Serverless Inference ---
-	openAiCompletionsDescriptor("wandb", "coreweave", "https://api.inference.wandb.ai/v1", {
-		transformModel: model => {
-			// CoreWeave's roster omits the reasoning bit for gpt-oss; flag it and
-			// let the class rules own the effort ladder.
-			if (classifyModel("coreweave", model.id, { lenient: true }).class !== "gpt-oss") {
-				return model;
-			}
-			return { ...model, reasoning: true };
-		},
-	}),
 	// --- NVIDIA ---
 	openAiCompletionsDescriptor("nvidia", "nvidia", "https://integrate.api.nvidia.com/v1", {
 		defaultContextWindow: 131072,
@@ -7329,48 +6698,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CODING_PLANS: readonly ModelsDevProviderDe
 	// costs as zero, while `/models/info` omits pricing entirely. The generator
 	// overlays these rates onto the authoritative endpoint discovery (issue #5733).
 	anthropicMessagesDescriptor("umans-ai", "umans", UMANS_BASE_URL),
-	// --- Xiaomi ---
-	openAiCompletionsDescriptor("xiaomi", "xiaomi", "https://api.xiaomimimo.com/v1", {
-		defaultContextWindow: 262144,
-		defaultMaxTokens: 8192,
-		compat: {
-			supportsStore: false,
-			thinkingFormat: "zai",
-			reasoningContentField: "reasoning_content",
-			requiresReasoningContentForToolCalls: true,
-			allowsSyntheticReasoningContentForToolCalls: false,
-		},
-	}),
-	// --- MiniMax Token Plan ---
-	// MiniMax documents its Anthropic-compatible API as the recommended
-	// protocol: signed thinking blocks, `output_config.effort` depth control,
-	// and prompt-cache usage reporting.
-	anthropicMessagesDescriptor("minimax-coding-plan", "minimax-code", "https://api.minimax.io/anthropic"),
-	anthropicMessagesDescriptor("minimax-cn-coding-plan", "minimax-code-cn", "https://api.minimaxi.com/anthropic"),
-	// --- Alibaba Coding Plan ---
-	openAiCompletionsDescriptor(
-		"alibaba-coding-plan",
-		"alibaba-coding-plan",
-		"https://coding-intl.dashscope.aliyuncs.com/v1",
-		{
-			compat: {
-				supportsDeveloperRole: false,
-			},
-		},
-	),
-	// --- Zhipu Coding Plan ---
-	openAiCompletionsDescriptor(
-		"zhipuai-coding-plan",
-		"zhipu-coding-plan",
-		"https://open.bigmodel.cn/api/coding/paas/v4",
-		{
-			compat: {
-				thinkingFormat: "zai",
-				reasoningContentField: "reasoning_content",
-				supportsDeveloperRole: false,
-			},
-		},
-	),
 ];
 
 const filterActiveToolCallModels = (_id: string, m: ModelsDevModel): boolean => {
@@ -7469,8 +6796,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 	anthropicMessagesDescriptor("minimax-cn", "minimax-cn", "https://api.minimaxi.com/anthropic"),
 	// --- Hugging Face ---
 	openAiCompletionsDescriptor("huggingface", "huggingface", "https://router.huggingface.co/v1"),
-	// --- Kilo Gateway ---
-	openAiCompletionsDescriptor("kilo", "kilo", "https://api.kilo.ai/api/gateway"),
 	// --- Moonshot AI ---
 	openAiCompletionsDescriptor("moonshotai", "moonshot", "https://api.moonshot.ai/v1"),
 	// --- NanoGPT ---
@@ -7486,27 +6811,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 	}),
 	// --- Ollama Cloud ---
 	simpleModelsDevDescriptor("ollama-cloud", "ollama-cloud", "ollama-chat", "https://ollama.com"),
-	// --- Xiaomi Token Plan ---
-	openAiCompletionsDescriptor(
-		"xiaomi-token-plan-ams",
-		"xiaomi-token-plan-ams",
-		"https://token-plan-ams.xiaomimimo.com/v1",
-	),
-	openAiCompletionsDescriptor(
-		"xiaomi-token-plan-cn",
-		"xiaomi-token-plan-cn",
-		"https://token-plan-cn.xiaomimimo.com/v1",
-	),
-	openAiCompletionsDescriptor(
-		"xiaomi-token-plan-sgp",
-		"xiaomi-token-plan-sgp",
-		"https://token-plan-sgp.xiaomimimo.com/v1",
-	),
-	// --- Qwen Portal ---
-	openAiCompletionsDescriptor("qwen-portal", "qwen-portal", "https://portal.qwen.ai/v1", {
-		defaultContextWindow: 128000,
-		defaultMaxTokens: 8192,
-	}),
 
 	// --- ZenMux ---
 	openAiCompletionsDescriptor("zenmux", "zenmux", ZENMUX_OPENAI_BASE_URL, {

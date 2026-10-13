@@ -1,6 +1,6 @@
 # Fix Issues Command
 
-Diagnose, reproduce, then fix reproducible open GitHub issues in parallel: one clean worktree/issue; symlink build artifacts to avoid rebuilds.
+Diagnose, reproduce, then fix reproducible open GitHub issues sequentially: one clean worktree/issue; symlink build artifacts to avoid rebuilds.
 
 ## Arguments
 
@@ -21,13 +21,13 @@ Parse `$ARGUMENTS`.
 
   User qualifiers verbatim in `query`; add `is:open` unless present. Time window (`3d`, `2w`, `12h`, ISO date; see `github` docs) → `since`. `dateField` defaults `created`; set `"updated"` only for explicitly requested recently-touched issues.
 
-Print resolved set before fan-out for scope confirmation.
+Print resolved set before starting for scope confirmation.
 
-## 2. Parallel subagents
+## 2. Per-issue workflow
 
-Use parallel `task` subagents: one/issue. Assignment: number, title, body summary, workflow below. Isolated work; `irc` only if issues clearly touch the same file.
+Work issues one at a time, in resolved order; finish (including report) before starting the next. Return the original checkout to a clean `main` between issues.
 
-Each subagent MUST:
+For each issue, MUST:
 
 ### a. Read
 
@@ -118,7 +118,7 @@ Notes:     <root cause in one sentence; or what info is missing>
 
 ## 3. Aggregate
 
-After all subagents, print:
+After all issues, print:
 
 ```
 | # | Title | Status | Branch / Notes |
@@ -129,7 +129,7 @@ Group worktree paths by status, `fixed` first, for batch `cd`/push.
 
 ## Rules
 
-MUST: reproduce on current-cwd `main` before worktree; parallel one-issue subagents; check existing PR first and divert reasonable ones to `review-prs`; symlink `target`, `node_modules`, native `*.node` before worktree builds/tests; conventional commits with body `Fixes #<N>`.
+MUST: reproduce on current-cwd `main` before worktree; one issue at a time, to completion; check existing PR first and divert reasonable ones to `review-prs`; symlink `target`, `node_modules`, native `*.node` before worktree builds/tests; conventional commits with body `Fixes #<N>`.
 
 MUST NOT: symlink entire `packages/natives/native/`; push, open PRs, or comment on issues; ship stubs, product-code mocks, or `TODO: implement` placeholders; expand beyond reported bug into adjacent code smells.
 

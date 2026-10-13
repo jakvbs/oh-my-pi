@@ -4,8 +4,7 @@
  * rows — is authored in `src/compat/rules/providers/<id>.kdl` and read from
  * the compiled entry (`src/compat/providers.ts`); this table holds only the
  * code half. Providers without a factory (`amazon-bedrock`, `azure`,
- * MiniMax, and the bespoke OAuth-driven managers
- * `google-antigravity` / `google-gemini-cli` / `openai-codex` built by the
+ * MiniMax, and the bespoke OAuth-driven `openai-codex` manager built by the
  * coding-agent runtime) still have a KDL entry but no runtime discovery here.
  */
 import type { KnownProvider } from "../compat/provider-ids";
@@ -19,18 +18,14 @@ import {
 	abliterationModelManagerOptions,
 	aiandModelManagerOptions,
 	aimlApiModelManagerOptions,
-	alibabaCodingPlanModelManagerOptions,
-	alibabaTokenPlanModelManagerOptions,
 	anthropicModelManagerOptions,
 	basetenModelManagerOptions,
 	bedrockMantleModelManagerOptions,
 	cerebrasModelManagerOptions,
 	charmHyperModelManagerOptions,
-	clinePassModelManagerOptions,
 	cloudflareAiGatewayModelManagerOptions,
 	commandCodeModelManagerOptions,
 	coralbricksModelManagerOptions,
-	coreWeaveModelManagerOptions,
 	deepinfraModelManagerOptions,
 	deepseekModelManagerOptions,
 	firepassModelManagerOptions,
@@ -40,7 +35,6 @@ import {
 	groqModelManagerOptions,
 	helmcodeModelManagerOptions,
 	huggingfaceModelManagerOptions,
-	kiloModelManagerOptions,
 	kimiCodeModelManagerOptions,
 	litellmModelManagerOptions,
 	lmStudioModelManagerOptions,
@@ -57,7 +51,6 @@ import {
 	opencodeZenModelManagerOptions,
 	openrouterModelManagerOptions,
 	qianfanModelManagerOptions,
-	qwenPortalModelManagerOptions,
 	sakanaModelManagerOptions,
 	siliconflowCnModelManagerOptions,
 	siliconflowModelManagerOptions,
@@ -73,10 +66,8 @@ import {
 	waferServerlessModelManagerOptions,
 	xaiModelManagerOptions,
 	xaiOAuthModelManagerOptions,
-	xiaomiModelManagerOptions,
 	yoloAutoModelManagerOptions,
 	zenmuxModelManagerOptions,
-	zhipuCodingPlanModelManagerOptions,
 } from "./openai-compat";
 import {
 	cloudflareWorkersAiModelManagerOptions,
@@ -94,8 +85,6 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	abliteration: config => abliterationModelManagerOptions(config),
 	aiand: config => aiandModelManagerOptions(config),
 	aimlapi: config => aimlApiModelManagerOptions(config),
-	"alibaba-coding-plan": config => alibabaCodingPlanModelManagerOptions(config),
-	"alibaba-token-plan": config => alibabaTokenPlanModelManagerOptions(config),
 	baseten: config => basetenModelManagerOptions(config),
 	"bedrock-mantle": config => bedrockMantleModelManagerOptions(config),
 	anthropic: config => anthropicModelManagerOptions(config),
@@ -107,7 +96,6 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	coralbricks: config => coralbricksModelManagerOptions(config),
 	deepinfra: config => deepinfraModelManagerOptions(config),
 	deepseek: config => deepseekModelManagerOptions(config),
-	"cline-pass": config => clinePassModelManagerOptions(config),
 	firepass: config => firepassModelManagerOptions(config),
 	fireworks: config => fireworksModelManagerOptions(config),
 	"github-copilot": config => githubCopilotModelManagerOptions(config),
@@ -117,7 +105,6 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	groq: config => groqModelManagerOptions(config),
 	helmcode: config => helmcodeModelManagerOptions(config),
 	huggingface: config => huggingfaceModelManagerOptions(config),
-	kilo: config => kiloModelManagerOptions(config),
 	"kimi-code": config => kimiCodeModelManagerOptions(config),
 	litellm: config => litellmModelManagerOptions(config),
 	local: () => localModelManagerOptions(),
@@ -136,7 +123,6 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	"opencode-zen": config => opencodeZenModelManagerOptions(config),
 	openrouter: config => openrouterModelManagerOptions(config),
 	qianfan: config => qianfanModelManagerOptions(config),
-	"qwen-portal": config => qwenPortalModelManagerOptions(config),
 	sakana: config => sakanaModelManagerOptions(config),
 	siliconflow: config => siliconflowModelManagerOptions(config),
 	"siliconflow-cn": config => siliconflowCnModelManagerOptions(config),
@@ -152,20 +138,11 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	vllm: config => vllmModelManagerOptions(config),
 	"wafer-serverless": config => waferServerlessModelManagerOptions(config),
 	web: () => webModelManagerOptions(),
-	coreweave: config => coreWeaveModelManagerOptions(config),
 	xai: config => xaiModelManagerOptions(config),
 	"xai-oauth": config => xaiOAuthModelManagerOptions(config),
-	xiaomi: config => xiaomiModelManagerOptions(config),
-	"xiaomi-token-plan-ams": config =>
-		xiaomiModelManagerOptions({ ...config, providerId: "xiaomi-token-plan-ams", tokenPlanRegion: "ams" }),
-	"xiaomi-token-plan-cn": config =>
-		xiaomiModelManagerOptions({ ...config, providerId: "xiaomi-token-plan-cn", tokenPlanRegion: "cn" }),
-	"xiaomi-token-plan-sgp": config =>
-		xiaomiModelManagerOptions({ ...config, providerId: "xiaomi-token-plan-sgp", tokenPlanRegion: "sgp" }),
 	"yolo-auto": config => yoloAutoModelManagerOptions(config),
 	zai: config => zaiModelManagerOptions(config),
 	zenmux: config => zenmuxModelManagerOptions(config),
-	"zhipu-coding-plan": config => zhipuCodingPlanModelManagerOptions(config),
 };
 
 function isKnownProvider(id: string): id is KnownProvider {

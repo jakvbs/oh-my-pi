@@ -370,13 +370,21 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// reflowing to the current width) while the screen has room. A batch
 		// leaves the mutable viewport in the same frame it is appended, so its
 		// rows are never painted twice.
-		this.#chromeFloor = Math.min(this.#chromeFloor ?? after.length, after.length);
-		const belowFloor = this.#chromeFloor;
 		const now = performance.now();
 		const frame: AnimationFrame = { now, tick: Math.floor(now / 80) };
 		// Retirement measures the same live blocks the viewport lays out below;
 		// one open frame renders each of them once for both.
 		transcript.beginFrame(frame);
+		// Chrome above its floor covers live rows so they return when it
+		// shrinks. A transcript that outgrows the floor's capacity is streaming
+		// under that chrome; the rows it covers would sit between scrollback and
+		// the screen, visible nowhere, for the whole turn. Retirement then bills
+		// the current chrome.
+		const floor = Math.min(this.#chromeFloor ?? after.length, after.length);
+		const floorCapacity = Math.max(0, rows - preRoots.length - floor);
+		this.#chromeFloor =
+			after.length > floor && transcript.liveRowCount(width, floorCapacity) > floorCapacity ? after.length : floor;
+		const belowFloor = this.#chromeFloor;
 		const history = this.#offerHistory(transcript, width, rows, preRoots.length + belowFloor);
 		const headerVisible = !this.#headerRetired && this.#offeredHistory?.source !== "header";
 		const headerRows = headerVisible ? this.#header.render(width) : [];

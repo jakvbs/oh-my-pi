@@ -1540,6 +1540,11 @@ These tools became available:
 
 		expect(isToolActive("write")).toBe(true);
 		expect(session.getActiveToolNames()).toContain("write");
+
+		blockRebuild = false;
+		await session.refreshBaseSystemPrompt();
+		expect(isToolActive("write")).toBe(true);
+		expect(session.getActiveToolNames()).toContain("write");
 	});
 
 	it("does not register write while rolling back a direct-tool rebuild failure", async () => {

@@ -88,8 +88,6 @@ describe("GrepTool internal URL resolution", () => {
 		// `artifactsDir` from its sessionFile (sessionFile.slice(0,-6)).
 		AgentRegistry.global().register({
 			id: "test-main",
-			displayName: "test",
-			kind: "main",
 			session: null,
 			sessionFile: `${artifactsDir}.jsonl`,
 		});

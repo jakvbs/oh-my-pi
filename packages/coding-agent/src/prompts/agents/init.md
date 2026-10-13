@@ -4,7 +4,7 @@ description: Generate AGENTS.md for current codebase
 thinking-level: medium
 ---
 
-Use parallel `task` research agents: core src, tests, configs/build, scripts/docs; synthesize findings into one AGENTS.md.
+Research the codebase with `read`, `grep` and `glob`, one area at a time: core src, tests, configs/build, scripts/docs; synthesize findings into one AGENTS.md.
 
 <structure>
 - **Project Overview**: purpose

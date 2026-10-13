@@ -15,10 +15,8 @@ export type KnownApi =
 	| "anthropic-messages"
 	| "bedrock-converse-stream"
 	| "google-generative-ai"
-	| "google-gemini-cli"
 	| "google-vertex"
-	| "ollama-chat"
-	| "apple-foundation-models";
+	| "ollama-chat";
 export type Api = KnownApi | (string & {});
 
 /** Catalog kinds used to isolate role-specific runners from session chat models. */
@@ -87,7 +85,6 @@ export const IMAGE_GENERATION_APIS = [
 	"openai-images",
 	"openrouter-images",
 	"google-generative-ai",
-	"google-gemini-cli",
 	"openai-responses",
 	"openai-codex-responses",
 ] as const;
@@ -164,8 +161,7 @@ export interface ThinkingConfig {
 	/**
 	 * Per-effort thinking budget in tokens, baked at build time for collapsed
 	 * variants whose upstream expects an explicit `thinkingBudget` instead of a
-	 * value derived from the generic ladder (Antigravity Cloud Code Assist
-	 * gemini-3.x). Request mapping prefers caller `thinkingBudgets`, then this
+	 * value derived from the generic ladder. Request mapping prefers caller `thinkingBudgets`, then this
 	 * map, then the provider default ladder. Only meaningful for `mode: "budget"`.
 	 */
 	effortBudgets?: Readonly<Partial<Record<Effort, number>>>;
@@ -185,6 +181,14 @@ export interface ThinkingConfig {
 	 * provides an explicit wire off-path.
 	 */
 	requiresEffort?: boolean;
+	/**
+	 * The catalog has no evidence this model reasons (unclassified id, no
+	 * capability metadata). The ladder is offered for the user to opt into:
+	 * sessions leave thinking unset until the user picks an effort, and a
+	 * request without an effort goes out as non-reasoning (see
+	 * `withoutUnverifiedThinking`).
+	 */
+	unverified?: boolean;
 }
 
 // `Provider` is any provider-id string; `KnownProvider` (re-exported above) enumerates
@@ -275,7 +279,6 @@ export type OpenAIReasoningDisableMode =
 	| "lowest-effort"
 	| "none-effort"
 	| "openrouter-enabled-false"
-	| "cline-enabled-false"
 	| "venice-disable-thinking"
 	| "zai-thinking-disabled"
 	| "qwen-enable-thinking-false"
@@ -445,12 +448,9 @@ export interface OpenAICompat {
 	vercelGatewayRouting?: VercelGatewayRouting;
 	/**
 	 * Provider-specific wire model-id transform applied to the base id, overriding
-	 * the provider-detected default. Discovery layers set this per model when the
-	 * upstream roster declares the id's namespace (e.g. ClinePass free-tier models
-	 * arrive pre-namespaced and use `"raw"`), so wire form follows data rather
-	 * than id shape.
+	 * the provider-detected default.
 	 */
-	wireModelIdMode?: "raw" | "cline-pass" | "firepass" | "fireworks" | "openrouter";
+	wireModelIdMode?: "raw" | "firepass" | "fireworks" | "openrouter";
 	/** Extra fields to include in request body (e.g. gateway routing hints for OpenClaw-style proxies). */
 	extraBody?: Record<string, unknown>;
 	/** Request-session header that should mirror the normalized prompt-cache key. Default: unset. */
@@ -608,6 +608,14 @@ export interface AnthropicCompat {
 	 * contract instead. Default: false.
 	 */
 	firstPartyProvider?: boolean;
+	/**
+	 * Whether the provider honors Claude Code's `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`
+	 * kill switch, which withholds pre-release fields (`context_management`, beta
+	 * tool fields, task budgets, structured-output format, `thinking.block_binding`,
+	 * server compaction) with their betas. Rule-owned on the
+	 * provider whose `ANTHROPIC_*` env routing Claude Code shares. Default: false.
+	 */
+	honorsClaudeCodeBetaKillSwitch?: boolean;
 	/**
 	 * Whether requests may carry `output_config.effort` (and its effort beta
 	 * header). Vertex AI rejects the field/header. Default: true.
@@ -962,7 +970,7 @@ export interface ResolvedOpenAISharedCompat {
 	clampOutputToModelMax: boolean;
 	openRouterRouting?: OpenAICompat["openRouterRouting"];
 	/** Provider-specific wire model-id transform applied to the base id. */
-	wireModelIdMode: "raw" | "cline-pass" | "firepass" | "fireworks" | "openrouter";
+	wireModelIdMode: "raw" | "firepass" | "fireworks" | "openrouter";
 	/** See {@link OpenAICompat.toolSchemaFlavor}. Read by both wire paths when converting tools. */
 	toolSchemaFlavor?: OpenAICompat["toolSchemaFlavor"];
 	/** Strip image inputs before encoding (text-only serving of a multimodal id). */
@@ -1124,9 +1132,11 @@ export interface ResolvedOpenAIResponsesCompat extends ResolvedOpenAISharedCompa
 	isVercelGatewayHost: boolean;
 	/**
 	 * The configured endpoint is first-party OpenAI (`provider === "openai"` on
-	 * an `api.openai.com` or unset baseUrl). Gates official-only Responses
-	 * behavior: default-on stateful `previous_response_id` chaining and the
-	 * `text.verbosity` field.
+	 * an `api.openai.com` or unset baseUrl), or the Codex backend
+	 * (`openai-codex-responses` on the default Codex baseUrl). Gates platform
+	 * OpenAI's official-only Responses behavior (default-on stateful
+	 * `previous_response_id` chaining and the `text.verbosity` field; the Codex
+	 * adapter is not governed by either gate) and host request-size budgets.
 	 */
 	officialEndpoint: boolean;
 	/** Run Harmony-protocol leak detection/mitigation on streamed output. */
@@ -1211,7 +1221,7 @@ export type ResolvedAnthropicCompat = Required<
 
 /**
  * Compatibility settings for the Google API family (google-generative-ai,
- * google-vertex, google-gemini-cli). Class-driven defaults come from the
+ * google-vertex). Class-driven defaults come from the
  * compat cascade; sparse overrides follow the same shape.
  */
 export interface GoogleCompat {
@@ -1221,7 +1231,7 @@ export interface GoogleCompat {
 	requiresSkipThoughtSignature?: boolean;
 	/** Add the bypass sentinel when a Gemini turn's first function call is unsigned. */
 	requiresSkipThoughtSignatureOnFirstFunctionCall?: boolean;
-	/** Drop unsigned thinking blocks from replayed history (Antigravity Claude). */
+	/** Drop unsigned thinking blocks from replayed history. */
 	dropUnsignedThinking?: boolean;
 	/** Cloud Code Assist legacy `parameters` schema field instead of `parametersJsonSchema`. */
 	ccaLegacyParametersSchema?: boolean;
@@ -1231,16 +1241,20 @@ export interface GoogleCompat {
 	streamFirstEventTimeoutMs?: number;
 	/** Stream-watchdog idle-timeout floor in ms. */
 	streamIdleTimeoutMs?: number;
-	/** Work around the Flash streaming leak (duplicate first chunk) on gemini-cli. */
-	flashStreamLeakWorkaround?: boolean;
-	/** Send the Claude thinking beta header on Antigravity Claude requests. */
-	claudeThinkingBetaHeader?: boolean;
-	/** Antigravity Claude tool-mode request framing. */
-	antigravityClaudeToolMode?: boolean;
-	/** Usage-label bucket Antigravity reports this model under. */
-	antigravityUsageLabel?: string;
 	/** Strip image inputs before encoding (text-only serving of a multimodal id). */
 	stripImageInput?: boolean;
+	/**
+	 * Largest width or height a single image may carry for a Claude reader on
+	 * this host (see {@link AnthropicCompat.maxImageDimension}). Setting this or
+	 * {@link maxImagePayloadBytes} turns on Claude's image clamp, many-image
+	 * cap included; unset leaves images as sent.
+	 */
+	maxImageDimension?: number;
+	/**
+	 * Largest base64 payload a single image may carry, in bytes (see
+	 * {@link AnthropicCompat.maxImagePayloadBytes}).
+	 */
+	maxImagePayloadBytes?: number;
 	/** Thinking-loop watchdog guard family applied to streamed reasoning. */
 	thinkingLoopGuard?: "gemini" | "deepseek" | "xai";
 	/** See {@link BedrockCompat.supportsSamplingParams}. */
@@ -1254,15 +1268,17 @@ export type ResolvedGoogleCompat = Required<
 		| "streamFirstEventTimeoutMs"
 		| "streamIdleTimeoutMs"
 		| "thinkingLoopGuard"
-		| "antigravityUsageLabel"
 		| "supportsSamplingParams"
+		| "maxImageDimension"
+		| "maxImagePayloadBytes"
 	>
 > & {
 	streamFirstEventTimeoutMs?: number;
 	streamIdleTimeoutMs?: number;
 	thinkingLoopGuard?: GoogleCompat["thinkingLoopGuard"];
-	antigravityUsageLabel?: string;
 	supportsSamplingParams?: boolean;
+	maxImageDimension?: number;
+	maxImagePayloadBytes?: number;
 };
 
 /** Sparse, user-authored compat overrides for a given API (models.json / config vocabulary). */
@@ -1277,7 +1293,7 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 		? AnthropicCompat
 		: TApi extends "bedrock-converse-stream"
 			? BedrockCompat
-			: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+			: TApi extends "google-generative-ai" | "google-vertex"
 				? GoogleCompat
 				: undefined;
 
@@ -1292,7 +1308,7 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 				? ResolvedAnthropicCompat
 				: TApi extends "bedrock-converse-stream"
 					? ResolvedBedrockCompat
-					: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+					: TApi extends "google-generative-ai" | "google-vertex"
 						? ResolvedGoogleCompat
 						: undefined;
 
@@ -1386,7 +1402,8 @@ export type ModelTokenizer =
 	| "qwen3"
 	| "deepseek-v3"
 	| "kimi-k2"
-	| "glm5";
+	| "glm5"
+	| "o200k";
 
 /** One account's discovered entitlements on a model; see {@link Model.accountAccess}. */
 export interface ModelAccountAccess {
@@ -1490,11 +1507,9 @@ export interface Model<TApi extends Api = Api> {
 	supportsComputerUseConfig?: boolean;
 	/**
 	 * Per-account availability recorded by multi-account discovery: provider
-	 * account key (Codex: ChatGPT `chatgpt_account_id`; Antigravity: login
-	 * email) → that account's entitlements on this model. An account appears
+	 * account key (Codex: ChatGPT `chatgpt_account_id`) → that account's entitlements on this model. An account appears
 	 * only when its own catalog lists the model, so credential selection can
-	 * route account-gated models (e.g. `gpt-daybreak-blue-latest`, Antigravity
-	 * Claude 5.5) straight to eligible accounts. Absent on bundled/config rows.
+	 * route account-gated models (e.g. `gpt-daybreak-blue-latest`) straight to eligible accounts. Absent on bundled/config rows.
 	 */
 	accountAccess?: Readonly<Record<string, ModelAccountAccess>>;
 	cost: ModelCost;
@@ -1563,8 +1578,6 @@ export interface Model<TApi extends Api = Api> {
 	preferWebsockets?: boolean;
 	/** Codex Responses Lite transport: send the lite marker and carry instructions/tools as input items (mirrors codex-rs `use_responses_lite`). */
 	useResponsesLite?: boolean;
-	/** Codex Code Mode restriction: model expects tools routed through a programmatic exec surface (mirrors codex-rs `tool_mode`). */
-	toolMode?: "code_mode_only";
 	/**
 	 * Service-tier ids the provider advertises for this model (Codex discovery
 	 * `service_tiers[].id`, e.g. `priority`, `ultrafast`). Absent when the

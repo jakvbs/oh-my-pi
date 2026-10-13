@@ -10,18 +10,14 @@
  * Add a hint by appending to {@link COMPOSER_HINTS}, extending
  * {@link ComposerHintId}, and recording the gesture where it is handled.
  */
-import { formatDoubleTap, formatKeyHint, type KeybindingsManager } from "../app-keybindings";
+import { formatKeyHint, type KeybindingsManager } from "../app-keybindings";
 import { theme } from "../theme/theme";
 
 /** Stable hint ids; persisted as usage-counter keys, so never rename one. */
-export type ComposerHintId = "agents" | "effort";
+export type ComposerHintId = "effort";
 
 /** Live state that hint conditions read. Built by the host on every render of the empty composer. */
 export interface ComposerHintContext {
-	/** Subagents currently running in the background. */
-	runningAgents: number;
-	/** The view is focused on a subagent session instead of the main one. */
-	focusedOnAgent: boolean;
 	/** The viewed session already has messages. */
 	conversationStarted: boolean;
 	keybindings: KeybindingsManager;
@@ -40,19 +36,6 @@ export interface ComposerHint {
 
 /** Registered hints, highest priority first. */
 export const COMPOSER_HINTS: readonly ComposerHint[] = [
-	{
-		// Matches the ←← gesture in the input controller, which opens the agent hub
-		// from the main session (in a focused view it hops to the parent instead).
-		id: "agents",
-		learnedAfter: 3,
-		resolve: ctx => {
-			if (ctx.runningAgents === 0 || ctx.focusedOnAgent) return undefined;
-			return {
-				key: formatDoubleTap("left"),
-				label: `to see ${ctx.runningAgents} running ${ctx.runningAgents === 1 ? "agent" : "agents"}`,
-			};
-		},
-	},
 	{
 		id: "effort",
 		learnedAfter: 3,

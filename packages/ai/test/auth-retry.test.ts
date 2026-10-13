@@ -50,7 +50,7 @@ describe("isAuthRetryableError", () => {
 			isAuthRetryableError(
 				new OAuthError("OAuth token expired before request", {
 					kind: "token-refresh",
-					provider: "google-antigravity",
+					provider: "anthropic",
 				}),
 			),
 		).toBe(true);
@@ -58,7 +58,7 @@ describe("isAuthRetryableError", () => {
 			isAuthRetryableError(
 				new OAuthError("OAuth provider is misconfigured", {
 					kind: "configuration",
-					provider: "google-antigravity",
+					provider: "anthropic",
 				}),
 			),
 		).toBe(false);
@@ -106,16 +106,6 @@ describe("isAuthRetryableError", () => {
 		// sibling account may not share the restriction, so rotate.
 		expect(isAuthRetryableError(authError(403))).toBe(true);
 		expect(isAuthRetryableError("Error: 403 forbidden")).toBe(true);
-		// Cline's client-surface gate (403) is per-model client policy, not a
-		// credential problem: sibling keys fail identically, so rotation would
-		// only burn them.
-		expect(
-			isAuthRetryableError(
-				new Error(
-					"Error 403: deepseek/deepseek-v4-flash is only available via Cline product surfaces. If you are using an old version of Cline, please update to the latest version",
-				),
-			),
-		).toBe(false);
 		expect(isAuthRetryableError(authError(500))).toBe(false);
 		expect(isAuthRetryableError(new Error("network blip"))).toBe(false);
 		expect(isAuthRetryableError(undefined)).toBe(false);

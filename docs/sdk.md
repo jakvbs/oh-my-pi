@@ -383,20 +383,33 @@ Use these when you want partial control without recreating internal discovery lo
   `fixedSystemPrompt` sends a `readonly string[]` verbatim as every system
   block. See [System prompt customization](./system-prompt-customization.md).
 
-## Subagent-oriented options
+## Structured output (run to yield)
 
-For SDK consumers building orchestrators (similar to task executor flow):
+For embedders that need one validated JSON result from a session:
 
-- `outputSchema`: passes structured output expectation into tool context
-- `outputSchemaMode`: selects permissive or strict structured-output enforcement
-- `requireYieldTool`: forces `yield` tool inclusion
-- `isSubagent`: marks a child session, excluding root-only delegation and memory startup; also implied by `parentTaskPrefix`
-- `parentTaskPrefix`: artifact naming prefix for child task outputs
+- `outputSchema`: JSON Schema the `yield` tool validates `data` against
+- `outputSchemaMode`: `"strict"` keeps rejecting yields that miss the schema; the permissive default accepts one after the schema-retry budget is spent
+- `requireYieldTool`: forces `yield` tool inclusion and makes the prompts demand a `yield` call
 - `bindProcessState`: `false` for helper sessions spawned on a host session's behalf (see below)
 
-These are optional for normal single-agent embedding.
+`runSessionToYield(session, task, { outputSchema, outputSchemaMode?, signal? })` is exported from the package root. It prompts the session with `task`, re-prompts with a reminder (at most three, the last one forcing a `yield` tool choice) when the turn ends without a yield, and resolves to a `SessionYieldOutcome`: `{ kind: "yielded", data }` when the accepted yield passes the schema once more, otherwise `{ kind: "provider-error" | "aborted" | "no-yield" | "schema-violation", message }`.
 
-Process-wide state that follows one settings instance — setting effects (theme, request limits, the fallback credential-redaction switch) and discovery provider toggles — is held by every top-level session on its own `settings` until it is disposed. With several live sessions the newest holder drives it, and disposing a session hands it back to the previous holder. Sessions with `parentTaskPrefix`, `isSubagent: true`, or `bindProcessState: false` never take it. Independently of the holder, each session's own provider requests redact credential-shaped tokens per that session's `secrets.enabled`.
+```ts
+const { session } = await createAgentSession({
+  // ...auth, model, settings as above
+  outputSchema: schema,
+  outputSchemaMode: "strict",
+  requireYieldTool: true,
+});
+const outcome = await runSessionToYield(session, "Summarize the repo layout.", {
+  outputSchema: schema,
+  outputSchemaMode: "strict",
+});
+if (outcome.kind === "yielded") console.log(outcome.data);
+await session.dispose();
+```
+
+Process-wide state that follows one settings instance — setting effects (theme, request limits, the fallback credential-redaction switch) and discovery provider toggles — is held by every top-level session on its own `settings` until it is disposed. With several live sessions the newest holder drives it, and disposing a session hands it back to the previous holder. Sessions with `bindProcessState: false` never take it. Independently of the holder, each session's own provider requests redact credential-shaped tokens per that session's `secrets.enabled`.
 
 ## `createAgentSession()` return value
 
@@ -415,13 +428,12 @@ type CreateAgentSessionResult = {
   }>;
   startBackgroundModelDiscovery?: () => Promise<void>;
   eventBus: EventBus;
-  subagentEventBus?: EventBus;
 };
 ```
 
 Use `setToolUIContext(...)` only if your embedder provides UI capabilities that tools/extensions should call into.
 
-`subagentEventBus` carries `task:subagent:*` observability frames across the session tree. UI hosts can call `startBackgroundModelDiscovery()` after their first paint to start cache-aware online model discovery.
+UI hosts can call `startBackgroundModelDiscovery()` after their first paint to start cache-aware online model discovery.
 
 ## Startup performance
 

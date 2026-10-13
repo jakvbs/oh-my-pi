@@ -83,41 +83,7 @@ describe("AgentSession magic keyword settings", () => {
 		cfgMagicKeywordsEnabled.set(created.settings, false);
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
-		await session.prompt("please orchestrate this and ultrathink through it");
-
-		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
-	});
-
-	it("honors non-ultrathink per-keyword notice toggles", async () => {
-		const created = await createMagicKeywordSession(modelRegistry);
-		session = created.session;
-		cfgMagicKeyword.orchestrate.set(created.settings, false);
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-
-		await session.prompt("please orchestrate this");
-
-		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
-	});
-
-	it("still appends enabled non-ultrathink notices", async () => {
-		const created = await createMagicKeywordSession(modelRegistry);
-		session = created.session;
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-
-		await session.prompt("please orchestrate this");
-
-		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual(["orchestrate-notice"]);
-	});
-
-	it("skips orchestrate notice when the task tool is inactive", async () => {
-		const created = await createMagicKeywordSession(modelRegistry, []);
-		session = created.session;
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
-
-		await session.prompt("please orchestrate this");
+		await session.prompt("please ultrathink through it");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
 		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);

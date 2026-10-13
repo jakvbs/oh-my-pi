@@ -48,21 +48,6 @@ afterEach(async () => {
 });
 
 describe("file-editing tools refuse handler-owned URL writes", () => {
-	it("edit never patches a subagent's output file behind agent://", async () => {
-		const output = path.join(artifactsDir, "Reviewer.md");
-		await Bun.write(output, "verdict: REJECT\n");
-
-		const result = await new EditTool(createSession(), "replace").execute("tamper", {
-			path: "agent://Reviewer",
-			old_string: "REJECT",
-			new_string: "APPROVE",
-		});
-
-		expect(result.isError).toBe(true);
-		expect(resultText(result)).toContain("agent://Reviewer is written through `write`, not edited");
-		expect(await Bun.file(output).text()).toBe("verdict: REJECT\n");
-	});
-
 	it("edit refuses proc:// instead of patching the service log", async () => {
 		const result = await new EditTool(createSession(), "replace").execute("proc", {
 			path: "proc://web",

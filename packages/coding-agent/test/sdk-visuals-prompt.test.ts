@@ -40,7 +40,7 @@ async function promptFor(options: CreateAgentSessionOptions): Promise<string> {
 }
 
 describe("visuals guidance in the system prompt", () => {
-	it("is offered to the top-level TUI session only, not to RPC or subagent sessions", async () => {
+	it("is offered to the TUI session only, not to RPC sessions", async () => {
 		const tui = await promptFor({ hasUI: true, tuiTranscript: true });
 		expect(tui).toContain("```mermaid");
 		expect(tui).toContain("```svg");
@@ -48,11 +48,8 @@ describe("visuals guidance in the system prompt", () => {
 
 		// rpc-ui: a UI for dialogs, but replies are read by the client as text.
 		const rpc = await promptFor({ hasUI: true });
-		const subagent = await promptFor({ hasUI: true, tuiTranscript: true, isSubagent: true });
-		for (const prompt of [rpc, subagent]) {
-			expect(prompt).not.toContain("```mermaid");
-			expect(prompt).not.toContain("```svg");
-			expect(prompt).not.toContain("charts it underneath");
-		}
+		expect(rpc).not.toContain("```mermaid");
+		expect(rpc).not.toContain("```svg");
+		expect(rpc).not.toContain("charts it underneath");
 	});
 });

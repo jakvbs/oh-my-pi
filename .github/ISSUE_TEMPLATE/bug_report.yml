@@ -72,13 +72,11 @@ body:
         - Anthropic (Claude Pro/Max)
         - ChatGPT Plus/Pro (Codex)
         - GitHub Copilot
-        - Google Cloud Code Assist (Gemini CLI)
-        - Antigravity (Gemini 3, Claude, GPT-OSS)
         - Cursor
         - OpenCode Zen
         - Kimi Code
         - Z.AI (GLM)
-        - MiniMax Coding Plan
+        - MiniMax
         - Perplexity
         - Amazon Bedrock
         - OpenRouter

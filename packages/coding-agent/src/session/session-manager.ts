@@ -24,7 +24,7 @@ import {
 	stringifyJson,
 	toError,
 } from "@oh-my-pi/pi-utils";
-import { isTaskToolDetails, type StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
+import * as snapcompact from "@oh-my-pi/snapcompact";
 import { moveFileAcrossDevices } from "../utils/atomic-file";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore, lazyImageDataSync } from "./blob-store";
@@ -39,10 +39,13 @@ import {
 	sanitizeRehydratedOpenAIResponsesAssistantMessage,
 	stripInternalDetailsFields,
 } from "./messages";
-import type { WorkPoolYieldItem } from "../task/workpool-yield";
 import { createInterruptedToolResults, sessionExitFollowsLastMessage } from "./exit-diagnostics";
-import type { RetryFallbackRole } from "./retry-fallback-chains";
-import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
+import {
+	type BuildSessionContextOptions,
+	buildSessionContext,
+	type SessionContext,
+	snapcompactHistoryBlockOptions,
+} from "./session-context";
 import {
 	type BranchSummaryEntry,
 	type CompactionEntry,
@@ -55,14 +58,15 @@ import {
 	type ModeChangeEntry,
 	type ModelChangeEntry,
 	type ModelUsageEntry,
+	lastSelfSelectedLeafId,
 	type NewSessionOptions,
 	type ResetBoundaryEntry,
 	type ServiceTierChangeEntry,
+	sessionEntryLeafId,
 	type SystemPromptChangeEntry,
 	type SystemPromptSource,
 	type SessionEntry,
 	type SessionHeader,
-	type SessionInitEntry,
 	type SessionMessageEntry,
 	type SessionTitleSource,
 	type SessionTreeNode,
@@ -89,7 +93,6 @@ import {
 	resolveBlobRefsInEntries,
 	resolveBlobRefsInEntriesSync,
 	type SessionLoadResult,
-	visitEntriesFromFile,
 } from "./session-loader";
 import { generateId, migrateToCurrentVersion } from "./session-migrations";
 import {
@@ -393,14 +396,7 @@ function emptyUsageStatistics(): UsageStatistics {
 		orchestrationCacheRead: 0,
 		premiumRequests: 0,
 		cost: 0,
-		subagentCost: 0,
 	};
-}
-
-function taskUsageFrom(details: unknown): Usage | undefined {
-	if (details === null || typeof details !== "object") return undefined;
-	const maybeUsage = (details as Record<string, unknown>).usage;
-	return maybeUsage !== null && typeof maybeUsage === "object" ? (maybeUsage as Usage) : undefined;
 }
 
 function entryUsage(entry: SessionEntry): Usage | undefined {
@@ -408,7 +404,6 @@ function entryUsage(entry: SessionEntry): Usage | undefined {
 	if (entry.type !== "message") return undefined;
 	const message = entry.message;
 	if (message.role === "assistant") return message.usage;
-	if (message.role === "toolResult" && message.toolName === "task") return taskUsageFrom(message.details);
 	return undefined;
 }
 
@@ -448,33 +443,6 @@ function resetUsageCost(usage: Usage | undefined): void {
 	usage.cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 	usage.credits = undefined;
 	usage.premiumRequests = undefined;
-}
-
-/** Clear child billing kept in task results without discarding their token counts. */
-function resetTaskResultBilling(details: unknown): void {
-	if (!isTaskToolDetails(details)) return;
-	resetUsageCost(taskUsageFrom(details));
-	for (const result of details.results) {
-		if (result === null || typeof result !== "object") continue;
-		resetUsageCost(taskUsageFrom(result));
-		resetNestedTaskBilling(result.extractedToolData);
-	}
-	const progress = details.progress;
-	if (Array.isArray(progress)) {
-		for (const item of progress) {
-			if (item === null || typeof item !== "object") continue;
-			if (typeof item.cost === "number") item.cost = 0;
-			resetTaskResultBilling(item.inflightTaskDetails);
-			resetNestedTaskBilling(item.extractedToolData);
-		}
-	}
-}
-
-/** Recurse only through task snapshots extracted from the task subprocess tool. */
-function resetNestedTaskBilling(extractedToolData: Record<string, unknown[]> | undefined): void {
-	const tasks = extractedToolData?.task;
-	if (!Array.isArray(tasks)) return;
-	for (const task of tasks) resetTaskResultBilling(task);
 }
 
 function isAssistantEntry(entry: SessionEntry): boolean {
@@ -540,17 +508,22 @@ class SessionEntryIndex {
 	rebuild(entries: readonly SessionEntry[]): void {
 		this.clear();
 		for (const entry of entries) this.insert(entry);
+		// A captured late-usage leaf can dangle after its target was rolled back or rewritten away.
+		if (this.#leaf !== null && !this.#entriesById.has(this.#leaf)) this.setLeaf(lastSelfSelectedLeafId(entries));
 	}
 
 	insert(entry: SessionEntry): void {
 		const previousLeaf = this.#leaf;
 		const isNew = !this.#entriesById.has(entry.id);
 		this.#entriesById.set(entry.id, entry);
-		this.#leaf = entry.id;
+		// Late usage is physically last but replays to the active leaf captured at append time.
+		const nextLeaf = sessionEntryLeafId(entry);
+		this.#leaf = nextLeaf;
 		this.#generation++;
 		const cache = this.#branchCache;
 		if (
 			isNew &&
+			nextLeaf === entry.id &&
 			cache !== undefined &&
 			cache.generation === this.#generation - 1 &&
 			cache.leaf === previousLeaf &&
@@ -575,11 +548,6 @@ class SessionEntryIndex {
 
 		const usage = entryUsage(entry);
 		addUsage(this.#usage, usage);
-		// Completed `task` results carry the child's spend; tracked apart so the
-		// status line can split the session's own cost from its subagents'.
-		if (usage && entry.type === "message" && entry.message.role === "toolResult") {
-			this.#usage.subagentCost += usage.cost.total;
-		}
 	}
 
 	has(id: string): boolean {
@@ -1256,7 +1224,7 @@ export class SessionManager {
 			id: this.#sessionId,
 			timestamp,
 			parentSession: previousSessionId,
-			providerPromptCacheKey: this.#header.providerPromptCacheKey ?? previousSessionId,
+			providerPromptCacheKey: SessionManager.getInheritedProviderPromptCacheKey(this.#header),
 		};
 		this.#closeWriterEventually();
 		this.#sessionFile = to;
@@ -1988,6 +1956,7 @@ export class SessionManager {
 			cwd: this.#cwd,
 			parentSession: options?.parentSession,
 			providerPromptCacheKey: options?.providerPromptCacheKey,
+			taskPromptCacheKey: options?.taskPromptCacheKey,
 		};
 		const workspace = normalizeSessionWorkspace({
 			cwd: this.#cwd,
@@ -2088,7 +2057,13 @@ export class SessionManager {
 			return id;
 		};
 		const retained = this.#entries.filter(entry => !batch.entryIds.has(entry.id));
-		for (const entry of retained) entry.parentId = retainedAncestor(entry.parentId);
+		for (const entry of retained) {
+			entry.parentId = retainedAncestor(entry.parentId);
+			// A late-usage marker captured a staged leaf; keep it pointing at a surviving entry.
+			if (entry.type === "model_usage" && typeof entry.activeLeafId === "string") {
+				entry.activeLeafId = retainedAncestor(entry.activeLeafId);
+			}
+		}
 		const restoredLeaf = retainedAncestor(batch.externalLeafChanged ? batch.externalLeafId : batch.preBatchLeafId);
 		this.#entries = retained;
 		this.#index.rebuild(retained);
@@ -2429,7 +2404,8 @@ export class SessionManager {
 			cwd: this.#cwd,
 			additionalDirectories: this.#additionalDirectories.length > 0 ? [...this.#additionalDirectories] : undefined,
 			parentSession: parentSessionId,
-			providerPromptCacheKey: this.#header.providerPromptCacheKey ?? parentSessionId,
+			providerPromptCacheKey: SessionManager.getInheritedProviderPromptCacheKey(this.#header),
+			taskPromptCacheKey: this.#header.taskPromptCacheKey,
 		};
 		this.#sessionName = this.#header.title;
 		this.#titleSource = this.#header.titleSource;
@@ -2675,7 +2651,7 @@ export class SessionManager {
 		const sessionDir = options?.sessionDir ?? SessionManager.getDefaultSessionDir(this.#cwd, undefined, storage);
 		const manager = new SessionManager(this.#cwd, sessionDir, true, storage);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
-		manager.#resetToNewSession();
+		manager.#resetToNewSession({ taskPromptCacheKey: this.#header.taskPromptCacheKey });
 		manager.#sessionName = this.#sessionName;
 		manager.#titleSource = this.#titleSource;
 		manager.#titleUpdatedAt = this.#titleUpdatedAt;
@@ -3430,9 +3406,11 @@ export class SessionManager {
 			parentId: owner.parentId,
 			timestamp: nowIso(),
 			...usage,
+			...(activeLeafId !== owner.parentId ? { activeLeafId } : {}),
 		};
 		this.#recordEntry(entry);
-		if (activeLeafId !== owner.parentId) this.#index.setLeaf(activeLeafId);
+		// Through #setLeaf so an in-flight atomic batch restores this leaf, not the usage entry, on rollback.
+		if (activeLeafId !== owner.parentId) this.#setLeaf(activeLeafId);
 		return entry.id;
 	}
 
@@ -3486,30 +3464,6 @@ export class SessionManager {
 			role,
 			resolvedModelIsFallback,
 		};
-		this.#recordEntry(entry);
-		return entry.id;
-	}
-
-	appendSessionInit(init: {
-		systemPrompt: string[];
-		task: string;
-		tools: string[];
-		agent?: string;
-		modelRole?: string;
-		resolvedModel?: string;
-		retryFallback?: RetryFallbackRole;
-		readOnly?: boolean;
-		outputSchema?: unknown;
-		outputSchemaMode?: StructuredSubagentSchemaMode;
-		restrictToolNames?: boolean;
-		readSummarize?: boolean;
-		mcp?: string[];
-		advisor?: string;
-		compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
-		isolated?: boolean;
-		workPoolYieldItems?: WorkPoolYieldItem[];
-	}): string {
-		const entry: SessionInitEntry = { type: "session_init", ...this.#freshEntryFields(), ...init };
 		this.#recordEntry(entry);
 		return entry.id;
 	}
@@ -3743,6 +3697,12 @@ export class SessionManager {
 		});
 	}
 
+	/** Prompt blocks for a snapcompact archive, budgeted and resolved as {@link buildSessionContext} attaches them. */
+	snapcompactHistoryBlocks(archive: snapcompact.Archive): (TextContent | ImageContent)[] {
+		const resolveFrameData = (data: string) => lazyImageDataSync(this.#blobs, data);
+		return snapcompact.historyBlocks(archive, snapcompactHistoryBlockOptions(archive, { resolveFrameData }));
+	}
+
 	/** Strip stale OpenAI Responses replay metadata from loaded assistant entries. */
 	sanitizeLoadedOpenAIResponsesReplayMetadata(): boolean {
 		let changed = false;
@@ -3760,6 +3720,20 @@ export class SessionManager {
 
 	getHeader(): SessionHeader | null {
 		return this.#header;
+	}
+
+	static getInheritedProviderPromptCacheKey(header: SessionHeader | undefined): string | undefined {
+		return header?.taskPromptCacheKey !== undefined ? undefined : (header?.providerPromptCacheKey ?? header?.id);
+	}
+
+	/** Seed automatic affinity without turning a legacy fork identity into an explicit override. */
+	async setTaskPromptCacheKey(key: string): Promise<void> {
+		if (this.#header.taskPromptCacheKey === key && this.#header.providerPromptCacheKey === undefined) return;
+		this.#header.taskPromptCacheKey = key;
+		this.#header.providerPromptCacheKey = undefined;
+		if (!this.#persist || !this.#sessionFile || !this.#shouldHaveSessionFile()) return;
+		this.#rewriteRequired = true;
+		await this.#rewriteAtomically();
 	}
 
 	/** All session entries (excludes header). Returns a shallow copy. */
@@ -3852,7 +3826,16 @@ export class SessionManager {
 		if (branchPath.length === 0) throw new Error(`Entry ${leafId} not found`);
 
 		// Drop label entries from the path; recreate them fresh from the resolved map.
-		const entriesToKeep = branchPath.filter(entry => entry.type !== "label");
+		// Every kept entry lies on the forked path, so a late-usage leaf marker no longer applies.
+		const entriesToKeep: SessionEntry[] = [];
+		for (const entry of branchPath) {
+			if (entry.type === "label") continue;
+			entriesToKeep.push(
+				entry.type === "model_usage" && entry.activeLeafId !== undefined
+					? { ...entry, activeLeafId: undefined }
+					: entry,
+			);
+		}
 		const keptIds = new Set(entriesToKeep.map(entry => entry.id));
 		const labelsToCarry: Array<{ targetId: string; label: string }> = [];
 		for (const [targetId, label] of this.#index.labelsInEffect()) {
@@ -4010,7 +3993,8 @@ export class SessionManager {
 		manager.#resetToNewSession(
 			{
 				parentSession: sourceHeader?.id,
-				providerPromptCacheKey: sourceHeader?.providerPromptCacheKey ?? sourceHeader?.id,
+				providerPromptCacheKey: SessionManager.getInheritedProviderPromptCacheKey(sourceHeader),
+				taskPromptCacheKey: sourceHeader?.taskPromptCacheKey,
 			},
 			options?.sessionFile,
 		);
@@ -4052,9 +4036,6 @@ export class SessionManager {
 	static #resetInheritedUsageCost(history: SessionEntry[]): void {
 		for (const entry of history) {
 			resetUsageCost(entryUsage(entry));
-			if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "task") {
-				resetTaskResultBilling(entry.message.details);
-			}
 		}
 	}
 
@@ -4183,40 +4164,6 @@ export class SessionManager {
 		return manager;
 	}
 
-	/**
-	 * Lock-free peek for cold subagent revival: returns the recorded working
-	 * directory (session header) and the latest `session_init` contract (system
-	 * prompt / tools / output schema) WITHOUT taking the single-writer lock that
-	 * {@link open} acquires — the caller re-opens for the actual revive. Returns
-	 * null when the file can't be read; `init` is null for files written before
-	 * `session_init` was recorded (no faithful contract to rebuild from).
-	 */
-	static async peekSessionInit(
-		filePath: string,
-		storage: SessionStorage = new FileSessionStorage(),
-	): Promise<{
-		cwd: string;
-		init: PersistedSessionInit | null;
-	} | null> {
-		let header: SessionHeader | undefined;
-		const initEntries: FileEntry[] = [];
-		const visit = (entry: FileEntry): void => {
-			if (entry.type === "session") {
-				header ??= entry;
-				return;
-			}
-			if (entry.type === "session_init") initEntries.push(entry);
-		};
-
-		try {
-			await visitEntriesFromFile(filePath, visit, storage);
-		} catch {
-			return null;
-		}
-		// A missing, empty, or invalid file has no usable session.
-		if (!header) return null;
-		return { cwd: header.cwd ?? getProjectDir(), init: extractSessionInit(initEntries) };
-	}
 	/** Continue the most recent session, or create a new one if none exists. */
 	static async continueRecent(
 		cwd: string,
@@ -4386,61 +4333,6 @@ export class SessionManager {
 /** True when already-loaded entries carry at least one real user/assistant message. */
 export function hasConversationalHistory(entries: readonly FileEntry[]): boolean {
 	return entries.some(e => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"));
-}
-
-/**
- * The persisted `session_init` contract a cold revive rebuilds a subagent from:
- * the {@link SessionInitEntry} payload without its tree bookkeeping fields.
- */
-export interface PersistedSessionInit {
-	systemPrompt: string[];
-	task: string;
-	tools: string[];
-	agent?: string;
-	modelRole?: string;
-	resolvedModel?: string;
-	retryFallback?: RetryFallbackRole;
-	readOnly?: boolean;
-	outputSchema?: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
-	restrictToolNames?: boolean;
-	readSummarize?: boolean;
-	mcp?: string[];
-	advisor?: string;
-	compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
-	isolated?: boolean;
-	workPoolYieldItems?: WorkPoolYieldItem[];
-}
-
-/**
- * Latest persisted `session_init` contract among already-loaded entries, or
- * null when the transcript carries none.
- */
-export function extractSessionInit(entries: readonly FileEntry[]): PersistedSessionInit | null {
-	let init: PersistedSessionInit | null = null;
-	for (const entry of entries) {
-		if (entry.type !== "session_init") continue;
-		init = {
-			systemPrompt: typeof entry.systemPrompt === "string" ? [entry.systemPrompt] : entry.systemPrompt,
-			task: entry.task,
-			tools: entry.tools,
-			agent: entry.agent,
-			modelRole: entry.modelRole,
-			resolvedModel: entry.resolvedModel,
-			retryFallback: entry.retryFallback,
-			readOnly: entry.readOnly,
-			outputSchema: entry.outputSchema,
-			outputSchemaMode: entry.outputSchemaMode,
-			restrictToolNames: entry.restrictToolNames,
-			readSummarize: entry.readSummarize,
-			mcp: entry.mcp,
-			advisor: entry.advisor,
-			isolated: entry.isolated,
-			...(entry.compactionThreshold !== undefined ? { compactionThreshold: entry.compactionThreshold } : undefined),
-			...(entry.workPoolYieldItems !== undefined ? { workPoolYieldItems: entry.workPoolYieldItems } : undefined),
-		};
-	}
-	return init;
 }
 
 /**

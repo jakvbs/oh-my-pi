@@ -13,7 +13,7 @@ import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "@oh-my-pi/
 import { settings } from "../../config/settings";
 import { createAdvisorMessageCard } from "@oh-my-pi/pi-tui/chat/advisor-message";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
-import { createBackgroundTanDispatchBlock } from "@oh-my-pi/pi-tui/chat/background-tan-message";
+import { readMediaPath } from "@oh-my-pi/pi-tui/native/blobs";
 import { BashExecutionComponent } from "@oh-my-pi/pi-tui/chat/bash-execution";
 import { detectCacheInvalidation } from "@oh-my-pi/pi-tui/chat/cache-invalidation-marker";
 import { ServedModelTracker } from "@oh-my-pi/pi-tui/chat/served-model-marker";
@@ -39,7 +39,14 @@ import { SkillMessageComponent } from "@oh-my-pi/pi-tui/chat/skill-message";
 import { StrippedToolCallsPlaceholder } from "@oh-my-pi/pi-tui/chat/stripped-tool-calls-placeholder";
 import { imageContent, textContent } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import { ToolActivityContainer } from "@oh-my-pi/pi-tui/chrome/tool-activity";
-import { ToolExecutionComponent, type ToolExecutionHandle, toolRenderName } from "@oh-my-pi/pi-tui/chat/tool-execution";
+import {
+	isSettledJobFrame,
+	parksAsBackground,
+	settleWithJobFrame,
+	ToolExecutionComponent,
+	type ToolExecutionHandle,
+	toolRenderName,
+} from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { TranscriptBlock, TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { createUsageRowBlock, turnElapsedMs } from "@oh-my-pi/pi-tui/overlays/usage-row";
 import { UserMessageComponent } from "@oh-my-pi/pi-tui/chat/user-message";
@@ -59,7 +66,6 @@ import type {
 } from "../../modes/types";
 import { LAUNCH_COMPLETION_MESSAGE_TYPE } from "../../session/launch-completion";
 import {
-	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,
 	type CustomMessage,
 	isUserTurnInitiator,
 	LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
@@ -80,7 +86,6 @@ import {
 	assistantUsageIsBilled,
 	buildAsyncResultBlock,
 	buildFileMentionBlock,
-	buildIrcMessageCard,
 	buildLaunchCompletionBlock,
 	normalizeToolArgs,
 	resolveAssistantErrorPresentation,
@@ -301,25 +306,11 @@ export class UiHelpers {
 						this.ctx.chatContainer.addChild(component);
 						break;
 					}
-					if (
-						message.customType === "irc:incoming" ||
-						message.customType === "irc:autoreply" ||
-						message.customType === "irc:relay" ||
-						message.customType === "irc:workpool"
-					) {
-						const card = buildIrcMessageCard(message, () => this.ctx.toolOutputExpanded);
-						this.ctx.chatContainer.addChild(card);
-						return [card];
-					}
 					if (message.customType === "advisor") {
 						const details = (message as CustomMessage<AdvisorMessageDetails>).details;
 						this.ctx.chatContainer.addChild(
 							createAdvisorMessageCard(details, () => this.ctx.toolOutputExpanded, theme),
 						);
-						break;
-					}
-					if (message.customType === BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE) {
-						this.ctx.chatContainer.addChild(createBackgroundTanDispatchBlock(message as CustomMessage<unknown>));
 						break;
 					}
 					const handoffComponent = createHandoffSummaryMessageComponent(
@@ -330,7 +321,7 @@ export class UiHelpers {
 						this.ctx.chatContainer.addChild(handoffComponent);
 						break;
 					}
-					const renderer = this.ctx.viewSession.extensionRunner?.getMessageRenderer(message.customType);
+					const renderer = this.ctx.session.extensionRunner?.getMessageRenderer(message.customType);
 					// Both HookMessage and CustomMessage have the same structure, cast for compatibility
 					const component = new CustomMessageComponent(message as CustomMessage<unknown>, renderer);
 					component.setExpanded(this.ctx.toolOutputExpanded);
@@ -370,7 +361,7 @@ export class UiHelpers {
 					} else {
 						const images = imageContent(message.content);
 						const imageLinks =
-							options?.imageLinks ?? imageLinksForMessage(images, this.ctx.viewSession.sessionManager);
+							options?.imageLinks ?? imageLinksForMessage(images, this.ctx.session.sessionManager);
 						userComponent = new UserMessageComponent(userText, {
 							synthetic: isSynthetic,
 							imageLinks,
@@ -455,8 +446,8 @@ export class UiHelpers {
 	): Generator<void, void, void> {
 		// Preserved: message_start handler owns this lifecycle (see #783)
 		this.ctx.pendingTools.clear();
-		const activeToolExecutionUpdates = this.ctx.viewSession.activeToolExecutionUpdates?.() ?? [];
-		const runningAsyncJobs = this.ctx.viewSession.getAsyncJobSnapshot?.()?.running ?? [];
+		const activeToolExecutionUpdates = this.ctx.session.activeToolExecutionUpdates?.() ?? [];
+		const runningAsyncJobs = this.ctx.session.getAsyncJobSnapshot?.()?.running ?? [];
 		// Reseed the cache-invalidation baseline: this rebuild re-derives every
 		// turn's marker from usage, and the last turn becomes the live baseline.
 		this.ctx.lastAssistantUsage = undefined;
@@ -553,11 +544,11 @@ export class UiHelpers {
 			todoSnapshot = null;
 			previous.seal();
 		};
-		// Detached task calls persist their initial `async.state === "running"`
+		// Background job calls persist their initial `async.state === "running"`
 		// result, but the job keeps streaming progress afterwards. Parked here
 		// (not finalized) so replayed and live frames still route to the card;
 		// the ids are handed back to the controller after the loop (#10447).
-		const backgroundTaskCallIds = new Set<string>();
+		const backgroundCallIds = new Set<string>();
 		const messages = sessionContext.messages;
 		const count = messages.length;
 		for (let i = 0; i < count; i++) {
@@ -596,7 +587,7 @@ export class UiHelpers {
 					readGroup?.seal();
 					readGroup = null;
 				}
-				const errorPresentation = resolveAssistantErrorPresentation(message, this.ctx.viewSession.retryAttempt);
+				const errorPresentation = resolveAssistantErrorPresentation(message, this.ctx.session.retryAttempt);
 				const hasErrorStop = errorPresentation.kind === "full";
 				const errorMessage = hasErrorStop ? errorPresentation.text : null;
 				const appendAssistantSegment = (segment: AssistantMessage | undefined) => {
@@ -619,7 +610,7 @@ export class UiHelpers {
 						appendAssistantSegment(afterToolSegment);
 						continue;
 					}
-					const tool = this.ctx.viewSession.getToolByName(content.name);
+					const tool = this.ctx.session.getToolByName(content.name);
 					const renderToolName = toolRenderName(content.name, tool);
 					resolveWaitingPoll(renderToolName);
 
@@ -650,7 +641,7 @@ export class UiHelpers {
 							this.ctx.pendingTools.set(content.id, readGroup);
 							if (assistantComponent) {
 								readToolCallAssistantComponents.set(content.id, assistantComponent);
-								if (this.ctx.viewSession.isStreaming) {
+								if (this.ctx.session.isStreaming) {
 									this.ctx.eventController?.inheritReadToolAssistant(content.id, assistantComponent);
 								}
 							}
@@ -685,12 +676,12 @@ export class UiHelpers {
 						renderToolName,
 						renderArgs,
 						{
-							useBuiltInRenderer: this.ctx.viewSession.hasBuiltInTool(renderToolName),
+							useBuiltInRenderer: this.ctx.session.hasBuiltInTool(renderToolName),
 							showImages: cfgTerminalShowImages.get(settings),
 						},
 						tool,
 						this.ctx.ui,
-						this.ctx.viewSession.sessionManager.getCwd(),
+						this.ctx.session.sessionManager.getCwd(),
 						content.id,
 					);
 					component.setExpanded(this.ctx.toolOutputExpanded);
@@ -737,14 +728,17 @@ export class UiHelpers {
 					(!pendingReadComponent || pendingReadComponent instanceof ReadToolGroupComponent);
 				if (isReadGroupResult) {
 					const assistantComponent = readToolCallAssistantComponents.get(message.toolCallId);
-					if (this.ctx.viewSession.isStreaming) {
+					if (this.ctx.session.isStreaming) {
 						this.ctx.eventController?.inheritReadToolAssistant(message.toolCallId, undefined);
 					}
 					const images: ImageContent[] = message.content.filter(
 						(content): content is ImageContent => content.type === "image",
 					);
+					const mediaPath = readMediaPath(message.details);
+					if (mediaPath && images.length === 0)
+						assistantComponent?.setToolResultImages(message.toolCallId, [], mediaPath);
 					if (images.length > 0 && assistantComponent) {
-						assistantComponent.setToolResultImages(message.toolCallId, images);
+						assistantComponent.setToolResultImages(message.toolCallId, images, mediaPath);
 						const hasText = message.content.some(c => c.type === "text");
 						if (!hasText && cfgTerminalShowImages.get(settings)) {
 							if (pendingReadComponent) {
@@ -782,21 +776,29 @@ export class UiHelpers {
 				// Match tool results to pending tool components
 				const component = this.ctx.pendingTools.get(message.toolCallId);
 				if (component) {
-					const asyncDetails = (message.details as { async?: { state?: string; jobId?: string } } | undefined)
-						?.async;
-					const isBackgroundTask =
-						message.toolName === "task" &&
-						asyncDetails?.state === "running" &&
-						(activeToolExecutionUpdates.some(event => event.toolCallId === message.toolCallId) ||
-							runningAsyncJobs.some(job => job.id === asyncDetails.jobId));
-					// A detached task's persisted result is only its "still running"
-					// snapshot. Keep the card partial, parked, and in `pendingTools` so
-					// the snapshot replay and later live progress frames land on it
-					// instead of hitting the no-pending-component early return (#10447).
-					component.updateResult(message, isBackgroundTask, message.toolCallId);
-					if (isBackgroundTask) {
+					const jobId = (message.details as { async?: { jobId?: string } } | undefined)?.async?.jobId;
+					const frame = activeToolExecutionUpdates.find(
+						event => event.toolCallId === message.toolCallId,
+					)?.partialResult;
+					const isBackground =
+						parksAsBackground(message.toolName, message.details) &&
+						(frame !== undefined || runningAsyncJobs.some(job => job.id === jobId));
+					const settled = isBackground && isSettledJobFrame(frame?.details);
+					// A background job call's persisted result is only its "still running"
+					// snapshot; the job's latest frame supersedes it. Until that frame
+					// settles, keep the card partial, parked, and in `pendingTools` so
+					// later live progress frames land on it instead of hitting the
+					// no-pending-component early return (#10447).
+					if (settled) {
+						settleWithJobFrame(component, frame, message.toolCallId);
+					} else if (frame && isBackground) {
+						component.updateResult(frame, true, message.toolCallId);
+					} else {
+						component.updateResult(message, isBackground, message.toolCallId);
+					}
+					if (isBackground && !settled) {
 						component.parkAsBackground();
-						backgroundTaskCallIds.add(message.toolCallId);
+						backgroundCallIds.add(message.toolCallId);
 					} else {
 						this.ctx.pendingTools.delete(message.toolCallId);
 						if (
@@ -858,7 +860,7 @@ export class UiHelpers {
 		// hand it back to the controller so a follow-up `todo` update keeps
 		// displacing instead of stacking. Idle rebuilds (resume / compaction)
 		// fall through to the seal path so the snapshot retires as history.
-		if (todoSnapshot && this.ctx.viewSession.isStreaming) {
+		if (todoSnapshot && this.ctx.session.isStreaming) {
 			this.ctx.eventController?.inheritDisplaceableTodo(todoSnapshot);
 			todoSnapshot = null;
 		} else {
@@ -868,16 +870,16 @@ export class UiHelpers {
 		// mid-turn rebuilds reset the controller's turn start before replaying,
 		// so the in-flight assistant `message_end` would otherwise render the
 		// usage row without the elapsed figure. Mirrors inheritDisplaceableTodo.
-		if (this.ctx.viewSession.isStreaming) {
+		if (this.ctx.session.isStreaming) {
 			this.ctx.eventController?.inheritTurnStart(turnStartedAt);
 		}
-		// Re-register parked background task cards with the controller: focus
-		// attach resets its `#backgroundTaskCallIds` before replaying, and unlike
+		// Re-register parked background cards with the controller: focus
+		// attach resets its `#backgroundCallIds` before replaying, and unlike
 		// the todo/turn handoffs this must run whether or not the session streams
-		// — a detached task keeps running while the main session sits idle
+		// — a background job keeps running while the main session sits idle
 		// (#10447). Membership is re-checked against `pendingTools`.
-		if (backgroundTaskCallIds.size > 0) {
-			this.ctx.eventController?.markBackgroundTaskCalls(backgroundTaskCallIds);
+		if (backgroundCallIds.size > 0) {
+			this.ctx.eventController?.markBackgroundCalls(backgroundCallIds);
 		}
 
 		// Entries still in `pendingTools` are toolCalls whose result never landed
@@ -892,7 +894,7 @@ export class UiHelpers {
 		// (`rebuildChatFromMessages` builds its context WITHOUT dangling calls and
 		// restores its own preserved live components afterwards — for that caller
 		// the map is empty here either way.)
-		if (this.ctx.viewSession.isStreaming) {
+		if (this.ctx.session.isStreaming) {
 			for (const [toolCallId, component] of this.ctx.pendingTools) {
 				component.setArgsComplete(toolCallId);
 				if (this.ctx.eventController?.hasToolExecutionStarted(toolCallId)) {
@@ -901,10 +903,10 @@ export class UiHelpers {
 			}
 		} else {
 			for (const [toolCallId, component] of this.ctx.pendingTools) {
-				// A parked background task keeps running even while the main session
+				// A parked background job keeps running even while the main session
 				// is idle, so leave its card pending — sealing and clearing it would
 				// drop the replayed snapshot and every later job frame (#10447).
-				if (backgroundTaskCallIds.has(toolCallId)) {
+				if (backgroundCallIds.has(toolCallId)) {
 					component.setArgsComplete(toolCallId);
 					continue;
 				}
@@ -928,7 +930,7 @@ export class UiHelpers {
 	 * everything after it are no longer part of the view session's transcript.
 	 */
 	truncateTranscriptFromMessage(message: AgentMessage): boolean {
-		if (!this.ctx.initialChatRendered || this.ctx.focusedAgentId || this.ctx.viewSession.isStreaming) return false;
+		if (!this.ctx.initialChatRendered || this.ctx.session.isStreaming) return false;
 		// In-flight blocks route future events into their components; a rewind
 		// with any of them live takes the full-replay path instead.
 		if (this.ctx.pendingTools.size > 0 || this.ctx.pendingBashComponents.length > 0) {
@@ -948,7 +950,7 @@ export class UiHelpers {
 		// Ground truth for the surviving prefix. The cut message still present
 		// means the session was not actually rewound past it — bail before
 		// mutating anything.
-		const context = this.ctx.viewSession.buildTranscriptSessionContext({
+		const context = this.ctx.session.buildTranscriptSessionContext({
 			collapseCompactedHistory: cfgDisplayCollapseCompacted.get(settings),
 		});
 		for (const remaining of context.messages) {
@@ -991,11 +993,11 @@ export class UiHelpers {
 
 	async renderInitialMessages(options: RenderInitialMessagesOptions = {}): Promise<void> {
 		// Collapsed replay keeps in-flight calls so pending tools remain routable during mid-turn rebuilds.
-		let context = this.ctx.viewSession.buildTranscriptSessionContext({
+		let context = this.ctx.session.buildTranscriptSessionContext({
 			collapseCompactedHistory: cfgDisplayCollapseCompacted.get(settings),
-			keepDanglingToolCalls: this.ctx.viewSession.isStreaming,
+			keepDanglingToolCalls: this.ctx.session.isStreaming,
 		});
-		let replayEntryCount = this.ctx.viewSession.sessionManager.getEntries().length;
+		let replayEntryCount = this.ctx.session.sessionManager.getEntries().length;
 
 		// Build against a detached container. Incremental construction still yields
 		// to terminal input, while paints keep using the complete visible transcript
@@ -1032,14 +1034,14 @@ export class UiHelpers {
 			this.ctx.updatePendingMessagesDisplay();
 			this.ctx.pendingBashComponents = [];
 			while (true) {
-				if (this.ctx.viewSession.isStreaming) {
+				if (this.ctx.session.isStreaming) {
 					// Live events mutate the same component maps; keep their replay atomic so
 					// a delta cannot land halfway through rebuilding its pending tool block.
 					this.ctx.renderSessionContext(context, renderOptions);
 				} else {
 					await this.ctx.renderSessionContextIncrementally(context, renderOptions);
 				}
-				if (this.ctx.viewSession.sessionManager.getEntries().length === replayEntryCount) {
+				if (this.ctx.session.sessionManager.getEntries().length === replayEntryCount) {
 					break;
 				}
 				replayAttempts++;
@@ -1050,7 +1052,7 @@ export class UiHelpers {
 					logger.warn("renderInitialMessages: transcript replay did not converge; accepting current replay", {
 						attempts: replayAttempts,
 						replayEntryCount,
-						currentEntryCount: this.ctx.viewSession.sessionManager.getEntries().length,
+						currentEntryCount: this.ctx.session.sessionManager.getEntries().length,
 					});
 					break;
 				}
@@ -1058,11 +1060,11 @@ export class UiHelpers {
 				// yielded. The display callback stayed gated by initialChatRendered;
 				// discard the stale partial tree and replay the current session once
 				// more instead of letting a reentrant synchronous rebuild interleave.
-				context = this.ctx.viewSession.buildTranscriptSessionContext({
+				context = this.ctx.session.buildTranscriptSessionContext({
 					collapseCompactedHistory: cfgDisplayCollapseCompacted.get(settings),
-					keepDanglingToolCalls: this.ctx.viewSession.isStreaming,
+					keepDanglingToolCalls: this.ctx.session.isStreaming,
 				});
-				replayEntryCount = this.ctx.viewSession.sessionManager.getEntries().length;
+				replayEntryCount = this.ctx.session.sessionManager.getEntries().length;
 				await refreshAssistantMessageLinkTargets(
 					this.ctx,
 					context.messages.filter((message): message is AssistantMessage => message.role === "assistant"),
@@ -1092,7 +1094,7 @@ export class UiHelpers {
 			committed = true;
 
 			// Show compaction info if session was compacted.
-			const allEntries = this.ctx.viewSession.sessionManager.getEntries();
+			const allEntries = this.ctx.session.sessionManager.getEntries();
 			let compactionCount = 0;
 			for (const entry of allEntries) {
 				if (entry.type === "compaction") {
@@ -1157,15 +1159,13 @@ export class UiHelpers {
 
 	updatePendingMessagesDisplay(): void {
 		this.ctx.pendingMessagesContainer.disposeChildren();
-		const queuedMessages = this.ctx.viewSession.getQueuedMessages() as QueuedMessages;
+		const queuedMessages = this.ctx.session.getQueuedMessages() as QueuedMessages;
 
 		const steeringMessages = [...queuedMessages.steering];
 		const followUpMessages = [...queuedMessages.followUp];
-		if (!this.ctx.focusedAgentId) {
-			for (const entry of this.ctx.compactionQueuedMessages as CompactionQueuedMessage[]) {
-				if (entry.mode === "steer") steeringMessages.push(entry.text);
-				else followUpMessages.push(entry.text);
-			}
+		for (const entry of this.ctx.compactionQueuedMessages as CompactionQueuedMessage[]) {
+			if (entry.mode === "steer") steeringMessages.push(entry.text);
+			else followUpMessages.push(entry.text);
 		}
 
 		const groups = [
@@ -1378,8 +1378,8 @@ export class UiHelpers {
 	}
 
 	findLastAssistantMessage(): AssistantMessage | undefined {
-		for (let i = this.ctx.viewSession.messages.length - 1; i >= 0; i--) {
-			const message = this.ctx.viewSession.messages[i];
+		for (let i = this.ctx.session.messages.length - 1; i >= 0; i--) {
+			const message = this.ctx.session.messages[i];
 			if (message?.role === "assistant") {
 				return message as AssistantMessage;
 			}

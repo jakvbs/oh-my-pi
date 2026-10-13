@@ -1,5 +1,3 @@
-import { prompt } from "@oh-my-pi/pi-utils";
-import orchestrateNotice from "../prompts/system/orchestrate-notice.md" with { type: "text" };
 import ultrathinkNotice from "../prompts/system/ultrathink-notice.md" with { type: "text" };
 
 /**
@@ -13,12 +11,6 @@ import ultrathinkNotice from "../prompts/system/ultrathink-notice.md" with { typ
  * keyword means one row here plus its notice template under `prompts/system/`.
  */
 
-/** Session facts a keyword notice may render against. */
-export interface MagicKeywordContext {
-	/** Enabled tool names for the turn. */
-	tools: readonly string[];
-}
-
 /** One magic keyword: trigger word, gradient, settings copy, and the notice it injects. */
 export interface MagicKeyword {
 	/** Settings key suffix (`magicKeywords.<id>`) and notice message type prefix (`<id>-notice`). */
@@ -31,19 +23,12 @@ export interface MagicKeyword {
 	label: string;
 	/** Settings panel description. */
 	description: string;
-	/** Tools that must all be enabled for the notice to apply; the notice is skipped otherwise. */
-	requires: readonly string[];
 	/** Render the hidden notice queued ahead of the user message. */
-	notice: (context: MagicKeywordContext) => string;
+	notice: () => string;
 }
 
 /** Hidden notice for "ultrathink": careful multi-step reasoning. */
 export const ULTRATHINK_NOTICE: string = ultrathinkNotice.trim();
-
-/** Hidden notice for "orchestrate", naming only the tools the session actually exposes. */
-export function renderOrchestrateNotice({ tools }: Pick<MagicKeywordContext, "tools">): string {
-	return prompt.render(orchestrateNotice, { tools }).trim();
-}
 
 export const MAGIC_KEYWORDS = [
 	{
@@ -52,18 +37,7 @@ export const MAGIC_KEYWORDS = [
 		hue: [0, 330],
 		label: "Ultrathink Keyword",
 		description: "Let standalone ultrathink request maximum automatic thinking and append its hidden notice",
-		requires: [],
 		notice: () => ULTRATHINK_NOTICE,
-	},
-	{
-		id: "orchestrate",
-		word: "orchestrate",
-		hue: [150, 280],
-		label: "Orchestrate Keyword",
-		description: "Let standalone orchestrate append its hidden multi-agent orchestration notice",
-		// The contract is entirely about `task` subagent dispatch.
-		requires: ["task"],
-		notice: renderOrchestrateNotice,
 	},
 ] as const satisfies readonly MagicKeyword[];
 

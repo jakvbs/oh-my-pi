@@ -47,7 +47,6 @@ export function sessionResolveContext(
 		sessionFile: session.getSessionFile() ?? undefined,
 		experimentalContextManagement: cfgCompactionExperimentalContextManagement.get(session.settings) === true,
 		getSessionBranch: () => getExperimentalContextSession(session).getBranch(),
-		agentRegistry: session.agentRegistry,
 		localProtocolOptions: contextLocalProtocolOptions(session),
 		skills: session.skills,
 		rules: session.activeRules,

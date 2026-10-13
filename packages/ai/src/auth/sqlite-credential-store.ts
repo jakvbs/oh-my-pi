@@ -8,7 +8,6 @@ import type { Database, Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { authPolicyFor } from "@oh-my-pi/pi-catalog/compat/auth";
-import { parseAlibabaTokenPlanCredential } from "@oh-my-pi/pi-catalog/wire/alibaba-token-plan";
 import { parseCloudflareCredential } from "@oh-my-pi/pi-catalog/wire/cloudflare";
 import {
 	getAgentDbPath,
@@ -249,11 +248,6 @@ export function matchesReplacementCredential(
 	if (incoming.type === "api_key") {
 		if (existing.type !== "api_key") return false;
 		if (existing.key === incoming.key) return true;
-		if (provider === "alibaba-token-plan") {
-			const existingToken = parseAlibabaTokenPlanCredential(existing.key)?.token;
-			const incomingToken = parseAlibabaTokenPlanCredential(incoming.key)?.token;
-			return existingToken !== undefined && existingToken === incomingToken;
-		}
 		if (provider === "cloudflare-ai-gateway" || provider === "cloudflare-workers-ai") {
 			const existingToken = parseCloudflareCredential(existing.key)?.token;
 			const incomingToken = parseCloudflareCredential(incoming.key)?.token;
@@ -314,8 +308,8 @@ export function matchesReplacementCredential(
  * Whether two OAuth credentials belong to the same account of the same organization,
  * whichever identity key each is stored under. The email decides when both carry one;
  * otherwise a matching account id does, unless it is the organization's own id (a
- * ChatGPT workspace id shared by every member). Project ids are shared between users
- * (every consumer Antigravity login has the same one) and never count.
+ * ChatGPT workspace id shared by every member). Project ids can be shared between users
+ * and never count.
  */
 export function isSameOAuthAccount(a: OAuthCredential, b: OAuthCredential): boolean {
 	const orgId = normalizeStoredAccountId(a.orgId);

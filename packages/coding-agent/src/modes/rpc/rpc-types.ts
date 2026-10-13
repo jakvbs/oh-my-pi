@@ -12,11 +12,9 @@ import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
 import type { RestoredQueuedMessage } from "../../session/agent-session-types";
 import type { CacheWarmingMode } from "../../session/cache-warmer";
-import type { FileEntry, SessionEntry, SessionTreeNode } from "../../session/session-entries";
+import type { SessionEntry, SessionTreeNode } from "../../session/session-entries";
 import type { UsageLimitState } from "../../session/usage-limit";
 import type { AvailableSlashCommandSource } from "../../slash-commands/available-commands";
-import type { AgentProgress } from "@oh-my-pi/pi-tui/tools/task";
-import type { SubagentEventPayload, SubagentLifecyclePayload, SubagentProgressPayload } from "../../task";
 import type { TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
 import type { LogoutAccount } from "@oh-my-pi/pi-tui/overlays/logout-account-selector";
 import type { RpcMessagesPage } from "./rpc-messages";
@@ -65,12 +63,7 @@ export type RpcCommand =
 	| { id?: string; type: "set_todos"; phases: TodoPhase[] }
 	| { id?: string; type: "set_host_tools"; tools: RpcHostToolDefinition[] }
 	| { id?: string; type: "set_host_uri_schemes"; schemes: RpcHostUriSchemeDefinition[] }
-	| { id?: string; type: "set_subagent_subscription"; level: RpcSubagentSubscriptionLevel }
 	| { id?: string; type: "set_event_filter"; events: string[] | null; messageUpdates?: RpcMessageUpdates }
-	| { id?: string; type: "get_subagents" }
-	| { id?: string; type: "get_subagent_messages"; subagentId?: string; sessionFile?: string; fromByte?: number }
-	| { id?: string; type: "cancel_subagent"; subagentId: string }
-	| { id?: string; type: "steer_subagent"; subagentId: string; message: string }
 
 	// Model
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
@@ -235,7 +228,7 @@ export interface RpcPromptResultFrame {
 	error?: RpcPromptError;
 	/**
 	 * The agent yielded and nothing will wake the session again: no run is live and no
-	 * queued message or background job (async bash/task/eval) will inject a follow-up.
+	 * queued message or background job (async bash or eval) will inject a follow-up.
 	 * When false, a {@link RpcSessionSettledFrame} follows once that work is done.
 	 */
 	sessionSettled: boolean;
@@ -296,32 +289,6 @@ export interface RpcChunkFrame {
 
 export interface RpcHandoffResult {
 	savedPath?: string;
-}
-
-export type RpcSubagentSubscriptionLevel = "off" | "progress" | "events";
-
-export interface RpcSubagentSnapshot {
-	id: string;
-	index: number;
-	agent: string;
-	agentSource: AgentProgress["agentSource"];
-	description?: string;
-	status: AgentProgress["status"];
-	task?: string;
-	assignment?: string;
-	sessionFile?: string;
-	lastUpdate: number;
-	progress?: AgentProgress;
-	parentToolCallId?: string;
-}
-
-export interface RpcSubagentMessagesResult {
-	sessionFile: string;
-	fromByte: number;
-	nextByte: number;
-	reset: boolean;
-	entries: FileEntry[];
-	messages: AgentMessage[];
 }
 
 // ============================================================================
@@ -406,35 +373,6 @@ export type RpcResponse =
 			success: true;
 			data: { events: string[] | null; messageUpdates: RpcMessageUpdates };
 	  }
-	| {
-			id?: string;
-			type: "response";
-			command: "set_subagent_subscription";
-			success: true;
-			data: { level: RpcSubagentSubscriptionLevel };
-	  }
-	| {
-			id?: string;
-			type: "response";
-			command: "get_subagents";
-			success: true;
-			data: { subagents: RpcSubagentSnapshot[] };
-	  }
-	| {
-			id?: string;
-			type: "response";
-			command: "get_subagent_messages";
-			success: true;
-			data: RpcSubagentMessagesResult;
-	  }
-	| {
-			id?: string;
-			type: "response";
-			command: "cancel_subagent";
-			success: true;
-			data: { cancelled: boolean };
-	  }
-	| { id?: string; type: "response"; command: "steer_subagent"; success: true }
 
 	// Model
 	| {
@@ -576,27 +514,6 @@ export interface RpcBtwRecordFrame {
 	record: BtwHistoryRecord;
 }
 
-// ============================================================================
-// Subagent Events (stdout)
-// ============================================================================
-
-export interface RpcSubagentLifecycleFrame {
-	type: "subagent_lifecycle";
-	payload: SubagentLifecyclePayload;
-}
-
-export interface RpcSubagentProgressFrame {
-	type: "subagent_progress";
-	payload: SubagentProgressPayload;
-}
-
-export interface RpcSubagentEventFrame {
-	type: "subagent_event";
-	payload: SubagentEventPayload;
-}
-
-export type RpcSubagentFrame = RpcSubagentLifecycleFrame | RpcSubagentProgressFrame | RpcSubagentEventFrame;
-
 /** Message lifecycle event kinds that RPC mode stamps with a `messageId`. */
 export type RpcMessageEventType = "message_start" | "message_update" | "message_end";
 
@@ -626,7 +543,7 @@ export type RpcAgentSessionEventFrame =
 /** Every session event shape RPC mode can write, including the opt-in `messageUpdates: "delta"` projection. */
 export type RpcProjectedSessionEventFrame = RpcAgentSessionEventFrame | RpcDeltaMessageUpdateFrame;
 
-export type RpcSessionEventFrame = RpcAgentSessionEventFrame | RpcSubagentFrame;
+export type RpcSessionEventFrame = RpcAgentSessionEventFrame;
 
 // ============================================================================
 // Extension UI Events (stdout)

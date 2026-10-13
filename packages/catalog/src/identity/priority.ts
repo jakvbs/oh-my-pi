@@ -4,13 +4,10 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"openai-codex",
 	"anthropic",
 	"openai",
-	"google-gemini-cli",
 	"google",
 	"google-vertex",
 	"kimi-code",
 	"moonshot",
-	"qwen-portal",
-	"alibaba-token-plan",
 	"zai",
 	"xai-oauth",
 	"xai",
@@ -29,12 +26,9 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 
 	// Generic gateways and editor/proxy providers. These are useful when picked
 	// explicitly, but should not win ambiguous automatic role selection.
-	"alibaba-coding-plan",
 	"umans",
-	"google-antigravity",
 	"opencode-zen",
 	"opencode-go",
-	"kilo",
 	"vercel-ai-gateway",
 	"cloudflare-ai-gateway",
 	"nanogpt",

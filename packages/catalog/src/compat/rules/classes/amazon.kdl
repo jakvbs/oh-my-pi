@@ -13,7 +13,7 @@ class "amazon" {
 			}
 		}
 	}
-	on "kilo" "nanogpt" "vercel-ai-gateway" {
+	on "nanogpt" "vercel-ai-gateway" {
 		family "nova" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}

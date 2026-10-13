@@ -212,7 +212,7 @@ export function buildProviderCards(
 		);
 		const windows = [...declared.filter(row => visible.has(row)), ...declared.filter(row => !visible.has(row))];
 		// The window tag earns its columns only when sibling rows would otherwise
-		// be indistinguishable (e.g. Antigravity's daily vs weekly "Usage (Google)").
+		// be indistinguishable (e.g. daily vs weekly windows of one limit).
 		for (const window of windows) {
 			const duplicated = windows.some(other => other !== window && other.label === window.label);
 			if (!duplicated) window.windowTag = undefined;

@@ -5,7 +5,6 @@
  * followed by the message history as per-message markdown headings: `## User`,
  * `## Assistant` (with `<thinking>` blocks and `### Tool Call: <name>` + YAML
  * args), `### Tool Result: <name>`, and the execution/summary sections.
- * `/dump all` renders each persisted subagent as its own `# Subagent: <path>` document.
  */
 import type { AgentMessage, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage, Model, ToolExample, TSchema } from "@oh-my-pi/pi-ai";
@@ -33,38 +32,6 @@ export interface SessionDumpToolInfo {
 	description: string;
 	parameters: unknown;
 	examples?: readonly ToolExample[];
-}
-
-/** Runtime state of a subagent that is still live in this process when `/dump all` runs. */
-export interface SessionDumpLiveState {
-	/** Registry status at capture time (`running`, `idle`, …). */
-	status: string;
-	/** Wall-clock time the snapshot was taken (ms since epoch). */
-	capturedAt: number;
-	/** Last registry heartbeat (tool call, intent, status change). */
-	lastActivity: number;
-	/** Latest activity gist shown in the agent roster. */
-	activity?: string;
-	/** An agent turn is active: a model request, tool execution, or the work between them. */
-	busy: boolean;
-	/** Partial assistant message still streaming; not yet in the persisted transcript. */
-	streamMessage?: AgentMessage | null;
-	/** Tool calls dispatched but not yet finished, as `name (id)`. */
-	pendingToolCalls: readonly string[];
-}
-
-/** A persisted subagent transcript rendered as its own `/dump all` document. */
-export interface SessionDumpSubagent {
-	/** Slash-joined agent path relative to the main session, e.g. "Explore/Helper". */
-	key: string;
-	messages: readonly AgentMessage[];
-	/** Persisted default-role model string ("provider/id"). */
-	model?: string;
-	thinkingLevel?: string;
-	/** The subagent was explicitly killed before finishing. */
-	aborted?: boolean;
-	/** Present when the subagent is still live in this process. */
-	live?: SessionDumpLiveState;
 }
 
 export interface FormatSessionDumpTextOptions {
@@ -126,7 +93,6 @@ function renderDumpHeader(options: FormatSessionDumpTextOptions, inventoryTools:
 
 const CUSTOM_TYPE_ACRONYMS: Readonly<Record<string, string>> = {
 	acp: "ACP",
-	irc: "IRC",
 	lsp: "LSP",
 	mcp: "MCP",
 	rpc: "RPC",
@@ -307,93 +273,28 @@ export function formatSessionDumpText(options: FormatSessionDumpTextOptions): st
 	return lines.join("\n").trim();
 }
 
-/** Live-state header lines: registry status, staleness, and tools still executing. */
-function appendLiveHeader(lines: string[], live: SessionDumpLiveState): void {
-	// `busy` spans the whole turn; a dispatched tool means the model request already finished.
-	const phase = live.pendingToolCalls.length > 0 ? ", running tools" : live.busy ? ", request in flight" : "";
-	lines.push(`Live: ${live.status}${phase} (captured ${formatDumpTime(live.capturedAt)})`);
-	const sinceActivity = formatDuration(live.capturedAt - live.lastActivity);
-	const activity = live.activity ? `: ${live.activity}` : "";
-	lines.push(`Last activity: ${formatDumpTime(live.lastActivity)} (${sinceActivity} before capture)${activity}`);
-	if (live.pendingToolCalls.length > 0) lines.push(`Pending tool calls: ${live.pendingToolCalls.join(", ")}`);
-}
-
-/**
- * The turn a live subagent is in the middle of. The persisted transcript only
- * holds finished messages, so without this a stalled stream is invisible.
- */
-function appendInFlightTurn(lines: string[], live: SessionDumpLiveState, messages: readonly AgentMessage[]): void {
-	const partial = live.streamMessage;
-	if (partial?.role === "assistant") {
-		const elapsed = formatDuration(live.capturedAt - partial.timestamp);
-		lines.push(
-			`## Assistant (in flight, not persisted) · started ${formatDumpTime(partial.timestamp)} (${elapsed} before capture)\n`,
-		);
-		appendAssistantContent(lines, partial.content);
-		if (partial.content.length === 0) lines.push("(no content streamed yet)");
-		lines.push("");
-		return;
-	}
-	if (!live.busy || live.pendingToolCalls.length > 0) return;
-	// Request sent, no message_start yet: measure from the last persisted message.
-	const last = messages.at(-1);
-	const since = last && "timestamp" in last && typeof last.timestamp === "number" ? last.timestamp : undefined;
-	lines.push("## Assistant (in flight, not persisted)\n");
-	lines.push(
-		since === undefined
-			? "Request in flight; no response events received yet."
-			: `Request in flight; no response events received in ${formatDuration(live.capturedAt - since)} since the last persisted message.`,
-	);
-	lines.push("");
-}
-
-/**
- * Format one persisted subagent transcript. Subagent system prompts and tool
- * inventories are not persisted, so the header carries only model, thinking
- * level, whether the agent was killed, and — for agents still live in this
- * process — their runtime state plus the unpersisted in-flight turn.
- */
-export function formatSubagentDumpText(subagent: SessionDumpSubagent): string {
-	const lines = [`# Subagent: ${subagent.key}\n`, `Model: ${subagent.model ?? "(unknown)"}`];
-	if (subagent.thinkingLevel) lines.push(`Thinking Level: ${subagent.thinkingLevel}`);
-	if (subagent.aborted) lines.push("Status: aborted");
-	if (subagent.live) appendLiveHeader(lines, subagent.live);
-	lines.push("\n");
-	appendMarkdownTranscript(lines, subagent.messages);
-	if (subagent.live) appendInFlightTurn(lines, subagent.live, subagent.messages);
-	return lines.join("\n").trim();
-}
-
 /** Result of writing a `/dump all` or `/dump anon` zip (see `AgentSession.dumpSessionArchiveToTmpDir`). */
 export interface SessionDumpArchive {
 	path: string;
 	/** Archive member names in write order. */
 	files: string[];
-	subagentCount: number;
-	/** Why subagent discovery failed; the main dump is archived regardless. */
-	subagentError?: string;
 	/** Members are anonymized session JSONL (`/dump anon`), not raw transcripts. */
 	anonymized?: boolean;
 	/** `[member, count]` for transcripts whose malformed JSONL records were skipped. */
 	malformed?: ReadonlyArray<readonly [string, number]>;
-	/** Subagent transcripts skipped because no session header could be read. */
-	unreadable?: readonly string[];
 }
 
-/** Lines describing a `/dump all` archive: path, members, and any subagent discovery failure. */
+/** Lines describing a `/dump all` archive: path and members. */
 export function formatDumpArchiveReport(archive: SessionDumpArchive): string[] {
 	const fileCount = archive.files.length;
-	const subCount = archive.subagentCount;
 	const lines = [
 		`Session dump archive: ${archive.path}`,
-		`Contains ${fileCount} file${fileCount === 1 ? "" : "s"} (${subCount} subagent transcript${subCount === 1 ? "" : "s"}):`,
+		`Contains ${fileCount} file${fileCount === 1 ? "" : "s"}:`,
 		...archive.files.map(file => `  ${file}`),
 	];
-	if (archive.subagentError) lines.push(`Subagent transcripts unavailable: ${archive.subagentError}`);
 	for (const [member, skipped] of archive.malformed ?? []) {
 		lines.push(`Skipped ${skipped} malformed record${skipped === 1 ? "" : "s"} in ${member}`);
 	}
-	for (const member of archive.unreadable ?? []) lines.push(`Not exported (no readable session header): ${member}`);
 	lines.push(
 		archive.anonymized
 			? ANONYMIZED_REVIEW_NOTE

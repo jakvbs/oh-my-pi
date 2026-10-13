@@ -272,11 +272,11 @@ describe("cascade rank precedence", () => {
 
 describe("resolveCascade over committed rules", () => {
 	test("glm-5.2 on a blanket-glm provider resolves without overlapping the class ladder", () => {
-		// Regression: providers/alibaba-coding-plan.kdl has a direct `class "glm"`
-		// efforts block and no exact glm-5.2 residue, so it used to tie with the
+		// Regression: a provider-level `class "glm"` efforts block without an exact
+		// glm-5.2 residue (here providers/firepass.kdl) must not tie with the
 		// classes/glm.kdl revision >=5.2 ladder and throw AmbiguousOverlapError.
 		const resolved = resolveCascade({
-			provider: "alibaba-coding-plan",
+			provider: "firepass",
 			api: "openai-completions",
 			class: "glm",
 			model: "glm-5.2",
@@ -288,7 +288,7 @@ describe("resolveCascade over committed rules", () => {
 
 	test("memoized bundled results cannot be contaminated by consumers", () => {
 		const lookup: ResolveTarget = {
-			provider: "alibaba-coding-plan",
+			provider: "firepass",
 			api: "openai-completions",
 			class: "glm",
 			model: "glm-5.2",

@@ -228,11 +228,11 @@ describe("frustration dashboard", () => {
 		insertUserMessageStats([
 			userMessage("flash free", "deepseek-v4-flash-free", "opencode-zen", {}, t),
 			userMessage("flash openrouter", "deepseek/deepseek-v4-flash-0731", "openrouter", {}, t + 1),
-			userMessage("flash cline", "deepseek-v4-flash", "cline-pass", {}, t + 2),
+			userMessage("flash deepinfra", "deepseek-v4-flash", "deepinfra", {}, t + 2),
 			userMessage("flash crofai", "deepseek-v4-flash-0731", "crofai", {}, t + 3),
-			userMessage("flash prefixed", "cline-free/deepseek-v4-flash", "cline-pass", {}, t + 4),
-			userMessage("pro", "deepseek-v4-pro", "cline-pass", {}, t + 5),
-			userMessage("flash v4.1", "deepseek-v4.1-flash", "cline-pass", {}, t + 6),
+			userMessage("flash prefixed", "deepseek-ai/deepseek-v4-flash", "deepinfra", {}, t + 4),
+			userMessage("pro", "deepseek-v4-pro", "deepinfra", {}, t + 5),
+			userMessage("flash v4.1", "deepseek-v4.1-flash", "deepinfra", {}, t + 6),
 			userMessage("flash native alias", "deepseek-flash", "deepseek", {}, t + 7),
 			userMessage("flash opencode alias", "deepseek-flash", "opencode-go", {}, t + 8),
 		]);
@@ -244,7 +244,7 @@ describe("frustration dashboard", () => {
 			["deepseek/flash/4.1.0", "flash 4.1", 3],
 		]);
 		expect(byModel[0].models.toSorted()).toEqual([
-			"cline-free/deepseek-v4-flash",
+			"deepseek-ai/deepseek-v4-flash",
 			"deepseek-v4-flash",
 			"deepseek-v4-flash-0731",
 			"deepseek-v4-flash-free",

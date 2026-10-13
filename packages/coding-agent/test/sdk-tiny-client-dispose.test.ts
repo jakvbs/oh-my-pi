@@ -7,7 +7,6 @@ import { type CreateAgentSessionOptions, createAgentSession } from "@oh-my-pi/pi
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { createSubagentSettings } from "@oh-my-pi/pi-coding-agent/task/executor";
 import * as titleClient from "@oh-my-pi/pi-coding-agent/tiny/title-client";
 import type { TinyWorkerRequest, TinyWorkerResponse } from "@oh-my-pi/pi-coding-agent/tiny/title-protocol";
 import { TempDir } from "@oh-my-pi/pi-utils";
@@ -91,10 +90,7 @@ describe("tiny-model client shutdown on session dispose", () => {
 		const modelRegistry = new ModelRegistry(authStorage, tempDir.join("models.yml"));
 		const start = async (
 			settings: Settings,
-			extra: Pick<
-				CreateAgentSessionOptions,
-				"parentTaskPrefix" | "isSubagent" | "agentId" | "bindProcessState"
-			> = {},
+			extra: Pick<CreateAgentSessionOptions, "bindProcessState"> = {},
 		): Promise<AgentSession> => {
 			const { session } = await createAgentSession({
 				cwd: tempDir.path(),
@@ -129,17 +125,11 @@ describe("tiny-model client shutdown on session dispose", () => {
 		try {
 			const parentSettings = Settings.isolated({ "compaction.enabled": false });
 			const parent = await start(parentSettings);
-			const sub = await start(createSubagentSettings(parentSettings), {
-				parentTaskPrefix: "0-Sub",
-				isSubagent: true,
-				agentId: "0-Sub",
-			});
 			const helper = await start(await parentSettings.cloneForCwd(tempDir.path()), { bindProcessState: false });
 
-			// A subagent or helper finishing leaves the parent's request running.
+			// A helper finishing leaves the parent's request running.
 			const first = client.complete(TINY_MODEL, "first");
 			const firstRequest = await worker.nextRequest();
-			await sub.dispose();
 			await helper.dispose();
 			worker.emit({ type: "text", id: firstRequest.id, text: "kept" });
 			expect(await first).toBe("kept");

@@ -11,9 +11,7 @@ import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { FallbackParam, StopDetails } from "./providers/anthropic-wire";
 import type { AzureOpenAIResponsesOptions } from "./providers/azure-openai-responses";
-import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { GoogleOptions } from "./providers/google";
-import type { GoogleGeminiCliOptions } from "./providers/google-gemini-cli";
 import type { GoogleVertexOptions } from "./providers/google-vertex";
 import type { OllamaChatOptions } from "./providers/ollama";
 import type { OpenAICodexResponsesOptions } from "./providers/openai-codex-responses";
@@ -46,10 +44,8 @@ export interface ApiOptionsMap {
 	"openai-codex-responses": OpenAICodexResponsesOptions;
 	"azure-openai-responses": AzureOpenAIResponsesOptions;
 	"google-generative-ai": GoogleOptions;
-	"google-gemini-cli": GoogleGeminiCliOptions;
 	"google-vertex": GoogleVertexOptions;
 	"ollama-chat": OllamaChatOptions;
-	"apple-foundation-models": AppleFoundationModelsOptions;
 }
 // Compile-time exhaustiveness check - this will fail if ApiOptionsMap doesn't have all KnownApi keys
 type _CheckExhaustive =
@@ -589,8 +585,6 @@ export interface StreamOptions {
 	liveSteering?: LiveSteering;
 	/** Canonical Codex compaction classification; ignored by other providers. */
 	codexCompaction?: CodexCompactionRequestContext;
-	/** Codex Code Mode tool exposure snapshot emitted as `tool_namespaces_info` turn metadata; ignored by other providers. */
-	toolNamespacesInfo?: unknown;
 	/**
 	 * Optional per-provider concurrent request cap for LLM stream calls. Keys are
 	 * provider ids (`model.provider`); positive numeric values cap in-flight
@@ -791,8 +785,6 @@ export interface SimpleStreamOptions extends Omit<StreamOptions, "apiKey"> {
 	 * providers ignore it. Callers own the cache lifecycle and compatibility.
 	 */
 	cachedContent?: string;
-	/** Antigravity endpoint routing mode: "auto" (default with failover), "production", "sandbox". */
-	antigravityEndpointMode?: "auto" | "production" | "sandbox";
 	/**
 	 * Anthropic `server-side-fallback-2026-06-01` fallback chain (top-level
 	 * `fallbacks` request field). Opt-in ONLY — leaving this undefined is
@@ -1211,6 +1203,12 @@ export interface AssistantMessage {
 	 */
 	serviceTier?: ServiceTier;
 	usage: Usage;
+	/**
+	 * Visible output tokens a history rewrite (shake) has since removed from
+	 * `content`. `usage.output` still counts them, so a replay estimate subtracts
+	 * them to keep the turn's reasoning without recharging the removed text.
+	 */
+	elidedOutputTokens?: number;
 	stopReason: StopReason;
 	stopDetails?: StopDetails | null;
 	errorMessage?: string;

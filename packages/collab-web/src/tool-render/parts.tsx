@@ -4,7 +4,7 @@
  */
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import type { ToolRenderHost, ToolResultImage, ToolResultLike } from "./types";
+import type { ToolResultImage, ToolResultLike } from "./types";
 import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
 
 export type Tone = "accent" | "ok" | "err" | "warn";
@@ -264,30 +264,5 @@ export function DiffBlock({ diff, maxLines = 80 }: { diff: string; maxLines?: nu
 				</button>
 			)}
 		</div>
-	);
-}
-
-/**
- * Agent id chip. Becomes a drill-down button when the host can open that
- * agent's sub-session; otherwise renders as a plain accent badge.
- */
-export function AgentLink({
-	id,
-	host,
-	children,
-}: {
-	id: string;
-	host?: ToolRenderHost;
-	children?: ReactNode;
-}): ReactNode {
-	const clickable = host?.openAgent !== undefined && (host.hasAgent === undefined || host.hasAgent(id));
-	if (!clickable) return <Badge tone="accent">{children ?? id}</Badge>;
-	return (
-		<button type="button" className="tv-badge tv-badge--accent tv-agent-link" onClick={() => host.openAgent?.(id)}>
-			{children ?? id}
-			<span className="tv-agent-link-arrow" aria-hidden="true">
-				{" ↗"}
-			</span>
-		</button>
 	);
 }

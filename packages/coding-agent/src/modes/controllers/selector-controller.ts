@@ -53,7 +53,7 @@ import {
 	MarketplaceManager,
 } from "../../extensibility/plugins/marketplace";
 import { getAvailableThemes, getSymbolTheme, previewTheme, theme } from "@oh-my-pi/pi-tui/theme";
-import type { AgentHubOpenOptions, InteractiveModeContext } from "../../modes/types";
+import type { InteractiveModeContext } from "../../modes/types";
 import type { SessionOAuthAccountList } from "../../session/agent-session-types";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../session/auth-storage";
 import { previewModelCompactionPoint, setModelCompactionPoint } from "../../session/model-compaction-threshold";
@@ -92,13 +92,9 @@ import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
 import { getAssistantMessageLinkTargets } from "@oh-my-pi/pi-tui/prompt/interactive-context-helpers";
 import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "@oh-my-pi/pi-tui/overlays/advisor-config";
-import { createAgentsHubDeps } from "../agents-hub-deps";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { collapseSharedUsageReports } from "@oh-my-pi/pi-tui/overlays/usage-display";
 import { limitMatchesActiveAccount } from "../../slash-commands/helpers/active-oauth-account";
-import { AgentHubOverlayComponent } from "@oh-my-pi/pi-tui/overlays/agent-hub";
-import { createAgentHubRuntime } from "../agent-hub-runtime";
-import { AgentsHubComponent } from "@oh-my-pi/pi-tui/overlays/agents-hub";
 import { CopySelectorComponent } from "@oh-my-pi/pi-tui/overlays/copy-selector";
 import { ExtensionDashboard } from "@oh-my-pi/pi-tui/overlays/extensions/extension-dashboard";
 import { listLiveToolRecords, liveToolRecordFromSession } from "@oh-my-pi/pi-tui/overlays/extensions/live-tool-session";
@@ -124,7 +120,6 @@ import { TreeSelectorComponent } from "@oh-my-pi/pi-tui/overlays/tree-selector";
 import { ThinkingSelectorComponent } from "@oh-my-pi/pi-tui/overlays/thinking-selector";
 import { UsageDashboardComponent } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
 import { renderUsageReports } from "./command-controller";
-import type { SessionObserverRegistry } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 
 import { cfgAdvisorSyncBacklog } from "../../advisor/settings";
 import { cfgBranchSummaryEnabled } from "../../session/context-settings";
@@ -143,7 +138,6 @@ import {
 	cfgStatusLineTransparent,
 	cfgTreeFilterMode,
 } from "../settings";
-import { cfgTaskAgentModelOverrides } from "../../task/settings";
 
 interface ModelOverlayModules {
 	ModelHubComponent: typeof ModelHubComponentType;
@@ -181,7 +175,7 @@ function loadProviderAuthUi(): ProviderAuthUiModules {
 }
 
 /** Menus that open at most once: a repeat request focuses the open one. */
-type MenuKind = "settings" | "model-picker" | "model-hub" | "agents-dashboard" | "agent-hub" | "usage-dashboard";
+type MenuKind = "settings" | "model-picker" | "model-hub" | "usage-dashboard";
 
 /** An open menu: registered when the request runs, filled once its component mounts. */
 interface OpenMenu {
@@ -654,49 +648,6 @@ export class SelectorController {
 	}
 
 	/**
-	 * Fullscreen agents hub on the alternate screen (the /models idiom): scope
-	 * sidebar, agent rows, and chip strips that dive into the model browser.
-	 */
-	async showAgentsDashboard(): Promise<void> {
-		if (this.#focusOpenMenu("agents-dashboard")) return;
-		const menu = this.#claimMenu("agents-dashboard");
-		const activeModel = this.ctx.session.model;
-		const activeModelPattern = activeModel ? `${activeModel.provider}/${activeModel.id}` : undefined;
-		const defaultModelPattern = this.ctx.settings.getModelRole("default");
-		let closed = false;
-		const done = () => {
-			if (closed) return;
-			closed = true;
-			hub?.dispose();
-			menu.handle?.hide();
-			this.#releaseMenu("agents-dashboard", menu);
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
-		let hub: AgentsHubComponent;
-		try {
-			hub = await AgentsHubComponent.create(
-				this.ctx.ui,
-				createAgentsHubDeps(
-					getProjectDir(),
-					this.ctx.settings,
-					this.ctx.session.modelRegistry,
-					() => this.ctx.session.effectiveExtensionRoots,
-					activeModelPattern,
-					defaultModelPattern,
-					model => this.ctx.session.effectiveServiceTier(model),
-				),
-				{ onCancel: () => done() },
-			);
-		} catch (error) {
-			// A dashboard that never opened must not block the next `/agents`.
-			this.#releaseMenu("agents-dashboard", menu);
-			throw error;
-		}
-		this.#mountMenu(menu, hub, () => this.#showFullscreenMenu(hub));
-	}
-
-	/**
 	 * Apply the side effects of a setting change the user made in this process
 	 * (settings selector, approved `cfg://` writes); the value is already stored.
 	 * Only `defaultThinkingLevel` needs this: it also switches the live session,
@@ -785,10 +736,6 @@ export class SelectorController {
 		const quickRoleOrder = cfgCycleOrder.get(this.ctx.settings);
 		const quickRoleCycle = this.ctx.session.getRoleModelCycle(quickRoleOrder);
 		const currentSelector = current ? `${current.provider}/${current.id}` : undefined;
-		// Preselect the effective Task model in task mode: the configured override,
-		// else the session model (the bundled task agent inherits it by default).
-		const taskOverride = cfgTaskAgentModelOverrides.get(this.ctx.settings).task;
-		const taskSelector = (Array.isArray(taskOverride) ? taskOverride[0] : taskOverride) ?? currentSelector;
 		let closed = false;
 		const done = () => {
 			if (closed) return;
@@ -829,23 +776,11 @@ export class SelectorController {
 						this.ctx.showError(error instanceof Error ? error.message : String(error));
 					}
 				},
-				onPickTask: (_model, selector) => {
-					// Session-only: layer the Task override onto the runtime settings
-					// layer so it is never persisted, mirroring the session-model pick.
-					cfgTaskAgentModelOverrides.override(this.ctx.settings, {
-						...cfgTaskAgentModelOverrides.get(this.ctx.settings),
-						task: selector,
-					});
-					this.ctx.showStatus(`Task subagent model (session-only): ${selector}. Use /agents to persist.`);
-					done();
-				},
 				onCancel: done,
 			},
 			{
 				currentContextTokens,
 				currentSelector,
-				taskModeKeys: this.ctx.keybindings.getKeys("app.model.selectTemporary"),
-				taskSelector,
 				quickRoles: quickRoleCycle?.models,
 				quickRoleOrder,
 				currentQuickRole: quickRoleCycle?.models[quickRoleCycle.currentIndex]?.role,
@@ -1812,7 +1747,6 @@ export class SelectorController {
 		if (!detached) {
 			return false;
 		}
-		this.ctx.resetObserverRegistry();
 		this.#refreshSessionTerminalTitle();
 
 		this.ctx.clearTransientSessionUi();
@@ -1842,7 +1776,6 @@ export class SelectorController {
 		const target = await this.#relocateFromRemovedWorktree(sessionPath);
 		if (!target) return false;
 		await this.ctx.prepareSessionSwitch();
-		this.ctx.resetObserverRegistry();
 		// AgentSession owns the transaction. It restores the complete source state
 		// if applying the target project's cwd fails, including in-memory sessions.
 		let modelFallbackWarning: string | undefined;
@@ -2341,89 +2274,5 @@ export class SelectorController {
 			);
 			return { component: selector, focus: selector.getSelectList() };
 		});
-	}
-
-	showAgentHub(observers: SessionObserverRegistry, options?: AgentHubOpenOptions): void {
-		// A repeat request reuses the open hub, still honoring its deep link (`/hub` → activity).
-		const reuseOpenHub = (): boolean => {
-			const open = this.#openMenus.get("agent-hub")?.component;
-			if (!this.#focusOpenMenu("agent-hub")) return false;
-			if (options?.initialSection && open instanceof AgentHubOverlayComponent)
-				open.showSection(options.initialSection);
-			return true;
-		};
-		if (reuseOpenHub()) return;
-		const hubKeys = [
-			...this.ctx.keybindings.getKeys("app.agents.hub"),
-			...this.ctx.keybindings.getKeys("app.session.observe"),
-		];
-		let menu: OpenMenu | undefined;
-		let closed = false;
-
-		const done = () => {
-			if (closed) return;
-			closed = true;
-			hub.dispose();
-			if (!menu) {
-				// A gated empty Hub never mounted. Restoring editor focus here
-				// would steal focus from a menu opened meanwhile.
-				this.ctx.ui.requestRender();
-				return;
-			}
-			menu.handle?.hide();
-			this.#releaseMenu("agent-hub", menu);
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
-
-		const hub = new AgentHubOverlayComponent({
-			...createAgentHubRuntime({
-				settings: this.ctx.settings,
-				sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
-			}),
-			observers,
-			hubKeys,
-			expandKeys: this.ctx.keybindings.getKeys("app.tools.expand"),
-			initialSection: options?.initialSection,
-			onDone: done,
-			requestRender: () => this.ctx.ui.requestRender(),
-			ui: this.ctx.ui,
-			getTool: name => this.ctx.session.getToolByName(name),
-			isBuiltInTool: name => this.ctx.session.hasBuiltInTool(name),
-			getMessageRenderer: type => this.ctx.session.extensionRunner?.getMessageRenderer(type),
-			cwd: this.ctx.sessionManager.getCwd(),
-			hideThinkingBlock: () => this.ctx.effectiveHideThinkingBlock,
-			proseOnlyThinking: () => this.ctx.proseOnlyThinking,
-			expandThinkingBlocks: () => this.ctx.expandThinkingBlocks,
-			focusAgent: id => this.ctx.focusAgentSession(id),
-			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
-		});
-
-		const showReadyHub = () => {
-			if (closed) return;
-			// The double-← gesture stays inert when neither live nor persisted
-			// subagents are available, so wait for discovery before making the gate.
-			if (options?.requireContent && hub.isEmpty) {
-				done();
-				return;
-			}
-			// Another open mounted while discovery was pending: keep that one.
-			if (reuseOpenHub()) {
-				done();
-				return;
-			}
-
-			// Prime the detector before the first frame when the editor's double-←
-			// gesture opened the hub, so the next single ← dismisses it.
-			if (options?.armCloseTap) hub.armCloseTap();
-			menu = this.#claimMenu("agent-hub");
-			this.#mountMenu(menu, hub, () => this.#showFullscreenMenu(hub));
-		};
-
-		if (options?.requireContent && hub.isEmpty) {
-			void hub.persistedSubagentsReady.then(showReadyHub);
-		} else {
-			showReadyHub();
-		}
 	}
 }

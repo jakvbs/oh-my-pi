@@ -6,11 +6,10 @@
  *   - **PR-checkout worktrees** (`tools/gh.ts`): a regular git worktree dir
  *     containing a `.git` *file* that points back at
  *     `<parent-repo>/.git/worktrees/<name>/`.
- *   - **Task-isolation dirs** (`task/worktree.ts`): a wrapper dir with a
+ *   - **Legacy task-isolation dirs** (left by earlier versions): a wrapper dir with a
  *     compact `m` subdir mounted/cloned by `natives.isoStart`. Legacy `merged`
- *     subdirs are still recognized. `ensureIsolation` writes an ownership
- *     marker naming the live omp process; a
- *     sandbox whose owner is still running is reported `live` and never
+ *     subdirs are still recognized. An ownership marker names the omp process that
+ *     created it; a sandbox whose owner is still running is reported `live` and never
  *     removed without `--all`, so `clear` reclaims only crashed leftovers.
  *
  * Legacy entries from before the encoding change keep working because git still
@@ -23,10 +22,14 @@ import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { getWorktreesDir, isEnoent } from "@oh-my-pi/pi-utils";
 import chalk from "@oh-my-pi/pi-utils/chalk";
 import { Settings } from "../config/settings";
-import { hasLiveIsolationOwner, ISOLATION_OWNER_FILE, readRetainedMountBackend } from "../task/isolation-ownership";
-import { formatIsolationBackend, parseIsolationBackend } from "../task/worktree";
+import { hasLiveIsolationOwner, ISOLATION_OWNER_FILE, readRetainedMountBackend } from "./legacy-isolation-owner";
 
-import { cfgIsolationBackend, cfgWorktreeClone } from "../task/settings";
+import {
+	cfgIsolationBackend,
+	cfgWorktreeClone,
+	formatIsolationBackend,
+	parseIsolationBackend,
+} from "../session/worktree-settings";
 
 type WorktreeKind = "pr-checkout" | "task-isolation" | "empty" | "stray";
 

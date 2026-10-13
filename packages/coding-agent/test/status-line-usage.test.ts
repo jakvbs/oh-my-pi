@@ -476,7 +476,7 @@ describe("usage status-line segment", () => {
 		expect(content).not.toContain("7d");
 	});
 
-	it("renders monthly Cursor usage when five-hour and seven-day windows are absent", () => {
+	it("renders monthly usage when five-hour and seven-day windows are absent", () => {
 		const result = renderSegment("usage", {
 			usage: { monthly: { percent: 1.88, resetHours: 743 } },
 		} as unknown as SegmentContext);
@@ -484,69 +484,12 @@ describe("usage status-line segment", () => {
 
 		expect(result.visible).toBe(true);
 		expect(content).toContain("mo");
-		// Match Cursor web dashboard flooring (1.88 → 1%), not Math.round → 2%.
+		// Match dashboard flooring (1.88 → 1%), not Math.round → 2%.
 		expect(content).toContain("1%");
 		expect(content).not.toContain("2%");
 		expect(content).toContain("30d 23h");
 		expect(content).not.toContain("5h");
 		expect(content).not.toContain("7d");
-	});
-
-	it("keeps monthly Cursor personal usage from the active provider", async () => {
-		const component = makeComponent(
-			[
-				{
-					provider: "cursor",
-					limits: [
-						{
-							id: "cursor:usd:individual-plan",
-							scope: { windowId: "monthly" },
-							window: { id: "monthly", resetsAt: Date.now() + 743 * 3_600_000 },
-							amount: { usedFraction: 0.132 },
-						},
-					],
-				},
-			],
-			{ provider: "cursor" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-
-		expect(content).toContain("mo");
-		expect(content).toContain("13%");
-	});
-
-	it("prefers Cursor personal dashboard rails over legacy monthly request limits", async () => {
-		const component = makeComponent(
-			[
-				{
-					provider: "cursor",
-					limits: [
-						{
-							id: "cursor:requests:gpt-4",
-							scope: { windowId: "monthly" },
-							amount: { usedFraction: 0.9 },
-						},
-						{
-							id: "cursor:usd:individual-auto",
-							scope: { windowId: "monthly" },
-							amount: { usedFraction: 0.0185 },
-						},
-					],
-				},
-			],
-			{ provider: "cursor" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-
-		expect(content).toContain("mo");
-		expect(content).toContain("1%");
-		expect(content).not.toContain("90%");
 	});
 
 	it("renders all three OpenCode Go windows including monthly", async () => {
@@ -590,33 +533,6 @@ describe("usage status-line segment", () => {
 		expect(content).toContain("8%");
 		expect(content).toContain("mo");
 		expect(content).toContain("42%");
-	});
-
-	it("renders an alibaba-token-plan monthly-only quota without a reported span", async () => {
-		const component = makeComponent(
-			[
-				{
-					provider: "alibaba-token-plan",
-					limits: [
-						{
-							id: "credits:monthly",
-							scope: { provider: "alibaba-token-plan", windowId: "monthly" },
-							window: { id: "monthly", label: "Monthly Credits", resetsAt: Date.now() + 335 * 3_600_000 },
-							amount: { used: 1.04, usedFraction: 0.0104, unit: "percent" },
-						},
-					],
-				},
-			],
-			{ provider: "alibaba-token-plan" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-
-		expect(content).toContain("mo");
-		expect(content).toContain("1%");
-		expect(content).toContain("13d 23h");
 	});
 
 	it("does not render monthly usage for providers outside the single-bucket gate", async () => {
@@ -680,136 +596,6 @@ describe("usage status-line segment", () => {
 		expect(content).toContain("24%");
 		expect(content).toContain("7d");
 		expect(content).toContain("8%");
-	});
-
-	it("renders Google Antigravity daily usage", async () => {
-		const now = Date.now();
-		const component = makeComponent(
-			[
-				{
-					provider: "google-antigravity",
-					limits: [
-						{
-							label: "Usage (Google)",
-							scope: { provider: "google-antigravity", windowId: "daily" },
-							window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: now + 11 * 60_000 },
-							amount: { usedFraction: 0.054 },
-						},
-					],
-				},
-			],
-			{ provider: "google-antigravity" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-
-		expect(content).toContain("1d");
-		expect(content).toContain("5%");
-		expect(content).toContain("11m");
-	});
-
-	it("scopes Antigravity usage to the active model's backend counter", async () => {
-		const now = Date.now();
-		const reports = [
-			{
-				provider: "google-antigravity",
-				limits: [
-					{
-						id: "google-antigravity:default:default:daily",
-						label: "Usage",
-						scope: { provider: "google-antigravity", windowId: "daily" },
-						window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: now + 5 * 60_000 },
-						amount: { usedFraction: 0.99 },
-					},
-					{
-						id: "google-antigravity:google:default:daily",
-						label: "Usage (Google)",
-						scope: { provider: "google-antigravity", windowId: "daily" },
-						window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: now + 11 * 60_000 },
-						amount: { usedFraction: 0.91 },
-					},
-					{
-						id: "google-antigravity:anthropic:default:daily",
-						label: "Usage (Anthropic)",
-						scope: { provider: "google-antigravity", windowId: "daily" },
-						window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: now + 40 * 60_000 },
-						amount: { usedFraction: 0.24 },
-					},
-					{
-						id: "google-antigravity:openai:default:daily",
-						label: "Usage (OpenAI)",
-						scope: { provider: "google-antigravity", windowId: "daily" },
-						window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: now + 25 * 60_000 },
-						amount: { usedFraction: 0.63 },
-					},
-				],
-			},
-		];
-
-		const claude = makeComponent(reports, { provider: "google-antigravity", modelId: "claude-opus-4-6" });
-		claude.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const claudeContent = stripVTControlCharacters(claude.getTopBorder(200).content);
-		expect(claudeContent).toContain("1d");
-		expect(claudeContent).toContain("24%");
-		expect(claudeContent).not.toContain("91%");
-		expect(claudeContent).not.toContain("99%");
-
-		const gemini = makeComponent(reports, { provider: "google-antigravity", modelId: "gemini-3-pro" });
-		gemini.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const geminiContent = stripVTControlCharacters(gemini.getTopBorder(200).content);
-		expect(geminiContent).toContain("1d");
-		expect(geminiContent).toContain("91%");
-		expect(geminiContent).not.toContain("24%");
-		expect(geminiContent).not.toContain("99%");
-
-		const gptOss = makeComponent(reports, { provider: "google-antigravity", modelId: "gpt-oss-120b" });
-		gptOss.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const gptOssContent = stripVTControlCharacters(gptOss.getTopBorder(200).content);
-		expect(gptOssContent).toContain("1d");
-		expect(gptOssContent).toContain("63%");
-		expect(gptOssContent).not.toContain("91%");
-		expect(gptOssContent).not.toContain("99%");
-		for (const modelId of ["tab_flash_lite_preview", "tab_jump_flash_lite_preview"]) {
-			const tabModel = makeComponent(reports, { provider: "google-antigravity", modelId });
-			tabModel.refreshUsageInBackground();
-			await flushUsageRefresh();
-			const tabContent = stripVTControlCharacters(tabModel.getTopBorder(200).content);
-			expect(tabContent).toContain("1d");
-			expect(tabContent).toContain("91%");
-			expect(tabContent).not.toContain("24%");
-			expect(tabContent).not.toContain("99%");
-		}
-	});
-
-	it("falls back to legacy default Antigravity usage when the model counter is absent", async () => {
-		const component = makeComponent(
-			[
-				{
-					provider: "google-antigravity",
-					limits: [
-						{
-							id: "google-antigravity:default:default:daily",
-							label: "Usage",
-							scope: { provider: "google-antigravity", windowId: "daily" },
-							window: { id: "daily", label: "Daily", durationMs: 86_400_000 },
-							amount: { usedFraction: 0.42 },
-						},
-					],
-				},
-			],
-			{ provider: "google-antigravity", modelId: "claude-opus-4-6" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-		expect(content).toContain("1d");
-		expect(content).toContain("42%");
 	});
 
 	it("ignores non-canonical windows without a reported span", async () => {

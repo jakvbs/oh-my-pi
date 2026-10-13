@@ -159,7 +159,7 @@ describe("InternalUrlFilesystem cancellation", () => {
 
 describe("InternalUrlFilesystem policy", () => {
 	it("refuses shell writes to handler-written schemes", async () => {
-		const response = await shellFs().handle({ op: ShellFsOp.Open, path: "agent://Worker", open: CREATE });
+		const response = await shellFs().handle({ op: ShellFsOp.Open, path: "xd://bash", open: CREATE });
 
 		expect(response.error?.code).toBe("EROFS");
 		expect(response.error?.message).toContain("write tool");

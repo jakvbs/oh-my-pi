@@ -139,7 +139,6 @@ override matching model tags. These fields do not configure the Anthropic Messag
 - `anthropic-messages`
 - `bedrock-converse-stream`
 - `google-generative-ai`
-- `google-gemini-cli`
 - `google-vertex`
 - `typesafe`
 - `openrouter-decisions`
@@ -148,7 +147,7 @@ override matching model tags. These fields do not configure the Anthropic Messag
 
 `typesafe`, `openrouter-decisions`, `openai-decisions`, and `workers-ai-systemone` are judgment APIs, not chat transports: a model declared with one answers judgment requests and is selected by the `judge` model role. `typesafe` posts TypeSafe's System One body to `{baseUrl}/v1/systemone` (any System One server: TypeSafe, OpenJEV, Kev, self-hosted Clef); `openrouter-decisions` posts the same body to `{baseUrl}/decisions`; `openai-decisions` translates questions and answers to OpenAI's Decisions API at `{baseUrl}/decisions` (the bundled `openai/gpt-6-luna-decisions` row sends the wire model `gpt-6-luna`); `workers-ai-systemone` posts the System One body to Cloudflare Workers AI at `{baseUrl}/{model id}`, where `<account>` in the base URL is filled from the stored credential's account id or `CLOUDFLARE_ACCOUNT_ID`. Its `headers` carry gateway routing or custom authentication headers for that traffic.
 
-A model or `modelOverrides` entry may also use a runner API, which serves one model `kind`; `RUNNER_API_KINDS` in `packages/catalog/src/types.ts` lists them (for example `openai-images` serves `image`, `openai-embeddings` serves `embedding`, `openai-speech` serves `tts`). `web-search` is built in and cannot be named here, so neither can `kind: search`. `kind` defaults to the api's kind (`chat` for chat transports), and an explicit `kind` must be one its api serves. Chat transports serve `chat` and `tiny` (small models for the `tiny`, `memory`, and `judge` roles); those with hosted image generation (`openai-responses`, `openai-codex-responses`, `google-generative-ai`, `google-gemini-cli`) also serve `image`: on `openai-responses`, the image is generated through the Responses `image_generation` tool, carried by a GPT-5+ chat model on the same provider, instead of `/images/generations`. This moves discovered gateway models to the image role:
+A model or `modelOverrides` entry may also use a runner API, which serves one model `kind`; `RUNNER_API_KINDS` in `packages/catalog/src/types.ts` lists them (for example `openai-images` serves `image`, `openai-embeddings` serves `embedding`, `openai-speech` serves `tts`). `web-search` is built in and cannot be named here, so neither can `kind: search`. `kind` defaults to the api's kind (`chat` for chat transports), and an explicit `kind` must be one its api serves. Chat transports serve `chat` and `tiny` (small models for the `tiny`, `memory`, and `judge` roles); those with hosted image generation (`openai-responses`, `openai-codex-responses`, `google-generative-ai`) also serve `image`: on `openai-responses`, the image is generated through the Responses `image_generation` tool, carried by a GPT-5+ chat model on the same provider, instead of `/images/generations`. This moves discovered gateway models to the image role:
 
 ```yaml
 providers:
@@ -170,11 +169,11 @@ Loading models.yml checks a `modelOverrides` `kind` only against an api the file
 ### Allowed auth/discovery values
 
 - `auth`: `apiKey` (default), `none`, or `oauth`. `none` and `oauth` waive the custom-provider `apiKey` requirement, but `oauth` does not create credentials or register a login flow. It forces OAuth-style request shaping; a usable credential must come from stored auth, environment, or a configured key. Custom `anthropic-messages` models also use OAuth-style shaping when `auth` is omitted; set `auth: apiKey` for plain API-key shaping.
-- `discovery.type`: `ollama`, `llama.cpp`, `lm-studio`, `openai-models-list`, `proxy`, `litellm`, or `apple-foundation-models`. Apple's transport is registered implicitly on supported Macs; `apple-foundation-models` is not an allowed `api` value in this YAML schema.
+- `discovery.type`: `ollama`, `llama.cpp`, `lm-studio`, `openai-models-list`, `proxy`, or `litellm`.
 - `discovery.injectV1`: optional boolean, default `true`, for `openai-models-list`. Set `false` to fetch the model list from `{baseUrl}/models` without injecting `/v1` — for gateways that root their OpenAI-compatible surface at a versioned path (e.g. `https://api.opper.ai/v3/compat`) where the forced `/v1/models` returns a different, smaller model list. Query strings in `baseUrl` are ignored, matching the default mode.
 - `transport`: `pi-native` only. When set, every model under that provider is sent to an `omp auth-gateway` compatible `baseUrl` via `POST /v1/pi/stream`; `apiKey` is the gateway bearer.
 - `imageInputDecoder`: `stb` only. Set this on a custom model or `modelOverrides` entry when the serving backend uses an STB-compatible image decoder that cannot accept WebP; OMP converts attached and historical WebP images before provider dispatch.
-- `tokenizer`: opt into a specific embedded local tokenizer when a proxy's model id is ambiguous or noncanonical. Allowed values: `claude-v3`, `claude-v47`, `claude-v5`, `claude-v5-sonnet`, `qwen3`, `deepseek-v3`, `kimi-k2`, and `glm5`. Omit it to use catalog identity policy; unknown models retain the fast local estimate.
+- `tokenizer`: opt into a specific embedded local tokenizer when a proxy's model id is ambiguous or noncanonical. Allowed values: `claude-v3`, `claude-v47`, `claude-v5`, `claude-v5-sonnet`, `qwen3`, `deepseek-v3`, `kimi-k2`, `glm5`, and `o200k` (OpenAI GPT-5 and later). Omit it to use catalog identity policy; unknown models retain the fast local estimate.
 
 ## Validation rules (current)
 
@@ -353,9 +352,11 @@ For the first-party `deepseek` provider, the catalog follows [DeepSeek's officia
 - Flash pricing covers `deepseek-flash` and the retired-but-still-accepted `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` ids, all billed at the Flash card. Peak rates per million tokens are $0.30 uncached input, $0.006 cached input, and $1.20 output.
 - `deepseek-v4-pro` initially uses peak rates of $1.32 uncached input, $0.044 cached input, and $3.96 output per million tokens. From **2026-09-14 04:00 UTC**, its estimates use the Flash rate card, with the same peak/off-peak schedule.
 
+Some catalog prices change on a date without a peak/off-peak tariff. Gemini 4 Argon on `google`, `google-vertex`, `google-antigravity`, and `cursor` is estimated at $2 input / $0.10 cached input / $10 output per million tokens through 2026-11-30, and at Google's $4 / $0.20 / $20 list price from **2026-12-01 08:00 UTC** (midnight US Pacific). The request's timestamp picks the price, so a model loaded before the change prices later requests at the new rate without a catalog update, and the model browser and `omp models --json` show the price in force.
+
 Local estimates use the assistant message's **request-start timestamp** to choose both the rate card and tariff for the whole request. This is OMP's estimation convention: DeepSeek's pricing page does not specify how its server bills a request spanning a boundary. When importing historical usage without recorded cost, the stats importer leaves scheduled pricing unpriced if no request timestamp can be recovered, rather than choosing a wall-clock tariff.
 
-The status line's `cost` segment appends **↑** for peak or **↓** for off-peak pricing on the **currently active provider/model**, using the current wall clock. It refreshes at tariff boundaries even while idle; the arrow is not a label for the accumulated session total. Models without scheduled pricing, including explicit flat-price overrides, show no arrow.
+The status line's `cost` segment appends **↑** for peak or **↓** for off-peak pricing on the **currently active provider/model**, using the current wall clock. It refreshes at tariff boundaries even while idle; the arrow is not a label for the accumulated session total. Models without a peak/off-peak tariff, including dated price changes and explicit flat-price overrides, show no arrow.
 
 An explicit model `cost` in `models.yml`, including `modelOverrides`, is a flat-price override and disables inherited time-based pricing for that model. Omitting `cost` preserves catalog pricing. `models.yml` does **not** configure a `timeBased` schedule; that metadata belongs to the catalog's [KDL pricing rules](../packages/catalog/src/compat/rules/README.md#time-based-pricing).
 
@@ -414,17 +415,6 @@ response JIT-loads a model, OMP refreshes that runtime metadata. Explicit custom
 `modelOverrides` limits remain authoritative. Discovered LM Studio models use `imageInputDecoder: stb`.
 
 This path also works for local OpenAI-compatible servers that are not LM Studio. For example, if oMLX is bound to Ollama's usual port, set `LM_STUDIO_BASE_URL=http://127.0.0.1:11434/v1` to discover it through the existing `/v1/models` flow. Running oMLX and Ollama side by side requires assigning a different port to one of them. Do not configure oMLX as `ollama`: Ollama discovery uses native `/api/tags` and `/api/show` endpoints, not OpenAI `/v1/models`.
-
-### Implicit Apple Foundation Models discovery
-
-On Apple Silicon macOS, an unconfigured, non-disabled `apple` provider is probed through the
-in-process Foundation Models bridge. When the bridge reports it usable, `apple/on-device` is
-available without credentials, with context size, reasoning, image input, and tool support derived
-from bridge metadata. It is not selected automatically: its on-device context window may be
-smaller than the default coding-agent prompt and project instructions. Select it deliberately with
-`--model apple/on-device` or `/model`; otherwise use `/login` or configure another local model.
-Ineligible devices, disabled Apple Intelligence, and builds without the bridge yield no models.
-Its internal API is `apple-foundation-models`; no HTTP endpoint is used.
 
 ### LiteLLM provider discovery
 
@@ -634,7 +624,7 @@ Model roles assign model selectors to workloads. Configure them under `modelRole
 
 Built-in roles are grouped in the model picker:
 
-- **Chat roles:** `default`, `smol`, `slow`, `vision`, `commit`, `tiny`, `task`, and `advisor`. The `tiny` role accepts both ordinary chat models and `tiny` catalog models.
+- **Chat roles:** `default`, `smol`, `slow`, `vision`, `commit`, `tiny`, and `advisor`. The `tiny` role accepts both ordinary chat models and `tiny` catalog models.
 - **Model-kind roles:** `image`, `web`, and `judge`. These select image generation, search/grounded chat, and judgment runners respectively. The `judge` role also accepts tiny and chat models.
 
 `vision` and `image` are different workloads: `vision` selects a chat model for image analysis, such as `read screenshot.png?q=...`; `image` selects a model with catalog kind `image` for the auth gateway's image routes. Assigning a model to `vision` does not give it image-input support: image questions additionally check that the model can send image input to its provider.

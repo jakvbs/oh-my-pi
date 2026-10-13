@@ -1,5 +1,5 @@
 import { tryParseJson } from "@oh-my-pi/pi-utils";
-import { mapWithConcurrencyLimit } from "../../task/parallel";
+import { mapWithConcurrencyLimit } from "../../utils/parallel";
 import type { SpecialHandler } from "./types";
 import { buildResult, decodeHtmlEntities, formatIsoDate, loadPage } from "./types";
 

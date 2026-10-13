@@ -18,6 +18,14 @@ import { isRecord } from "@oh-my-pi/pi-utils";
 import { LRUCache } from "@oh-my-pi/pi-utils/lru";
 import { jtdToJsonSchema, normalizeSchema } from "./jtd-to-json-schema";
 
+/**
+ * Enforcement policy for a session output schema.
+ *
+ * `permissive` lets the `yield` tool accept schema-invalid data once its retry
+ * budget is exhausted; `strict` rejects every invalid payload.
+ */
+export type OutputSchemaMode = "permissive" | "strict";
+
 /** A validator bound to a specific output schema. */
 export interface OutputValidator {
 	/** Run JSON Schema validation; returns the raw `success`/`issues` shape so callers may inspect every failure. */

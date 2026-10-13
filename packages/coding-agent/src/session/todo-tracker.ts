@@ -2,7 +2,6 @@ import type { Agent, AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage, Message, Model, TextContent, ToolChoice } from "@oh-my-pi/pi-ai";
 import { isRecord, logger, prompt, stringProperty } from "@oh-my-pi/pi-utils";
 import type { Settings } from "../config/settings";
-import eagerTaskPrompt from "../prompts/system/eager-task.md" with { type: "text" };
 import eagerTodoPrompt from "../prompts/system/eager-todo.md" with { type: "text" };
 import midRunTodoNudgePrompt from "../prompts/system/mid-run-todo-nudge.md" with { type: "text" };
 import { getLatestTodoPhasesFromEntries, isTodoPhase } from "../tools/todo";
@@ -11,7 +10,6 @@ import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { AgentSessionEvent } from "./agent-session-events";
 import type { SessionManager } from "./session-manager";
 
-import { cfgTaskBatch, cfgTaskEager } from "../task/settings";
 import { cfgTodoEager, cfgTodoEnabled, cfgTodoReminders, cfgTodoRemindersMax } from "../tools/settings";
 
 const MID_RUN_NUDGE_MUTATION_THRESHOLD = 12;
@@ -182,33 +180,11 @@ export class TodoTracker {
 		return { message, toolChoice };
 	}
 
-	/** Builds the first-turn eager task-delegation prelude. */
-	createEagerTaskPrelude(promptText: string | undefined): AgentMessage | undefined {
-		if (cfgTaskEager.get(this.#host.settings) !== "always") return undefined;
-		if (this.#host.agentKind() === "sub") return undefined;
-		if (promptText !== undefined) {
-			if (this.#host.agent.state.messages.some(message => message.role === "user")) return undefined;
-			const trimmed = promptText.trimEnd();
-			if (trimmed.endsWith("?") || trimmed.endsWith("!")) return undefined;
-		}
-		if (!this.#host.getEnabledToolNames().includes("task")) return undefined;
-		return {
-			role: "custom",
-			customType: "eager-task-prelude",
-			content: prompt.render(eagerTaskPrompt, this.#buildEagerPreludeContext()),
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-	}
-
 	/** Builds reminder-only eager preludes after compaction. */
 	buildPostCompactionEagerNudges(): AgentMessage[] {
 		const nudges: AgentMessage[] = [];
 		const todo = this.createEagerTodoPrelude(undefined);
 		if (todo) nudges.push(todo.message);
-		const task = this.createEagerTaskPrelude(undefined);
-		if (task) nudges.push(task);
 		return nudges;
 	}
 
@@ -335,14 +311,13 @@ export class TodoTracker {
 		};
 	}
 
-	#buildEagerPreludeContext(): { toolRefs: Record<string, string>; taskBatch: boolean } {
+	#buildEagerPreludeContext(): { toolRefs: Record<string, string> } {
 		const wireName = (name: string): string => {
 			const tool = this.#host.toolRegistry().get(name);
 			return typeof tool?.customWireName === "string" ? tool.customWireName : name;
 		};
 		return {
-			toolRefs: { task: wireName("task"), todo: wireName("todo") },
-			taskBatch: cfgTaskBatch.get(this.#host.settings),
+			toolRefs: { todo: wireName("todo") },
 		};
 	}
 

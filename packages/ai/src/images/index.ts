@@ -1,13 +1,11 @@
 import { type Api, IMAGE_GENERATION_APIS, type ImageGenerationApi, type Model } from "@oh-my-pi/pi-catalog/types";
 import * as AIError from "../error";
-import { generateAntigravityImage } from "./google-antigravity";
 import { generateGoogleImage } from "./google-generative-ai";
 import { generateOpenAIImage } from "./openai-images";
 import { generateHostedImage } from "./openai-hosted";
 import { generateOpenRouterImage } from "./openrouter-images";
 import type { ImageGenerationOptions, ImageGenerationRequest, ImageGenerationResult } from "./types";
 
-export * from "./google-antigravity";
 export * from "./google-generative-ai";
 export * from "./openai-hosted";
 export * from "./openai-images";
@@ -34,8 +32,6 @@ export async function generateImage(
 			return generateOpenRouterImage(model, request, options);
 		case "google-generative-ai":
 			return generateGoogleImage(model, request, options);
-		case "google-gemini-cli":
-			return generateAntigravityImage(model, request, options);
 		case "openai-responses":
 		case "openai-codex-responses":
 			return generateHostedImage(model, request, options);

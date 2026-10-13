@@ -3,9 +3,8 @@
 // 2026-09-11), so a models-endpoint probe against it could never reject a bad
 // key. `/v1/credits` is an authenticated, non-billable GET that returns the
 // account balance on success and 401 `{"error":"authentication failed"}`
-// otherwise — the same trick cline-pass uses to validate against its own
-// `/users/me`, and cheaper than a chat-completions probe that would bill the
-// key on every login.
+// otherwise, which is cheaper than a chat-completions probe that would bill
+// the key on every login.
 auth "charm-hyper" {
 	name "Charm Hyper"
 	env "CHARM_HYPER_API_KEY" "HYPER_API_KEY"

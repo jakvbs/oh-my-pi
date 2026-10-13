@@ -12,7 +12,6 @@ import { type CreateAgentSessionOptions, createAgentSession } from "@oh-my-pi/pi
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { createSubagentSettings } from "@oh-my-pi/pi-coding-agent/task/executor";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
 import { cfgDisabledProviders } from "@oh-my-pi/pi-coding-agent/config/model-settings";
@@ -49,10 +48,7 @@ describe("discovery provider toggles with subagents and helper sessions", () => 
 		const modelRegistry = new ModelRegistry(authStorage, tempDir.join("models.yml"));
 		const start = async (
 			settings: Settings,
-			extra: Pick<
-				CreateAgentSessionOptions,
-				"parentTaskPrefix" | "isSubagent" | "agentId" | "bindProcessState"
-			> = {},
+			extra: Pick<CreateAgentSessionOptions, "bindProcessState"> = {},
 		): Promise<AgentSession> => {
 			const { session } = await createAgentSession({
 				cwd: tempDir.path(),
@@ -77,24 +73,6 @@ describe("discovery provider toggles with subagents and helper sessions", () => 
 		};
 		return { start, close: () => authStorage.close() };
 	};
-
-	it("keeps following the parent's disabledProviders after a subagent session starts", async () => {
-		using tempDir = TempDir.createSync("@pi-provider-toggle-binding-");
-		const { start, close } = await starter(tempDir);
-		const parentSettings = Settings.isolated({ "compaction.enabled": false });
-		await start(parentSettings);
-		await start(createSubagentSettings(parentSettings), {
-			parentTaskPrefix: "0-Sub",
-			isSubagent: true,
-			agentId: "0-Sub",
-		});
-
-		cfgDisabledProviders.set(parentSettings, ["claude"]);
-		expect(isProviderEnabled("claude")).toBe(false);
-		cfgDisabledProviders.set(parentSettings, []);
-		expect(isProviderEnabled("claude")).toBe(true);
-		close();
-	});
 
 	it("keeps host edits reaching discovery during a helper session and after a top-level session ends", async () => {
 		using tempDir = TempDir.createSync("@pi-provider-toggle-helper-");

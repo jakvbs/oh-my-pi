@@ -166,31 +166,25 @@ describe("history:// protocol", () => {
 	it("bare history:// renders an index listing registered agents", async () => {
 		AgentRegistry.global().register({
 			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
 			session: fakeLiveSession([]),
-			status: "idle",
 		});
 
 		const resource = await InternalUrlRouter.instance().resolve("history://");
 
 		expect(resource.contentType).toBe("text/markdown");
-		expect(resource.content).toContain("# Agents");
-		expect(resource.content).toContain("| HubAgent | idle | sub |");
+		expect(resource.content).toContain("# Sessions");
+		expect(resource.content).toContain("| HubAgent | live |");
 	});
 
 	it("history://<id> renders a live ref's in-memory transcript", async () => {
 		AgentRegistry.global().register({
 			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
 			session: fakeLiveSession([{ role: "user", content: "hello from live", timestamp: 1 }]),
-			status: "idle",
 		});
 
 		const resource = await InternalUrlRouter.instance().resolve("history://HubAgent");
 
-		expect(resource.content).toContain("# HubAgent (idle)");
+		expect(resource.content).toContain("# HubAgent");
 		expect(resource.content).toContain("## user");
 		expect(resource.content).toContain("hello from live");
 		expect(resource.notes).toContain("Source: live session");
@@ -199,10 +193,7 @@ describe("history:// protocol", () => {
 	it("preserves the existing bare history://current named-agent route", async () => {
 		AgentRegistry.global().register({
 			id: "current",
-			displayName: "named current",
-			kind: "sub",
 			session: fakeLiveSession([{ role: "user", content: "named current transcript", timestamp: 1 }]),
-			status: "idle",
 		});
 
 		const resource = await InternalUrlRouter.instance().resolve("history://current");
@@ -395,10 +386,7 @@ describe("history:// protocol", () => {
 	it("read applies line selectors to history transcripts", async () => {
 		AgentRegistry.global().register({
 			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
 			session: fakeLiveSession([{ role: "user", content: "hello from live", timestamp: 1 }]),
-			status: "idle",
 		});
 		const tool = new ReadTool(makeToolSession(os.tmpdir()));
 
@@ -407,21 +395,18 @@ describe("history:// protocol", () => {
 
 		expect(output?.type).toBe("text");
 		if (output?.type !== "text") throw new Error("Expected text output");
-		expect(output.text).toContain("# HubAgent (idle)");
+		expect(output.text).toContain("# HubAgent");
 		expect(output.text).not.toContain("hello from live");
 	});
 
 	it("resolves agent ids case-insensitively", async () => {
 		AgentRegistry.global().register({
 			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
 			session: fakeLiveSession([{ role: "user", content: "hello from live", timestamp: 1 }]),
-			status: "idle",
 		});
 
 		const resource = await InternalUrlRouter.instance().resolve("history://hubagent");
-		expect(resource.content).toContain("# HubAgent (idle)");
+		expect(resource.content).toContain("# HubAgent");
 	});
 
 	it("history://<id> renders a parked ref read-only from its session file", async () => {
@@ -430,16 +415,13 @@ describe("history:// protocol", () => {
 			await Bun.write(sessionFile, sessionFixtureJsonl());
 			AgentRegistry.global().register({
 				id: "Sleeper",
-				displayName: "task",
-				kind: "sub",
 				session: null,
 				sessionFile,
-				status: "parked",
 			});
 
 			const resource = await InternalUrlRouter.instance().resolve("history://Sleeper");
 
-			expect(resource.content).toContain("# Sleeper (parked)");
+			expect(resource.content).toContain("# Sleeper");
 			expect(resource.content).toContain("parked hello");
 			expect(resource.content).toContain("parked reply");
 			expect(resource.sourcePath).toBe(sessionFile);
@@ -450,10 +432,7 @@ describe("history:// protocol", () => {
 	it("rejects an unknown id with the list of known agents", async () => {
 		AgentRegistry.global().register({
 			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
 			session: fakeLiveSession([]),
-			status: "idle",
 		});
 
 		const error = await InternalUrlRouter.instance()
@@ -464,18 +443,15 @@ describe("history:// protocol", () => {
 			);
 
 		expect(error).toBeInstanceOf(Error);
-		expect(error?.message).toContain("Unknown agent: Nope");
+		expect(error?.message).toContain("Unknown session: Nope");
 		expect(error?.message).toContain("HubAgent");
 	});
 
 	it("rejects a ref with neither session nor session file", async () => {
 		AgentRegistry.global().register({
 			id: "Husk",
-			displayName: "task",
-			kind: "sub",
 			session: null,
 			sessionFile: null,
-			status: "aborted",
 		});
 
 		const error = await InternalUrlRouter.instance()
@@ -488,69 +464,6 @@ describe("history:// protocol", () => {
 		expect(error?.message).toContain("no transcript");
 	});
 
-	it("hides advisor transcripts from the index and direct lookup", async () => {
-		AgentRegistry.global().register({
-			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
-			session: fakeLiveSession([]),
-			status: "idle",
-		});
-		AgentRegistry.global().register({
-			id: "Main/advisor",
-			displayName: "advisor",
-			kind: "advisor",
-			session: fakeLiveSession([{ role: "user", content: "should stay hidden", timestamp: 1 }]),
-			status: "parked",
-		});
-		AgentRegistry.global().register({
-			id: "AdvisorProbe",
-			displayName: "advisor",
-			kind: "advisor",
-			session: fakeLiveSession([{ role: "user", content: "should stay hidden", timestamp: 1 }]),
-			status: "parked",
-		});
-
-		// Index lists the subagent but never the advisor.
-		const index = await InternalUrlRouter.instance().resolve("history://");
-		expect(index.content).toContain("HubAgent");
-		expect(index.content).not.toContain("advisor");
-
-		// Direct lookup of an advisor-kind ref is reported as unknown — the driving
-		// agent must not be able to read it via history://.
-		const error = await InternalUrlRouter.instance()
-			.resolve("history://AdvisorProbe")
-			.then(
-				() => null,
-				err => err as Error,
-			);
-		expect(error).toBeInstanceOf(Error);
-		expect(error?.message).toContain("Unknown agent");
-	});
-
-	it("omits advisor refs from history:// completions", async () => {
-		AgentRegistry.global().register({
-			id: "HubAgent",
-			displayName: "task",
-			kind: "sub",
-			session: fakeLiveSession([]),
-			status: "idle",
-		});
-		AgentRegistry.global().register({
-			id: "AdvisorProbe",
-			displayName: "advisor",
-			kind: "advisor",
-			session: null,
-			sessionFile: "/tmp/x/__advisor.jsonl",
-			status: "parked",
-		});
-
-		const completions = await new HistoryProtocolHandler().complete();
-		const values = completions.map(c => c.value);
-		expect(values).toContain("HubAgent");
-		expect(values).not.toContain("AdvisorProbe");
-	});
-
 	it("history://<id> serves an unregistered subagent's transcript from disk", async () => {
 		await withTempDir(async dir => {
 			const sessionFile = path.join(dir, "session.jsonl");
@@ -560,14 +473,11 @@ describe("history:// protocol", () => {
 			// Only Main is registered; Sub1 exists solely on disk.
 			AgentRegistry.global().register({
 				id: "Main",
-				displayName: "main",
-				kind: "main",
 				session: {
 					messages: [],
 					sessionManager: { getArtifactsDir: () => artifactsDir },
 				} as unknown as AgentSession,
 				sessionFile,
-				status: "idle",
 			});
 
 			const resource = await InternalUrlRouter.instance().resolve("history://Sub1");
@@ -586,14 +496,11 @@ describe("history:// protocol", () => {
 			await Bun.write(path.join(artifactsDir, "AuthLoader.jsonl"), sessionFixtureJsonl());
 			AgentRegistry.global().register({
 				id: "Main",
-				displayName: "main",
-				kind: "main",
 				session: {
 					messages: [],
 					sessionManager: { getArtifactsDir: () => artifactsDir },
 				} as unknown as AgentSession,
 				sessionFile,
-				status: "idle",
 			});
 
 			const resource = await InternalUrlRouter.instance().resolve("history://authloader");
@@ -610,14 +517,11 @@ describe("history:// protocol", () => {
 			await Bun.write(path.join(artifactsDir, "__advisor.jsonl"), sessionFixtureJsonl());
 			AgentRegistry.global().register({
 				id: "Main",
-				displayName: "main",
-				kind: "main",
 				session: {
 					messages: [],
 					sessionManager: { getArtifactsDir: () => artifactsDir },
 				} as unknown as AgentSession,
 				sessionFile,
-				status: "idle",
 			});
 
 			const index = await InternalUrlRouter.instance().resolve("history://");
@@ -640,14 +544,11 @@ describe("history:// protocol", () => {
 			await Bun.write(path.join(childDir, "Parent.Child.jsonl"), sessionFixtureJsonl());
 			AgentRegistry.global().register({
 				id: "Main",
-				displayName: "main",
-				kind: "main",
 				session: {
 					messages: [],
 					sessionManager: { getArtifactsDir: () => artifactsDir },
 				} as unknown as AgentSession,
 				sessionFile,
-				status: "idle",
 			});
 
 			const resource = await InternalUrlRouter.instance().resolve("history://Parent.Child");
@@ -662,95 +563,6 @@ describe("history:// protocol", () => {
 			registerArtifactsDir(candidate);
 
 			await expect(new HistoryProtocolHandler().complete()).resolves.toEqual([]);
-		});
-	});
-
-	it("read history:// refreshes the caller root before resolving a shared parked id", async () => {
-		await withTempDir(async dir => {
-			const rootA = path.join(dir, "a", "main.jsonl");
-			const rootB = path.join(dir, "b", "main.jsonl");
-			const childA = path.join(dir, "a", "main", "Worker.jsonl");
-			const childB = path.join(dir, "b", "main", "Worker.jsonl");
-			const header = (id: string) =>
-				JSON.stringify({
-					type: "session",
-					version: CURRENT_SESSION_VERSION,
-					id,
-					timestamp: new Date().toISOString(),
-					cwd: "/tmp",
-				});
-			const transcript = (secret: string) =>
-				`${header(`fixture-${secret}`)}\n${JSON.stringify({
-					type: "message",
-					id: `m-${secret}`,
-					parentId: null,
-					timestamp: new Date().toISOString(),
-					message: { role: "user", content: `hello from root ${secret}`, timestamp: 1 },
-				})}\n`;
-			await Bun.write(rootA, `${header("a")}\n`);
-			await Bun.write(rootB, `${header("b")}\n`);
-			await Bun.write(childA, transcript("A"));
-			await Bun.write(childB, transcript("B"));
-			AgentRegistry.global().register({
-				id: "Main",
-				displayName: "main",
-				kind: "main",
-				session: null,
-				sessionFile: rootA,
-				status: "running",
-			});
-			// B's scan ran first: the process-global Worker ref targets B's file.
-			AgentRegistry.global().register({
-				id: "Worker",
-				displayName: "task",
-				kind: "sub",
-				session: null,
-				sessionFile: childB,
-				status: "parked",
-			});
-
-			// The read threads the caller session file into the resolver, which
-			// refreshes the caller root and replaces the stale parked ref.
-			const tool = new ReadTool(makeToolSession(dir, rootA));
-			const result = await tool.execute("history-root-a", { path: "history://Worker" });
-			const output = result.content.find(part => part.type === "text");
-			expect(output?.type).toBe("text");
-			if (output?.type !== "text") throw new Error("Expected text output");
-			expect(output.text).toContain("hello from root A");
-			expect(output.text).not.toContain("hello from root B");
-			expect(AgentRegistry.global().get("Worker")?.sessionFile).toBe(childA);
-		});
-	});
-
-	it("bare read history:// lists the caller root's persisted agents like history://<id> finds them", async () => {
-		await withTempDir(async dir => {
-			const rootA = path.join(dir, "a", "main.jsonl");
-			const rootB = path.join(dir, "b", "main.jsonl");
-			const header = JSON.stringify({
-				type: "session",
-				version: CURRENT_SESSION_VERSION,
-				id: "fixture",
-				timestamp: new Date().toISOString(),
-				cwd: "/tmp",
-			});
-			await Bun.write(rootA, `${header}\n`);
-			await Bun.write(rootB, `${header}\n`);
-			await Bun.write(path.join(dir, "a", "main", "Scanner.jsonl"), sessionFixtureJsonl());
-			// The process-global Main ref belongs to another root; the caller is root A.
-			AgentRegistry.global().register({
-				id: "Main",
-				displayName: "main",
-				kind: "main",
-				session: null,
-				sessionFile: rootB,
-				status: "running",
-			});
-
-			const tool = new ReadTool(makeToolSession(dir, rootA));
-			const result = await tool.execute("history-index-a", { path: "history://" });
-			const output = result.content.find(part => part.type === "text");
-			if (output?.type !== "text") throw new Error("Expected text output");
-			expect(output.text).toMatch(/\| Scanner \| parked \|/);
 		});
 	});
 });
