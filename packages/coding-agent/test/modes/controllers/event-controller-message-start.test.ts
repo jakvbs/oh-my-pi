@@ -2,6 +2,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { ImageContent, UserMessage } from "@oh-my-pi/pi-ai";
 import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
+import { UiHelpers } from "@oh-my-pi/pi-coding-agent/modes/utils/ui-helpers";
+import type { CustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
+import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
+import { createAssistantMessage } from "../../helpers/agent-session-setup";
 import { createInteractiveModeContext } from "../../helpers/interactive-mode-context";
 
 beforeAll(() => {
@@ -157,5 +161,41 @@ describe("EventController message_start (user role)", () => {
 		expect(addMessageToChat).toHaveBeenCalledTimes(1);
 		expect(addMessageToChat).toHaveBeenCalledWith(message);
 		await pending;
+	});
+});
+
+describe("EventController message_start (displayOnly during a streaming reply)", () => {
+	async function paintReport(options: { replyInScrollback: boolean }): Promise<string[]> {
+		const reply = new AssistantMessageComponent();
+		const ctx = createInteractiveModeContext({ session: { isStreaming: true }, streamingComponent: reply });
+		ctx.chatContainer.addChild(reply);
+		// Each streamed paragraph freezes the one before it into stable rows that may retire.
+		for (let text = ""; text.length < 60; text += `Paragraph ${text.length}.\n\n`) {
+			reply.updateContent(createAssistantMessage(`${text}Pending`), { transient: true });
+			reply.render(80);
+		}
+		const batch = options.replyInScrollback ? ctx.chatContainer.peekFinalizedBatch(80, 2) : undefined;
+		if (batch) ctx.chatContainer.acknowledgeFinalizedBatch(batch.id);
+		const helpers = new UiHelpers(ctx);
+		ctx.addMessageToChat = vi.fn((message, opts) => helpers.addMessageToChat(message, opts));
+		const report: CustomMessage<undefined> = {
+			role: "custom",
+			customType: "progress-report",
+			content: "Agent read the workflow sources",
+			display: true,
+			details: undefined,
+			excludeFromContext: true,
+			timestamp: 1,
+		};
+		await new EventController(ctx).handleEvent({ type: "message_start", message: report });
+		return ctx.chatContainer.children.map(child => (child === reply ? "reply" : "report"));
+	}
+
+	it("mounts the message above the reply, where the session file stores it", async () => {
+		expect(await paintReport({ replyInScrollback: false })).toEqual(["report", "reply"]);
+	});
+
+	it("keeps the message below a reply whose rows already went to scrollback", async () => {
+		expect(await paintReport({ replyInScrollback: true })).toEqual(["reply", "report"]);
 	});
 });

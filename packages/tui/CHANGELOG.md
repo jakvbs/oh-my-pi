@@ -21,6 +21,7 @@
 
 ### Fixed
 
+- Rows a turn's working loader or HUD covered while an answer streamed no longer go missing between scrollback and the screen until the turn ends; once the transcript grows under that chrome, they retire to scrollback.
 - Clicking Copy answer in the `/btw` history (and Copy raw in the raw SSE viewer) on native terminals copies the answer instead of the button's label ([#15547](https://github.com/can1357/oh-my-pi/pull/15547) by [@H4vC](https://github.com/H4vC))
 
 ## [18.10.3] - 2026-10-12

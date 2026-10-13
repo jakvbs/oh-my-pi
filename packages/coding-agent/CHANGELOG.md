@@ -41,6 +41,7 @@
 - Fixed overlapping TypeScript language servers when an LSP config registers the workspace `tsc` under its own name (e.g. a patched Effect build); the configured server handles its file types and the built-in `typescript-native` handles only the remaining types.
 - Fixed `read` listing a stale archive after an in-place rewrite that kept the size and restored the mtime within one filesystem timestamp tick (coarse ctime on Linux kernels before multigrain timestamps); archives changed within 2s before indexing are no longer cached.
 - Cancelling startup through an extension now exits without submitting the CLI prompt or opening the composer.
+- A `deliverAs: "displayOnly"` message sent while the assistant reply streams now shows above that reply, as after a reload, instead of below the finished answer.
 ### Added
 
 - Extensions can observe and answer the interactive plan review, including refinement feedback and save-and-quit ([#14250](https://github.com/can1357/oh-my-pi/pull/14250) by [@rlfleming93](https://github.com/rlfleming93))

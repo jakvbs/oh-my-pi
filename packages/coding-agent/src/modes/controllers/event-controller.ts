@@ -1,3 +1,4 @@
+import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage, ImageContent } from "@oh-my-pi/pi-ai";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
@@ -643,6 +644,26 @@ export class EventController {
 		return images.length > 0 && cfgTerminalShowImages.get(settings);
 	}
 
+	/**
+	 * A custom message painted while an assistant reply streams (`deliverAs: "displayOnly"`) is
+	 * persisted before that reply, which persists only at its message_end. Mount it above the reply
+	 * so the live transcript keeps the order a reload shows. Rows already in native scrollback cannot
+	 * move, so once the reply started emitting the message stays below it.
+	 */
+	#addCustomMessageAboveStreamingReply(message: AgentMessage): void {
+		const chat = this.ctx.chatContainer;
+		const start = chat.children.length;
+		this.ctx.addMessageToChat(message);
+		const reply = this.ctx.streamingComponent;
+		const replyIndex = reply ? chat.children.indexOf(reply) : -1;
+		if (replyIndex < 0) return;
+		if (chat.children.slice(replyIndex, start).some(child => !chat.canRemoveBlock(child))) return;
+		for (const [offset, component] of chat.children.slice(start).entries()) {
+			chat.removeChild(component);
+			chat.insertChildAt(component, replyIndex + offset);
+		}
+	}
+
 	#insertAfterTranscriptComponent(anchor: Component | undefined, component: Component): boolean {
 		const children = this.ctx.chatContainer.children;
 		const anchorIndex = anchor ? children.indexOf(anchor) : -1;
@@ -1033,7 +1054,7 @@ export class EventController {
 				// swap it for the canonical message instead of appending a duplicate.
 				this.ctx.reconcileOptimisticSkillMessage(event.message);
 			} else {
-				this.ctx.addMessageToChat(event.message);
+				this.#addCustomMessageAboveStreamingReply(event.message);
 			}
 			// Queued custom-message chips are derived from the agent queue; refresh the
 			// pending bar when the queued custom is consumed so the chip disappears
