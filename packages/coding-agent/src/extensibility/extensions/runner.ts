@@ -818,8 +818,6 @@ export class ExtensionRunner {
 		this.#abortFn = contextActions.abort;
 		this.#hasPendingMessagesFn = contextActions.hasPendingMessages;
 		this.#shutdownHandler = contextActions.shutdown;
-		if (contextActions.resolvePlanReview) this.#resolvePlanReviewFn = contextActions.resolvePlanReview;
-		if (contextActions.getPendingPlanReview) this.#getPendingPlanReviewFn = contextActions.getPendingPlanReview;
 		this.#getContextUsageFn = contextActions.getContextUsage;
 		this.#compactFn = contextActions.compact;
 		this.#getSystemPromptFn = contextActions.getSystemPrompt;
@@ -1404,8 +1402,6 @@ export class ExtensionRunner {
 			abort: () => this.#abortFn(),
 			hasPendingMessages: () => this.#hasPendingMessagesFn(),
 			shutdown: () => this.#shutdownHandler(),
-			resolvePlanReview: (reviewId, choice, input) => this.#resolvePlanReviewFn(reviewId, choice, input),
-			getPendingPlanReview: () => this.#getPendingPlanReviewFn(),
 			getSystemPrompt: () => this.#getSystemPromptFn(),
 			runEphemeralTurn: runEphemeralTurn
 				? async options => {

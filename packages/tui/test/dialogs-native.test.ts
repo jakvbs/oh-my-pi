@@ -345,7 +345,6 @@ describe("dialogs under a native surface", () => {
 		}
 	});
 
-
 	it("login: Cancel runs Esc's path and Continue submits the pasted code", async () => {
 		const tui = { requestRender() {}, setFocus() {} } as unknown as TUI;
 		const onComplete = vi.fn();

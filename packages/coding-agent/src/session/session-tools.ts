@@ -609,7 +609,6 @@ export class SessionTools {
 		return resolveMCPToolAlias(bareName, candidate => this.#toolRegistry.get(candidate));
 	}
 
-
 	/**
 	 * Whether a registry entry came from a built-in factory.
 	 *
@@ -1072,7 +1071,8 @@ export class SessionTools {
 			if (restrictDeviceOnlyWrite) this.#setDeviceOnlyWrite?.(false);
 			if (upgradeDeviceOnlyWrite) this.#setPendingFullWriteDescription?.(false);
 			this.#setMountedNames(previousMounted);
-			this.#setActiveToolNames?.(previousActiveToolNames);
+			this.#toolPredicateNames = previousToolPredicateNames;
+			this.#setActiveToolNames?.(previousToolPredicateNames ?? previousActiveToolNames);
 			this.#enabledToolNames = previousEnabledToolNames;
 			throw error;
 		}
@@ -1081,7 +1081,8 @@ export class SessionTools {
 			if (restrictDeviceOnlyWrite) this.#setDeviceOnlyWrite?.(false);
 			if (upgradeDeviceOnlyWrite) this.#setPendingFullWriteDescription?.(false);
 			this.#setMountedNames(previousMounted);
-			this.#setActiveToolNames?.(previousActiveToolNames);
+			this.#toolPredicateNames = previousToolPredicateNames;
+			this.#setActiveToolNames?.(previousToolPredicateNames ?? previousActiveToolNames);
 			this.#enabledToolNames = previousEnabledToolNames;
 			return;
 		}

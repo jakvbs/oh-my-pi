@@ -2724,7 +2724,7 @@ export async function runSessionToYield(
 	const unsubscribe = monitor.attach(session);
 	let done: DriveOutcome;
 	try {
-		done = await driveSessionToYield(session, monitor, task);
+		done = await driveSessionToResult(session, monitor, task, { structured: true });
 	} finally {
 		try {
 			await untilAborted(AbortSignal.timeout(5000), () => monitor.waitForActiveSessionAbort());

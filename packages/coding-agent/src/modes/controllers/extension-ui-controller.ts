@@ -196,8 +196,6 @@ export class ExtensionUiController {
 			abort: () => this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL }),
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => this.ctx.requestShutdown(),
-			resolvePlanReview: (reviewId, choice, input) => this.ctx.resolvePlanReview(reviewId, choice, input),
-			getPendingPlanReview: () => this.ctx.getPendingPlanReview(),
 			getContextUsage: () => this.ctx.session.getContextUsage(),
 			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
 			getSystemPrompt: () => this.ctx.session.systemPrompt,
@@ -427,8 +425,6 @@ export class ExtensionUiController {
 			abort: () => this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL }),
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => this.ctx.requestShutdown(),
-			resolvePlanReview: (reviewId, choice, input) => this.ctx.resolvePlanReview(reviewId, choice, input),
-			getPendingPlanReview: () => this.ctx.getPendingPlanReview(),
 			getContextUsage: () => this.ctx.session.getContextUsage(),
 			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
 			getSystemPrompt: () => this.ctx.session.systemPrompt,
@@ -575,10 +571,7 @@ export class ExtensionUiController {
 		this.ctx.ui.requestRender();
 	}
 
-	async showApproval(
-		prompt: ExtensionApprovalPrompt,
-		dialogOptions?: ExtensionUIDialogOptions,
-	): Promise<boolean> {
+	async showApproval(prompt: ExtensionApprovalPrompt, dialogOptions?: ExtensionUIDialogOptions): Promise<boolean> {
 		const choice = await this.#presentDialog(dialogOptions?.signal, settle => {
 			const callHidden = this.ctx.hideToolActivity;
 			const dialog = new ApprovalDialogComponent(

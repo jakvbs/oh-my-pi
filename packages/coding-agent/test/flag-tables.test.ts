@@ -300,4 +300,3 @@ describe("--restore", () => {
 		validateRestorePrompt(parseArgs(["--resume", "a", "keep going"]));
 	});
 });
-

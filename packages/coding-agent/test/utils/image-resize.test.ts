@@ -2,7 +2,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as os from "node:os";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
-import { decodePng } from "@oh-my-pi/pi-coding-agent/tools/browser/screenshot";
 import {
 	formatDimensionNote,
 	formatScreenshot,
@@ -11,6 +10,7 @@ import {
 	type ScreenshotArea,
 } from "@oh-my-pi/pi-coding-agent/utils/image-resize";
 import { encodeRawPng } from "@oh-my-pi/pi-coding-agent/utils/png-encode";
+import { decodePng } from "../helpers/png";
 
 describe("formatScreenshot", () => {
 	function fakeResized(

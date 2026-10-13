@@ -134,10 +134,8 @@ export function validateRestoreLaunch(args: Args, interactive: boolean): void {
 	if (!interactive) {
 		throw new CliUsageError("--restore requires an interactive terminal (not --print or --mode).");
 	}
-	if (args.continue || args.fork || args.fromClaude || args.fromCodex || args.noSession || args.goal !== undefined) {
-		throw new CliUsageError(
-			"--restore resumes one existing session (no continue, fork, import, goal, or --no-session).",
-		);
+	if (args.continue || args.fork || args.noSession || args.goal !== undefined) {
+		throw new CliUsageError("--restore resumes one existing session (no continue, fork, goal, or --no-session).");
 	}
 }
 

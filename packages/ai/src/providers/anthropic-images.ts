@@ -225,7 +225,7 @@ async function resizeAnthropicImageMessage(
  */
 export async function prepareAnthropicImageContext(
 	context: Context,
-	model: Model<"anthropic-messages"> | Model<"google-gemini-cli">,
+	model: Model<"anthropic-messages">,
 ): Promise<Context> {
 	if (!model.input.includes("image")) return context;
 	const imageCount = countAnthropicImageBlocks(context.messages);

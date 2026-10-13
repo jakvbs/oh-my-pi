@@ -605,7 +605,6 @@ describe("AgentSession model persistence", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			skipPythonPreflight: true,
 		});
 	}
 

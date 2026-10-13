@@ -87,7 +87,6 @@ import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import { resolveCatalogPolicy } from "@oh-my-pi/pi-catalog/compat/catalog-policy";
 import { supportsOutputTokenLimit } from "@oh-my-pi/pi-catalog/compat/output-limits";
 import { requiresToolFreeHistoryForToolOptOut } from "@oh-my-pi/pi-catalog/compat/tools";
-import { preferredDialect } from "@oh-my-pi/pi-catalog/identity";
 import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { type EditStore, PowerAssertion, type PowerAssertionOptions } from "@oh-my-pi/pi-natives";
 import {
@@ -1523,7 +1522,6 @@ export class AgentSession implements SettingsScope {
 		return this.#prewalk.restart(source, sourceThinkingLevel, target, targetThinkingLevel);
 	}
 
-
 	/** Live generation tok/s for the working row; fed by this session's own streamed deltas. */
 	readonly tokenRate: TokenRateMeter;
 
@@ -2269,7 +2267,6 @@ export class AgentSession implements SettingsScope {
 		cfgExtendedContext.listen(this, () => this.#reapplyContextWindowPolicy());
 		cfgCompactionModelThresholds.listen(this, () => this.#reapplyContextWindowPolicy());
 		cfgCompactionModelThresholdsEnabled.listen(this, () => this.#reapplyContextWindowPolicy());
-
 
 		// Config-declared resolution done against the catalog as it stands at
 		// construction can be premature: background discovery is started
@@ -5834,7 +5831,6 @@ export class AgentSession implements SettingsScope {
 		return this.#tools.getToolByName(name);
 	}
 
-
 	/** Whether a registry entry came from a built-in factory. */
 	hasBuiltInTool(name: string): boolean {
 		return this.#tools.hasBuiltInTool(name);
@@ -6357,7 +6353,6 @@ export class AgentSession implements SettingsScope {
 	// =========================================================================
 	// Prompting
 	// =========================================================================
-
 
 	#buildGoalModeMessage(): CustomMessage | null {
 		const content = this.#goalRuntime.buildActivePrompt();
@@ -7341,8 +7336,7 @@ export class AgentSession implements SettingsScope {
 				// OMP-owned Chromium alive (#5643).
 				void this.dispose().finally(() => process.exit(0));
 			},
-			resolvePlanReview: () => false,
-			getPendingPlanReview: () => undefined,
+
 			getContextUsage: () => this.getContextUsage(),
 			getAsyncJobSnapshot: () => this.getAsyncJobSnapshot(),
 			waitForIdle: () => this.waitForIdle(),

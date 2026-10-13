@@ -92,7 +92,7 @@ it.each([
 				"compaction.enabled": false,
 				"compaction.keepRecentTokens": 1,
 			}),
-			systemPrompt: ["Review the supplied code."],
+			systemPrompt: "Review the supplied code.",
 			toolNames: ["read"],
 			disableExtensionDiscovery: true,
 			skills: [],

@@ -6,7 +6,7 @@ import { initTheme } from "../src/theme/theme";
 import { TspHarness } from "./native/tsp-harness";
 import type { PsScope, PsScopeReport } from "../src/apps/ps-data";
 import { type PsTopHost, PsTopComponent } from "../src/apps/ps-top";
-import type { DescribeContext, NativeChild, NativeNode } from "../src/native/node";
+import type { NativeChild, NativeNode } from "../src/native/node";
 import { TSP_KINDS, type TspKind } from "@oh-my-pi/pi-wire";
 import type { DaemonSnapshot, DaemonSpec } from "../src/tools/daemon";
 import { VirtualTerminal } from "./virtual-terminal";

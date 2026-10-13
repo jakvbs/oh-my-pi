@@ -93,6 +93,7 @@ packages/ai/test/google-antigravity-usage.test.ts
 packages/ai/test/google-gemini-cli-3x-thinking.test.ts
 packages/ai/test/google-gemini-cli-429.test.ts
 packages/ai/test/google-gemini-cli-alignment.test.ts
+packages/ai/test/google-gemini-cli-claude-image-clamp.test.ts
 packages/ai/test/google-gemini-cli-first-event-timeout.test.ts
 packages/ai/test/google-gemini-cli-variant-routing.test.ts
 packages/ai/test/google-oauth-hostname.test.ts

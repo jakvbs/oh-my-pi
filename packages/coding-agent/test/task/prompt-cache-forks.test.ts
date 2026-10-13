@@ -82,7 +82,7 @@ async function fixture() {
 		authStorage: auth,
 		model: muse,
 		settings,
-		systemPrompt: ["Review the supplied code."],
+		systemPrompt: "Review the supplied code.",
 		toolNames: [],
 		disableExtensionDiscovery: true,
 		skills: [],

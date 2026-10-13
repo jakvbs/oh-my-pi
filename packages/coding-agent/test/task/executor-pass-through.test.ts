@@ -196,7 +196,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	it("preserves empty and absent agent tool declarations through session creation", async () => {
 		const session = yieldEmittingSession();
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
-		const emptyFields = { name: "quiet", tools: ["yield"] };
+		const emptyFields = { name: "quiet", tools: [] };
 		const absentFields = { name: "default", tools: undefined };
 
 		const emptyResult = await runSubprocess({

@@ -16,7 +16,7 @@ import type {
 	ExtensionWidgetContent,
 	ExtensionWidgetOptions,
 } from "../extensibility/extensions";
-import type { CompactOptions, PlanReviewChoice, PlanReviewRequestedEvent } from "../extensibility/extensions/types";
+import type { CompactOptions } from "../extensibility/extensions/types";
 import type { Skill } from "../extensibility/skills";
 import type { MCPManager } from "../mcp";
 import type { AgentSession } from "../session/agent-session";
@@ -558,7 +558,6 @@ export interface InteractiveModeContext {
 	cancelGoalContinuation(): void;
 	disableGoalMode(message?: string): void;
 	pauseLoop(): void;
-
 
 	// Hook UI methods
 	initHooksAndCustomTools(): Promise<void>;

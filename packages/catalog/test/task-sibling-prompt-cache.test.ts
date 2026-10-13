@@ -40,7 +40,7 @@ describe("task sibling prompt-cache opt-in", () => {
 			{ ...muse, provider: "custom-host", providerType: undefined },
 			{ ...muse, api: "openai-completions" },
 			getBundledModel("openai-codex", "gpt-6-luna"),
-			getBundledModel("google-antigravity", "gemini-3.8-flash"),
+			getBundledModel("google", "gemini-1.5-flash"),
 		];
 		for (const model of unsupported) {
 			expect(

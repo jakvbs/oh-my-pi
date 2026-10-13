@@ -594,8 +594,8 @@ describe("task.batch spawning", () => {
 		expect(captured?.outputSchemaOverridesAgent).toBe(true);
 	});
 
-	it("spawns schema-less, yield-less children by default even with caller and agent schemas", async () => {
-		mockDiscovery({ ...taskAgent, output: { type: "object", properties: { agent: { type: "string" } } } });
+	it("spawns schema-less, yield-less children by default even with a caller schema", async () => {
+		mockDiscovery(taskAgent);
 		let captured: { structured?: boolean; outputSchema?: unknown; outputSchemaSource?: string } | undefined;
 		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			captured = {
