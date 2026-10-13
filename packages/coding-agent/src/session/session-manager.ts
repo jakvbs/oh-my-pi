@@ -39,9 +39,7 @@ import {
 	sanitizeRehydratedOpenAIResponsesAssistantMessage,
 	stripInternalDetailsFields,
 } from "./messages";
-import type { OutputSchemaMode } from "../tools/output-schema-validator";
 import { createInterruptedToolResults, sessionExitFollowsLastMessage } from "./exit-diagnostics";
-import type { RetryFallbackRole } from "./retry-fallback-chains";
 import {
 	type BuildSessionContextOptions,
 	buildSessionContext,
@@ -67,7 +65,6 @@ import {
 	type SystemPromptSource,
 	type SessionEntry,
 	type SessionHeader,
-	type SessionInitEntry,
 	type SessionMessageEntry,
 	type SessionTitleSource,
 	type SessionTreeNode,
@@ -94,7 +91,6 @@ import {
 	resolveBlobRefsInEntries,
 	resolveBlobRefsInEntriesSync,
 	type SessionLoadResult,
-	visitEntriesFromFile,
 } from "./session-loader";
 import { generateId, migrateToCurrentVersion } from "./session-migrations";
 import {
@@ -3457,29 +3453,6 @@ export class SessionManager {
 		return entry.id;
 	}
 
-	appendSessionInit(init: {
-		systemPrompt: string[];
-		task: string;
-		tools: string[];
-		agent?: string;
-		modelRole?: string;
-		resolvedModel?: string;
-		retryFallback?: RetryFallbackRole;
-		readOnly?: boolean;
-		outputSchema?: unknown;
-		outputSchemaMode?: OutputSchemaMode;
-		restrictToolNames?: boolean;
-		readSummarize?: boolean;
-		mcp?: string[];
-		advisor?: string;
-		compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
-		isolated?: boolean;
-	}): string {
-		const entry: SessionInitEntry = { type: "session_init", ...this.#freshEntryFields(), ...init };
-		this.#recordEntry(entry);
-		return entry.id;
-	}
-
 	appendCompaction<T = unknown>(
 		summary: string,
 		shortSummary: string | undefined,
@@ -4167,40 +4140,6 @@ export class SessionManager {
 		return manager;
 	}
 
-	/**
-	 * Lock-free peek for cold subagent revival: returns the recorded working
-	 * directory (session header) and the latest `session_init` contract (system
-	 * prompt / tools / output schema) WITHOUT taking the single-writer lock that
-	 * {@link open} acquires — the caller re-opens for the actual revive. Returns
-	 * null when the file can't be read; `init` is null for files written before
-	 * `session_init` was recorded (no faithful contract to rebuild from).
-	 */
-	static async peekSessionInit(
-		filePath: string,
-		storage: SessionStorage = new FileSessionStorage(),
-	): Promise<{
-		cwd: string;
-		init: PersistedSessionInit | null;
-	} | null> {
-		let header: SessionHeader | undefined;
-		const initEntries: FileEntry[] = [];
-		const visit = (entry: FileEntry): void => {
-			if (entry.type === "session") {
-				header ??= entry;
-				return;
-			}
-			if (entry.type === "session_init") initEntries.push(entry);
-		};
-
-		try {
-			await visitEntriesFromFile(filePath, visit, storage);
-		} catch {
-			return null;
-		}
-		// A missing, empty, or invalid file has no usable session.
-		if (!header) return null;
-		return { cwd: header.cwd ?? getProjectDir(), init: extractSessionInit(initEntries) };
-	}
 	/** Continue the most recent session, or create a new one if none exists. */
 	static async continueRecent(
 		cwd: string,
@@ -4370,59 +4309,6 @@ export class SessionManager {
 /** True when already-loaded entries carry at least one real user/assistant message. */
 export function hasConversationalHistory(entries: readonly FileEntry[]): boolean {
 	return entries.some(e => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"));
-}
-
-/**
- * The persisted `session_init` contract a cold revive rebuilds a subagent from:
- * the {@link SessionInitEntry} payload without its tree bookkeeping fields.
- */
-export interface PersistedSessionInit {
-	systemPrompt: string[];
-	task: string;
-	tools: string[];
-	agent?: string;
-	modelRole?: string;
-	resolvedModel?: string;
-	retryFallback?: RetryFallbackRole;
-	readOnly?: boolean;
-	outputSchema?: unknown;
-	outputSchemaMode?: OutputSchemaMode;
-	restrictToolNames?: boolean;
-	readSummarize?: boolean;
-	mcp?: string[];
-	advisor?: string;
-	compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
-	isolated?: boolean;
-}
-
-/**
- * Latest persisted `session_init` contract among already-loaded entries, or
- * null when the transcript carries none.
- */
-export function extractSessionInit(entries: readonly FileEntry[]): PersistedSessionInit | null {
-	let init: PersistedSessionInit | null = null;
-	for (const entry of entries) {
-		if (entry.type !== "session_init") continue;
-		init = {
-			systemPrompt: typeof entry.systemPrompt === "string" ? [entry.systemPrompt] : entry.systemPrompt,
-			task: entry.task,
-			tools: entry.tools,
-			agent: entry.agent,
-			modelRole: entry.modelRole,
-			resolvedModel: entry.resolvedModel,
-			retryFallback: entry.retryFallback,
-			readOnly: entry.readOnly,
-			outputSchema: entry.outputSchema,
-			outputSchemaMode: entry.outputSchemaMode,
-			restrictToolNames: entry.restrictToolNames,
-			readSummarize: entry.readSummarize,
-			mcp: entry.mcp,
-			advisor: entry.advisor,
-			isolated: entry.isolated,
-			...(entry.compactionThreshold !== undefined ? { compactionThreshold: entry.compactionThreshold } : undefined),
-		};
-	}
-	return init;
 }
 
 /**

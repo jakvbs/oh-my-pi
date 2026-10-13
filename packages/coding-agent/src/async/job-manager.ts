@@ -58,12 +58,6 @@ export interface AsyncJob {
 	/** The process the job runs, when it spawns one. */
 	process?: AsyncJobProcess;
 	/**
-	 * Job is registered but parked behind a caller-managed gate (e.g. a
-	 * concurrency semaphore). Queued jobs do not count toward the running-job limit
-	 * until the caller invokes `markRunning()` from the run context.
-	 */
-	queued?: boolean;
-	/**
 	 * Job backs a foreground tool call that may still auto-background. It is
 	 * hidden from job listings and its delivery is suppressed until
 	 * {@link AsyncJobManager.backgroundJob} promotes it; a call that finishes in
@@ -147,8 +141,6 @@ export interface AsyncJobRegisterOptions {
 	/** Registry id of the agent that owns this job; used to scope cancelAll. */
 	ownerId?: string;
 	onProgress?: (text: string, details?: AsyncJobDetails) => void | Promise<void>;
-	/** Register the job in queued state; see {@link AsyncJob.queued}. */
-	queued?: boolean;
 	/** Register the job as backing a foreground call; see {@link AsyncJob.foreground}. */
 	foreground?: boolean;
 	/** The process the job runs; see {@link AsyncJob.process}. */
@@ -234,10 +226,9 @@ export class AsyncJobManager {
 	/** True when the running-job count has reached the configured cap. */
 	get atCapacity(): boolean {
 		if (this.#disposed) return true;
-		// Mirror register(): queued jobs hold no execution slot.
 		let activeCount = 0;
 		for (const job of this.#jobs.values()) {
-			if (job.status === "running" && !job.queued) activeCount++;
+			if (job.status === "running") activeCount++;
 		}
 		return activeCount >= this.#maxRunningJobs;
 	}
@@ -249,19 +240,15 @@ export class AsyncJobManager {
 			jobId: string;
 			signal: AbortSignal;
 			reportProgress: (text: string, details?: AsyncJobDetails) => Promise<void>;
-			/** Clear the queued flag once the job actually starts executing. */
-			markRunning: () => void;
 		}) => Promise<string>,
 		options?: AsyncJobRegisterOptions,
 	): string {
 		if (this.#disposed) {
 			throw new Error("Async job manager is disposed");
 		}
-		// Queued jobs hold no execution slot yet — only count jobs that are
-		// actually running so a large parked batch cannot starve registration.
 		let activeCount = 0;
 		for (const existing of this.#jobs.values()) {
-			if (existing.status === "running" && !existing.queued) activeCount++;
+			if (existing.status === "running") activeCount++;
 		}
 		const maxRunningJobs = this.#maxRunningJobs;
 		if (activeCount >= maxRunningJobs) {
@@ -288,7 +275,6 @@ export class AsyncJobManager {
 			promise: Promise.resolve(),
 			ownerId: options?.ownerId,
 			process: options?.process,
-			queued: options?.queued === true,
 			...(options?.foreground ? { foreground: true } : {}),
 		};
 
@@ -311,9 +297,6 @@ export class AsyncJobManager {
 					jobId: id,
 					signal: abortController.signal,
 					reportProgress,
-					markRunning: () => {
-						job.queued = false;
-					},
 				});
 				job.endTime = Date.now();
 				if (job.status === "cancelled") {

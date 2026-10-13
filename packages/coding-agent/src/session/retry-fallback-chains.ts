@@ -1,7 +1,6 @@
 import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import type { ModelRegistry } from "../config/model-registry";
-import { cfgModelRoles } from "../config/model-settings";
 import { formatModelSelectorValue, parseModelString } from "@oh-my-pi/pi-tui/overlays/model-selector";
 import { formatModelString, formatModelStringWithRouting } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
@@ -170,52 +169,6 @@ export function getRetryFallbackChains(settings: Settings): RetryFallbackChains 
 	const configuredChains = cfgRetryFallbackChains.get(settings);
 	if (!configuredChains || typeof configuredChains !== "object") return {};
 	return expandDefaultRetryFallbackChains(configuredChains, Object.keys(settings.getModelRoles()));
-}
-
-/**
- * A dynamic role pinned to one model selector with its own fallback chain.
- * Subagents own one under `subagent:<id>`; `session_init` persists it so cold
- * revival restores the same routing the spawn installed.
- */
-export interface RetryFallbackRole {
-	/** Selector the role is assigned (the chain's primary). */
-	primary: string;
-	/** Fallback selectors walked after the primary. */
-	chain: string[];
-}
-
-/** Reads the primary and non-empty chain installed for `role`, if any. */
-export function getRetryFallbackRole(settings: Settings, role: string): RetryFallbackRole | undefined {
-	const primary = settings.getModelRole(role);
-	const chain = cfgRetryFallbackChains.get(settings)[role];
-	if (!primary || !Array.isArray(chain) || chain.length === 0) return undefined;
-	return { primary, chain };
-}
-
-/**
- * Assigns `role` its primary and installs its chain ahead of every configured
- * chain, so another role assigned the same model cannot capture its routing.
- * Overrides are session-scoped: nothing is written to the user's config.
- */
-export function installRetryFallbackRole(
-	settings: Settings,
-	role: string,
-	{ primary, chain }: RetryFallbackRole,
-): void {
-	const modelRoles: Record<string, string> = {};
-	const existingRoles = settings.getModelRoles();
-	for (const key in existingRoles) {
-		const selector = existingRoles[key];
-		if (selector) modelRoles[key] = selector;
-	}
-	modelRoles[role] = primary;
-	cfgModelRoles.override(settings, modelRoles);
-	const fallbackChains: RetryFallbackChains = { [role]: chain };
-	const existingChains = cfgRetryFallbackChains.get(settings);
-	for (const key in existingChains) {
-		if (key !== role) fallbackChains[key] = existingChains[key];
-	}
-	cfgRetryFallbackChains.override(settings, fallbackChains);
 }
 
 /**

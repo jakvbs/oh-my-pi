@@ -223,7 +223,6 @@ export function createInteractiveModeContext(overrides: ContextOverrides = {}): 
 			invalidate: vi.fn(),
 			markActivityStart: vi.fn(),
 			markActivityEnd: vi.fn(),
-			setSession: vi.fn(),
 		},
 		session,
 		sessionManager,

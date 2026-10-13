@@ -289,16 +289,6 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 		this.#parameters = parameters;
 	}
 
-	/**
-	 * Clear per-run retry counters before a kept-alive session continues with a new
-	 * monitored turn. The tool instance is stored once in the session's tool registry and
-	 * reused across follow-up turns, so a prior run's counters would otherwise leak forward.
-	 */
-	resetTurnState(): void {
-		this.#schemaValidationFailures = 0;
-		this.#emptyResultFailures = 0;
-	}
-
 	async execute(
 		toolCallId: string,
 		params: unknown,
@@ -448,19 +438,4 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 			},
 		};
 	}
-}
-interface TurnStateResettable {
-	resetTurnState(): void;
-}
-
-function canResetTurnState(tool: AgentTool): tool is AgentTool & TurnStateResettable {
-	return "resetTurnState" in tool && typeof tool.resetTurnState === "function";
-}
-
-/**
- * Reset per-run yield state through either a native tool or an
- * `ExtensionToolWrapper` proxy.
- */
-export function resetYieldTurnState(tool: AgentTool | undefined): void {
-	if (tool && canResetTurnState(tool)) tool.resetTurnState();
 }

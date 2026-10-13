@@ -59,13 +59,6 @@ export class AgentRegistry {
 		return true;
 	}
 
-	detachSession(id: string, expected?: AgentRefExpectation): boolean {
-		const ref = this.#refs.get(id);
-		if (!ref || !this.#matchesExpected(ref, expected)) return false;
-		ref.session = null;
-		return true;
-	}
-
 	unregister(id: string, expected?: AgentRefExpectation): boolean {
 		const ref = this.#refs.get(id);
 		if (!ref || !this.#matchesExpected(ref, expected)) return false;

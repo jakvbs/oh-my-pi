@@ -20,7 +20,6 @@ import type {
 	ModelUsageHealth,
 	ProviderSessionState,
 	ServiceTier,
-	ServiceTierByFamily,
 	SimpleStreamOptions,
 } from "@oh-my-pi/pi-ai";
 import { resolveApiKeyOnce } from "@oh-my-pi/pi-ai/auth-retry";
@@ -53,7 +52,7 @@ import type { EffectiveExtensionRoots } from "./capability/types";
 import { type OAuthAccountPools, SessionAccountPoolScope } from "./config/account-pools";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
-import { isAuthenticated, kNoAuth, ModelRegistry } from "./config/model-registry";
+import { ModelRegistry } from "./config/model-registry";
 import {
 	disabledProviderIds,
 	formatModelString,
@@ -187,7 +186,6 @@ import {
 import {
 	expandDefaultRetryFallbackChains,
 	findRetryFallbackCandidates,
-	installRetryFallbackRole,
 	type RetryFallbackResolutionContext,
 	resolveRetryFallbackChainKey,
 } from "./session/retry-fallback-chains";
@@ -526,12 +524,6 @@ export interface CreateAgentSessionOptions {
 	/** Raw model pattern(s) (e.g. from --model CLI flag) to resolve after extensions load.
 	 * Used when model lookup is deferred because extension-provided models aren't registered yet. */
 	modelPattern?: string | string[];
-	/** Authenticated fallback selector for deferred subagent model patterns. */
-	modelPatternAuthFallback?: string;
-	/** Role name used to install retry fallbacks after deferred subagent patterns resolve. */
-	modelPatternFallbackRole?: string;
-	/** Validated default retry chain to install when a deferred singleton pattern resolves. */
-	modelPatternDefaultFallbackChain?: string[];
 	/** Thinking selector. Default: from settings, else unset */
 	thinkingLevel?: ConfiguredThinkingLevel;
 	/** Hard ceiling on the session's thinking effort (e.g. an embedder-capped hint); retry-fallback recovery re-clamps to it. */
@@ -545,15 +537,6 @@ export interface CreateAgentSessionOptions {
 	 * schedule background warm requests.
 	 */
 	cacheWarming?: boolean;
-	/**
-	 * Per-family service tiers for this session, replacing the `tier.*` settings
-	 * and any persisted tier history. Called once the initial model is final —
-	 * after deferred `modelPattern` resolution and auth fallback — so the caller
-	 * can scope a tier to that model's provider family. The result is always
-	 * persisted, even when empty, so resume and cold revival restore it instead
-	 * of re-deriving tiers from settings.
-	 */
-	resolveServiceTierByFamily?: (model: Model | undefined) => ServiceTierByFamily;
 	/** Models available for cycling (Ctrl+P in interactive mode) */
 	scopedModels?: Array<{ model: Model; thinkingLevel?: ThinkingLevel }>;
 	/** Prewalk from the starting model to a fast/cheap target at the first edit/write once the todo list exists. */
@@ -724,10 +707,6 @@ export interface CreateAgentSessionOptions {
 	bindProcessState?: boolean;
 	/** Pre-allocated agent identity that owns background jobs. Default: "Main". */
 	agentId?: string;
-	/**
-	 * Agent definition name used to evaluate rule `agents` scoping. Defaults to "main".
-	 */
-	agentName?: string;
 
 	/** Session manager. Default: session stored under the configured agentDir sessions root */
 	sessionManager?: SessionManager;
@@ -796,16 +775,6 @@ export interface CreateAgentSessionOptions {
 	 * `@opentelemetry/api` package returns a no-op tracer in that case.
 	 */
 	telemetry?: AgentTelemetryConfig;
-
-	/**
-	 * Fired once, when the agent loop hands its first request to the provider
-	 * transport (i.e. the `streamFn` wrapper is first invoked). Used to measure
-	 * subagent launch latency — the boundary between "session built" and "model
-	 * call dispatched". This is the loop's dispatch point, slightly before the
-	 * actual provider HTTP call (per-request prep, identical across all
-	 * requests, follows it), which is the right granularity for launch timing.
-	 */
-	onFirstChatDispatch?: () => void;
 
 	/** Whether to auto-approve all tool calls (--auto-approve CLI flag). Default: false */
 	autoApprove?: boolean;
@@ -1981,7 +1950,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	const agentKind = MAIN_AGENT_RULE_NAME;
 	// Visuals (Mermaid, SVG figures, table charts) are drawn only in the top-level TUI transcript.
 	const tuiTranscript = options.tuiTranscript === true;
-	const resolvedAgentName = (options.agentName ?? agentKind).trim().toLowerCase();
+	const resolvedAgentName = agentKind;
 
 	// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
 	const discovered = await logger.time("discoverTtsrRules", async () => {
@@ -2816,7 +2785,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 						}
 					}
 				}
-				let selectedModel = primary.model;
+				const selectedModel = primary.model;
 				let selectedThinkingLevel = primary.thinkingLevel;
 				let selectedExplicitThinkingLevel = primary.explicitThinkingLevel;
 				// A chain entry without its own `:level` suffix inherits the
@@ -2825,58 +2794,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				if (retryFallback && !selectedExplicitThinkingLevel && retryFallback.originalThinkingLevel !== undefined) {
 					selectedThinkingLevel = retryFallback.originalThinkingLevel;
 					selectedExplicitThinkingLevel = true;
-				}
-				let authFallbackUsed = false;
-				if (options.modelPatternAuthFallback) {
-					const primaryKey = await modelRegistry.getApiKey(primary.model);
-					if (primaryKey !== kNoAuth && !isAuthenticated(primaryKey)) {
-						const fallback = parseModelPattern(
-							options.modelPatternAuthFallback,
-							resolutionModels,
-							matchPreferences,
-						);
-						if (fallback.model) {
-							const fallbackKey = await modelRegistry.getApiKey(fallback.model);
-							if (isAuthenticated(fallbackKey)) {
-								selectedModel = fallback.model;
-								selectedThinkingLevel = fallback.thinkingLevel;
-								selectedExplicitThinkingLevel = fallback.explicitThinkingLevel;
-								authFallbackUsed = true;
-							}
-						}
-					}
-				}
-				if (!authFallbackUsed && options.modelPatternFallbackRole) {
-					const primarySelector = formatModelSelectorValue(
-						formatModelStringWithRouting(primary.model),
-						primary.thinkingLevel,
-					);
-					const seenSelectors = new Set<string>([primarySelector]);
-					const fallbackSelectors: string[] = [];
-					for (const fallbackEntry of expandedModelPatterns.slice(patternIndex + 1)) {
-						const fallback = parseModelPattern(fallbackEntry.pattern, resolutionModels, matchPreferences);
-						if (!fallback.model) continue;
-						const fallbackSelector = formatModelSelectorValue(
-							formatModelStringWithRouting(fallback.model),
-							fallback.thinkingLevel,
-						);
-						if (seenSelectors.has(fallbackSelector)) continue;
-						seenSelectors.add(fallbackSelector);
-						fallbackSelectors.push(fallbackSelector);
-					}
-					if (fallbackSelectors.length === 0) {
-						for (const selector of options.modelPatternDefaultFallbackChain ?? []) {
-							if (typeof selector !== "string" || seenSelectors.has(selector)) continue;
-							seenSelectors.add(selector);
-							fallbackSelectors.push(selector);
-						}
-					}
-					if (fallbackSelectors.length > 0) {
-						installRetryFallbackRole(settings, options.modelPatternFallbackRole, {
-							primary: primarySelector,
-							chain: fallbackSelectors,
-						});
-					}
 				}
 				model = selectedModel;
 				initialRetryFallback =
@@ -3796,20 +3713,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			.map(name => toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool !== undefined);
 
-		// `model` is final here: deferred patterns, auth fallback, and extension
-		// role reclaim have all run, so a resolver can scope tiers to its family.
-		const resolvedServiceTierByFamily = options.resolveServiceTierByFamily?.(model);
-		const configuredServiceTierByFamily =
-			resolvedServiceTierByFamily ??
-			(hasServiceTierEntry
-				? (existingSession.serviceTier ?? {})
-				: buildServiceTierByFamily(
-						cfgTierOpenai.get(settings),
-						cfgTierAnthropic.get(settings),
-						cfgTierGoogle.get(settings),
-					));
-		const persistInitialServiceTier =
-			options.openAIServiceTier !== undefined || resolvedServiceTierByFamily !== undefined;
+		const configuredServiceTierByFamily = hasServiceTierEntry
+			? (existingSession.serviceTier ?? {})
+			: buildServiceTierByFamily(
+					cfgTierOpenai.get(settings),
+					cfgTierAnthropic.get(settings),
+					cfgTierGoogle.get(settings),
+				);
+		const persistInitialServiceTier = options.openAIServiceTier !== undefined;
 		const initialServiceTierByFamily = { ...configuredServiceTierByFamily };
 		if (options.openAIServiceTier === null) {
 			delete initialServiceTierByFamily.openai;
@@ -3817,9 +3728,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			initialServiceTierByFamily.openai = options.openAIServiceTier;
 		}
 
-		// One-shot launch-latency marker: fired the first time the loop dispatches
-		// a chat request to the provider transport. See onFirstChatDispatch.
-		let notifyFirstChatDispatch = options.onFirstChatDispatch;
 		// Shared, settings-aware stream wrapper used by the main agent, advisor,
 		// and side-channel requests (`/btw`, `/omfg`, IRC auto-replies, handoff).
 		// Keeps OpenRouter sticky-routing variants, in-flight caps, and the loop
@@ -3911,17 +3819,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getToolContext: tc => toolContextStore.getContext(tc),
 			getApiKey: effectiveGetApiKey,
 			streamFn: (streamModel, context, streamOptions) => {
-				if (notifyFirstChatDispatch) {
-					const cb = notifyFirstChatDispatch;
-					notifyFirstChatDispatch = undefined;
-					try {
-						cb();
-					} catch (error) {
-						logger.warn("onFirstChatDispatch hook threw", {
-							error: error instanceof Error ? error.message : String(error),
-						});
-					}
-				}
 				const externalThinking =
 					cfgExternalThinking.get(settings) &&
 					agent.state.tools.some(tool => tool.name === "think") &&

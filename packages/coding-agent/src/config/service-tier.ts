@@ -1,8 +1,4 @@
-import type { Model, ServiceTier, ServiceTierByFamily, ServiceTierFamily } from "@oh-my-pi/pi-ai";
-// Setting declarations (`session/settings.ts`) pull this module into CLI startup; import the classifier
-// from the dependency-free types module so the `pi-ai` index (and the native
-// addon behind it) stays lazy.
-import { serviceTierFamily } from "@oh-my-pi/pi-ai/types";
+import type { ServiceTier, ServiceTierByFamily, ServiceTierFamily } from "@oh-my-pi/pi-ai";
 import type { SubmenuOption } from "@oh-my-pi/pi-tui/overlays/settings-defs";
 
 /**
@@ -153,38 +149,4 @@ export function serviceTierForAllFamilies(tier: ServiceTier | undefined): Servic
 	if (tier === "priority") out.anthropic = "priority";
 	if (tier === "flex" || tier === "priority") out.google = tier;
 	return out;
-}
-
-/**
- * Resolve a subagent/advisor service-tier setting to a per-family map.
- *
- * - A concrete tier is broadcast across families (see
- *   {@link serviceTierForAllFamilies}).
- * - `"none"` yields an empty map.
- * - `"inherit"` defers to `inherited` — the parent's live per-family tiers when
- *   a live session supplied them, else the empty map.
- */
-export function resolveSubagentServiceTier(setting: string, inherited: ServiceTierByFamily): ServiceTierByFamily {
-	if (setting === "inherit") return inherited;
-	return serviceTierForAllFamilies(serviceTierSettingToTier(setting));
-}
-
-/**
- * Resolve one exact-agent override against the model the child session settled
- * on. Concrete tiers populate only that model's provider family, so the session's
- * retry chain keeps the tier on same-family fallbacks and never carries it across
- * families. Without a resolved model there is no family to scope to, so a
- * concrete tier yields no entry rather than a cross-family broadcast.
- */
-export function resolveAgentServiceTierOverride(
-	setting: ServiceTierInheritSettingValue,
-	model: Model | undefined,
-	inherited: ServiceTierByFamily,
-): ServiceTierByFamily {
-	if (setting === "inherit") return inherited;
-	const tier = serviceTierSettingToTier(setting);
-	if (!tier || !model) return {};
-	const family = serviceTierFamily(model);
-	if (!family || !isServiceTierForFamily(family, tier)) return {};
-	return { [family]: tier };
 }

@@ -486,34 +486,6 @@ describe("StatusLineComponent usage refresh", () => {
 		component.dispose();
 	});
 
-	it("does not warn again when focus moves to a subagent and back", async () => {
-		let fetches = 0;
-		const reports = async () => {
-			fetches++;
-			return codexUsageReport({
-				sevenDayPercent: 60,
-				sevenDayResetAt: Date.now() + 80 * 3_600_000,
-				savedResets: 1,
-				creditExpiresAt: [Date.now() + 6 * 3_600_000],
-			});
-		};
-		const main = makeCodexSession(reports);
-		const subagent = makeCodexSession(reports, undefined, () => "subagent-1");
-		const component = new StatusLineComponent(main, statusLineHost);
-		const notices: string[] = [];
-		component.setResetExpiryNoticeHandler(notice => notices.push(notice));
-
-		await refreshUsage(component);
-		component.setSession(subagent, "agent-1");
-		await refreshUsage(component);
-		component.setSession(main);
-		await refreshUsage(component);
-
-		expect(fetches).toBe(3);
-		expect(notices).toHaveLength(1);
-		component.dispose();
-	});
-
 	it("does not warn about a reset that expires in more than 24 hours", async () => {
 		const state: CodexUsageState = {
 			sevenDayPercent: 60,

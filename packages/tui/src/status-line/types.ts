@@ -81,8 +81,6 @@ export interface SegmentContext {
 	now?: Date;
 	/** Deterministic host label for previews/tests; production omits it. */
 	hostname?: string;
-	/** Focused subagent id while the view is proxied at its session, undefined otherwise. */
-	focusedAgentId?: string | undefined;
 	/** Effective `statusLine.sessionAccent`; `false` disables hash-derived accent colors, while `true` or omission enables them. */
 	sessionAccent?: boolean;
 	/** Stand-in session title for previews; `session_name` renders it when the session is unnamed. */
@@ -133,8 +131,6 @@ export interface SegmentContext {
 		orchestrationCacheRead: number;
 		premiumRequests: number;
 		cost: number;
-		/** Portion of `cost` carried by completed subagent task results. */
-		subagentCost?: number;
 		tokensPerSecond: number | null;
 	};
 	/** Context usage percent, or null when unknown (e.g. right after compaction). */
@@ -146,12 +142,6 @@ export interface SegmentContext {
 	compactionSpeculation: "idle" | "running" | "armed";
 	/** Blink phase for the running-speculation pulse; toggled by the component's timer. */
 	speculationBlinkOn: boolean;
-	subagentCount: number;
-	/**
-	 * Spend of every subagent under the main session (descendants included),
-	 * from the Agent Hub projection; 0 while a subagent is focused or unknown.
-	 */
-	subagentTreeCost?: number;
 	/**
 	 * Active processing time accumulated this session, in ms — the union of
 	 * every `agent_start`→`agent_end` window plus the currently-streaming

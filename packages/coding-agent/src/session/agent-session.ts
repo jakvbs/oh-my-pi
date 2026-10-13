@@ -380,13 +380,7 @@ import {
 	SessionMaintenance,
 	type SessionMaintenanceHost,
 } from "./session-maintenance";
-import {
-	cleanupEmptyMoveSession,
-	copySessionArtifacts,
-	extractSessionInit,
-	type PersistedSessionInit,
-	type SessionManager,
-} from "./session-manager";
+import { cleanupEmptyMoveSession, copySessionArtifacts, type SessionManager } from "./session-manager";
 import { buildSessionMetadata } from "./session-metadata";
 import { SessionProviderBoundary, type SessionProviderBoundaryHost } from "./session-provider-boundary";
 import { SessionStatsTracker, type SessionStatsTrackerHost } from "./session-stats";
@@ -965,8 +959,6 @@ export class AgentSession implements SettingsScope {
 	 *  enqueue and fold/resume normally across an in-session interrupt, only a session identity
 	 *  change should drop them. */
 	#sessionGeneration = 0;
-	/** Latest `session_init` of the transcript the model calls ran on; `init` is null when it has none. */
-	#sessionInit: { sessionFile: string | undefined; init: PersistedSessionInit | null } | undefined;
 	/** Settles when switchSession commits or restores its previous generation on rollback.
 	 *  newSession never rolls its generation back, so it does not delay stale aside/SDK calls. */
 	#sessionGenerationSettled: Promise<void> | undefined;
@@ -1733,10 +1725,7 @@ export class AgentSession implements SettingsScope {
 			cancel: toolCallId => this.#ttsr.cancelBridgedToolCall(toolCallId),
 		});
 		this.agent.setOnBeforeYield(() => this.#ttsr.settleJudgments());
-		this.agent.setOnModelCallSystemPrompt(prompt => {
-			this.#tools.recordPrimaryModelCall(prompt);
-			this.#recordModelCallSystemPrompt(prompt);
-		});
+		this.agent.setOnModelCallSystemPrompt(prompt => this.#tools.recordPrimaryModelCall(prompt));
 		this.#obfuscator = config.obfuscator;
 		const providerBoundaryHost: SessionProviderBoundaryHost = {
 			agent: this.agent,
@@ -5556,33 +5545,6 @@ export class AgentSession implements SettingsScope {
 	/** Current effective system prompt blocks (includes any per-turn extension modifications) */
 	get systemPrompt(): string[] {
 		return this.agent.state.systemPrompt;
-	}
-
-	/**
-	 * Keeps a subagent transcript's latest `session_init` on the base prompt and work-pool yield items
-	 * its model calls are built from, appending a newer one when either changes: signed thinking is
-	 * bound to the system prompt and tools, so cold revival must replay them. A per-turn override is
-	 * stored as the base its hook was given, since the revived turn re-runs the hook. Transcripts
-	 * without a `session_init` are left alone.
-	 */
-	#recordModelCallSystemPrompt(prompt: string[]): void {
-		const sessionFile = this.sessionManager.getSessionFile();
-		let cached = this.#sessionInit;
-		if (!cached || cached.sessionFile !== sessionFile) {
-			cached = { sessionFile, init: extractSessionInit(this.sessionManager.getEntries()) };
-			this.#sessionInit = cached;
-		}
-		const { init } = cached;
-		if (!init) return;
-		const base = this.#tools.baseOfSystemPrompt(prompt);
-		if (
-			base.length === init.systemPrompt.length &&
-			base.every((block, index) => block === init.systemPrompt[index])
-		) {
-			return;
-		}
-		cached.init = { ...init, systemPrompt: base };
-		this.sessionManager.appendSessionInit(cached.init);
 	}
 
 	/** Marks streamed text as committed or buffered for turn-recovery replay decisions. */
@@ -10192,9 +10154,6 @@ export class AgentSession implements SettingsScope {
 				// still observe message_end, then mute before swapping files.
 				await this.#advisors.drainAndDetachRecorders();
 			}
-			// The file may be reloaded at the same path with a different latest contract (or the
-			// switch rolled back via restoreState); re-read it on the next model call either way.
-			this.#sessionInit = undefined;
 			await this.sessionManager.setSessionFile(sessionPath);
 			this.#bash.markSessionTransition(bashTransition);
 			const newCwd = this.sessionManager.getCwd();

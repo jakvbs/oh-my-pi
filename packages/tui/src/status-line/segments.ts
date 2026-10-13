@@ -205,13 +205,6 @@ function getProjectDirDisplay(projectDir: string): ProjectDirDisplay {
 const piSegment: StatusLineSegment = {
 	id: "pi",
 	render(ctx) {
-		if (ctx.focusedAgentId) {
-			const icon = theme.icon.ghost ? `${theme.icon.ghost} ` : "";
-			return {
-				content: theme.fg("warning", `${icon}${ctx.focusedAgentId}`),
-				visible: true,
-			};
-		}
 		// Brand fg fades between dim gray (idle) and the accent (working) across
 		// turn edges; the component samples the tween into `brandFgAnsi`.
 		const fgAnsi = ctx.brandFgAnsi ?? theme.getFgAnsi("dim");
@@ -227,8 +220,7 @@ const piSegment: StatusLineSegment = {
 					: "";
 		return { content: `${fgAnsi}${content}\x1b[39m`, visible: true };
 	},
-	describe(ctx) {
-		if (ctx.focusedAgentId) return segView([span(ctx.focusedAgentId, "warning")], "ghost", "warning");
+	describe() {
 		// The dock's working row owns activity natively: the brand stays still.
 		return segView([], "omp", "muted");
 	},
@@ -684,21 +676,6 @@ const prSegment: StatusLineSegment = {
 	},
 };
 
-const subagentsSegment: StatusLineSegment = {
-	id: "subagents",
-	render(ctx) {
-		if (ctx.subagentCount === 0) {
-			return { content: "", visible: false };
-		}
-		const content = withIcon(theme.icon.agents, `${ctx.subagentCount}`);
-		return { content: theme.fg("statusLineSubagents", content), visible: true };
-	},
-	describe(ctx) {
-		if (ctx.subagentCount === 0) return null;
-		return segView([span(`${ctx.subagentCount}`, "statusLineSubagents")], "agents");
-	},
-};
-
 const tokenInSegment: StatusLineSegment = singleStatSegment("token_in", "input", "input", "statusLineSpend");
 
 const tokenOutSegment: StatusLineSegment = singleStatSegment("token_out", "output", "output", "statusLineOutput");
@@ -755,13 +732,6 @@ const tokenRateSegment: StatusLineSegment = {
 /** Billing summary for the `cost` segment, or undefined when there is nothing to bill. */
 function costSummary(ctx: SegmentContext): string | undefined {
 	const { cost, premiumRequests } = ctx.usageStats;
-	// `cost` folds in completed task results; show the session's own spend and
-	// the subagent tree separately. The hub-projected tree total also covers
-	// grandchildren and running/async agents, but it lags persisted-roster
-	// hydration after resume, so the task-result sum is its floor.
-	const taskResultCost = ctx.usageStats.subagentCost ?? 0;
-	const ownCost = Math.max(0, cost - taskResultCost);
-	const subagentCost = Math.max(ctx.subagentTreeCost ?? 0, taskResultCost);
 	const advisorCost = ctx.session.getAdvisorCost?.() ?? 0;
 	const state = ctx.session.state;
 	const pricingPeriod = state.model?.cost
@@ -774,8 +744,7 @@ function costSummary(ctx: SegmentContext): string | undefined {
 	// working-spinner cadence, so an eager per-frame probe pinned CPU (#10129).
 	return formatBillingSummary(
 		{
-			cost: ownCost,
-			subagentCost,
+			cost,
 			usingSubscription,
 			premiumRequests,
 			fractionDigits: 2,
@@ -1270,7 +1239,6 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	path: pathSegment,
 	git: gitSegment,
 	pr: prSegment,
-	subagents: subagentsSegment,
 	token_in: tokenInSegment,
 	token_out: tokenOutSegment,
 	token_total: tokenTotalSegment,

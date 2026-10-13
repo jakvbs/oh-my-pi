@@ -8,8 +8,6 @@ import type {
 	Usage,
 } from "@oh-my-pi/pi-ai";
 import type { CompactionMethod } from "./compaction-methods";
-import type { OutputSchemaMode } from "../tools/output-schema-validator";
-import type { RetryFallbackRole } from "./retry-fallback-chains";
 
 export const CURRENT_SESSION_VERSION = 3;
 
@@ -243,7 +241,7 @@ export interface CredentialPinEntry extends SessionEntryBase {
 	hash: string;
 }
 
-/** Session init entry - captures initial context for subagent sessions (debugging/replay). */
+/** Legacy entry written by the removed in-process child agents; kept so older transcripts still load. */
 export interface SessionInitEntry extends SessionEntryBase {
 	type: "session_init";
 	/** System prompt blocks exactly as sent to the model; files written before blocks were kept store one joined string. */
@@ -252,32 +250,8 @@ export interface SessionInitEntry extends SessionEntryBase {
 	task: string;
 	/** Tools available to the agent */
 	tools: string[];
-	/** Agent definition name (for example `scout` or `reviewer`). */
-	agent?: string;
-	/** Semantic model role declared by the agent, retained even after concrete model resolution. */
-	modelRole?: string;
-	/** Initially resolved provider/model selector for historical display. */
-	resolvedModel?: string;
-	/** Subagent's `subagent:<id>` retry fallback role as installed at spawn; cold revival reinstalls it. Absent when none was installed or on older files. */
-	retryFallback?: RetryFallbackRole;
-	/** Whether the agent definition is read-only, allowing an exact zero-LoC attribution. */
-	readOnly?: boolean;
 	/** Output schema if structured output was requested. */
 	outputSchema?: unknown;
-	/** Enforcement policy recorded with the output schema for faithful revival. */
-	outputSchemaMode?: OutputSchemaMode;
-	/** Whether revival must retain only the explicitly persisted tool names. */
-	restrictToolNames?: boolean;
-	/** The agent's `readSummarize` setting (`false` = read summarization disabled); absent uses the session default. */
-	readSummarize?: boolean;
-	/** MCP servers the agent definition allowed; absent = none. */
-	mcp?: string[];
-	/** Effective advisor for this subagent: `"on"` = advisor-role model, else an explicit model pattern; absent = unadvised. */
-	advisor?: string;
-	/** Effective thresholds for a child with an explicit compaction override. */
-	compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
-	/** True when the subagent ran inside an isolation worktree: never revivable, transcript-only after park. Absent on older files. */
-	isolated?: boolean;
 }
 
 /** Mode change entry - tracks agent mode transitions (e.g. goal mode). */

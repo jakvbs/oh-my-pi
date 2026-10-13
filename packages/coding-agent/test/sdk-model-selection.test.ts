@@ -24,7 +24,6 @@ import {
 	cfgCompactionModelThresholds,
 	cfgCompactionModelThresholdsEnabled,
 } from "@oh-my-pi/pi-coding-agent/session/context-settings";
-import { cfgRetryFallbackChains } from "@oh-my-pi/pi-coding-agent/session/settings";
 
 describe("createAgentSession deferred model pattern resolution", () => {
 	let tempDir: string;
@@ -596,22 +595,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		}
 	});
 
-	test("does not resolve a disabled provider through deferred subagent model selection", async () => {
-		const settings = Settings.isolated({ disabledProviders: ["runtime-provider"] });
-		const { session, modelFallbackMessage } = await createAgentSession({
-			...buildSessionOptions("runtime-provider/runtime-model"),
-			settings,
-			modelPatternAuthFallback: "runtime-provider/runtime-fallback-model",
-		});
-
-		try {
-			expect(session.model).toBeUndefined();
-			expect(modelFallbackMessage).toBe('Model "runtime-provider/runtime-model" not found');
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	test("advances past a disabled first selector to an enabled discovery-backed model", async () => {
 		// A disabled provider's model already sits in the static catalog, so
 		// resolveCliModel resolves the first selector against the full registry. If
@@ -676,51 +659,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			expect(modelFallbackMessage).toBeUndefined();
 		} finally {
 			await session.dispose();
-		}
-	});
-
-	test("uses auth fallback when deferred subagent modelPattern resolves without working credentials", async () => {
-		const parentModel = getBundledModel("anthropic", "claude-sonnet-4-5");
-		if (!parentModel) {
-			throw new Error("Expected bundled anthropic parent model");
-		}
-		const authStorage = createInMemoryAuthStorage();
-		authStoragesToClose.push(authStorage);
-		authStorage.keys.setRuntime(parentModel.provider, "test-key");
-		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir, "fallback-models.yml"));
-		const getApiKeySpy = vi.spyOn(modelRegistry, "getApiKey").mockImplementation(async requested => {
-			if (requested.provider === "runtime-provider") return undefined;
-			if (requested.provider === parentModel.provider) return "test-key";
-			return undefined;
-		});
-		const { session, modelFallbackMessage } = await createAgentSession({
-			cwd: tempDir,
-			agentDir: tempDir,
-			authStorage,
-			modelRegistry,
-			sessionManager: SessionManager.inMemory(),
-			disableExtensionDiscovery: true,
-			extensions: [providerExtension],
-			skills: [],
-			contextFiles: [],
-			promptTemplates: [],
-			slashCommands: [],
-			enableMCP: false,
-			enableLsp: false,
-			rules: [],
-			preloadedCustomToolPaths: [],
-			toolNames: ["read"],
-			modelPattern: "runtime-provider/runtime-model",
-			modelPatternAuthFallback: `${parentModel.provider}/${parentModel.id}`,
-		});
-
-		try {
-			expect(session.model?.provider).toBe(parentModel.provider);
-			expect(session.model?.id).toBe(parentModel.id);
-			expect(modelFallbackMessage).toBeUndefined();
-		} finally {
-			await session.dispose();
-			getApiKeySpy.mockRestore();
 		}
 	});
 
@@ -984,29 +922,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		}
 	});
 
-	test("preserves deferred bare role fallback chains", async () => {
-		const settings = Settings.isolated();
-		settings.setModelRole("task", "runtime-provider/runtime-model,runtime-provider/runtime-fallback-model");
-
-		const { session, modelFallbackMessage } = await createAgentSession({
-			...buildSessionOptions("task"),
-			modelPatternFallbackRole: "subagent:deferred",
-			settings,
-		});
-
-		try {
-			expect(session.model?.provider).toBe("runtime-provider");
-			expect(session.model?.id).toBe("runtime-model");
-			expect(session.settings.getModelRole("subagent:deferred")).toBe("runtime-provider/runtime-model");
-			expect(cfgRetryFallbackChains.get(session.settings)["subagent:deferred"]).toEqual([
-				"runtime-provider/runtime-fallback-model",
-			]);
-			expect(modelFallbackMessage).toBeUndefined();
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	test.each([
 		["depleted", "runtime-model"],
 		["reserve", "runtime-provider/runtime-m*"],
@@ -1024,7 +939,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		);
 		const { session, modelFallbackMessage } = await createAgentSession({
 			...options,
-			modelPatternFallbackRole: "subagent:usage-aware",
 			settings,
 			hasUI: false,
 		});
@@ -1055,7 +969,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 
 		const { session, modelFallbackMessage } = await createAgentSession({
 			...options,
-			modelPatternFallbackRole: "subagent:usage-aware-terminal",
 			settings,
 			hasUI: false,
 		});
@@ -1092,7 +1005,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		);
 		const { session } = await createAgentSession({
 			...options,
-			modelPatternFallbackRole: "subagent:usage-aware-acp",
 			settings,
 			hasUI: false,
 			deferUsageReserveConfirmation: true,
@@ -1123,68 +1035,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 				hasUI: false,
 			}),
 		).rejects.toThrow("reserve policy is fail-closed");
-	});
-
-	test("installs fallback chain for remaining deferred subagent modelPattern candidates", async () => {
-		const { session } = await createAgentSession({
-			...buildSessionOptions(["runtime-provider/runtime-model", "runtime-provider/runtime-fallback-model"]),
-			modelPatternFallbackRole: "subagent:deferred",
-		});
-
-		try {
-			expect(session.model?.provider).toBe("runtime-provider");
-			expect(session.model?.id).toBe("runtime-model");
-			expect(session.settings.getModelRole("subagent:deferred")).toBe("runtime-provider/runtime-model");
-			expect(cfgRetryFallbackChains.get(session.settings)["subagent:deferred"]).toEqual([
-				"runtime-provider/runtime-fallback-model",
-			]);
-		} finally {
-			await session.dispose();
-		}
-	});
-
-	test("installs an inherited fallback chain for a deferred singleton modelPattern", async () => {
-		const settings = Settings.isolated({
-			"retry.fallbackChains": {
-				default: ["runtime-provider/runtime-fallback-model"],
-			},
-		});
-		settings.setModelRole("default", "runtime-provider/runtime-fallback-model");
-		const { session } = await createAgentSession({
-			...buildSessionOptions("runtime-provider/runtime-model"),
-			settings,
-			modelPatternFallbackRole: "subagent:deferred-default",
-			modelPatternDefaultFallbackChain: ["runtime-provider/runtime-fallback-model"],
-		});
-
-		try {
-			expect(session.model?.provider).toBe("runtime-provider");
-			expect(session.model?.id).toBe("runtime-model");
-			expect(session.settings.getModelRole("subagent:deferred-default")).toBe("runtime-provider/runtime-model");
-			expect(cfgRetryFallbackChains.get(session.settings)["subagent:deferred-default"]).toEqual([
-				"runtime-provider/runtime-fallback-model",
-			]);
-		} finally {
-			await session.dispose();
-		}
-	});
-
-	test("splits deferred comma-delimited modelPattern and installs fallback chain", async () => {
-		const { session } = await createAgentSession({
-			...buildSessionOptions("runtime-provider/runtime-model,runtime-provider/runtime-fallback-model"),
-			modelPatternFallbackRole: "subagent:deferred",
-		});
-
-		try {
-			expect(session.model?.provider).toBe("runtime-provider");
-			expect(session.model?.id).toBe("runtime-model");
-			expect(session.settings.getModelRole("subagent:deferred")).toBe("runtime-provider/runtime-model");
-			expect(cfgRetryFallbackChains.get(session.settings)["subagent:deferred"]).toEqual([
-				"runtime-provider/runtime-fallback-model",
-			]);
-		} finally {
-			await session.dispose();
-		}
 	});
 
 	test("does not apply default role thinking override when modelPattern is explicit", async () => {

@@ -81,7 +81,6 @@ function createCtx(overrides?: {
 		autoCompactEnabled: false,
 		compactionSpeculation: "idle",
 		speculationBlinkOn: true,
-		subagentCount: 0,
 		activeMs: 0,
 		turnElapsedMs: null,
 		activeRepo: null,
@@ -226,30 +225,6 @@ describe("session_name preview-title fallback", () => {
 		expect(stripAnsi(withTitle.content).trimEnd().endsWith("omp")).toBe(true);
 		// Live render path passes no preview title: unnamed sessions show none.
 		expect(stripAnsi(component.getTopBorder(80).content)).not.toContain("omp");
-	});
-});
-
-describe("status line focused-agent dimming", () => {
-	it("keeps powerline end caps at full intensity while text stays dimmed", () => {
-		const component = statusLines.track(
-			new StatusLineComponent(createStatusLineSession("Focused session"), statusLineHost),
-		);
-		component.updateSettings({
-			preset: "custom",
-			leftSegments: ["pi"],
-			rightSegments: ["session_name"],
-			separator: "powerline-thin",
-			sessionAccent: false,
-		});
-		component.setSession(createStatusLineSession("Focused session"), "agent-1");
-
-		const border = component.getTopBorder(80).content;
-
-		expect(border).toStartWith("\x1b[2m");
-		expect(border).toContain(`\x1b[22m${theme.sep.powerlineLeft}\x1b[0m\x1b[2m`);
-		expect(border).toContain(`\x1b[22m${theme.sep.powerlineRight}\x1b[0m\x1b[2m`);
-		expect(border).toContain("\x1b[0m\x1b[2m");
-		expect(border).toEndWith("\x1b[22m");
 	});
 });
 

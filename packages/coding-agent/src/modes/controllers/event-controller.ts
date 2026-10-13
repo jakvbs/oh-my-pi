@@ -2,7 +2,7 @@ import type { AssistantMessage, ImageContent } from "@oh-my-pi/pi-ai";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import { type Component, Loader, TERMINAL } from "@oh-my-pi/pi-tui";
-import { formatDuration, isRecord, logger, prompt, sanitizeText } from "@oh-my-pi/pi-utils";
+import { formatDuration, logger, prompt, sanitizeText } from "@oh-my-pi/pi-utils";
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import { settings } from "../../config/settings";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
@@ -16,7 +16,6 @@ import {
 import { RecapNotice } from "@oh-my-pi/pi-tui/chat/recap-notice";
 import { readMediaPath } from "@oh-my-pi/pi-tui/native/blobs";
 import { TodoReminderComponent } from "@oh-my-pi/pi-tui/chat/todo-reminder";
-import { isNativeRendering } from "@oh-my-pi/pi-tui/native/state";
 import { textContent } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import {
 	asyncJobState,
@@ -84,31 +83,6 @@ const IDLE_RECAP_MIN_SECONDS = 1;
 const IDLE_RECAP_MAX_SECONDS = 3600;
 
 const RAW_PARTIAL_JSON_RENDERERS: Record<string, true> = { bash: true, edit: true, apply_patch: true };
-
-interface AsyncResultJob {
-	jobId?: string;
-	type?: string;
-	label?: string;
-	durationMs?: number;
-}
-
-/**
- * Toast text for an `async-result` delivery whose jobs are all background
- * task spawns, or undefined when it is anything else (bash jobs keep their
- * transcript rows). Native rendering only: the task call's agent nodes carry
- * the outcome, so the delivery needs no transcript block of its own.
- */
-function nativeTaskJobToast(message: { role: string; customType?: string; details?: unknown }): string | undefined {
-	if (message.role !== "custom" || message.customType !== "async-result" || !isRecord(message.details)) return;
-	const details = message.details as AsyncResultJob & { jobs?: AsyncResultJob[] };
-	const jobs = details.jobs && details.jobs.length > 0 ? details.jobs : [details];
-	if (!jobs.every(job => job.type === "task")) return;
-	if (jobs.length > 1) return `${jobs.length} background tasks completed`;
-	const job = jobs[0]!;
-	const name = sanitizeText(job.label ?? job.jobId ?? "task").trim() || "task";
-	const took = typeof job.durationMs === "number" ? ` · ${formatDuration(job.durationMs)}` : "";
-	return `Background task ${name} completed${took}`;
-}
 
 function exposesRawPartialJson(toolName: string, rawInput: boolean, tool: unknown): boolean {
 	if (rawInput) return true;
@@ -894,14 +868,6 @@ export class EventController {
 		this.#toolArgsReveal.stop();
 	}
 
-	/** Settle replay-created cards without waiting for another streaming update. */
-	restorePendingToolResults(): void {
-		for (const [toolCallId, component] of this.ctx.pendingTools) {
-			this.#toolTimelineComponents.set(toolCallId, component);
-			this.#settleHeldCompletionIfPresent(toolCallId, component);
-		}
-	}
-
 	async handleEvent(event: AgentSessionEvent): Promise<void> {
 		if (!this.ctx.isInitialized) {
 			await this.ctx.init();
@@ -1058,7 +1024,6 @@ export class EventController {
 				this.#turnStartedAt = event.message.timestamp;
 				this.#turnUsage.reset();
 			}
-			const taskJobToast = isNativeRendering() ? nativeTaskJobToast(event.message) : undefined;
 			if (
 				event.message.role === "custom" &&
 				this.ctx.optimisticSkillMessagePending &&
@@ -1067,11 +1032,6 @@ export class EventController {
 				// The optimistic `/skill:` row painted at submit time (issue #8895):
 				// swap it for the canonical message instead of appending a duplicate.
 				this.ctx.reconcileOptimisticSkillMessage(event.message);
-			} else if (taskJobToast) {
-				// Native: the task call's `agent` nodes already settled in place
-				// (its terminal async update); a toast replaces the appended
-				// "Background job completed" rows.
-				this.ctx.showStatus(taskJobToast);
 			} else {
 				this.ctx.addMessageToChat(event.message);
 			}

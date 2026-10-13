@@ -69,7 +69,6 @@ function createCtx(activeMs: number): SegmentContext {
 		autoCompactEnabled: false,
 		compactionSpeculation: "idle",
 		speculationBlinkOn: true,
-		subagentCount: 0,
 		activeMs,
 		turnElapsedMs: null,
 		activeRepo: null,
@@ -82,8 +81,7 @@ function createCtx(activeMs: number): SegmentContext {
 function makeSession(
 	overrides: { isStreaming?: boolean; sessionFile?: string | undefined } = {},
 ): ConstructorParameters<typeof StatusLineComponent>[0] {
-	// The component reads the session for usage stats, model, the
-	// `isStreaming` gate inside `#closeStaleActiveWindow`, and the
+	// The component reads the session for usage stats, model, and the
 	// `sessionFile` snapshot inside `#meter()` (file-change detection).
 	// The time-spent accounting path otherwise never touches it — stub
 	// with the minimum surface the constructor needs to settle.
@@ -241,70 +239,6 @@ describe("StatusLineComponent active-time accounting", () => {
 		// A stale markActivityEnd after the reset must not re-credit the dropped window.
 		now += 5_000;
 		c.markActivityEnd();
-		expect(c.getActiveMs()).toBe(0);
-	});
-
-	it("tracks meters per session: subagent agent_start opened while focused never ticks into the main meter on detach", () => {
-		// Regression for the PR review: SessionFocusController synthesizes
-		// `agent_start` on mid-turn attach but unfocusing immediately
-		// unsubscribes without a matching synthetic `agent_end`. With a
-		// single shared meter the main status line kept ticking through
-		// idle time after the subagent later finished. Per-session WeakMap
-		// keeps the leak inside the subagent's meter.
-		const main = makeSession({ isStreaming: false });
-		const sub = makeSession({ isStreaming: true });
-		const c = statusLines.track(new StatusLineComponent(main, statusLineHost));
-		let now = 6_000_000_000;
-		vi.spyOn(Date, "now").mockImplementation(() => now);
-
-		// 1s of main activity, closed cleanly.
-		c.markActivityStart();
-		now += 1_000;
-		c.markActivityEnd();
-		expect(c.getActiveMs()).toBe(1_000);
-
-		// Focus into a streaming subagent: synthesized agent_start opens
-		// the subagent's meter only.
-		c.setSession(sub, "Subagent");
-		c.markActivityStart();
-		now += 3_000;
-		expect(c.getActiveMs()).toBe(3_000);
-
-		// Detach back to main while subagent is still running — the
-		// subagent meter stays open but the main meter is untouched.
-		c.setSession(main);
-		expect(c.getActiveMs()).toBe(1_000);
-		// Wall-clock keeps advancing; main meter must not tick.
-		now += 60_000;
-		expect(c.getActiveMs()).toBe(1_000);
-	});
-
-	it("drops a stale subagent window on re-focus when the agent finished while we were detached", () => {
-		// SessionFocusController only synthesizes agent_start when the
-		// session is currently streaming. Re-focusing a now-idle session
-		// whose previous meter is still open would otherwise tick over
-		// the entire detached gap; the setSession close-stale path drops
-		// it instead.
-		const main = makeSession({ isStreaming: false });
-		const sub = makeSession({ isStreaming: true });
-		const c = statusLines.track(new StatusLineComponent(main, statusLineHost));
-		let now = 7_000_000_000;
-		vi.spyOn(Date, "now").mockImplementation(() => now);
-
-		c.setSession(sub, "Subagent");
-		c.markActivityStart();
-		now += 2_000;
-		// Detach mid-turn — subagent meter left open.
-		c.setSession(main);
-
-		// Long detached gap. The subagent finishes in reality during this
-		// gap, but we never see its agent_end because we're unsubscribed.
-		now += 600_000;
-
-		// Re-focus the (now idle) subagent. The stale window is dropped
-		// rather than crediting the detached gap.
-		(sub as unknown as { isStreaming: boolean }).isStreaming = false;
-		c.setSession(sub, "Subagent");
 		expect(c.getActiveMs()).toBe(0);
 	});
 

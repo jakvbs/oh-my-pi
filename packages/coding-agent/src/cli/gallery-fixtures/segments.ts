@@ -68,7 +68,6 @@ export function createGallerySegmentContext(sessionOptions?: GallerySessionOptio
 		autoCompactEnabled: true,
 		compactionSpeculation: "idle",
 		speculationBlinkOn: false,
-		subagentCount: 0,
 		activeMs: 372_000,
 		turnElapsedMs: null,
 		git: {
