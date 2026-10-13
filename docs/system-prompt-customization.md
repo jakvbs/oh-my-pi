@@ -54,13 +54,9 @@ Which automatic inputs reach each kind of session. An input applies only when it
 | Session type     | Policy block                                       | Project `AGENTS.md` | MCP tools | MCP server instructions | `WATCHDOG.md` |
 | ---------------- | -------------------------------------------------- | ------------------- | --------- | ----------------------- | ------------- |
 | Main session     | `--system-prompt` or `~/.agents/AGENTS.md`        | Discovered          | Yes       | Yes                     | No            |
-| Task subagent    | The agent definition rendered for this spawn       | Not inherited       | Inherited | Inherited               | No            |
 | Advisor/watchdog | Dedicated advisor prompt                           | Inherited           | No        | No                      | Yes           |
 
-1. A task subagent keeps the harness and the context block. Its policy is the subagent prompt rendered from the agent definition and assignment, so the main agent's user policy does not leak into it.
-2. Task spawning drops inherited context files whose basename is `agents.md` (case-insensitive). Text pulled in through `@` imports is not filtered, and additional workspace roots are discovered separately.
-3. Context discovery reads project-level `AGENTS.md` files only. Other tools' files (`CLAUDE.md`, `GEMINI.md`, `copilot-instructions.md`) are not loaded at any level. Put user-wide instructions in `~/.agents/AGENTS.md`.
-4. A task agent's `tools:` list does not remove MCP tools or server instructions: the tools stay available top-level or under `xd://`. Children of restricted sessions run with `restrictToolNames`, which drops both.
+1. Context discovery reads project-level `AGENTS.md` files only. Other tools' files (`CLAUDE.md`, `GEMINI.md`, `copilot-instructions.md`) are not loaded at any level. Put user-wide instructions in `~/.agents/AGENTS.md`.
 
 ## Recipes
 

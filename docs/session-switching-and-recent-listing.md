@@ -71,10 +71,9 @@ For `SessionInfo` list entries:
 1. Read terminal-scoped breadcrumb (`~/.omp/agent/terminal-sessions/<terminal-id>`)
 2. Validate the breadcrumb. A materialized target is usable; a missing target is usable only when its optional third line is `fresh`, denoting a lazily-unmaterialized `/new` boundary.
 3. A missing fresh target starts a new session instead of falling back and resurrecting the prior transcript.
-4. Resolve stale pre-fix subagent breadcrumbs to their interactive parent session.
-5. If the breadcrumb's cwd differs, no longer exists, and no genuine current-cwd session takes precedence, re-root only when its recorded device/inode matches the current directory (`open` + `moveTo`). A deleted, unmounted, or cross-filesystem-moved project is not positive evidence of a rename.
-6. Otherwise use a breadcrumb whose cwd matches current cwd (and is within an explicit `sessionDir`, when supplied); for a cwd mismatch use the newest non-empty current-bucket session.
-7. Without a usable breadcrumb, choose the newest non-empty session by mtime; if none exists, create a new session.
+4. If the breadcrumb's cwd differs, no longer exists, and no genuine current-cwd session takes precedence, re-root only when its recorded device/inode matches the current directory (`open` + `moveTo`). A deleted, unmounted, or cross-filesystem-moved project is not positive evidence of a rename.
+5. Otherwise use a breadcrumb whose cwd matches current cwd (and is within an explicit `sessionDir`, when supplied); for a cwd mismatch use the newest non-empty current-bucket session.
+6. Without a usable breadcrumb, choose the newest non-empty session by mtime; if none exists, create a new session.
 
 Terminal ID derivation prefers TTY path and falls back to env-based identifiers (`ZELLIJ_PANE_ID`, `TMUX_PANE`, `CMUX_SURFACE_ID`, `KITTY_WINDOW_ID`, `WEZTERM_PANE`, `TERM_SESSION_ID`, `WT_SESSION`). Zellij IDs also include `ZELLIJ_SESSION_NAME` when present, with path separators normalized.
 

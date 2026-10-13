@@ -59,7 +59,6 @@ export type ModelRole =
 	| "vision"
 	| "commit"
 	| "tiny"
-	| "task"
 	| "advisor"
 	| "image"
 	| "web"
@@ -71,22 +70,12 @@ export const MODEL_ROLE_IDS: ModelRole[] = [
 	"vision",
 	"commit",
 	"tiny",
-	"task",
 	"advisor",
 	"image",
 	"web",
 	"judge",
 ];
-export const CHAT_MODEL_ROLE_IDS: ModelRole[] = [
-	"default",
-	"smol",
-	"slow",
-	"vision",
-	"commit",
-	"tiny",
-	"task",
-	"advisor",
-];
+export const CHAT_MODEL_ROLE_IDS: ModelRole[] = ["default", "smol", "slow", "vision", "commit", "tiny", "advisor"];
 export const KIND_ROLE_IDS: ModelRole[] = ["image", "web", "judge"];
 
 /** Measured model performance shown in browser rows. */

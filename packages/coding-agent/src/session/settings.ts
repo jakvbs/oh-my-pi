@@ -569,21 +569,6 @@ export const cfgTierGoogle = register({
 	},
 });
 
-export const cfgTierSubagent = register({
-	id: "tier.subagent",
-	type: "enum",
-	values: SERVICE_TIER_INHERIT_SETTING_VALUES,
-	default: "inherit",
-	ui: {
-		tab: "model",
-		group: "Sampling",
-		label: "Service Tier — Subagent",
-		description:
-			"Service Tier for spawned task subagents. Inherit = match the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
-		options: SERVICE_TIER_INHERIT_OPTIONS,
-	},
-});
-
 export const cfgTierAdvisor = register({
 	id: "tier.advisor",
 	protocolDefault: ["rpc", "acp"],

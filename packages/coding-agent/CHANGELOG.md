@@ -4,22 +4,21 @@
 
 ### Breaking Changes
 
-- Removed built-in subagents and their dependent `/review`, `/security`, agentic commit, cleanse, and vibe workflows. Define agents in `.omp/agents` or `~/.omp/agent/agents`; task and eval spawns require an explicit agent name.
-- Removed `spawns` allowlists from agent definitions, SDK session options, and persisted session initialization. Only root sessions can spawn agents; legacy `spawns` metadata no longer controls delegation or selects a default agent.
-- Replaced SDK `taskDepth` and session-memory `memoryTaskDepth` options with boolean `isSubagent` and `memoryIsSubagent`. Child sessions, including cold-revived historical descendants, cannot delegate or start root-only memory workflows.
+- Removed the `task` tool and everything built on it: in-process subagents and agent definitions, the Agents Hub, `/tan`, IRC messaging between agents, `agent://` URLs (read and write), the `before_subagent_spawn` extension event, the `orchestrate` magic keyword, the `task` model role, the RPC subagent commands and frames, and the `/review`, `/security`, agentic commit, cleanse, and vibe workflows that depended on subagents. Delegate through external tooling instead.
 - The system prompt is now three blocks, `[harness, policy, context]`. The harness (`prompts/system/harness-prompt.md`, renamed from `system-prompt.md`) carries runtime mechanics only; its role, personality, tool-policy, workflow, delivery, and critical sections are gone. The policy block is `--system-prompt`, SDK `systemPrompt`, or `~/.agents/AGENTS.md`. The context block holds project context files, always-apply rules, and generated MCP and auto-learn notices.
 - Removed `SYSTEM.md` and `SYSTEM_TEMPLATE.md` discovery from every provider, `APPEND_SYSTEM.md`, `--system-prompt-template`, `--append-system-prompt`, and the SDK `systemPromptTemplate`, `customSystemPrompt`, and `appendSystemPrompt` options. Move their content into `~/.agents/AGENTS.md`.
 - SDK `systemPrompt` is now the policy text (`string | () => string`) instead of a full replacement or a callback over the generated blocks. `fixedSystemPrompt: readonly string[]` replaces every block verbatim.
 - `~/.agents/AGENTS.md` is the policy block, at a fixed path that ignores profiles and the agent dir; `~/.omp/agent/AGENTS.md` is no longer read, and neither file is a context file. User-level context files are no longer loaded from any provider (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`, `~/.agent(s)/AGENTS.md`, `contextFiles.extra` in the agent directory), and `<agentDir>/RULES.md` is no longer a sticky rule. Project `.omp/RULES.md` is unchanged.
 - Removed the `personality` setting, `PERSONALITY.md`, and the bundled personality presets.
-- Task subagents keep the harness and context blocks; their rendered agent prompt is the policy block, so the main session's `AGENTS.md` no longer reaches them.
 - Removed every discovery provider that read another agent tool's configuration: `claude`, `claude-md`, `codex`, `gemini`, `opencode`, `cursor`, `windsurf`, `cline`, `github`, and `vscode`. `CLAUDE.md`, `GEMINI.md`, `copilot-instructions.md`, `.cursorrules`, `.clinerules`, and the `.claude`, `.codex`, `.gemini`, `.opencode`, `.cursor`, `.windsurf`, `.github`, and `.vscode` trees no longer contribute context files, rules, skills, commands, hooks, tools, MCP servers, LSP configs, extensions, or settings. Only `.omp`, `.agents`, `AGENTS.md`, root `mcp.json`, and installed plugins are discovered.
 - Removed the `enabledProviders` setting, the `/extensions` "Load ~/ config" toggle, the `skills.enableCodexUser`/`enableClaudeUser`/`enableClaudeProject` and `commands.enableClaude*`/`enableOpencode*` settings, and `CLAUDE_CONFIG_DIR` support. The marketplace reads only OMP plugin registries; Claude Code's `~/.claude/plugins` registry and `enabledPlugins` are no longer read.
 - Removed `--from-claude`, `--from-codex`, and the Claude Code/Codex prompt-history seeding of text prediction.
+- Removed the `task.*` settings, `display.pinnedAgents`, `display.subagentLivePreview`, `tier.subagent`, the `app.agents.hub` and `app.session.observe` keybindings, and the `enableIrc` SDK option; existing values are ignored. `isolation.backend` and `worktree.*` stay for `/wt`, `gh pr checkout`, and `omp worktree`.
+- Removed the `@oh-my-pi/pi-coding-agent/task` and `@oh-my-pi/pi-coding-agent/task/*` package exports.
 
 ### Added
 
-- SDK embedders can drive a session they own to its structured result with `runSessionToYield` (`@oh-my-pi/pi-coding-agent/task/executor`): it uses the same reminder ladder as subagents and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
+- SDK embedders can drive a session they own to its structured result with `runSessionToYield` (exported from `@oh-my-pi/pi-coding-agent`): it re-prompts with a reminder ladder until the session yields, and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
 - Context budget reminders: the agent gets one hidden `<system-reminder>` with its token count and the limit when context first reaches 25, 50, 70 or 85% of the auto-compaction threshold (the model window when compaction is off). Disable with `compaction.budgetReminders: false`.
 - `ContextUsage` (from `ctx.getContextUsage()`, session stats and RPC state) carries `compactionThreshold`, the token count at which auto-compaction triggers for the active model including `compaction.modelThresholds`; it is absent when compaction is off.
 - `pi.sendMessage(..., { deliverAs: "displayOnly" })` persists and paints a custom message in the transcript without ever adding it to the model context; `CustomMessageEntry.excludeFromContext` marks such entries on reload.
@@ -58,6 +57,7 @@
 ### Removed
 
 - Removed Codex Code Mode and its `providers.openai-codex.codeMode` / `providers.openai-codex.codeModeDirectTools` settings; Codex models always use the full direct tool surface.
+- Removed the `task` tool and its Agents Hub, `/tan`, IRC, and `agent://` surfaces (see Breaking Changes).
 
 ## [18.10.3] - 2026-10-12
 

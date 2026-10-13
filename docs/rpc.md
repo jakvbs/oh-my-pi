@@ -27,7 +27,7 @@ Behavior notes:
 - `@file` CLI arguments are rejected in RPC mode.
 - `--no-ui` (with `--mode rpc` or `--mode rpc-ui`) runs extensions headless: `ctx.hasUI` is `false`, dialogs resolve to their defaults, and extension presentation updates are dropped. With `rpc-ui`, tool UI such as `ask` remains enabled. With `rpc`, no UI requests are emitted except for a host-issued `login`. See [Extension UI Sub-Protocol](#extension-ui-sub-protocol) for the exact boundaries.
 - CLI RPC modes disable automatic session title generation (`PI_NO_TITLE=1`) to avoid an extra model call. `rpc-ui` also sets `PI_NO_PTY=1`.
-- RPC/ACP pin neutral defaults for settings declaring the corresponding `protocolDefault`, including task isolation/execution, memory, advisor, and advisor tier settings. RPC additionally pins async-job and bash/eval auto-background defaults. Explicit project/global config, `--config`, and isolated settings remain authoritative; on-disk config changes are watched in long-lived CLI RPC processes. Todo settings are not host-defaulted.
+- RPC/ACP pin neutral defaults for settings declaring the corresponding `protocolDefault`, including worktree isolation/execution, memory, advisor, and advisor tier settings. RPC additionally pins async-job and bash/eval auto-background defaults. Explicit project/global config, `--config`, and isolated settings remain authoritative; on-disk config changes are watched in long-lived CLI RPC processes. Todo settings are not host-defaulted.
 - The process claims stdin before extension discovery, then parses it one non-empty JSONL line at a time. Malformed JSON emits a recoverable `command: "parse"` failure and does not terminate the loop.
 - At startup it writes a `ready` frame before processing commands. The frame advertises supported protocol versions and transport limits.
 - When stdin closes, pending extension UI, host-tool, and host-URI requests are rejected; accepted commands are drained, the session is disposed, pending stdout is delivered, and normal shutdown exits with code `0`. A session-persistence failure still latched at disposal exits with code `1` after delivering its `notice` frame.
@@ -90,10 +90,9 @@ Clients MUST continue reading stdout after closing stdin. Normal EOF and extensi
 8. Available-commands updates (`{ type: "available_commands_update", commands }`), emitted at startup and whenever command metadata changes
 9. Prompt completion (`{ type: "prompt_result", id?, agentInvoked, status, error?, sessionSettled }`), unless the response already completed the prompt locally; see [`prompt` payload](#prompt-payload)
 10. Session quiescence (`{ type: "session_settled" }`); see [Yield vs settled](#yield-vs-settled)
-11. Subagent frames (`subagent_lifecycle`, `subagent_progress`, `subagent_event`), gated by `set_subagent_subscription`
-12. Side-question frames (`btw_delta`, `btw_record`); see [Side questions](#side-questions-btw)
-13. Builtin slash-command side channels (`command_output`, `session_info_update`, `config_update`)
-14. Transport overflow notifications (`rpc_frame_error`), when an event cannot fit within the transport limits
+11. Side-question frames (`btw_delta`, `btw_record`); see [Side questions](#side-questions-btw)
+12. Builtin slash-command side channels (`command_output`, `session_info_update`, `config_update`)
+13. Transport overflow notifications (`rpc_frame_error`), when an event cannot fit within the transport limits
 
 Protocol v2 may wrap oversized logical frames from these categories in `rpc_chunk` frames.
 
@@ -152,12 +151,7 @@ Important edge behavior from runtime:
 - `{ id?, type: "set_todos", phases: TodoPhase[] }`
 - `{ id?, type: "set_host_tools", tools: RpcHostToolDefinition[] }`
 - `{ id?, type: "set_host_uri_schemes", schemes: RpcHostUriSchemeDefinition[] }`
-- `{ id?, type: "set_subagent_subscription", level: "off" | "progress" | "events" }`
 - `{ id?, type: "set_event_filter", events: string[] | null, messageUpdates?: "full" | "delta" }`
-- `{ id?, type: "get_subagents" }`
-- `{ id?, type: "get_subagent_messages", subagentId?: string, sessionFile?: string, fromByte?: number }`
-- `{ id?, type: "cancel_subagent", subagentId: string }`
-- `{ id?, type: "steer_subagent", subagentId: string, message: string }`
 
 ### Model
 
@@ -420,7 +414,7 @@ Take queued user input back and abort, atomically — the RPC equivalent of pres
 {"id":"req_4","type":"response","command":"abort_and_restore_queue","success":true,"data":{"steering":[{"text":"Use the existing parser"}],"followUp":[{"text":"Then run the tests","images":[{"type":"image","mimeType":"image/png","data":"..."}]}]}}
 ```
 
-Before aborting, the server withdraws every user-authored steering and follow-up message, including input the run already took from the queue but never recorded in the transcript: steering the aborted response claimed live, and steering or follow-ups dequeued for its next model call. Non-user internal steers (goal/budget notices, IRC and extension asides) are dropped, except advisor cards, which the abort keeps as visible advice. Nothing withdrawn runs after the abort, so no new turn starts from the old queue. A plain `abort` instead requeues stranded steers and drains them into a fresh turn; withdrawing them first with `remove_queued_message` races the agent loop.
+Before aborting, the server withdraws every user-authored steering and follow-up message, including input the run already took from the queue but never recorded in the transcript: steering the aborted response claimed live, and steering or follow-ups dequeued for its next model call. Non-user internal steers (goal/budget notices and extension asides) are dropped, except advisor cards, which the abort keeps as visible advice. Nothing withdrawn runs after the abort, so no new turn starts from the old queue. A plain `abort` instead requeues stranded steers and drains them into a fresh turn; withdrawing them first with `remove_queued_message` races the agent loop.
 
 `data.steering` and `data.followUp` list the withdrawn messages oldest first, as `{ text, images? }` with `text` being the queue-chip text, so a client can put them back in its editor. The command otherwise behaves like `abort`: it stops goal continuation, cancels input received before it that is not yet admitted (that input is dropped, not returned), and responds after the abort completes. Older runtimes reject this command. The TypeScript client exposes `abortAndRestoreQueue(): Promise<{ steering, followUp }>`.
 
@@ -870,11 +864,11 @@ Extension runner errors are emitted separately as:
 
 `message_update` includes streaming deltas in `assistantMessageEvent` (text/thinking/toolcall deltas).
 
-`message_start`, `message_update`, and `message_end` carry a `messageId` string assigned by RPC mode. One message keeps the same id from its start through every update to its end; ids are unique within the process. Records injected mid-stream (advisor cards, IRC messages) get their own id and do not disturb the id of the reply streaming around them.
+`message_start`, `message_update`, and `message_end` carry a `messageId` string assigned by RPC mode. One message keeps the same id from its start through every update to its end; ids are unique within the process. Records injected mid-stream (advisor cards) get their own id and do not disturb the id of the reply streaming around them.
 
-`set_event_filter` restricts which session event frames are written: pass the event `type` strings to forward, or `null` to forward everything (the default). The response echoes the active selection as `{ events, messageUpdates }`. The filter applies to all events emitted through the session subscription, not just the common types listed above; every other outbound category (responses, `prompt_result`, `session_settled`, extension UI and host tool/URI requests, `extension_error`, `available_commands_update`, subagent frames, side-question frames, builtin slash-command side channels, and session-persistence and `btw-history` `notice` frames) is unaffected by this filter. Hosts that fail closed on unknown event kinds can pin the set they understand here instead of breaking when OMP adds an event.
+`set_event_filter` restricts which session event frames are written: pass the event `type` strings to forward, or `null` to forward everything (the default). The response echoes the active selection as `{ events, messageUpdates }`. The filter applies to all events emitted through the session subscription, not just the common types listed above; every other outbound category (responses, `prompt_result`, `session_settled`, extension UI and host tool/URI requests, `extension_error`, `available_commands_update`, side-question frames, builtin slash-command side channels, and session-persistence and `btw-history` `notice` frames) is unaffected by this filter. Hosts that fail closed on unknown event kinds can pin the set they understand here instead of breaking when OMP adds an event.
 
-The optional `messageUpdates: "delta"` projects only `message_update` frames to `{ type: "message_update", messageId, message: { role }, assistantMessageEvent }`: `assistantMessageEvent.partial` is omitted, while all other event fields (including subtype, `delta`, and `contentIndex`) are preserved. `message_start`, `message_end`, and all other frames are unchanged; `message_end` still carries the full message. Block-ending events such as `text_end`, `thinking_end`, and `toolcall_end` retain their block content or tool call, so hosts must still accept chunked protocol-v2 frames for large blocks and full messages. Switching modes mid-message does not change its `messageId`. The projection applies to the session's own frames only: `subagent_event` payloads forwarded under `set_subagent_subscription` level `"events"` keep their full `message_update` snapshots.
+The optional `messageUpdates: "delta"` projects only `message_update` frames to `{ type: "message_update", messageId, message: { role }, assistantMessageEvent }`: `assistantMessageEvent.partial` is omitted, while all other event fields (including subtype, `delta`, and `contentIndex`) are preserved. `message_start`, `message_end`, and all other frames are unchanged; `message_end` still carries the full message. Block-ending events such as `text_end`, `thinking_end`, and `toolcall_end` retain their block content or tool call, so hosts must still accept chunked protocol-v2 frames for large blocks and full messages. Switching modes mid-message does not change its `messageId`.
 
 Each command replaces the whole filter state: omitting `messageUpdates` resets it to `"full"`, the default, which retains the original full snapshots. An invalid `events` shape (anything other than `null` or an array of non-empty strings), or a mode other than `"full"` or `"delta"`, returns an error without changing either setting. Event names are not checked against a fixed catalog; unknown non-empty names are accepted. Projection works in protocol v1 and v2, including with `events: null`. Detect support from the echoed `data.messageUpdates` field: older servers ignore the option and do not echo it. This opt-in is raw-protocol only; the TypeScript `RpcClient` and Python client keep their full-message listener contracts.
 
@@ -989,81 +983,8 @@ Lifecycle stays OMP: `agent_end` carries `isTerminal`, `yielded`, and optional
 `awaitingAsyncWork`; `prompt_result` correlates prompt completion and
 `session_settled` reports quiescence. There is no Pi `agent_settled` frame.
 These, `agentInvoked`, `open_session`, `set_event_filter`, `messageId`, `ready`,
-negotiation, chunking, host tools, and subagents are OMP extensions a
+negotiation, chunking, and host tools are OMP extensions a
 Pi-family adapter must dialect around.
-
-### Subagent subscriptions
-
-Subagent forwarding defaults to `"off"`. `set_subagent_subscription` selects:
-
-- `"off"`: no forwarded subagent frames
-- `"progress"`: lifecycle and progress frames
-- `"events"`: lifecycle, progress, and full subagent event frames
-
-`get_subagents` returns the registry snapshot sorted by subagent index and id.
-`get_subagent_messages` selects a transcript by `subagentId` or a registered
-`sessionFile` (`subagentId` takes precedence); arbitrary file paths are rejected.
-`fromByte` supports incremental reads, defaults to zero, and is clamped to a
-non-negative integer. Non-finite values fail. The result contains `sessionFile`,
-`fromByte`, `nextByte`, `reset`, raw transcript `entries`, and `messages` from
-message entries. Only complete newline-terminated records are consumed; reuse
-`nextByte` on the next request. A missing transcript returns empty arrays.
-If `fromByte` exceeds the current file size, reading restarts at byte zero and
-reports `reset: true`.
-
-### Cancelling subagents
-
-`cancel_subagent` hard-kills one subagent currently listed by `get_subagents`
-(foreground or background, at any nesting depth) without aborting the parent
-turn. It uses the same path as the Agent Hub kill: the subagent's live turn is
-aborted and its registry entry becomes an `aborted` tombstone, so the owning
-`task` call settles with an aborted result and the subagent cannot be revived.
-When `set_subagent_subscription` is `"progress"` or `"events"`, a
-`subagent_lifecycle` frame with `status: "aborted"` follows.
-
-```json
-{ "id": "req_1", "type": "cancel_subagent", "subagentId": "OmpWorker" }
-{ "id": "req_1", "type": "response", "command": "cancel_subagent", "success": true, "data": { "cancelled": true } }
-```
-
-`cancelled` is `false` when the id is not a running subagent of this session:
-unknown, another session's same-name agent, finished (including a subagent
-whose result the parent already accepted, even before its terminal lifecycle
-frame), or already cancelled, so hosts can treat it as idempotent. If the
-`aborted` tombstone cannot be persisted, the subagent is still aborted and
-disposed, and the command returns an error response with the write failure.
-
-### Steering subagents
-
-`steer_subagent` sends a message to a running subagent as its user, the same
-way Agent Hub chat does: a mid-turn subagent is steered at its next step
-boundary, and one between turns starts its next turn. The message is recorded
-in the subagent's own transcript; it is not attributed to the parent agent,
-and the parent sees only the subagent's eventual result. Isolated (worktree)
-subagents run in-process and are steered the same way.
-
-```json
-{ "id": "req_1", "type": "steer_subagent", "subagentId": "OmpWorker", "message": "Drop the glob, keep the direct path." }
-{ "id": "req_1", "type": "response", "command": "steer_subagent", "success": true }
-```
-
-The response arrives once the message is accepted: queued into the running
-turn, or the subagent's new turn started. It does not wait for the turn to
-finish. Like `prompt`, the command starts in queue order but waits for
-acceptance in the background, so later commands (including `abort`) are not
-held behind it. As in Agent Hub chat (not RPC `steer`), the message goes
-through the subagent's `prompt()`: extension, custom and file slash commands
-run and prompt templates expand.
-
-Failure responses:
-
-- missing/empty `subagentId` or blank `message` → validation error
-- `subagentId` not currently listed as running by `get_subagents` (unknown,
-  finished, already cancelled, another session's agent, or one whose result
-  the parent already accepted) → `error: "Subagent not running: <id>"`
-- the subagent drops or rejects the message before accepting it (for example
-  an abort or a usage-limit preflight denial lands first) →
-  `error: "Subagent refused the message: <reason>"`
 
 ### Side questions (`/btw`)
 
@@ -1139,8 +1060,8 @@ Ordinary commands run on a serialized queue. Extension UI responses and host
 tool/URI updates/results bypass that queue, so they can complete a request
 while its command handler is waiting. `bash` also bypasses the serial queue and
 is tracked as background command work; its response may arrive out of order.
-`prompt` and `steer_subagent` start in queue order but await admission in the
-background, so their responses may also arrive after later commands'.
+`prompt` starts in queue order but awaits admission in the
+background, so its response may also arrive after later commands'.
 
 ### Immediate ack vs completion
 
@@ -1545,7 +1466,7 @@ type as omptype schemas. `bun run gen:rpc` emits:
     omits the field;
   - string enums are closed: an unknown value fails the frame, which clients then
     surface as an unknown notification instead of stopping;
-  - `x-unknown-fallback` on a property (a subagent's forwarded event) degrades a
+  - `x-unknown-fallback` on a property degrades a
     value that fails to decode to an unknown notification without failing its
     frame, and `x-scalar-or-array` marks an array older servers sent as a bare
     scalar.
@@ -1565,7 +1486,7 @@ Current helper characteristics:
 - Spawns `bun <cliPath> --mode rpc` by default (`cliPath` defaults to `dist/cli.js`). A `command` argv prefix receives generated agent arguments; a command builder returns complete argv. A custom `spawn` transport takes precedence.
 - Correlates responses by generated `req_<n>` ids, negotiates v2, reassembles chunks, and pages message history
 - Dispatches recognized core `AgentEvent` types through `onEvent()` and recognized session events through `onSessionEvent()`; the raw server stream can include additional event types
-- Exposes `onPromptResult()`, `onSessionSettled()`, command-availability and subagent listeners, plus extension UI requests
+- Exposes `onPromptResult()`, `onSessionSettled()`, and command-availability listeners, plus extension UI requests
 - Supports host-owned custom tools via `setCustomTools()` and automatic handling of `host_tool_call` / `host_tool_cancel`
 - `promptAndWait()` waits for that prompt's result (or synchronous local completion); `waitForSettled()` also waits for session quiescence. `waitForIdle()` and `collectEvents()` stop at the next `agent_end`, including a non-terminal one, and are not settle barriers.
 - Wraps common protocol commands including OAuth `getLoginProviders()` / `login(...)` and `getLogoutAccounts(...)` / `logout(...)`; use raw protocol frames for unwrapped surfaces such as host-URI registration or delta-only message updates.

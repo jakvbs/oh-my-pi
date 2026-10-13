@@ -47,12 +47,10 @@ interface AppKeybindings {
 	"app.clipboard.pasteTextRaw": true;
 	"app.clipboard.copyLine": true;
 	"app.clipboard.copyPrompt": true;
-	"app.agents.hub": true;
 	"app.session.new": true;
 	"app.session.tree": true;
 	"app.session.fork": true;
 	"app.session.resume": true;
-	"app.session.observe": true;
 	"app.session.togglePath": true;
 	"app.session.toggleSort": true;
 	"app.session.rename": true;
@@ -202,14 +200,6 @@ export const KEYBINDINGS = {
 		defaultKeys: [],
 		description: "Resume session",
 	},
-	"app.agents.hub": {
-		defaultKeys: "alt+a",
-		description: "Open the agent hub",
-	},
-	"app.session.observe": {
-		defaultKeys: "ctrl+s",
-		description: "Open the agent hub",
-	},
 	"app.session.togglePath": {
 		defaultKeys: "ctrl+p",
 		description: "Toggle session path display",
@@ -274,7 +264,6 @@ const KEYBINDING_NAME_MIGRATIONS = {
 	tree: "app.session.tree",
 	fork: "app.session.fork",
 	resume: "app.session.resume",
-	observeSessions: "app.session.observe",
 	// TUI editor (old names for backward compatibility)
 	cursorUp: "tui.editor.cursorUp",
 	cursorDown: "tui.editor.cursorDown",

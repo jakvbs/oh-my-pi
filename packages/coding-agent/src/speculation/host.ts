@@ -317,9 +317,6 @@ export class CodingAgentSpeculativeExecutionHost implements SpeculativeExecution
  * while the single shared host preserves accumulated evidence across toggles.
  * The host's own `authorize` re-checks the enabled flag per operation, so a
  * lingering coordinator from before a disable still vetoes new candidates.
- * `task.speculativeLaunch` also keeps the coordinator alive: reads and eval
- * stay gated by `tools.speculativeExecution.enabled`, while the task tool's
- * stream session gates itself on its own flag.
  */
 export function createSpeculativeToolExecutionConfig(
 	settings: Settings,

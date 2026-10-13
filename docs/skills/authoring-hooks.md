@@ -264,7 +264,7 @@ export default function contextFilter(omp: HookAPI): void {
 
 Pass `{ promptStyle: true }` as the fourth argument when Enter should submit and Shift+Enter should insert a newline. The default hook editor behavior keeps Enter as newline and submits on the `app.message.followUp` chord (`Ctrl+Q` or `Ctrl+Enter`).
 
-Guard interactive calls with `ctx.hasUI`; print and ordinary headless/subagent sessions have no interactive UI. RPC can supply its own UI bridge in extension contexts. Use `ctx.mode === "tui"` for terminal-only extension UI such as custom TUI components.
+Guard interactive calls with `ctx.hasUI`; print and ordinary headless sessions have no interactive UI. RPC can supply its own UI bridge in extension contexts. Use `ctx.mode === "tui"` for terminal-only extension UI such as custom TUI components.
 
 ## Further reading
 

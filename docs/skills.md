@@ -146,7 +146,6 @@ When no tool metadata is supplied, the prompt builder uses the presence of `read
 
 `hide: true` does not disable the skill. Hidden skills are still loaded and remain reachable through `skill://<name>` and `/skill:<name>` when skill commands are enabled.
 
-Task tool subagents receive the session's discovered/provided skills list via normal session creation; there is no per-task skill pinning override.
 
 ### Interactive `/skill:<name>` commands
 

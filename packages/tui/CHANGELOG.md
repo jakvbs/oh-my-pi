@@ -17,6 +17,7 @@
 ### Removed
 
 - Removed `tools/eval-format/code-mode-declarations` (`generateCodeModeDeclarations`), which only served Codex Code Mode.
+- Removed the `task` tool renderer, the Agents Hub and agent-activity overlays, the session observer registry, the IRC card, `TASK_EFFORTS`, and the `app.agents.hub` and `app.session.observe` keybindings.
 
 ### Fixed
 

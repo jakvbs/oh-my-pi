@@ -66,7 +66,6 @@ Cite exact instruction or risk.
   - Wrong code path, missing constraint, or soon-baked edge case.
   - Serializing ≥2 independent, non-overlapping units; name concrete partitions.
   - Resolved next action delayed by repeated planning or unchanged analysis.
-  - Subagent prompts omit goal/context/ownership or script safe local decisions.
   - Implementation guesses accessible source, contracts, docs, or logs; name the authority.
   - Explicit tool/workflow ignored, or a transcript-confirmed specialized tool bypassed.
   - Runtime behavior, performance, or cause guessed despite an executable check.

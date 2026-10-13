@@ -1,13 +1,13 @@
 # Blob and artifact storage architecture
 
-This document describes how coding-agent stores large/binary payloads outside session JSONL, how truncated tool output is persisted, and how internal URLs (`artifact://`, `agent://`) resolve back to stored data.
+This document describes how coding-agent stores large/binary payloads outside session JSONL, how truncated tool output is persisted, and how internal URLs (`artifact://`) resolve back to stored data.
 
 ## Why two storage systems exist
 
 The runtime uses two different persistence mechanisms for different data shapes:
 
 - **Content-addressed blobs** (`blob:sha256:<hash>`): global storage used to externalize image base64 payloads, preserved image/frame archives, generated-image results, and provider image data URLs from persisted session entries.
-- **Session-scoped artifacts** (files under `<sessionFile-without-.jsonl>/`): per-session text files used for full tool outputs and subagent outputs.
+- **Session-scoped artifacts** (files under `<sessionFile-without-.jsonl>/`): per-session text files used for full tool outputs.
 
 They are intentionally separate:
 
@@ -42,10 +42,6 @@ Implications:
 Artifact types share this directory:
 
 - truncated tool output files: `<numericId>.<toolType>.log` (for `artifact://`)
-- subagent output files: `<outputId>.md` (for `agent://`)
-- subagent session JSONL sidecars: `<outputId>.jsonl` when task execution receives an artifacts directory
-
-Subagents can adopt the parent `ArtifactManager`; in that case parent and subagent tree share one artifact directory and numeric artifact ID space.
 
 ## ID and name allocation schemes
 
@@ -76,10 +72,6 @@ If the artifact directory is missing, initialization creates it and allocation s
 `ArtifactManager.save()` uses `writeArtifact()`: writes to a temporary sibling, verifies byte count, file size, and readability, then publishes atomically. Failure removes the temporary file and preserves an existing destination.
 
 Non-persistent sessions without an adopted manager can store `saveArtifact(...)` content in memory under numeric IDs, but `artifact://` resolution is file-backed through registered artifact directories.
-
-### Agent output IDs (`agent://`)
-
-`AgentOutputManager` allocates IDs from the requested name, used verbatim the first time and suffixed (`-2`, `-3`, …) only when repeated. Nested outputs use a dot-qualified parent prefix (for example `Parent.Child`). Initialization scans both `.md` outputs and `.jsonl` child-session files so resume cannot clobber either; the advisor transcript stem and pinned-HUD toggle sentinel are reserved.
 
 ## Persistence dataflow
 
@@ -169,27 +161,9 @@ Failure behavior:
 - if registered directories exist but none are present on disk: throws `No artifacts directory found`,
 - if ID is not numeric: throws `artifact:// ID must be numeric, got: <id>`.
 
-### `agent://<id>`
-
-Handled by `AgentProtocolHandler` over registered active session artifact directories and `<artifactsDir>/<id>.md`:
-
-- `agent://<id>` returns markdown text; nested subagent outputs use the dotted id (`agent://Parent.Child` reads `Parent.Child.md`)
-- resolution refreshes persisted agent-roster references when a calling session file is available and searches that root session's artifact directory before process-global registry directories
-- `write agent://<id>` sends a peer message when IRC is available; `agent://all` is write-only broadcast, not an output file
-- a slash path is always JSON extraction: `agent://<id>/<key>/<index>/…` walks object keys and array indexes (`agent://Parent.Child/reports/0/data`)
-- extraction reads the `<id>.json` sidecar when present, else parses `<id>.md`; it requires valid JSON and returns `application/json` (a string leaf is returned as `text/markdown` prose)
-- an id with no `<id>.md` yet that is registered in the agent registry (the registry `write agent://<id>` delivers to) resolves to a progress document instead of an error: the agent's status, every accepted `yield` payload so far (non-terminal sections included), and its latest assistant text, read from the live session or else its retained session file. Once `<id>.md` exists it wins. JSON-path extraction on such an id throws `Output <id> is not published yet`
-
-Failure behavior:
-
-- if no artifact directories are registered and the id is not a registered agent: throws `No session - agent outputs unavailable`,
-- if registered directories exist but none are present on disk and the id is not a registered agent: throws `No artifacts directory found`,
-- an unknown id throws `Not found: <id>` followed by at most five near ids (`Did you mean: …`, fuzzy-matched against `.md` output ids and registered agents), or a pointer to `history://` when nothing is close.
-
 Read tool integration:
 
-- `read` supports line-range and raw selectors for non-extraction internal URL reads
-- line selectors are rejected for `agent://` JSON-path extraction; extraction returns directly without pagination
+- `read` supports line-range and raw selectors for internal URL reads
 
 ## Resume, fork, and move semantics
 
@@ -232,7 +206,6 @@ When the destination artifact directory already exists — for example, a sessio
 | Blob read ENOENT via `BlobStore.get`                      | Returns `null`                                                                         |
 | Artifact directory missing (`ArtifactManager.listFiles`)  | Returns empty list (allocation can start fresh)                                        |
 | No registered artifact dirs (`artifact://`)               | Throws `No session - artifacts unavailable`                                            |
-| No registered artifact dirs (`agent://`)                  | Throws `No session - agent outputs unavailable`                                        |
 | Registered artifact dirs missing on disk                  | Throws explicit `No artifacts directory found`                                         |
 | Artifact ID not found                                     | Throws with available IDs listing                                                      |
 | Full `artifact://` resolution exceeds 8 MiB               | Rejects inline materialization; `locate`-based reads and search remain available       |
@@ -243,7 +216,7 @@ When the destination artifact directory already exists — for example, a sessio
 ## Binary blob externalization vs text-output artifacts
 
 - **Blob externalization** is for image payloads inside persisted session entry content and provider image data URLs; it replaces inline payload strings in JSONL with stable content refs.
-- **Artifacts** are plain text files for execution output and subagent output; file-backed artifacts are addressable by session-local IDs through internal URLs.
+- **Artifacts** are plain text files for execution output; file-backed artifacts are addressable by session-local IDs through internal URLs.
 
 The two systems intersect only indirectly: both reduce session JSONL bloat, but they have different identity, lifetime, and retrieval paths.
 
@@ -257,5 +230,4 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`src/session/session-loader.ts`](../packages/coding-agent/src/session/session-loader.ts) — `resolveBlobRefsInEntries()`: blob-ref rehydration to base64 / data URLs on load.
 - [`src/session/agent-session.ts`](../packages/coding-agent/src/session/agent-session.ts) — artifact directory copy during interactive fork.
 - [`src/internal-urls/artifact-protocol.ts`](../packages/coding-agent/src/internal-urls/artifact-protocol.ts) — `artifact://` resolver.
-- [`src/internal-urls/agent-protocol.ts`](../packages/coding-agent/src/internal-urls/agent-protocol.ts) — `agent://` resolver + JSON extraction.
 - [`src/internal-urls/router.ts`](../packages/coding-agent/src/internal-urls/router.ts) — internal URL router wiring.

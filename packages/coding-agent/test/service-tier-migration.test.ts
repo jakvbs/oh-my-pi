@@ -12,11 +12,10 @@ import {
 	cfgTierAnthropic,
 	cfgTierGoogle,
 	cfgTierOpenai,
-	cfgTierSubagent,
 } from "@oh-my-pi/pi-coding-agent/session/settings";
 
 // Locks the back-compat migration of the legacy single `serviceTier` enum (with
-// scoped `openai-only`/`claude-only` sentinels) plus `serviceTierSubagent`/
+// scoped `openai-only`/`claude-only` sentinels) plus
 // `serviceTierAdvisor`/`fastModeScope` into the per-family `tier.*` settings.
 describe("serviceTier → tier.* settings migration", () => {
 	let settingsState: SettingsTestState | undefined;
@@ -72,12 +71,10 @@ describe("serviceTier → tier.* settings migration", () => {
 		expect(cfgTierAnthropic.get(settings)).toBe("none");
 	});
 
-	it("carries subagent/advisor over and drops scoped sentinels", async () => {
+	it("carries the advisor tier over and drops scoped sentinels", async () => {
 		const settings = await loadWith({
-			serviceTierSubagent: "claude-only",
-			serviceTierAdvisor: "flex",
+			serviceTierAdvisor: "claude-only",
 		});
-		expect(cfgTierSubagent.get(settings)).toBe("priority"); // claude-only → priority
-		expect(cfgTierAdvisor.get(settings)).toBe("flex");
+		expect(cfgTierAdvisor.get(settings)).toBe("priority"); // claude-only → priority
 	});
 });

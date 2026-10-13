@@ -181,8 +181,8 @@ Cancellation is layered:
 
 Tool execution cancellation is separate from model stream cancellation:
 
-- interruptible wait-like tools observe a combined external/steering/IRC abort signal
-- side-effecting foreground tools observe only the external abort signal; steering and IRC reach them through a cooperative `steeringSignal`, not a hard kill
+- interruptible wait-like tools observe a combined external/steering abort signal
+- side-effecting foreground tools observe only the external abort signal; steering reaches them through a cooperative `steeringSignal`, not a hard kill
 - queued interruptions are injected at execution boundaries while completed tool results are preserved
 
 ## Watchdog configuration

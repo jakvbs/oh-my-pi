@@ -12207,8 +12207,7 @@ export class AgentSession implements SettingsScope {
 
 	/**
 	 * Whether a live advisor agent is attached to this session. True only when
-	 * `advisor.enabled` is set for this session (subagents opt in per agent via
-	 * `task.agentAdvisor`) AND a model resolved for the
+	 * `advisor.enabled` is set for this session AND a model resolved for the
 	 * `advisor` role — i.e. the actual runtime exists, not merely the setting.
 	 * Drives the status-line badge and `/dump advisor`.
 	 */

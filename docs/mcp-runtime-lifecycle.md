@@ -14,7 +14,7 @@ This document describes how MCP servers are discovered, connected, exposed as to
 5. **SDK wiring** merges MCP tools into runtime tool registry for the session.
 6. **Post-connect enrichment** best-effort loads resources, resource templates, prompts, and optional resource subscriptions.
 7. **Live session** receives late tool changes through the manager callback; `/mcp reload` does `disconnectAll` + rediscovery + `session.refreshMCPTools`, while transport close and `/mcp reconnect` use the per-server reconnect path.
-8. **Teardown** happens on explicit manager disconnects and automatically when an owning `AgentSession` is disposed; borrowed parent managers are not disconnected by subagents.
+8. **Teardown** happens on explicit manager disconnects and automatically when an owning `AgentSession` is disposed; borrowed managers are not disconnected by the borrowing session.
 
 ## Discovery and load phase
 
@@ -227,7 +227,7 @@ Operationally:
 - detaches `onClose` for all active transports, then closes them with `Promise.allSettled`,
 - clears pending maps, sources, saved configs, connections, subscriptions, resource refreshes, reconnect history, and manager tools.
 
-Top-level sessions own managers they create. `AgentSession.dispose()` disconnects that owned manager with a 3-second cleanup timeout and logs cleanup failure; a subagent/session given `options.mcpManager` borrows the parent manager and does not disconnect it. `/mcp reload` deliberately reuses the manager object after `disconnectAll`, so installed callbacks/listeners remain available for the next discovery cycle.
+Top-level sessions own managers they create. `AgentSession.dispose()` disconnects that owned manager with a 3-second cleanup timeout and logs cleanup failure; a session given `options.mcpManager` borrows the parent manager and does not disconnect it. `/mcp reload` deliberately reuses the manager object after `disconnectAll`, so installed callbacks/listeners remain available for the next discovery cycle.
 
 ## Failure modes and guarantees
 

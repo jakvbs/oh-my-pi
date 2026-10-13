@@ -534,7 +534,7 @@ export interface CreateAgentSessionOptions {
 	modelPatternDefaultFallbackChain?: string[];
 	/** Thinking selector. Default: from settings, else unset */
 	thinkingLevel?: ConfiguredThinkingLevel;
-	/** Hard ceiling on the session's thinking effort (e.g. a task spawn's `task.maxEffort`-capped hint); retry-fallback recovery re-clamps to it. */
+	/** Hard ceiling on the session's thinking effort (e.g. an embedder-capped hint); retry-fallback recovery re-clamps to it. */
 	thinkingLevelCeiling?: Effort;
 	/** OpenAI service-tier override for this session. `null` omits `service_tier`. */
 	openAIServiceTier?: ServiceTier | null;
@@ -709,7 +709,7 @@ export interface CreateAgentSessionOptions {
 	 */
 	allowRestrictedCustomTools?: boolean;
 
-	/** Output schema for structured completion (subagents). */
+	/** Output schema for structured completion through the `yield` tool. */
 	outputSchema?: unknown;
 	/** Enforcement policy for {@link outputSchema}; defaults to legacy permissive behavior. */
 	outputSchemaMode?: OutputSchemaMode;

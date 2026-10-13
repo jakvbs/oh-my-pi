@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the `task` and IRC tool cards; `wait` cards show background jobs only.
+
 ## [18.8.0] - 2026-10-07
 
 ### Changed

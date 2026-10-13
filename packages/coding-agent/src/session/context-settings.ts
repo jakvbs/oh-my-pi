@@ -217,8 +217,7 @@ export const cfgCompactionThresholdTokens = register({
  * exactly, else the longest `…*` prefix. A token entry is the base the
  * threshold policy scales in place of the window (see
  * `applyModelCompactionThreshold`); a percentage entry replaces both
- * `compaction.threshold*` fields. Edited from the /models hub; a per-agent
- * `task.agentCompactionThresholdOverrides` entry still wins. A token base past a
+ * `compaction.threshold*` fields. Edited from the /models hub. A token base past a
  * model's standard window opts that model into its extended window
  * (`ModelRegistry.contextWindowTiers`).
  */
@@ -230,9 +229,8 @@ export const cfgCompactionModelThresholds = register({
 });
 
 /**
- * Whether `compaction.modelThresholds` applies. Subagent spawn turns it off for an
- * agent whose `task.agentCompactionThresholdOverrides` entry applies, so that entry
- * outranks every model entry, including ones added while the agent runs.
+ * Whether `compaction.modelThresholds` applies. Embedders can turn it off
+ * so the global thresholds outrank every model entry.
  */
 export const cfgCompactionModelThresholdsEnabled = register({
 	id: "compaction.modelThresholdsEnabled",

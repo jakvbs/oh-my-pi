@@ -9,6 +9,7 @@
 ### Removed
 
 - Removed the Codex `toolMode` model field (`code_mode_only`); Codex discovery no longer maps `tool_mode`
+- Removed the `delegation-bias` and `task-sibling-prompt-cache` rule axes and `resolveDelegationBias`, which only served the `task` tool.
 
 ## [18.10.3] - 2026-10-12
 

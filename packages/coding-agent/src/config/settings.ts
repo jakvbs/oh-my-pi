@@ -3003,8 +3003,8 @@ export class Settings {
 		delete raw.readHashLines;
 
 		// serviceTier (single enum with scoped openai-only/claude-only sentinels)
-		// → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
-		// → tier.subagent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
+		// → per-family tier.openai/tier.anthropic/tier.google; serviceTierAdvisor
+		// → tier.advisor; serviceTierSubagent is dropped. `fastModeScope` is
 		// dropped — per-family scoping is now expressed by the three tier settings.
 		const tierObj = isRecord(raw.tier) ? raw.tier : {};
 		let tierTouched = false;
@@ -3038,10 +3038,7 @@ export class Settings {
 		}
 		const mapInheritTier = (value: unknown): unknown =>
 			value === "openai-only" || value === "claude-only" ? "priority" : value;
-		if ("serviceTierSubagent" in raw) {
-			setTier("subagent", mapInheritTier(raw.serviceTierSubagent));
-			delete raw.serviceTierSubagent;
-		}
+		delete raw.serviceTierSubagent;
 		if ("serviceTierAdvisor" in raw) {
 			setTier("advisor", mapInheritTier(raw.serviceTierAdvisor));
 			delete raw.serviceTierAdvisor;

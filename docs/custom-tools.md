@@ -25,7 +25,7 @@ There are two active integration styles:
 2. **Filesystem-discovered modules** (`discoverCustomToolPaths` / `loadCustomTools`)
    - Unrestricted session bootstrap discovers and loads config/provider/plugin tool modules, then registers them through a generated extension.
    - These functions and the combined `discoverAndLoadCustomTools` helper are also library APIs in `packages/coding-agent/src/extensibility/custom-tools/loader.ts`.
-   - Subagents can reuse `preloadedCustomToolPaths` to skip discovery, but factories are rebound to each session's own API.
+   - Embedders can reuse `preloadedCustomToolPaths` to skip discovery, but factories are rebound to each session's own API.
 
 ```text
 Model tool call flow

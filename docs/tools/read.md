@@ -87,8 +87,7 @@ Literal filesystem paths take precedence over selector interpretation, so an exi
    - Plain URL reads call `executeReadUrl()`.
    - URL reads with line selectors fetch/render into the URL cache as needed, then paginate the rendered text locally.
 3. It checks the internal URL router, including built-ins and MCP-advertised schemes.
-   - URLs of file-backed schemes that the router locates to a local file (`local://`, `artifact://`, `agent://`, `skill://`, `vault://`, ...) read that file through the filesystem pipeline, so images, `:img`, conversion, selectors, streaming, and snapshots behave like filesystem reads while the URL stays the result's source. An image question (`?q=`) is split off only for `local://` and `attachment://` images; on other schemes `?q=` stays part of the URL.
-   - `agent://` path extraction (`/path`) returns a discrete value that bypasses pagination.
+   - URLs of file-backed schemes that the router locates to a local file (`local://`, `artifact://`, `skill://`, `vault://`, ...) read that file through the filesystem pipeline, so images, `:img`, conversion, selectors, streaming, and snapshots behave like filesystem reads while the URL stays the result's source. An image question (`?q=`) is split off only for `local://` and `attachment://` images; on other schemes `?q=` stays part of the URL.
    - Other internal resources are paginated in memory.
 4. It prefers an existing literal filesystem path before treating selector-looking colons as archive, SQLite, PDF-image, or line-selector syntax.
 5. It tries archive resolution next with `resolveArchiveReadPath()` in `read-archive.ts`.
@@ -242,8 +241,8 @@ Literal filesystem paths take precedence over selector interpretation, so an exi
 
 ### Internal URLs
 
-- `read` delegates internal and MCP-advertised schemes to `InternalUrlRouter`; the built-in registry currently includes `agent://`, `artifact://`, `attachment://`, `cfg://`, `conflict://`, `history://`, `issue://`, `local://`, `mcp://`, `omp://`, `pr://`, `proc://`, `rule://`, `skill://`, `ssh://`, `vault://`, and `xd://`.
-   - `agent://<id>` reads a subagent's output; `agent://all` is write-only. Bare `history://` lists registered agents and persisted subagents; `history://<id>` reads a transcript.
+- `read` delegates internal and MCP-advertised schemes to `InternalUrlRouter`; the built-in registry currently includes `artifact://`, `attachment://`, `cfg://`, `conflict://`, `history://`, `issue://`, `local://`, `mcp://`, `omp://`, `pr://`, `proc://`, `rule://`, `skill://`, `ssh://`, `vault://`, and `xd://`.
+   - Bare `history://` lists registered and on-disk session transcripts; `history://<id>` reads a transcript.
    - `proc://` lists caller-visible background jobs (including running agents without job rows) and project services; `proc://<id>` returns status and available output/logs without consuming async-result delivery. Service log files are searchable with `grep proc://<id>`.
    - `xd://` lists mounted tool devices; `xd://<name>` returns that device's input documentation. Writing JSON to the same URI dispatches the device through `write`.
    - `ssh://host/<path>` reads a remote UTF-8 file or directory; bare `ssh://` lists configured hosts. Remote paths are limited to 1 MiB and require a POSIX remote shell. Percent-encode literal `:`, `?`, or `#` in the path.
@@ -251,7 +250,7 @@ Literal filesystem paths take precedence over selector interpretation, so an exi
 - `#handleInternalUrl()` behavior:
    - parses the URL with `parseInternalUrl()` so colons inside the host segment are legal
    - handles URLs with no local file (virtual, remote, and device schemes, plus located schemes whose target is a directory or missing)
-   - returns discrete values (`shape: "value"`, e.g. `agent://` path extraction) without pagination; otherwise paginates the resolved text in memory
+   - returns discrete values (`shape: "value"`) without pagination; otherwise paginates the resolved text in memory
    - `:img` is rejected here; it requires a file-backed URL. A file-backed URL that only reached this path because locate deferred to a remote resolve (an unknown `skill://` while MCP is available) reports its local miss (`Unknown skill`) instead
    - passes `immutable` (defaulted from the scheme spec) through to `resolveFileDisplayMode()` so anchors are suppressed for immutable resources such as artifacts, skills, memory, and agent outputs
    - sets `ignoreResultLimits: true` for schemes whose spec is `unbounded` (`skill://`) so the full text is paginated only by explicit selectors, not by the normal default line limit; a resource can override that (`InternalResource.unbounded`), which `skill://` does for MCP-served skill text
@@ -350,7 +349,6 @@ Notes: ...
 - Selector errors include:
    - `Line selector 0 is invalid; lines are 1-indexed. Use :1.`
    - invalid `A+B` / `A-B` shapes
-   - `Cannot combine query extraction with line selectors` for `agent://.../path:50`
    - multi-ranges on directory/archive-directory listings
 - `conflict://*` reads are rejected; unknown/stale conflict ids require re-reading `<path>:conflicts`.
 - Missing local/archive/sqlite paths first attempt unique suffix resolution; if no unique match or guarded recovery exists they error.

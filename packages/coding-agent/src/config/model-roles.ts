@@ -60,7 +60,6 @@ export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	vision: { tag: "VISION", name: "Vision", color: "error", section: "chat", accepts: acceptsChat },
 	commit: { tag: "COMMIT", name: "Commit", color: "dim", section: "chat", accepts: acceptsChat },
 	tiny: { tag: "TINY", name: "Tiny", color: "dim", section: "chat", accepts: acceptsTinyOrChat },
-	task: { tag: "TASK", name: "Subtask", color: "muted", section: "chat", accepts: acceptsChat },
 	advisor: { tag: "ADVISOR", name: "Advisor", color: "accent", section: "chat", accepts: acceptsChat },
 	image: {
 		tag: "IMAGE",

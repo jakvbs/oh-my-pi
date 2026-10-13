@@ -2692,8 +2692,8 @@ export class ModelRegistry {
 	 * `model` with the tier `scope`'s own settings select: extended when its
 	 * `extendedContext` is on or its `compaction.modelThresholds` entry for the
 	 * model reaches past the standard window, else standard. Catalog rows follow
-	 * the registry's settings; a session whose settings differ (a subagent with a
-	 * `task.agentCompactionThresholdOverrides` entry runs with model entries off)
+	 * the registry's settings; a session whose settings differ (one with
+	 * `compaction.modelThresholdsEnabled` off ignores model entries)
 	 * adopts rows through this so it never inherits another scope's opt-in.
 	 * Returns `model` itself when it already has that window.
 	 */

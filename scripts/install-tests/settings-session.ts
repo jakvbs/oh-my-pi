@@ -85,8 +85,7 @@ export default function (api) {
 					const settings = await Settings.loadIsolated({
 						cwd: fixture.cwd, agentDir: fixture.agentDir,
 						overrides: {
-							"async.enabled": false, "task.batch": false,
-							"task.isolation.enabled": false, "task.enableLsp": false,
+							"async.enabled": false,
 							"modelRoles": { default: "fixture/fallback", tiny: "fixture/tiny" },
 						},
 					});

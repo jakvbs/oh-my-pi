@@ -73,7 +73,7 @@ Compaction/context maintenance can run in six ways:
 2. **Automatic overflow recovery**: after a same-model assistant error that matches context overflow.
 3. **Automatic incomplete-output recovery**: after a same-model assistant message ends with `stopReason === "length"` (including OpenAI/Codex `response.incomplete` and Anthropic output/context limits), subject to the output-cap checks below.
 4. **Automatic threshold maintenance**: after a successful turn when context exceeds the resolved threshold.
-5. **Mid-turn threshold maintenance**: before the next provider request when a tool-loop turn crosses the threshold and `compaction.midTurnEnabled !== false`. Subagent sessions always run this check: `createSubagentSettings` pins `compaction.midTurnEnabled` on for the child because a whole assignment is one turn, so post-turn maintenance would only fire after the run already ended.
+5. **Mid-turn threshold maintenance**: before the next provider request when a tool-loop turn crosses the threshold and `compaction.midTurnEnabled !== false`.
 6. **Idle maintenance**: `runIdleCompaction()` can invoke the same auto-maintenance path with reason `"idle"`.
 
 Before the threshold is reached, `compaction.budgetReminders` (default on) tells the agent how full its context is. `ContextBudgetReminder` (`session/context-budget-reminder.ts`) injects one hidden `context-budget-reminder` aside at a `"mid-work"` aside boundary (never at `"stop"`, where an aside buys another model turn) when usage first reaches 25, 50, 70 or 85% of `ContextUsage.compactionThreshold`, or of the model window when compaction is off. The aside is persisted like any other message, so the request prefix stays stable; usage that falls below the announced band (after compaction or a model switch) lets the band repeat.
@@ -516,7 +516,7 @@ Defined in `packages/coding-agent/src/session/context-settings.ts`:
 - `compaction.reserveTokens` is unset by default. The effective reserve is `max(floor(contextWindow × 0.15), configuredReserve ?? 16384)`. Budget checks use the proportional reserve when the unset default is impractical on a small window, or when the effective reserve reaches/exceeds the whole window. Explicit reserves otherwise retain the 15% floor.
 - `compaction.keepRecentTokens` = `20000`
 - `compaction.autoContinue` = `true`
-- `compaction.midTurnEnabled` = `true`; a `false` value applies to the session that configured it, not to spawned subagents — each subagent keeps mid-run checks so its single-turn assignment still compacts at the configured threshold.
+- `compaction.midTurnEnabled` = `true`.
 - `compaction.handoffSaveToDisk` = `false`
 - The `handoff` method generates a handoff document through the live-cache side-request pipeline and commits it as a compaction entry on the current session (no new session is created); `/handoff` does the same manually.
 - `compaction.remoteEndpoint` = `undefined`
@@ -524,7 +524,6 @@ Defined in `packages/coding-agent/src/session/context-settings.ts`:
 - `compaction.v2RetainedMessageBudget` = `64000`
 - `compaction.thresholdPercent` = `-1` and `compaction.thresholdTokens` = `-1`; a positive fixed token limit takes precedence over percentage, and otherwise the reserve-based threshold is used.
 - `compaction.modelThresholds` = `{}`; `provider/model-id` or `provider/…*` prefix → a token base the threshold policy scales in place of the window (dropping a global `thresholdTokens`), a fixed trigger (`"f90000"`), or a percentage replacing both thresholds, while that model is active. Editable from the `/models` Roles view (`k`). See [Settings](./settings.md#context-and-compaction).
-- `task.agentCompactionThresholdOverrides` = `{}`; exact-name task/eval agent → token count (`90000`) or percentage (`"80%"`) replacing both thresholds for that agent only. See [Settings](./settings.md#context-and-compaction).
 - `compaction.idleEnabled` = `false`
 - `compaction.idleThresholdTokens` = `200000`
 - `compaction.idleTimeoutSeconds` = `300`

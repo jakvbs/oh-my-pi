@@ -1212,8 +1212,7 @@ interface OAuthIdentityKeyRow {
 
 /**
  * Every OAuth account this process sees (after any broker account pool), with
- * the identity key that `task.agentAccountPools`, `sessions.restrict`, and
- * broker account pools match. Only the provider, the key, and the
+ * the identity key that `sessions.restrict` and broker account pools match. Only the provider, the key, and the
  * organization's display name leave each credential; tokens never do.
  */
 function collectOAuthIdentityKeys(authStorage: AuthStorage, provider: string | undefined): OAuthIdentityKeyRow[] {
@@ -1493,7 +1492,7 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 				process.exitCode = 1;
 				return;
 			}
-			// The listed keys get pasted into task.agentAccountPools, so read the
+			// The listed keys get pasted into account-pool settings, so read the
 			// broker's current accounts, not a cached snapshot; offline brokers
 			// keep the snapshot.
 			try {

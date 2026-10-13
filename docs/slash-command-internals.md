@@ -252,16 +252,14 @@ TUI and ACP/RPC dispatch the shared built-in registry before `session.prompt(...
 
 ## 10) Built-in command note: `/pause`
 
-`/pause` is available only in the interactive TUI. It engages a process-global gate for the main agent, in-process subagents, and the advisor. Each agent parks at its next safe boundary: in-flight calls finish, nothing is aborted, and no new work starts until the gate is released.
+`/pause` is available only in the interactive TUI. It engages a process-global gate for the main agent and the advisor. Each agent parks at its next safe boundary: in-flight calls finish, nothing is aborted, and no new work starts until the gate is released.
 
 From the pause screen, press the configured interrupt key (Esc by default), Enter, Space, or Ctrl+C to resume. Ctrl+C resumes rather than aborting any agent.
 
 ## 11) Built-in command note: `/btw`
 
-`/btw <question>` asks an independent side question about the transcript being
-viewed: the focused subagent's session when one is focused, otherwise the main
-session. It uses that session's active model and context, including partial
-streaming assistant text. Bare `/btw` opens that view's history, with the newest
+`/btw <question>` asks an independent side question about the main session's transcript. It uses that session's active model and context, including partial
+streaming assistant text. Bare `/btw` opens the history, with the newest
 question selected.
 Saved side questions are not appended to the main transcript or sent as history
 to unrelated turns. Each new `/btw <question>` remains independent; explicit
@@ -316,9 +314,7 @@ than a byte-for-byte native provider transcript.
   submission is pending cannot create duplicate requests.
 
 History is saved as private per-topic files under the session artifact
-directory's `btw-history/` subdirectory. Focused subagent histories use
-`btw-history/sessions/<session-id>/` within the shared artifacts directory and
-are isolated from the main session and siblings. This is local retention
+directory's `btw-history/` subdirectory. This is local retention
 alongside the session. Even a session containing only
 side questions is made resumable. `--no-session` keeps history in memory only.
 Ordinary transcript export/share does not include these sidecar records.
@@ -379,7 +375,7 @@ copy or remove those artifacts; it does not move the conversation leaf.
 
 The existing inline `b` action promotes a completed single-turn answer to a chat
 branch only when the original session/leaf is unchanged and the main session is
-idle. Focused-subagent answers cannot be promoted to a main-session branch.
+idle.
 Multi-turn side conversations remain in BTW history; promoting only their
 latest pair would discard earlier context. History browsing does not promote
 answers or relax these branch guards.

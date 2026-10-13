@@ -14,7 +14,7 @@ import { COLLAB_PROTO, DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH } from "@oh-my-
 Key groups:
 
 - message and transcript entry shapes rendered by collab guests,
-- live agent event and task-subagent bus payload shapes,
+- live agent event payload shapes,
 - `GuestFrame`, `HostFrame`, and `WireFrame` unions for AES-GCM sealed payloads,
 - relay control TEXT messages,
 - link/envelope constants shared by host, guest, and local relay code.

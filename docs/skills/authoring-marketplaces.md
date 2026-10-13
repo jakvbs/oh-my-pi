@@ -201,7 +201,6 @@ A plugin directory (regardless of source type) ships its content in conventional
 my-plugin/
   skills/<name>/SKILL.md         ← skills
   commands/*.md                  ← slash commands
-  agents/*.md                    ← subagent definitions
   hooks/pre/, hooks/post/        ← hooks
   tools/                         ← custom tools
   .mcp.json                      ← MCP server definitions (default location)
