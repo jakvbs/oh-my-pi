@@ -39,7 +39,6 @@ import {
 	assistantUsageIsBilled,
 	buildAsyncResultBlock,
 	buildFileMentionBlock,
-	buildIrcMessageCard,
 	buildLaunchCompletionBlock,
 	normalizeToolArgs,
 	resolveAssistantErrorPresentation,
@@ -583,15 +582,6 @@ export class ChatTranscriptBuilder {
 			const component = new SkillMessageComponent(message as CustomMessage<SkillPromptDetails>);
 			this.#trackExpandable(component);
 			this.container.addChild(component);
-			return;
-		}
-		if (
-			message.customType === "irc:incoming" ||
-			message.customType === "irc:autoreply" ||
-			message.customType === "irc:relay" ||
-			message.customType === "irc:workpool"
-		) {
-			this.container.addChild(buildIrcMessageCard(message, () => this.#expanded));
 			return;
 		}
 		if (message.customType === "advisor") {

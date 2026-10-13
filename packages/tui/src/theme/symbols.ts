@@ -280,7 +280,6 @@ export type SymbolKey =
 	| "tool.resolve"
 	| "tool.review"
 	| "tool.goal"
-	| "tool.irc"
 	| "tool.delete"
 	| "tool.move"
 	// Keyboard keys (rendered by formatKeyHint). `*Mac` variants replace the
@@ -656,7 +655,6 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"tool.resolve": "✓",
 	"tool.review": "◉",
 	"tool.goal": "◎",
-	"tool.irc": "✉",
 	"tool.delete": "🗑",
 	"tool.move": "➜",
 	// Keys: word modifiers off macOS (⌃/⌥/⌘ name no key on a PC keyboard)
@@ -1124,7 +1122,6 @@ const NERD_SYMBOLS: SymbolMap = {
 	"tool.resolve": "\uEBB1",
 	"tool.review": "\uEA70",
 	"tool.goal": "\uEBF8",
-	"tool.irc": "\uF086",
 	"tool.delete": "\uf12d",
 	"tool.move": "\uf061",
 	// Keys: word modifiers off macOS; arrows stay Unicode (nerd arrows add nothing)
@@ -1428,7 +1425,6 @@ const ASCII_SYMBOLS: SymbolMap = {
 	"tool.resolve": "[v]",
 	"tool.review": "rev",
 	"tool.goal": "(o)",
-	"tool.irc": "#",
 	"tool.delete": "rm",
 	"tool.move": "mv",
 	"key.ctrl": "Ctrl",
