@@ -11,10 +11,16 @@ const SOCKET_CLOSE =
 	"The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
 
 /** The shipped bundled rows: resume must work on the first request, before any discovery. */
-function bundledModel(provider: "muse-code" | "openai"): Model<"openai-responses"> {
-	const model = getBundledModel<"openai-responses">(provider, provider === "muse-code" ? "muse-spark-1.3" : "gpt-5");
+function bundledModel(provider: "meta" | "openai"): Model<"openai-responses"> {
+	const model = getBundledModel<"openai-responses">(provider, provider === "meta" ? "muse-spark-1.3" : "gpt-5");
 	if (!model || model.api !== "openai-responses") throw new Error(`Expected bundled ${provider} Responses model`);
 	return model;
+}
+
+/** A bundled row on a host whose rule sets `store-responses` (custom providers can opt in). */
+function storingModel(): Model<"openai-responses"> {
+	const base = bundledModel("meta");
+	return { ...base, compat: { ...base.compat, storeResponses: true } };
 }
 
 function sseFrame(payload: { type: string }): string {
@@ -169,15 +175,15 @@ afterEach(() => {
 });
 
 describe("openai-responses socket-drop resume", () => {
-	it("adopts the stored result on the bundled muse-code model instead of replaying the turn", async () => {
+	it("adopts the stored result on a storing host instead of replaying the turn", async () => {
 		// The run keeps going server-side after the socket dies: an in-flight 404
-		// first, then the finished result. With storage opted in, the shipped model
+		// first, then the finished result. With storage opted in, a storing host
 		// stores results on its first request, and the turn adopts the result with one POST.
 		const scenario = dropScenario("resp_resume1", [
 			() => new Response("{}", { status: 404 }),
 			() => new Response(JSON.stringify(completedResult("resp_resume1")), { status: 200 }),
 		]);
-		const result = await streamOpenAIResponses(bundledModel("muse-code"), context, {
+		const result = await streamOpenAIResponses(storingModel(), context, {
 			fetch: scenario.fetchImpl,
 			apiKey: "test-key",
 			providerRetryWait: noWait,
@@ -207,7 +213,7 @@ describe("openai-responses socket-drop resume", () => {
 		const scenario = dropScenario("resp_resume4", [
 			() => new Response(JSON.stringify(completedResult("resp_resume4")), { status: 200 }),
 		]);
-		const stream = streamOpenAIResponses(bundledModel("muse-code"), context, {
+		const stream = streamOpenAIResponses(storingModel(), context, {
 			fetch: scenario.fetchImpl,
 			apiKey: "test-key",
 			providerRetryWait: noWait,
@@ -233,7 +239,7 @@ describe("openai-responses socket-drop resume", () => {
 			[() => new Response(JSON.stringify(completedResult("resp_resume5")), { status: 200 })],
 			{ committedText: "draft" },
 		);
-		const result = await streamOpenAIResponses(bundledModel("muse-code"), context, {
+		const result = await streamOpenAIResponses(storingModel(), context, {
 			fetch: scenario.fetchImpl,
 			apiKey: "test-key",
 			providerRetryWait: noWait,
@@ -247,7 +253,7 @@ describe("openai-responses socket-drop resume", () => {
 
 	it("keeps the socket failure when the stored result is definitively rejected", async () => {
 		const scenario = dropScenario("resp_resume2", [() => new Response("gone", { status: 403 })]);
-		const result = await streamOpenAIResponses(bundledModel("muse-code"), context, {
+		const result = await streamOpenAIResponses(storingModel(), context, {
 			fetch: scenario.fetchImpl,
 			apiKey: "test-key",
 			providerRetryWait: noWait,
@@ -291,7 +297,7 @@ describe("openai-responses socket-drop resume", () => {
 			[() => new Response(JSON.stringify(completedResult("resp_resume6")), { status: 200 })],
 			{ completedReasoning: true },
 		);
-		const result = await streamOpenAIResponses(bundledModel("muse-code"), context, {
+		const result = await streamOpenAIResponses(storingModel(), context, {
 			fetch: scenario.fetchImpl,
 			apiKey: "test-key",
 			providerRetryWait: noWait,
@@ -334,13 +340,13 @@ describe("openai-responses socket-drop resume", () => {
 	] as const)("storage %s", async (_label, env, hostDefault, storeResponses, stored) => {
 		// Privacy: storage is opt-in. Off sends `store: false` and skips the resume
 		// poll, so the drop fails fast with no GETs; on adopts the stored result.
-		configureProviderStoreResponses(hostDefault === undefined ? undefined : { "muse-code": hostDefault });
+		configureProviderStoreResponses(hostDefault === undefined ? undefined : { meta: hostDefault });
 		try {
 			await withStoreEnv(env, async () => {
 				const scenario = dropScenario("resp_resume8", [
 					() => new Response(JSON.stringify(completedResult("resp_resume8")), { status: 200 }),
 				]);
-				const result = await streamOpenAIResponses(bundledModel("muse-code"), context, {
+				const result = await streamOpenAIResponses(storingModel(), context, {
 					fetch: scenario.fetchImpl,
 					apiKey: "test-key",
 					providerRetryWait: noWait,
@@ -361,7 +367,7 @@ describe("openai-responses socket-drop resume", () => {
 		// fallback re-applies it. Storage left off (the default) must win on every
 		// request, even when the caller explicitly asks for stateful turns. A storing
 		// host with strict tool schemas (custom providers can set `store-responses`)
-		// exercises the fallback; the shipped muse-code row disables strict mode.
+		// exercises the fallback.
 		const previous = process.env.PI_MUSE_STORE_RESPONSES;
 		delete process.env.PI_MUSE_STORE_RESPONSES;
 		try {
@@ -400,7 +406,7 @@ describe("openai-responses socket-drop resume", () => {
 					{ status: 200, headers: { "content-type": "text/event-stream" } },
 				);
 			}) as FetchImpl;
-			const base = bundledModel("muse-code");
+			const base = storingModel();
 			const model: Model<"openai-responses"> = { ...base, compat: { ...base.compat, supportsStrictMode: true } };
 			const tools: Context["tools"] = [
 				{

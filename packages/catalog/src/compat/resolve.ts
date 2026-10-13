@@ -398,7 +398,6 @@ function detectOpenAICompat(
 	const isFireworks = hostMatchesUrl(baseUrl, "fireworks");
 	const isGroqHost = modelMatchesHost(hostModel, "groq");
 	const isMiniMaxHost = modelMatchesHost(hostModel, "minimax");
-	const isQwenPortal = modelMatchesHost(hostModel, "qwenPortal");
 	const isMoonshotKimi = facts.is("kimi") && d.isMoonshotNative;
 	const isMoonshotKimiK3 = isMoonshotKimi && facts.family("k3");
 	const usesMoonshotKimiPreservedThinking = isMoonshotKimi && facts.family("k2.6");
@@ -439,7 +438,6 @@ function detectOpenAICompat(
 	const supportsMultipleSystemMessagesDefault =
 		!isMiniMaxHost &&
 		!isAlibaba &&
-		!isQwenPortal &&
 		!isQwen &&
 		(isOpenAIHost ||
 			isAzureHost ||

@@ -4805,41 +4805,6 @@ export function metaModelManagerOptions(config?: MetaModelManagerConfig): ModelM
 	};
 }
 
-const MUSE_CODE_MODEL_BY_ID: Partial<Record<string, ModelSpec<"openai-responses">>> = Object.fromEntries(
-	seedModels<"openai-responses">("muse-code").map(model => [model.id, model]),
-);
-
-function museCodeLineageSpec(id: string): ModelSpec<"openai-responses"> | undefined {
-	const model = museSparkLineageSpec(id);
-	return model ? { ...model, provider: "muse-code" } : undefined;
-}
-
-export function museCodeModelManagerOptions(config?: MetaModelManagerConfig): ModelManagerOptions<"openai-responses"> {
-	return {
-		...createOpenAICompatibleModelManagerOptions({
-			api: "openai-responses",
-			providerId: "muse-code",
-			defaultBaseUrl: META_MODEL_API_BASE_URL,
-			config,
-			headers: { "x-api-version": "1.0.0" },
-			dynamicModelsAuthoritative: true,
-			requireApiKey: true,
-			filterModel: (_entry, model) => !isExcludedModel("muse-code", model.id),
-			mapModel: (entry, defaults, reference) =>
-				mapWithBundledReference(
-					entry,
-					defaults,
-					reference ?? MUSE_CODE_MODEL_BY_ID[defaults.id] ?? museCodeLineageSpec(defaults.id),
-				),
-		}),
-		cacheProviderId: resolveModelCacheProviderId("muse-code", {
-			apiKey: config?.apiKey,
-			baseUrl: config?.baseUrl ?? META_MODEL_API_BASE_URL,
-		}),
-		staticModels: seedModels<"openai-responses">("muse-code"),
-	};
-}
-
 // ---------------------------------------------------------------------------
 // 16. Moonshot
 // ---------------------------------------------------------------------------
@@ -5331,22 +5296,6 @@ export function stepfunModelManagerOptions(
 		// `createModelManager()` prunes the bundled slice from this flag.
 		dynamicModelsAuthoritative: true,
 	});
-}
-
-// ---------------------------------------------------------------------------
-// 17. Qwen Portal
-// ---------------------------------------------------------------------------
-
-export interface QwenPortalModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function qwenPortalModelManagerOptions(
-	config?: QwenPortalModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("qwen-portal", "https://portal.qwen.ai/v1", config);
 }
 
 // ---------------------------------------------------------------------------
@@ -7502,11 +7451,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 		"xiaomi-token-plan-sgp",
 		"https://token-plan-sgp.xiaomimimo.com/v1",
 	),
-	// --- Qwen Portal ---
-	openAiCompletionsDescriptor("qwen-portal", "qwen-portal", "https://portal.qwen.ai/v1", {
-		defaultContextWindow: 128000,
-		defaultMaxTokens: 8192,
-	}),
 
 	// --- ZenMux ---
 	openAiCompletionsDescriptor("zenmux", "zenmux", ZENMUX_OPENAI_BASE_URL, {

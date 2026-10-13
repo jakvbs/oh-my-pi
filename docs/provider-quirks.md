@@ -1333,22 +1333,6 @@ Qianfan (Baidu Cloud) provides access to Baidu's hosted model family via an Open
 - **Model Options**: `qianfanModelManagerOptions` (`packages/catalog/src/provider-models/openai-compat.ts`) constructs `openai-completions` options bound to `https://qianfan.baidubce.com/v2` via `createSimpleOpenAICompletionsOptions`.
 - **Bundled Models**: Static model specifications in `packages/catalog/src/models.json` define Qianfan models (e.g. `deepseek-v3.2` with `reasoning: true` and `baseUrl: "https://qianfan.baidubce.com/v2"`).
 
-## Qwen Portal (`qwen-portal`)
-Qwen Portal provides access to Qwen hosted models via an OpenAI-compatible endpoint at `https://portal.qwen.ai/v1`. It uses the OpenAI Chat Completions transport for model execution and tool calling.
-
-### Special casings
-- **System message restriction**: Host matching (`qwenPortal` in `packages/catalog/src/hosts.ts`, matching `portal.qwen.ai`) sets `supportsMultipleSystemMessagesDefault = false` (`packages/catalog/src/compat/resolve.ts`). This forces multi-system message blocks to be coalesced into a single block to prevent 500 internal server errors triggered by the default Qwen chat template.
-
-### Auth & usage
-- **Environment variables**: Automatically resolves credentials from `QWEN_OAUTH_TOKEN` or `QWEN_PORTAL_API_KEY` (`packages/catalog/src/compat/rules/providers/qwen-portal.kdl:385`).
-- **Interactive login**: Declared in `packages/catalog/src/compat/rules/auth/qwen-portal.kdl` as a `login "api-key"` rule (`packages/ai/src/registry/engine/api-key.ts`), guiding users to copy a token or API key from `https://chat.qwen.ai` and prompting for input.
-- **Credential validation**: Validates input tokens against `https://portal.qwen.ai/v1` using `validate "chat-completions"` in `packages/catalog/src/compat/rules/auth/qwen-portal.kdl` targeting the `coder-model`.
-- **Usage tracking**: No dedicated usage reporting module exists under `packages/ai/src/usage/`.
-
-### Catalog model handling
-- **Provider entry (`qwen-portal`)**: `packages/catalog/src/compat/rules/providers/qwen-portal.kdl` declares default model `coder-model`. Environment keys: `QWEN_OAUTH_TOKEN`, `QWEN_PORTAL_API_KEY`.
-- **Catalog configuration**: Registered in `descriptors.ts` with default model `coder-model`, discovery label `"Qwen Portal"`, and `oauthProvider: "qwen-portal"`.
-
 ## Sakana AI (`sakana`)
 Sakana AI provides reasoning models from the Fugu model family hosted via `api.sakana.ai`.
 Requests are routed through the stateful OpenAI Responses transport (`api: "openai-responses"`).
@@ -1962,20 +1946,6 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/zhip
 - **Provider entry (`local`)**: `packages/catalog/src/compat/rules/providers/local.kdl` declares default model `lfm2.5-230m`. Model management permits unauthenticated access.
 - **Authored seeds**: `kokoro`, `parakeet-tdt-0.6b-v3`, `whisper-base`, `whisper-small`, `whisper-large-v3-turbo`, `lfm2.5-230m`, `lfm2.5-350m`, `falcon-h1-90m`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
 - Runtime manager: `localModelManagerOptions` in `packages/catalog/src/provider-models/special.ts`.
-
-## Muse Code (Subscription) (`muse-code`)
-
-### Special casings
-- Uses `openai-responses` on the Meta Model API with `x-api-version: 1.0.0`. Credentialed authoritative discovery joins authored Muse lineage references and partitions the cache by credential/endpoint.
-
-### Auth & usage
-- Login kind `device-code` is declared in `packages/catalog/src/compat/rules/auth/muse-code.kdl`.
-
-### Catalog model handling
-- **Provider entry (`muse-code`)**: `packages/catalog/src/compat/rules/providers/muse-code.kdl` declares default model `muse-spark-1.3`.
-- **Discovery replacement**: Successful authoritative discovery replaces fallback provider rows rather than retaining retired seed models.
-- **Authored seeds**: `muse-spark-1.1`, `muse-spark-1.2`, `muse-spark-1.2-contributor`, `muse-spark-1.3`, `muse-spark-1.3-contributor`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
-- Runtime manager: `museCodeModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`.
 
 ## SingularityAPI (`singularityapi-dev`)
 

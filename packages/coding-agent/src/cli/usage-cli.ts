@@ -495,7 +495,7 @@ export interface ProviderWindowStat {
  * allowance is a separate pool from the umbrella window it caps - `claude.ts` marks the Fable
  * weekly cap `tier` without `shared` precisely so it cannot gate Opus or Sonnet requests - and
  * reporting it separately keeps a spent scoped cap visible next to the umbrella remainder.
- * Only Anthropic and Codex use `tier` for such a pool; other providers (Copilot, Muse Code)
+ * Only Anthropic and Codex use `tier` for such a pool; other providers (e.g. Copilot)
  * put the subscription plan there, which must not split one window per plan. Codex meters that
  * carry no tier fall back to the limit-id slug.
  */

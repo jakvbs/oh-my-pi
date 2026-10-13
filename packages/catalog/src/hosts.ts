@@ -60,7 +60,6 @@ export const KNOWN_HOSTS = {
 		providers: ["minimax", "minimax-code", "minimax-code-cn"],
 		urlMarkers: ["api.minimax.io", "api.minimaxi.com"],
 	},
-	qwenPortal: { providers: ["qwen-portal"], urlMarkers: ["portal.qwen.ai"] },
 	/** NVIDIA NIM (`integrate.api.nvidia.com`). Qwen NIM endpoints take `chat_template_kwargs.enable_thinking`, never top-level `enable_thinking`. */
 	nvidia: { providers: ["nvidia"], urlMarkers: ["integrate.api.nvidia.com"] },
 	/** Venice AI (`api.venice.ai`). OpenAI-compatible; drives reasoning via top-level `reasoning_effort` (and `venice_parameters.disable_thinking`), and rejects DashScope's top-level `enable_thinking` with a 400 (`additionalProperties: false` request schema). */

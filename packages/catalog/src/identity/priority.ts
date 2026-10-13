@@ -8,7 +8,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"google-vertex",
 	"kimi-code",
 	"moonshot",
-	"qwen-portal",
 	"alibaba-token-plan",
 	"zai",
 	"xai-oauth",

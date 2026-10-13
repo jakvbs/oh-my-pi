@@ -544,7 +544,7 @@ export interface StreamOptions {
 	statefulResponses?: boolean;
 	/**
 	 * Store this request's result server-side on hosts that support it
-	 * (`compat.storeResponses`, e.g. Muse Code), so a stream that drops
+	 * (`compat.storeResponses`), so a stream that drops
 	 * mid-turn resumes from `GET /responses/{id}` instead of re-running the
 	 * turn. Privacy: stored runs retain prompts and outputs on the provider.
 	 * Unset falls back to `PI_MUSE_STORE_RESPONSES`, then the host's
