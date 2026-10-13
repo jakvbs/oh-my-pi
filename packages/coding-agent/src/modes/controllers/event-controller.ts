@@ -703,7 +703,7 @@ export class EventController {
 		this.ctx.addMessageToChat(message);
 		const reply = this.ctx.streamingComponent;
 		const replyIndex = reply ? chat.children.indexOf(reply) : -1;
-		if (replyIndex < 0 || replyIndex >= start) return;
+		if (replyIndex < 0) return;
 		if (chat.children.slice(replyIndex, start).some(child => !chat.canRemoveBlock(child))) return;
 		for (const [offset, component] of chat.children.slice(start).entries()) {
 			chat.removeChild(component);
