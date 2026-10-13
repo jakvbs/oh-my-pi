@@ -16,6 +16,7 @@ const CREDENTIAL_SCOPED_MODEL_CACHE_PROVIDERS: Readonly<Record<string, true>> = 
 	"opencode-go": true,
 	"opencode-zen": true,
 	"github-copilot": true,
+	"muse-code": true,
 	// Both SingularityAPI rosters are issued per key, so the namespace must be
 	// resolved with the credential (`hydrateCredentialScopedModelCaches`) rather
 	// than from the synchronous, credential-less startup read.
@@ -33,6 +34,7 @@ export function getDefaultModelDiscoveryBaseUrl(providerId: string): string | un
 		case "charm-hyper":
 			return CHARM_HYPER_API_BASE_URL;
 		case "meta":
+		case "muse-code":
 			return "https://api.meta.ai/v1";
 		case "ollama":
 			return "http://127.0.0.1:11434";
@@ -94,6 +96,11 @@ export function resolveModelCacheProviderId(providerId: string, options: ModelCa
 			// raw configured value while `charmHyperModelManagerOptions` passes a
 			// `/v1`-suffixed one; both must land on one namespace.
 			return `charm-hyper:models-v1:${Bun.hash(normalizeCharmHyperBaseUrl(options.baseUrl)).toString(36)}`;
+		}
+		case "muse-code": {
+			const baseUrl = options.baseUrl ?? getDefaultModelDiscoveryBaseUrl(providerId)!;
+			const scope = `${options.apiKey ?? ""}\u0000${baseUrl}`;
+			return `muse-code:models-v1:${Bun.hash(scope).toString(36)}`;
 		}
 		case "singularityapi-dev":
 		case "singularityapi-tech": {

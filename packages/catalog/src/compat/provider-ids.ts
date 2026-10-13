@@ -35,6 +35,7 @@ export type KnownProvider =
 	| "minimax"
 	| "mistral"
 	| "moonshot"
+	| "muse-code"
 	| "nanogpt"
 	| "novita"
 	| "nvidia"

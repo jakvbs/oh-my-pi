@@ -1657,6 +1657,20 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/zenm
 - **Authored seeds**: `kokoro`, `parakeet-tdt-0.6b-v3`, `whisper-base`, `whisper-small`, `whisper-large-v3-turbo`, `lfm2.5-230m`, `lfm2.5-350m`, `falcon-h1-90m`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
 - Runtime manager: `localModelManagerOptions` in `packages/catalog/src/provider-models/special.ts`.
 
+## Muse Code (Subscription) (`muse-code`)
+
+### Special casings
+- Uses `openai-responses` on the Meta Model API with `x-api-version: 1.0.0`. Credentialed authoritative discovery joins authored Muse lineage references and partitions the cache by credential/endpoint.
+
+### Auth & usage
+- Login kind `device-code` is declared in `packages/catalog/src/compat/rules/auth/muse-code.kdl`.
+
+### Catalog model handling
+- **Provider entry (`muse-code`)**: `packages/catalog/src/compat/rules/providers/muse-code.kdl` declares default model `muse-spark-1.3`.
+- **Discovery replacement**: Successful authoritative discovery replaces fallback provider rows rather than retaining retired seed models.
+- **Authored seeds**: `muse-spark-1.1`, `muse-spark-1.2`, `muse-spark-1.2-contributor`, `muse-spark-1.3`, `muse-spark-1.3-contributor`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
+- Runtime manager: `museCodeModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`.
+
 ## SingularityAPI (`singularityapi-dev`)
 
 ### Special casings

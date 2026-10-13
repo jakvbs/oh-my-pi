@@ -404,7 +404,7 @@ provider "sakana" {
     // cascade rules follow, as before
     include-encrypted-reasoning #false
 }
-provider "meta-mirror" {                          // illustrative id
+provider "muse-code" {
     default-model "muse-spark-1.3"
     seed api="openai-responses" base-url="https://api.meta.ai/v1" {
         models-from "meta"                        // copies meta's seed rows under this provider

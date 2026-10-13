@@ -25,7 +25,6 @@ packages/ai/src/providers/gitlab-duo-workflow.ts
 packages/ai/src/providers/gitlab-duo.ts
 packages/ai/src/providers/google-antigravity-forced-tool.md
 packages/ai/src/providers/google-gemini-cli.ts
-packages/ai/src/registry/muse-code.ts
 packages/ai/src/registry/oauth/alibaba-coding-plan.ts
 packages/ai/src/registry/oauth/alibaba-token-plan.ts
 packages/ai/src/registry/oauth/coreweave.ts
@@ -36,7 +35,6 @@ packages/ai/src/registry/oauth/google-antigravity.ts
 packages/ai/src/registry/oauth/google-gemini-cli.ts
 packages/ai/src/registry/oauth/google-oauth-shared.ts
 packages/ai/src/registry/oauth/kilo.ts
-packages/ai/src/registry/oauth/muse-code.ts
 packages/ai/src/registry/oauth/snowflake.ts
 packages/ai/src/registry/oauth/xiaomi.ts
 packages/ai/src/registry/oauth/zai.ts
@@ -49,7 +47,6 @@ packages/ai/src/usage/factory-droid.ts
 packages/ai/src/usage/gemini.ts
 packages/ai/src/usage/google-antigravity.ts
 packages/ai/src/usage/minimax-code.ts
-packages/ai/src/usage/muse-code.ts
 packages/ai/src/utils/schema/allowlist.ts
 packages/ai/src/utils/schema/foundation-models.ts
 packages/ai/test/alibaba-endpoint-selection.test.ts
@@ -105,9 +102,6 @@ packages/ai/test/issue-976-repro.test.ts
 packages/ai/test/kilo-login.test.ts
 packages/ai/test/minimax-code-login.test.ts
 packages/ai/test/minimax-token-plan-usage.test.ts
-packages/ai/test/muse-code-provider.test.ts
-packages/ai/test/muse-code-usage.test.ts
-packages/ai/test/registry/oauth/muse-code.test.ts
 packages/ai/test/snowflake-provider.test.ts
 packages/ai/test/xiaomi-oauth.test.ts
 packages/ai/test/xiaomi-tp-login-integration.test.ts
@@ -133,7 +127,6 @@ packages/catalog/src/compat/rules/auth/google-gemini-cli.kdl
 packages/catalog/src/compat/rules/auth/kilo.kdl
 packages/catalog/src/compat/rules/auth/minimax-code-cn.kdl
 packages/catalog/src/compat/rules/auth/minimax-code.kdl
-packages/catalog/src/compat/rules/auth/muse-code.kdl
 packages/catalog/src/compat/rules/auth/qwen-portal.kdl
 packages/catalog/src/compat/rules/auth/snowflake.kdl
 packages/catalog/src/compat/rules/auth/xiaomi-token-plan-ams.kdl
@@ -157,7 +150,6 @@ packages/catalog/src/compat/rules/providers/google-gemini-cli.kdl
 packages/catalog/src/compat/rules/providers/kilo.kdl
 packages/catalog/src/compat/rules/providers/minimax-code-cn.kdl
 packages/catalog/src/compat/rules/providers/minimax-code.kdl
-packages/catalog/src/compat/rules/providers/muse-code.kdl
 packages/catalog/src/compat/rules/providers/native-tools.kdl
 packages/catalog/src/compat/rules/providers/qwen-portal.kdl
 packages/catalog/src/compat/rules/providers/snowflake.kdl
@@ -198,7 +190,6 @@ packages/catalog/test/issue-772-repro.test.ts
 packages/catalog/test/proto-parser.test.ts
 packages/catalog/test/protobuf.test.ts
 packages/catalog/test/snowflake-provider.test.ts
-packages/coding-agent/bench/muse-hashline.ts
 packages/coding-agent/src/archive
 packages/coding-agent/src/autoresearch
 packages/coding-agent/src/capability/system-prompt.ts

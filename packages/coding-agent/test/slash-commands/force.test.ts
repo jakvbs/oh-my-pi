@@ -158,7 +158,9 @@ describe("/force slash command", () => {
 	it("reports forcing as unsupported on hosts that only accept auto tool_choice", () => {
 		// api.meta.ai rejects every tool_choice except "auto", so the provider rules omit
 		// the field; a named force would be dropped on the wire instead of honored.
-		const model = buildModel(seedModels<"openai-responses">("meta")[0]!);
-		expect(buildNamedToolChoice("write", model)).toBeUndefined();
+		for (const provider of ["meta", "muse-code"]) {
+			const model = buildModel(seedModels<"openai-responses">(provider)[0]!);
+			expect(buildNamedToolChoice("write", model)).toBeUndefined();
+		}
 	});
 });

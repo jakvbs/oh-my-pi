@@ -5,6 +5,7 @@ import { claudeRankingStrategy, claudeUsageProvider } from "./claude";
 import { commandCodeRankingStrategy, commandCodeUsageProvider } from "./commandcode";
 import { githubCopilotUsageProvider } from "./github-copilot";
 import { kimiRankingStrategy, kimiUsageProvider } from "./kimi";
+import { museCodeUsageProvider } from "./muse-code";
 import { ollamaCloudUsageProvider, ollamaUsageProvider } from "./ollama";
 import { codexRankingStrategy, openaiCodexUsageProvider } from "./openai-codex";
 import { opencodeGoRankingStrategy, opencodeGoUsageProvider } from "./opencode-go";
@@ -20,6 +21,7 @@ export type RankingStrategyResolver = (provider: Provider) => CredentialRankingS
 export const DEFAULT_USAGE_PROVIDERS: readonly UsageProvider[] = [
 	openaiCodexUsageProvider,
 	kimiUsageProvider,
+	museCodeUsageProvider,
 	ollamaUsageProvider,
 	ollamaCloudUsageProvider,
 	claudeUsageProvider,

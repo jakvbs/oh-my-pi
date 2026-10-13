@@ -43,6 +43,7 @@ export * from "./usage/claude";
 export * from "./usage/claude-reset";
 export * from "./usage/github-copilot";
 export * from "./usage/kimi";
+export * from "./usage/muse-code";
 export * from "./usage/ollama";
 export * from "./usage/openai-codex";
 export * from "./usage/openai-codex-reset";
