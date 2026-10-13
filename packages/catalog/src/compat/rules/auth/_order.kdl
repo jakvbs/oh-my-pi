@@ -1,12 +1,12 @@
 // `/login` roster order. Every provider whose auth node declares a `login`
 // (and does not set `show-in-login-list #false`) must appear here; providers
 // without a login flow sort alphabetically after this list.
-login-order "openai-codex" "anthropic" "zai" "zai-coding-plan" "kimi-code" "openrouter" "github-copilot" \
+login-order "openai-codex" "anthropic" "zai" "kimi-code" "openrouter" "github-copilot" \
 	"openai-codex-device" "xai" "xai-oauth" \
-	"aiand" "abliteration" "zhipu-coding-plan" "umans" "sakana" \
+	"aiand" "abliteration" "umans" "sakana" \
 	"firepass" "cline-pass" "commandcode" "charm-hyper" "deepseek" "stepfun" "meta" "moonshot" \
 	"cerebras" "baseten" "helmcode" "fireworks" "together" "nvidia" "novita" "deepinfra" "huggingface" "perplexity" \
-	"qianfan" "venice" "siliconflow" "siliconflow-cn" "synthetic" "nanogpt" "wafer-serverless" "coreweave" \
-	"vercel-ai-gateway" "cloudflare-ai-gateway" "cloudflare-workers-ai" "snowflake" "litellm" "kilo" "zenmux" "opencode-zen" "opencode-go" \
+	"qianfan" "venice" "siliconflow" "siliconflow-cn" "synthetic" "nanogpt" "wafer-serverless" \
+	"vercel-ai-gateway" "cloudflare-ai-gateway" "cloudflare-workers-ai" "litellm" "kilo" "zenmux" "opencode-zen" "opencode-go" \
 	"yolo-auto" "tavily" "kagi" "exa" "parallel" "typesafe" "ollama" "ollama-cloud" "lm-studio" "llama.cpp" "vllm" \
 	"gmi-cloud" "stencil" "singularityapi-dev" "singularityapi-tech" "coralbricks"

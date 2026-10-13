@@ -18,7 +18,6 @@ export type KnownProvider =
 	| "cloudflare-workers-ai"
 	| "commandcode"
 	| "coralbricks"
-	| "coreweave"
 	| "deepinfra"
 	| "deepseek"
 	| "firepass"
@@ -55,7 +54,6 @@ export type KnownProvider =
 	| "siliconflow-cn"
 	| "singularityapi-dev"
 	| "singularityapi-tech"
-	| "snowflake"
 	| "stepfun"
 	| "synthetic"
 	| "together"
@@ -70,5 +68,4 @@ export type KnownProvider =
 	| "xai-oauth"
 	| "yolo-auto"
 	| "zai"
-	| "zenmux"
-	| "zhipu-coding-plan";
+	| "zenmux";

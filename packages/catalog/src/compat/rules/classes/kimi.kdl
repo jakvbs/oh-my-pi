@@ -8,7 +8,7 @@ class "kimi" {
 	// instead of retiring into native scrollback ahead of the turn.
 	stream-revision "possible"
 	// Replaces the K2.6 reasoning stream-idle baseline on OpenAI-compatible routes.
-	on "baseten" "cline-pass" "cloudflare-ai-gateway" "coreweave" "deepinfra" "firepass" "fireworks" \
+	on "baseten" "cline-pass" "cloudflare-ai-gateway" "deepinfra" "firepass" "fireworks" \
 		"huggingface" "moonshot" "novita" "nvidia" "opencode-go" "opencode-zen" "openrouter" \
 		"together" "wafer-serverless" "zenmux" {
 		family "k2.6" {
@@ -24,7 +24,7 @@ class "kimi" {
 			stream-idle-timeout-ms 300000
 		}
 	}
-	on "aiand" "baseten" "coreweave" "fireworks" "huggingface" "kilo" "nanogpt" "novita" \
+	on "aiand" "baseten" "fireworks" "huggingface" "kilo" "nanogpt" "novita" \
 		"opencode-go" "opencode-zen" "together" "vercel-ai-gateway" "zenmux" {
 		family "k2.7-code" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
@@ -52,13 +52,13 @@ class "kimi" {
 	on "github-copilot" "wafer-serverless" {
 		supports-developer-role #false
 	}
-	on "baseten" "cloudflare-ai-gateway" "coreweave" "fireworks" "huggingface" "kilo" \
+	on "baseten" "cloudflare-ai-gateway" "fireworks" "huggingface" "kilo" \
 		"nanogpt" "novita" "nvidia" "opencode-go" "opencode-zen" "together" "vercel-ai-gateway" "zenmux" {
 		family "k2.6" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}
 	}
-	on "cloudflare-ai-gateway" "coreweave" "fireworks" "huggingface" "kilo" "nanogpt" \
+	on "cloudflare-ai-gateway" "fireworks" "huggingface" "kilo" "nanogpt" \
 		"novita" "nvidia" "opencode-go" "opencode-zen" "together" "vercel-ai-gateway" \
 		"zenmux" {
 		family "k2.5" {

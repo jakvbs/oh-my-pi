@@ -1254,24 +1254,6 @@ describe("model thinking runtime helpers", () => {
 		expect(() => requireSupportedEffort(model, Effort.XHigh)).not.toThrow();
 	});
 
-	it("exposes the Z.AI GLM-5.2 high/max wire pair directly", () => {
-		const model = createModel({
-			id: "glm-5.2",
-			api: "openai-completions",
-			provider: "zhipu-coding-plan",
-			baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
-			compat: { thinkingFormat: "zai" },
-		});
-
-		expect(model.thinking).toEqual({
-			mode: "effort",
-			efforts: [Effort.High, Effort.Max],
-		});
-		expect(() => requireSupportedEffort(model, Effort.XHigh)).toThrow(/Supported efforts: high, max/);
-		// Selecting a retired tier clamps down instead of erroring in UI flows.
-		expect(clampThinkingLevelForModel(model, Effort.XHigh)).toBe(Effort.High);
-	});
-
 	it("exposes Ollama Cloud GLM-5.2 high/max and hides unsupported lower efforts", () => {
 		const model = createModel({
 			id: "glm-5.2",

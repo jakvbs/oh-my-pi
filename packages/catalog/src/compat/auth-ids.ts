@@ -18,7 +18,6 @@ export type AuthProviderId =
 	| "cloudflare-workers-ai"
 	| "commandcode"
 	| "coralbricks"
-	| "coreweave"
 	| "deepinfra"
 	| "deepseek"
 	| "exa"
@@ -61,7 +60,6 @@ export type AuthProviderId =
 	| "siliconflow-cn"
 	| "singularityapi-dev"
 	| "singularityapi-tech"
-	| "snowflake"
 	| "stencil"
 	| "stepfun"
 	| "synthetic"
@@ -78,9 +76,7 @@ export type AuthProviderId =
 	| "xai-oauth"
 	| "yolo-auto"
 	| "zai"
-	| "zai-coding-plan"
-	| "zenmux"
-	| "zhipu-coding-plan";
+	| "zenmux";
 
 /** Providers whose policy declares a `login` flow (the `/login` roster). */
 export type LoginProviderId =
@@ -95,7 +91,6 @@ export type LoginProviderId =
 	| "cloudflare-workers-ai"
 	| "commandcode"
 	| "coralbricks"
-	| "coreweave"
 	| "deepinfra"
 	| "deepseek"
 	| "exa"
@@ -131,7 +126,6 @@ export type LoginProviderId =
 	| "siliconflow-cn"
 	| "singularityapi-dev"
 	| "singularityapi-tech"
-	| "snowflake"
 	| "stencil"
 	| "stepfun"
 	| "synthetic"
@@ -147,6 +141,4 @@ export type LoginProviderId =
 	| "xai-oauth"
 	| "yolo-auto"
 	| "zai"
-	| "zai-coding-plan"
-	| "zenmux"
-	| "zhipu-coding-plan";
+	| "zenmux";

@@ -39,7 +39,8 @@ export const KNOWN_HOSTS = {
 	deepseekFamily: { providers: ["deepseek"], urlMarkers: ["deepseek.com"] },
 	cerebras: { providers: ["cerebras"], urlMarkers: ["cerebras.ai"] },
 	zai: { providers: ["zai"], urlMarkers: ["api.z.ai"] },
-	zhipu: { providers: ["zhipu-coding-plan"], urlMarkers: ["open.bigmodel.cn"] },
+	/** URL-only: Zhipu BigModel endpoints are reached through custom providers. */
+	zhipu: { urlMarkers: ["open.bigmodel.cn"] },
 	kilo: { providers: ["kilo"], urlMarkers: ["api.kilo.ai"] },
 	alibabaDashscope: { urlMarkers: ["dashscope"] },
 	umans: { providers: ["umans"], urlMarkers: ["api.code.umans.ai"] },

@@ -13,6 +13,5 @@ export * from "./provider-models";
 export * from "./types";
 export * from "./utils";
 export * from "./wire/codex";
-export * from "./wire/coreweave";
 export * from "./wire/github-copilot";
 export * from "./wire/image-fetchers";

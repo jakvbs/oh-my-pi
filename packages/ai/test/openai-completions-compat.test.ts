@@ -79,8 +79,8 @@ function zaiGlm52Model(): Model<"openai-completions"> {
 		id: "glm-5.2",
 		name: "GLM-5.2",
 		api: "openai-completions",
-		provider: "zhipu-coding-plan",
-		baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+		provider: "zai",
+		baseUrl: "https://api.z.ai/api/coding/paas/v4",
 		reasoning: true,
 		compat: {
 			thinkingFormat: "zai",

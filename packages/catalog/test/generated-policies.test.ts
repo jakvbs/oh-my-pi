@@ -327,21 +327,14 @@ describe("generated model policies", () => {
 				contextWindow: 200_000,
 				maxTokens: 8192,
 			}),
-			createSpec({
-				id: "glm-5.3",
-				api: "openai-completions",
-				provider: "zhipu-coding-plan",
-				contextWindow: 200_000,
-				maxTokens: 8192,
-			}),
 		].map(model => buildGenerated(model));
 
-		// Context pinning — same 1M tier as glm-5.2 on both GLM coding-plan hosts.
+		// Context pinning — same 1M tier as glm-5.2 on the Z.AI coding-plan host.
 		for (const model of models) {
 			expect(model.contextWindow).toBe(1_000_000);
 			expect(model.maxTokens).toBe(131_072);
 			// Uniform wire-exact low/high/max ladder (NOT the host-specific
-			// high/max scale GLM-5.2 uses on zai/zhipu).
+			// high/max scale GLM-5.2 uses on zai).
 			expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.Max]);
 			// Thinking can no longer be disabled.
 			expect(model.thinking?.requiresEffort).toBe(true);
@@ -372,13 +365,6 @@ describe("generated model policies", () => {
 				id: "glm-5.3-flash",
 				api: "anthropic-messages",
 				provider: "zai",
-				contextWindow: 200_000,
-				maxTokens: 8192,
-			}),
-			createSpec({
-				id: "glm-5.3-flash",
-				api: "openai-completions",
-				provider: "zhipu-coding-plan",
 				contextWindow: 200_000,
 				maxTokens: 8192,
 			}),

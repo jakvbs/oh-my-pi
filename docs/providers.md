@@ -121,7 +121,6 @@ The variables below supply credentials after runtime/config overrides and stored
 | `fireworks`                      | `FIREWORKS_API_KEY`                                                           |
 | `together`                       | `TOGETHER_API_KEY`                                                            |
 | `typesafe`                       | `TYPESAFE_API_KEY`                                                            |
-| `coreweave`                      | `COREWEAVE_API_KEY`, then `WANDB_API_KEY`                                     |
 | `nvidia`                         | `NVIDIA_API_KEY`                                                              |
 | `gmi-cloud`                      | `GMI_API_KEY`                                                                 |
 | `huggingface`                    | `HUGGINGFACE_HUB_TOKEN`, then `HF_TOKEN`                                      |
@@ -135,12 +134,10 @@ The variables below supply credentials after runtime/config overrides and stored
 | `vercel-ai-gateway`              | `AI_GATEWAY_API_KEY` (also `VERCEL_AI_GATEWAY_API_KEY` for catalog discovery) |
 | `cloudflare-ai-gateway`          | `CLOUDFLARE_AI_GATEWAY_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_GATEWAY_ID` |
 | `cloudflare-workers-ai`          | `CLOUDFLARE_API_TOKEN`, then `CLOUDFLARE_AUTH_TOKEN`, + `CLOUDFLARE_ACCOUNT_ID` |
-| `snowflake`                      | `SNOWFLAKE_PAT` + `SNOWFLAKE_ACCOUNT`                                         |
 | `litellm`                        | `LITELLM_API_KEY`; optional `LITELLM_BASE_URL` for the proxy endpoint         |
 | `kilo`                           | `KILO_API_KEY`                                                                |
 | `zai`                            | `ZAI_API_KEY`                                                                 |
 | `zenmux`                         | `ZENMUX_API_KEY`                                                              |
-| `zhipu-coding-plan`              | `ZHIPU_API_KEY`                                                               |
 | `umans`                          | `UMANS_AI_CODING_PLAN_API_KEY`                                                |
 | `qianfan`                        | `QIANFAN_API_KEY`                                                             |
 | `synthetic`                      | `SYNTHETIC_API_KEY`                                                           |
@@ -169,8 +166,6 @@ For `xai-oauth`, `XAI_API_KEY` is accepted for an explicit request but does not 
 
 `cloudflare-workers-ai` serves Cloudflare's Clef decision models (`cloudflare-workers-ai/@cf/cloudflare/clef` and `cloudflare-workers-ai/@cf/cloudflare/clef-flash`) as `judge` models; assign one to the `judge` role to use it. `/login cloudflare-workers-ai` prompts for a Cloudflare API token with Workers AI Read and Edit permissions (create one at `https://dash.cloudflare.com/profile/api-tokens`) and your account ID, then stores both together. To use environment variables, set `CLOUDFLARE_API_TOKEN` (or `CLOUDFLARE_AUTH_TOKEN`) and `CLOUDFLARE_ACCOUNT_ID`.
 
-`/login snowflake` prompts for your Snowflake account identifier or account URL, then signs in through the browser with Snowflake's built-in local-application OAuth integration and stores the account with the token. To use environment variables instead, set both `SNOWFLAKE_PAT` and `SNOWFLAKE_ACCOUNT`.
-
 `charm-hyper` is Charm's OpenAI-compatible inference gateway for coding agents. Issue or manage a key at `https://hyper.charm.land/`; the model list is discovered live from the provider's public `/v1/models` endpoint, and `HYPER_API_KEY` is accepted as a fallback alias for `CHARM_HYPER_API_KEY`.
 
 SingularityAPI sells two unrelated products behind one brand, so OMP models them as two providers: they share no key, no billing model, and no effort ladder, and neither key is accepted by the other host.
@@ -179,7 +174,7 @@ SingularityAPI sells two unrelated products behind one brand, so OMP models them
 
 `singularityapi-tech` is the reserved DeepSeek lanes gateway. Usage bills against a booked reservation slot rather than prepaid credit, so a valid key with no active slot answers 403 until you book one at `https://app.singularityapi.tech`. Create an `sk-...` key there (or run `/login singularityapi-tech`), set `SINGULARITYAPI_TECH_API_KEY`, and the lane roster is discovered live from `https://api.singularityapi.tech/v1/models`.
 
-OAuth-backed providers such as `anthropic`, `openai-codex`, `github-copilot`, `ollama-cloud`, `kimi-code`, `xai-oauth`, and `wafer-serverless` are normally reached through `/login` rather than an environment variable. Interactive API-key logins exist too: `/login baseten`, `/login coreweave`, `/login sakana`, `/login singularityapi-dev`, and `/login singularityapi-tech` prompt for a dashboard/API key (`coreweave` additionally requires `COREWEAVE_PROJECT` for the `OpenAI-Project` header). See [Environment variables](./environment-variables.md) for search-tool and configuration variables not listed here.
+OAuth-backed providers such as `anthropic`, `openai-codex`, `github-copilot`, `ollama-cloud`, `kimi-code`, `xai-oauth`, and `wafer-serverless` are normally reached through `/login` rather than an environment variable. Interactive API-key logins exist too: `/login baseten`, `/login sakana`, `/login singularityapi-dev`, and `/login singularityapi-tech` prompt for a dashboard/API key. See [Environment variables](./environment-variables.md) for search-tool and configuration variables not listed here.
 
 ### `.env` discovery and precedence
 
@@ -350,7 +345,7 @@ providers:
 
 ### Zhipu BigModel account-balance keys
 
-`/login zai` targets the global Z.AI Coding Plan endpoint, and `/login zhipu-coding-plan` targets the domestic Zhipu Coding Plan endpoint. Neither flow configures the general pay-as-you-go BigModel endpoint at `https://open.bigmodel.cn/api/paas/v4`.
+`/login zai` targets the global Z.AI Coding Plan endpoint. It does not configure the general pay-as-you-go BigModel endpoint at `https://open.bigmodel.cn/api/paas/v4`.
 
 Use a custom provider for an API key issued from a standard BigModel account balance:
 

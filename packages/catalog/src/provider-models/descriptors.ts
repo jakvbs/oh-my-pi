@@ -27,7 +27,6 @@ import {
 	cloudflareAiGatewayModelManagerOptions,
 	commandCodeModelManagerOptions,
 	coralbricksModelManagerOptions,
-	coreWeaveModelManagerOptions,
 	deepinfraModelManagerOptions,
 	deepseekModelManagerOptions,
 	firepassModelManagerOptions,
@@ -70,7 +69,6 @@ import {
 	xaiOAuthModelManagerOptions,
 	yoloAutoModelManagerOptions,
 	zenmuxModelManagerOptions,
-	zhipuCodingPlanModelManagerOptions,
 } from "./openai-compat";
 import {
 	cloudflareWorkersAiModelManagerOptions,
@@ -142,13 +140,11 @@ const MODEL_MANAGER_FACTORIES: Readonly<Partial<Record<KnownProvider, ModelManag
 	vllm: config => vllmModelManagerOptions(config),
 	"wafer-serverless": config => waferServerlessModelManagerOptions(config),
 	web: () => webModelManagerOptions(),
-	coreweave: config => coreWeaveModelManagerOptions(config),
 	xai: config => xaiModelManagerOptions(config),
 	"xai-oauth": config => xaiOAuthModelManagerOptions(config),
 	"yolo-auto": config => yoloAutoModelManagerOptions(config),
 	zai: config => zaiModelManagerOptions(config),
 	zenmux: config => zenmuxModelManagerOptions(config),
-	"zhipu-coding-plan": config => zhipuCodingPlanModelManagerOptions(config),
 };
 
 function isKnownProvider(id: string): id is KnownProvider {

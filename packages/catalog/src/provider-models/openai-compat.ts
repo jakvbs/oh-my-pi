@@ -44,7 +44,6 @@ import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, t
 import { normalizeCharmHyperBaseUrl } from "../wire/charm-hyper";
 import { CLINEPASS_API_BASE_URL, clinePassClientHeaders } from "../wire/cline-pass";
 import { CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL } from "../wire/cloudflare-ai-gateway";
-import { coreWeaveProjectHeaders } from "../wire/coreweave";
 import {
 	COPILOT_API_HEADERS,
 	COPILOT_DISCOVERY_HEADERS,
@@ -2235,58 +2234,6 @@ export function siliconflowCnModelManagerOptions(
 	config?: SiliconFlowModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
 	return createSiliconFlowModelManagerOptions("siliconflow-cn", "https://api.siliconflow.cn/v1", config);
-}
-
-// ---------------------------------------------------------------------------
-// 6.7 Zhipu Coding Plan
-// ---------------------------------------------------------------------------
-
-export interface ZhipuCodingPlanModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function zhipuCodingPlanModelManagerOptions(
-	config?: ZhipuCodingPlanModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	const apiKey = config?.apiKey;
-	const baseUrl = config?.baseUrl ?? "https://open.bigmodel.cn/api/coding/paas/v4";
-	return {
-		providerId: "zhipu-coding-plan",
-		dynamicModelsAuthoritative: true,
-		...(apiKey && {
-			fetchDynamicModels: () =>
-				fetchOpenAICompatibleModels({
-					api: "openai-completions",
-					provider: "zhipu-coding-plan",
-					baseUrl,
-					apiKey,
-					mapModel: (
-						_entry: OpenAICompatibleModelRecord,
-						defaults: ModelSpec<"openai-completions">,
-						_context: OpenAICompatibleModelMapperContext<"openai-completions">,
-					): ModelSpec<"openai-completions"> => {
-						const id = defaults.id;
-						const identity = classifyModel("zhipu-coding-plan", id, { lenient: true });
-						return {
-							...defaults,
-							reasoning:
-								isGlmReasoningIdentity("zhipu-coding-plan", id, "4.5") || identity.thinkingVariant === true,
-							// Vision-capable families are rule-owned (`providers/zhipu-coding-plan.kdl`
-							// input-modalities) and corrected at build time.
-							input: ["text"],
-							compat: {
-								thinkingFormat: "zai",
-								reasoningContentField: "reasoning_content",
-								supportsDeveloperRole: false,
-							},
-						};
-					},
-					fetch: config?.fetch,
-				}),
-		}),
-	};
 }
 
 // ---------------------------------------------------------------------------
@@ -4571,25 +4518,6 @@ export function togetherModelManagerOptions(
 	config?: TogetherModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
 	return createSimpleOpenAICompletionsOptions("together", "https://api.together.xyz/v1", config);
-}
-
-// ---------------------------------------------------------------------------
-// 15.5 CoreWeave Serverless Inference
-// ---------------------------------------------------------------------------
-
-export interface CoreWeaveModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-	fetch?: FetchImpl;
-}
-
-export function coreWeaveModelManagerOptions(
-	config?: CoreWeaveModelManagerConfig,
-): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("coreweave", "https://api.inference.wandb.ai/v1", {
-		...config,
-		headers: () => coreWeaveProjectHeaders(Bun.env),
-	});
 }
 
 // ---------------------------------------------------------------------------
@@ -7030,17 +6958,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CORE: readonly ModelsDevProviderDescriptor
 	}),
 	// --- Together ---
 	openAiCompletionsDescriptor("togetherai", "together", "https://api.together.xyz/v1"),
-	// --- CoreWeave Serverless Inference ---
-	openAiCompletionsDescriptor("wandb", "coreweave", "https://api.inference.wandb.ai/v1", {
-		transformModel: model => {
-			// CoreWeave's roster omits the reasoning bit for gpt-oss; flag it and
-			// let the class rules own the effort ladder.
-			if (classifyModel("coreweave", model.id, { lenient: true }).class !== "gpt-oss") {
-				return model;
-			}
-			return { ...model, reasoning: true };
-		},
-	}),
 	// --- NVIDIA ---
 	openAiCompletionsDescriptor("nvidia", "nvidia", "https://integrate.api.nvidia.com/v1", {
 		defaultContextWindow: 131072,
@@ -7092,19 +7009,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CODING_PLANS: readonly ModelsDevProviderDe
 	// costs as zero, while `/models/info` omits pricing entirely. The generator
 	// overlays these rates onto the authoritative endpoint discovery (issue #5733).
 	anthropicMessagesDescriptor("umans-ai", "umans", UMANS_BASE_URL),
-	// --- Zhipu Coding Plan ---
-	openAiCompletionsDescriptor(
-		"zhipuai-coding-plan",
-		"zhipu-coding-plan",
-		"https://open.bigmodel.cn/api/coding/paas/v4",
-		{
-			compat: {
-				thinkingFormat: "zai",
-				reasoningContentField: "reasoning_content",
-				supportsDeveloperRole: false,
-			},
-		},
-	),
 ];
 
 const filterActiveToolCallModels = (_id: string, m: ModelsDevModel): boolean => {
