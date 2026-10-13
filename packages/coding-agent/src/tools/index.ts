@@ -33,7 +33,6 @@ import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import { TaskTool } from "../task";
 import type { AgentOutputManager } from "../task/output-manager";
 import type { AgentDefinition } from "../task/types";
-import { type StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
 import type { WorkPoolYieldItem } from "../task/workpool-yield";
 import type { EventBus } from "../utils/event-bus";
 import { WebSearchTool } from "../web/search";
@@ -49,6 +48,7 @@ import { GrepTool } from "./grep";
 import { FindTool, isFindEnabled } from "./jfind";
 import { ManageSkillTool } from "./manage-skill";
 import { wrapToolWithMetaNotice } from "./output-meta";
+import type { OutputSchemaMode } from "./output-schema-validator";
 import { ReadTool } from "./read";
 import { supportsExternalThinking, ThinkTool } from "./think";
 import { type TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
@@ -262,7 +262,7 @@ export interface ToolSession {
 	/** Output schema for structured completion (subagents). */
 	outputSchema?: unknown;
 	/** Enforcement policy for {@link outputSchema}; defaults to legacy permissive behavior. */
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	/** Whether to include the yield tool by default */
 	requireYieldTool?: boolean;
 	/** Session starts with a prewalk hand-off armed. Keeps `todo` in yield-gated

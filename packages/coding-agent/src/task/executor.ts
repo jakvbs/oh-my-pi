@@ -86,7 +86,11 @@ import type { ContextFileEntry } from "../tools";
 import { LIST_STATUS_ORDER } from "@oh-my-pi/pi-tui/tools/irc";
 import { DEFAULT_PEER_ROSTER_LIMIT } from "@oh-my-pi/pi-tui/tools/irc";
 import { normalizeSchema } from "../tools/jtd-to-json-schema";
-import { buildOutputValidator, summarizeValidationFailure } from "../tools/output-schema-validator";
+import {
+	buildOutputValidator,
+	type OutputSchemaMode,
+	summarizeValidationFailure,
+} from "../tools/output-schema-validator";
 import { ToolAbortError } from "../tools/tool-errors";
 import { resetYieldTurnState } from "../tools/yield";
 import { type EventBus, emitSubagentFrame } from "../utils/event-bus";
@@ -112,11 +116,10 @@ import {
 	type AgentProgress,
 	type SingleResult,
 	type StructuredSubagentOutput,
-	type StructuredSubagentSchemaMode,
 	type StructuredSubagentSchemaSource,
 	type TaskToolDetails,
-	type YieldItem,
 } from "@oh-my-pi/pi-tui/tools/task";
+import type { YieldItem } from "@oh-my-pi/pi-tui/tools/yield";
 import { yieldSectionShapes } from "./yield-assembly";
 import { assembleYieldResult } from "@oh-my-pi/pi-tui/tools/task-yield-assembly";
 import {
@@ -145,8 +148,6 @@ import {
 	cfgCompactionThresholdPercent,
 	cfgCompactionThresholdTokens,
 } from "../session/context-settings";
-
-export type { YieldItem } from "@oh-my-pi/pi-tui/tools/task";
 
 const TASK_ABORT_CLEANUP_GRACE_MS = 10_000;
 
@@ -427,7 +428,7 @@ export interface ExecutorOptions {
 	/** Schema used to validate the final structured completion. */
 	outputSchema?: unknown;
 	/** Enforcement policy for {@link outputSchema}; defaults to legacy permissive behavior. */
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	/** Origin of the selected schema, preserved in {@link SingleResult.structuredOutput}. */
 	outputSchemaSource?: StructuredSubagentSchemaSource;
 	/**
@@ -624,7 +625,7 @@ interface FinalizeSubprocessOutputArgs {
 	signalAborted: boolean;
 	yieldItems?: YieldItem[];
 	outputSchema: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	outputSchemaSource?: StructuredSubagentSchemaSource;
 	lastAssistantText?: string;
 	/** `false` = no `yield` tool: `rawOutput` is the final assistant message, returned verbatim. Default `true`. */
@@ -2687,78 +2688,6 @@ function monitorYieldItems(monitor: SubagentRunMonitor): YieldItem[] | undefined
 	return monitor.progress.extractedToolData?.yield as YieldItem[] | undefined;
 }
 
-/** How {@link runSessionToYield} ended: the yielded data that passed the output schema, or why there is none. */
-export type SessionYieldOutcome =
-	| { kind: "yielded"; data: unknown }
-	| { kind: "provider-error" | "aborted" | "no-yield" | "schema-violation"; message: string };
-
-export interface RunSessionToYieldOptions {
-	/** The schema and mode the session was created with; the yield is validated against them once more. */
-	outputSchema: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
-	signal?: AbortSignal;
-}
-
-/**
- * Drive a session created with `requireYieldTool` through `task` exactly as the task executor drives a
- * subagent (reminder ladder, forced final `yield`, no reminders after a terminal provider error) and
- * classify how it ended. For SDK embedders that own the session and need its structured result.
- */
-export async function runSessionToYield(
-	session: AgentSession,
-	task: string,
-	options: RunSessionToYieldOptions,
-): Promise<SessionYieldOutcome> {
-	const monitor = createSubagentRunMonitor({
-		index: 0,
-		id: "session",
-		agent: { name: "session", description: "", systemPrompt: "", source: "bundled" },
-		task,
-		signal: options.signal,
-		softRequestBudget: 0,
-		softRequestBudgetNotice: false,
-		maxRuntimeMs: 0,
-		completionProbe: false,
-	});
-	monitor.setActiveSession(session);
-	const unsubscribe = monitor.attach(session);
-	let done: DriveOutcome;
-	try {
-		done = await driveSessionToResult(session, monitor, task, { structured: true });
-	} finally {
-		try {
-			await untilAborted(AbortSignal.timeout(5000), () => monitor.waitForActiveSessionAbort());
-		} catch {
-			// The session stays usable for disposal either way.
-		}
-		unsubscribe();
-		monitor.takeActiveSession();
-		monitor.finish();
-	}
-	const finalized = finalizeSubprocessOutput({
-		rawOutput: monitor.rawOutput(),
-		exitCode: done.exitCode,
-		stderr: done.error ?? "",
-		doneAborted: done.aborted,
-		signalAborted: options.signal?.aborted === true,
-		yieldItems: monitorYieldItems(monitor),
-		outputSchema: options.outputSchema,
-		outputSchemaMode: options.outputSchemaMode,
-		outputSchemaSource: "caller",
-		lastAssistantText: monitor.lastReportTurnText(),
-	});
-	if (finalized.exitCode === 0 && finalized.structuredOutput?.status === "valid") {
-		return { kind: "yielded", data: finalized.structuredOutput.data };
-	}
-	const message = finalized.stderr || done.error || SUBAGENT_WARNING_MISSING_YIELD;
-	if (done.aborted || finalized.abortedViaYield) {
-		return { kind: "aborted", message: done.abortReasonText ?? message };
-	}
-	if (finalized.hasYield) return { kind: "schema-violation", message };
-	if (session.getLastAssistantMessage()?.stopReason === "error") return { kind: "provider-error", message };
-	return { kind: "no-yield", message };
-}
-
 interface FinalizeRunArgs {
 	monitor: SubagentRunMonitor;
 	done: { exitCode: number; error?: string; aborted?: boolean; abortReason?: string; durationMs: number };
@@ -2773,7 +2702,7 @@ interface FinalizeRunArgs {
 	/** `false` = no `yield` tool: the run's last report turn is the result verbatim. Default `true`. */
 	structured?: boolean;
 	outputSchema?: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	outputSchemaSource?: StructuredSubagentSchemaSource;
 	signal?: AbortSignal;
 	artifactsDir?: string;
@@ -3020,7 +2949,7 @@ export interface IrcWakeTurnMonitorOptions {
 	/** `false` = the session has no `yield` tool; see {@link ExecutorOptions.structured}. */
 	structured?: boolean;
 	outputSchema?: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	outputSchemaSource?: StructuredSubagentSchemaSource;
 	artifactsDir?: string;
 }
@@ -3570,7 +3499,7 @@ export interface FollowUpTurnOptions {
 	/** Structured-output state retained from the original invocation; see {@link ExecutorOptions.structured}. */
 	structured?: boolean;
 	outputSchema?: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	outputSchemaSource?: StructuredSubagentSchemaSource;
 	signal?: AbortSignal;
 	onProgress?: (progress: AgentProgress) => void;

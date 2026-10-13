@@ -48,9 +48,9 @@ import type {
 	AgentProgress,
 	SingleResult,
 	StructuredSubagentOutput,
-	StructuredSubagentSchemaMode,
 	StructuredSubagentSchemaSource,
 } from "@oh-my-pi/pi-tui/tools/task";
+import type { OutputSchemaMode } from "../tools/output-schema-validator";
 import type { WorkPoolYieldItem } from "./workpool-yield";
 import { parseIsolationBackend } from "./worktree";
 
@@ -77,7 +77,7 @@ export type StructuredSubagentSchemaError = NonNullable<StructuredSubagentOutput
 export interface StructuredSubagentSchemaResolution {
 	schema: unknown;
 	source: StructuredSubagentSchemaSource;
-	mode: StructuredSubagentSchemaMode;
+	mode: OutputSchemaMode;
 	outputSchemaOverridesAgent: boolean;
 }
 
@@ -106,7 +106,7 @@ export interface StructuredSubagentRequest {
 	model?: string | string[];
 	/** Presence, rather than truthiness, makes this the highest-priority schema. */
 	outputSchema?: unknown;
-	schemaMode?: StructuredSubagentSchemaMode;
+	schemaMode?: OutputSchemaMode;
 	/**
 	 * `false` = no output schema (caller, agent, or session) and no `yield` tool:
 	 * the child's final assistant message is its result. Default `true`.

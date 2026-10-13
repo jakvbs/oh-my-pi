@@ -55,6 +55,7 @@ import { errorText, noteText, resultText } from "./native-view";
 import { describeJsonTree } from "./json-tree";
 import { taskSummary } from "../overlays/agent-hub-renderer";
 import type { NativeToolView, ToolRenderResult } from "./renderer";
+import type { YieldItem } from "./yield";
 
 /** Render context threaded in from `ToolExecutionComponent.#buildRenderContext`. */
 interface TaskRenderContext {
@@ -2165,15 +2166,6 @@ export const taskToolRenderer = {
 /** Source of an agent definition */
 export type AgentSource = "bundled" | "user" | "project";
 
-/**
- * Enforcement policy for a structured subagent output schema.
- *
- * `permissive` preserves legacy retry-budget overrides; `strict` turns every
- * invalid final payload, including an exhausted retry override, into a failed
- * `schema_violation` result.
- */
-export type StructuredSubagentSchemaMode = "permissive" | "strict";
-
 /** Origin of the schema selected for a structured subagent invocation. */
 export type StructuredSubagentSchemaSource = "caller" | "agent" | "session" | "none";
 
@@ -2189,7 +2181,7 @@ export type StructuredSubagentValidationStatus = "valid" | "invalid" | "unavaila
  */
 export interface StructuredSubagentOutput {
 	source: StructuredSubagentSchemaSource;
-	mode: StructuredSubagentSchemaMode;
+	mode: "permissive" | "strict";
 	status: StructuredSubagentValidationStatus;
 	data?: unknown;
 	error?: string;
@@ -2291,25 +2283,6 @@ export interface ReviewSummary {
 export interface ReviewData {
 	findings: ReviewFinding[];
 	summary?: ReviewSummary;
-}
-
-/** Details extracted from a subagent `yield` tool call for final-result assembly and task rendering. */
-export interface YieldItem {
-	data?: unknown;
-	status?: "success" | "aborted";
-	error?: string;
-	/** A string label is terminal; a non-empty array of labels is incremental. */
-	type?: string | string[];
-	/** Resolve this yield's payload from the latest durable assistant text instead of `data`. */
-	useLastTurn?: boolean;
-	/** True when an incremental workpool yield completed every item in its batch. */
-	complete?: boolean;
-	/**
-	 * Set by the in-tool yield validator when it exhausted its retry budget and
-	 * accepted schema-invalid data anyway. The executor preserves that override
-	 * during post-mortem validation.
-	 */
-	schemaOverridden?: boolean;
 }
 
 /** Progress tracking for a single agent */

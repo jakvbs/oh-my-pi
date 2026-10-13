@@ -33,7 +33,24 @@ import type {
 	ToolRenderer,
 	ToolRenderResult,
 } from "./renderer";
-import type { YieldItem } from "./task";
+
+/** Details of an accepted `yield` tool call, as carried in the tool result. */
+export interface YieldItem {
+	data?: unknown;
+	status?: "success" | "aborted";
+	error?: string;
+	/** A string label is terminal; a non-empty array of labels is incremental. */
+	type?: string | string[];
+	/** Resolve this yield's payload from the latest durable assistant text instead of `data`. */
+	useLastTurn?: boolean;
+	/** True when an incremental workpool yield completed every item in its batch. */
+	complete?: boolean;
+	/**
+	 * Set by the in-tool yield validator when it exhausted its retry budget and
+	 * accepted schema-invalid data anyway.
+	 */
+	schemaOverridden?: boolean;
+}
 
 const TITLE = "Submit Result";
 

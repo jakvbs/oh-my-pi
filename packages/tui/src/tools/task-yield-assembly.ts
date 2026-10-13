@@ -1,4 +1,4 @@
-import type { YieldItem } from "./task";
+import type { YieldItem } from "./yield";
 
 /**
  * Output-schema shape of each declared top-level property, keyed by incremental yield label.

@@ -24,7 +24,7 @@ import {
 	stringifyJson,
 	toError,
 } from "@oh-my-pi/pi-utils";
-import { isTaskToolDetails, type StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
+import { isTaskToolDetails } from "@oh-my-pi/pi-tui/tools/task";
 import * as snapcompact from "@oh-my-pi/snapcompact";
 import { moveFileAcrossDevices } from "../utils/atomic-file";
 import { ArtifactManager } from "./artifacts";
@@ -41,6 +41,7 @@ import {
 	stripInternalDetailsFields,
 } from "./messages";
 import type { WorkPoolYieldItem } from "../task/workpool-yield";
+import type { OutputSchemaMode } from "../tools/output-schema-validator";
 import { createInterruptedToolResults, sessionExitFollowsLastMessage } from "./exit-diagnostics";
 import type { RetryFallbackRole } from "./retry-fallback-chains";
 import {
@@ -3508,7 +3509,7 @@ export class SessionManager {
 		retryFallback?: RetryFallbackRole;
 		readOnly?: boolean;
 		outputSchema?: unknown;
-		outputSchemaMode?: StructuredSubagentSchemaMode;
+		outputSchemaMode?: OutputSchemaMode;
 		restrictToolNames?: boolean;
 		readSummarize?: boolean;
 		mcp?: string[];
@@ -4431,7 +4432,7 @@ export interface PersistedSessionInit {
 	retryFallback?: RetryFallbackRole;
 	readOnly?: boolean;
 	outputSchema?: unknown;
-	outputSchemaMode?: StructuredSubagentSchemaMode;
+	outputSchemaMode?: OutputSchemaMode;
 	restrictToolNames?: boolean;
 	readSummarize?: boolean;
 	mcp?: string[];
