@@ -107,8 +107,12 @@ function createTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
 	effortEnabled: boolean;
+	structured: boolean;
 }): BaseType {
 	const effortField = options.effortEnabled ? { "effort?": effortRule } : {};
+	const schemaFields = options.structured
+		? { "outputSchema?": outputSchemaInputSchema, "schemaMode?": '"permissive" | "strict"' }
+		: {};
 	if (options.batchEnabled) {
 		if (options.isolationEnabled) {
 			const item = type.raw({
@@ -117,8 +121,7 @@ function createTaskSchema(options: {
 				task: "string",
 				solutionSpace: "string",
 				...effortField,
-				"outputSchema?": outputSchemaInputSchema,
-				"schemaMode?": '"permissive" | "strict"',
+				...schemaFields,
 				"isolated?": "boolean",
 				"+": "delete",
 			});
@@ -134,8 +137,7 @@ function createTaskSchema(options: {
 			task: "string",
 			solutionSpace: "string",
 			...effortField,
-			"outputSchema?": outputSchemaInputSchema,
-			"schemaMode?": '"permissive" | "strict"',
+			...schemaFields,
 			"+": "delete",
 		});
 		return type.raw({
@@ -151,8 +153,7 @@ function createTaskSchema(options: {
 			task: "string",
 			solutionSpace: "string",
 			...effortField,
-			"outputSchema?": outputSchemaInputSchema,
-			"schemaMode?": '"permissive" | "strict"',
+			...schemaFields,
 			"isolated?": "boolean",
 			"+": "delete",
 		});
@@ -163,8 +164,7 @@ function createTaskSchema(options: {
 		task: "string",
 		solutionSpace: "string",
 		...effortField,
-		"outputSchema?": outputSchemaInputSchema,
-		"schemaMode?": '"permissive" | "strict"',
+		...schemaFields,
 		"+": "delete",
 	});
 }
@@ -174,16 +174,19 @@ export function getTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
 	effortEnabled?: boolean;
+	/** Advertise `outputSchema`/`schemaMode` (`task.structured`); default on. */
+	structured?: boolean;
 }): TaskToolSchemaInstance {
 	const effortEnabled = options.effortEnabled ?? false;
-	if (!effortEnabled) {
+	const structured = options.structured ?? true;
+	if (!effortEnabled && structured) {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}
-	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}`;
+	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${structured ? "structured" : "prose"}`;
 	const cached = taskSchemaCache.get(key);
 	if (cached) return cached;
-	const schema = createTaskSchema({ ...options, effortEnabled });
+	const schema = createTaskSchema({ ...options, effortEnabled, structured });
 	taskSchemaCache.set(key, schema);
 	return schema;
 }

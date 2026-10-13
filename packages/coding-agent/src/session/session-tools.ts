@@ -446,8 +446,8 @@ export class SessionTools {
 		this.#promptSurface = this.#derivePromptSurface();
 		// Seed from the construction slate (top-level tools plus xd:// mounts).
 		// Left empty, getEnabledToolNames() falls back to live agent.state.tools,
-		// so an early reconcile (think/Code Mode after the startup model
-		// resolution) landing while the live set is transiently narrow
+		// so an early reconcile (think after the startup model resolution)
+		// landing while the live set is transiently narrow
 		// commits that narrow set as the sticky slate — the session keeps almost
 		// no tools and the prompt rebuild without `read` empties the skill list.
 		for (const tool of host.agent.state.tools) this.#enabledToolNames.add(tool.name);
@@ -570,7 +570,7 @@ export class SessionTools {
 	getActiveToolNames(): string[] {
 		return this.#host.agent.state.tools.map(t => t.name);
 	}
-	/** Enabled top-level, `xd://`, and Code Mode bridge tool names. */
+	/** Enabled top-level and `xd://` tool names. */
 	getEnabledToolNames(): string[] {
 		// Union live xd:// mounts so devices mounted out-of-band (plugins writing
 		// to xdev state directly) survive the next apply.
@@ -608,6 +608,7 @@ export class SessionTools {
 		if (direct) return direct;
 		return resolveMCPToolAlias(bareName, candidate => this.#toolRegistry.get(candidate));
 	}
+
 
 	/**
 	 * Whether a registry entry came from a built-in factory.
@@ -1071,8 +1072,7 @@ export class SessionTools {
 			if (restrictDeviceOnlyWrite) this.#setDeviceOnlyWrite?.(false);
 			if (upgradeDeviceOnlyWrite) this.#setPendingFullWriteDescription?.(false);
 			this.#setMountedNames(previousMounted);
-			this.#toolPredicateNames = previousToolPredicateNames;
-			this.#setActiveToolNames?.(previousToolPredicateNames ?? previousActiveToolNames);
+			this.#setActiveToolNames?.(previousActiveToolNames);
 			this.#enabledToolNames = previousEnabledToolNames;
 			throw error;
 		}
@@ -1081,8 +1081,7 @@ export class SessionTools {
 			if (restrictDeviceOnlyWrite) this.#setDeviceOnlyWrite?.(false);
 			if (upgradeDeviceOnlyWrite) this.#setPendingFullWriteDescription?.(false);
 			this.#setMountedNames(previousMounted);
-			this.#toolPredicateNames = previousToolPredicateNames;
-			this.#setActiveToolNames?.(previousToolPredicateNames ?? previousActiveToolNames);
+			this.#setActiveToolNames?.(previousActiveToolNames);
 			this.#enabledToolNames = previousEnabledToolNames;
 			return;
 		}
@@ -1090,11 +1089,8 @@ export class SessionTools {
 		try {
 			this.#notifyXdevMountDelta(previousMounted);
 			const currentTools = this.#host.agent.state.tools;
-			if (
-				currentTools.length !== appliedTools.length ||
-				currentTools.some((tool, index) => tool !== appliedTools[index])
-			) {
-				this.#host.agent.setTools(appliedTools);
+			if (currentTools.length !== tools.length || currentTools.some((tool, index) => tool !== tools[index])) {
+				this.#host.agent.setTools(tools);
 			}
 			// The first primary model call can capture the prompt while the rebuild
 			// awaits; that prompt is bound from then on, so an implicit rebuild ends
@@ -1131,7 +1127,7 @@ export class SessionTools {
 				// re-derive from live settings, which could diverge mid-flight.
 				this.#promptSurface = candidateSurface ?? this.#promptSurface;
 			} else if (frozenSignature) {
-				this.#notifyToolRosterDelta(previousActiveToolNames, appliedNames);
+				this.#notifyToolRosterDelta(previousActiveToolNames, validToolNames);
 				this.#lastAppliedToolSignature = frozenSignature;
 			}
 			if (restoreDormantDeviceOnlyWrite) {
@@ -1441,6 +1437,7 @@ export class SessionTools {
 	}
 
 	/**
+
 	 * Builds the hidden notice reconciling the user-tagged model agents the task
 	 * description advertises with the live set. Delivered with the next user
 	 * prompt instead of rewriting the task description, so tagging a model
@@ -1757,8 +1754,8 @@ export class SessionTools {
 	 * `xd://` mounting) against live settings: registers newly allowed tools,
 	 * unregisters disallowed ones, and reapplies the enabled set with one forced
 	 * prompt rebuild — unconditionally unless `refreshPrompt` is false, then only
-	 * when the tool set changed. Unrelated selections, MCP/extension tools, and the
-	 * Code Mode partition are preserved.
+	 * when the tool set changed. Unrelated selections and MCP/extension tools are
+	 * preserved.
 	 */
 	reconcileBuiltinTools({ refreshPrompt = true }: { refreshPrompt?: boolean } = {}): Promise<void> {
 		return this.runToolRegistryMutation(async () => {
@@ -1818,7 +1815,7 @@ export class SessionTools {
 		const built = await this.#promptSurfaceScope.run(candidate, () =>
 			rebuildSystemPrompt(promptToolNames, this.#toolRegistry),
 		);
-		const promptTools = promptToolNames
+		const promptTools = activeToolNames
 			.map(name => this.#toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool != null);
 		const mountedSignatureTools = [...(this.#xdev?.mountedNames ?? [])].flatMap(name => {

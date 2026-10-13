@@ -29,6 +29,7 @@ import type { Dialect } from "@oh-my-pi/pi-ai/dialect";
 import { prewarmOpenAICodexResponses } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
 import { isOpenAICodexWebSocketPreferred } from "@oh-my-pi/pi-ai/providers/openai-codex-transport";
 import { withCredentialRedaction } from "@oh-my-pi/pi-ai/providers/transform-messages";
+import { resolveCatalogPolicy } from "@oh-my-pi/pi-catalog/compat/catalog-policy";
 import { FALLBACK_DIALECT, preferredDialect } from "@oh-my-pi/pi-catalog/identity";
 import type { Component } from "@oh-my-pi/pi-tui";
 import { $env } from "@oh-my-pi/pi-utils/env";
@@ -37,6 +38,7 @@ import * as logger from "@oh-my-pi/pi-utils/logger";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import * as prompt from "@oh-my-pi/pi-utils/prompt";
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+import { DEFAULT_FRAME_DATA_BYTES_BUDGET, frameDataBytesBudget } from "@oh-my-pi/snapcompact";
 import {
 	discoverAdvisorConfigs,
 	discoverWatchdogFiles,
@@ -185,6 +187,7 @@ import {
 	wrapSteeringForModel,
 } from "./session/messages";
 import {
+	capArchiveFrameBytes,
 	clampProviderContextImageBytes,
 	clampProviderContextImages,
 	dropUnreadableContextImages,
@@ -235,6 +238,7 @@ import {
 	resolveThinkingLevelForModel,
 	shouldDisableReasoning,
 	toReasoningEffort,
+	automaticThinkingLevel,
 } from "@oh-my-pi/pi-tui/thinking";
 import {
 	BashTool,
@@ -603,6 +607,8 @@ export interface CreateAgentSessionOptions {
 	providerSessionId?: string;
 	/** Optional provider-facing prompt cache key, distinct from request lineage. */
 	providerPromptCacheKey?: string;
+	/** Task-derived cache candidate; applied only when the actual request model opts in. */
+	taskPromptCacheKey?: string;
 	/** Whether `providerPromptCacheKey` is caller-pinned or inherited from a full fork. */
 	providerPromptCacheKeySource?: "explicit" | "fork";
 	/** Absolute wall-clock deadline in Unix epoch milliseconds. */
@@ -1776,6 +1782,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		await sessionManager.setAdditionalDirectories(merged);
 	}
 	const providerSessionId = options.providerSessionId ?? sessionManager.getSessionId();
+	const taskPromptCacheKey = options.taskPromptCacheKey ?? sessionManager.getHeader()?.taskPromptCacheKey;
+	if (taskPromptCacheKey !== undefined) await sessionManager.setTaskPromptCacheKey(taskPromptCacheKey);
 	if (options.credentialSourceSessionId) {
 		// A revived or resumed child already pins, in its own transcript, the accounts that
 		// hold its conversation cache. Inheriting the parent's automatic sticky for those
@@ -1808,10 +1816,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		options.toolNames !== undefined ||
 		options.customTools !== undefined ||
 		options.mcpTools !== undefined;
-	const inheritedPromptCacheKey = forkCacheShapeChanged
-		? undefined
-		: sessionManager.getHeader()?.providerPromptCacheKey;
-	const providerPromptCacheKey = options.providerPromptCacheKey ?? inheritedPromptCacheKey;
+	const inheritedPromptCacheKey =
+		forkCacheShapeChanged || taskPromptCacheKey !== undefined
+			? undefined
+			: sessionManager.getHeader()?.providerPromptCacheKey;
+	const providerPromptCacheKey =
+		taskPromptCacheKey !== undefined && options.providerPromptCacheKeySource === "fork"
+			? undefined
+			: (options.providerPromptCacheKey ?? inheritedPromptCacheKey);
 	const providerPromptCacheKeySource =
 		options.providerPromptCacheKey !== undefined
 			? (options.providerPromptCacheKeySource ?? "explicit")
@@ -1967,7 +1979,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			level = selectedModel.thinking.defaultLevel;
 		}
 		if (level === undefined) {
-			level = parseConfiguredThinkingLevel(cfgDefaultThinkingLevel.get(settings));
+			level = automaticThinkingLevel(
+				selectedModel,
+				parseConfiguredThinkingLevel(cfgDefaultThinkingLevel.get(settings)),
+			);
 		}
 		return level;
 	};
@@ -2219,7 +2234,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
 			isDisposed: () => session?.isDisposed ?? false,
 			getAgentId: () => resolvedAgentId,
+			getPromptCacheKey: () => {
+				if (!session) return undefined;
+				const model = session.agent.state.model;
+				if (!model || resolveCatalogPolicy(model).taskSiblingPromptCache !== true) return undefined;
+				return session.getPromptCacheKeyForModel(model) ?? session.agent.sessionId;
+			},
 			getToolByName: name => session?.getToolByName(name),
+
 			agentRegistry,
 			// The global lifecycle releases through AgentRegistry.global(); wiring it
 			// onto any other registry would report a cancel while releasing an
@@ -3425,8 +3447,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// unrestricted (`createTools`), so the advertised arm is what recovers
 			// an MCP alias when there is no state at all. That arm reads a set
 			// already execution-wrapped by `#applyActiveToolsByName`, so a
-			// deselected, `defaultInactive`, hidden, or Code Mode-demoted tool
-			// stays unreachable and no permission wrapper is bypassed. Only `mcp__`
+			// deselected, `defaultInactive`, or hidden tool stays unreachable and
+			// no permission wrapper is bypassed. Only `mcp__`
 			// names yield candidates, so no first-party tool is reachable this way.
 			return resolveMCPToolAlias(
 				bareName,
@@ -3879,6 +3901,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		);
 		const transformProviderContext = async (context: Context, transformModel: Model): Promise<Context> => {
 			let transformed = obfuscator ? obfuscateProviderContext(obfuscator, context) : context;
+			// The archive was sized for the model active at the last context build; a model switch may have lowered the budget.
+			transformed = capArchiveFrameBytes(transformed, transformModel);
 			transformed = await snapcompactInline.transform(transformed, transformModel);
 			transformed = clampProviderContextImages(transformed, transformModel);
 			transformed = await normalizeProviderContextImagesForModel(transformed, transformModel);
@@ -4052,6 +4076,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				const fallbackCreditRedemption = session?.consumeActiveFallbackCreditRedemption(streamModel);
 				const merged: SimpleStreamOptions = {
 					...streamOptions,
+					promptCacheKey: streamOptions?.promptCacheKey ?? session?.getPromptCacheKeyForModel(streamModel),
 					forceReasoningOff: externalThinking || streamOptions?.forceReasoningOff,
 				};
 				const stream = primaryStreamFn(streamModel, context, {
@@ -4112,7 +4137,17 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 
 		// Restore messages if session has existing data
 		if (hasExistingSession) {
-			agent.replaceMessages(existingSession.messages);
+			// The restore above built its context at the default frame payload budget, before the session
+			// model was known; rebuild only when that model's budget differs.
+			const frameBudget = frameDataBytesBudget(model);
+			const restored =
+				frameBudget === DEFAULT_FRAME_DATA_BYTES_BUDGET
+					? existingSession
+					: deobfuscateSessionContext(
+							sessionManager.buildSessionContext({ maxFrameDataBytes: frameBudget }),
+							obfuscator,
+						);
+			agent.replaceMessages(restored.messages);
 			if (persistInitialServiceTier) {
 				sessionManager.appendServiceTierChange(
 					Object.keys(initialServiceTierByFamily).length > 0 ? initialServiceTierByFamily : null,
@@ -4780,6 +4815,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					transformContext: async messages => wrapSteeringForModel(messages),
 					transformProviderContext: async (context, transformModel) => {
 						let transformed = obfuscator ? obfuscateProviderContext(obfuscator, context) : context;
+						transformed = capArchiveFrameBytes(transformed, transformModel);
 						transformed = clampProviderContextImages(transformed, transformModel);
 						transformed = await normalizeProviderContextImagesForModel(transformed, transformModel);
 						transformed = await dropUnreadableContextImages(transformed, transformModel);

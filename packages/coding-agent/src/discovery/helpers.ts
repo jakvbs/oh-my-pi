@@ -147,6 +147,7 @@ export function discoverRuleFromMarkdown(
 	return buildRule(name, body, frontmatter as RuleFrontmatter, filePath, source, options);
 }
 
+
 async function globIf(
 	dir: string,
 	pattern: string,

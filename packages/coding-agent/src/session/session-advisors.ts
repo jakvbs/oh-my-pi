@@ -93,6 +93,7 @@ import {
 	resolveThinkingLevelForModel,
 	shouldDisableReasoning,
 	toReasoningEffort,
+	automaticThinkingLevel,
 } from "@oh-my-pi/pi-tui/thinking";
 import type { AgentSessionEvent } from "./agent-session-events";
 import type { ClientBridge } from "./client-bridge";
@@ -1126,8 +1127,8 @@ export class SessionAdvisors {
 			// is sent and reasoning stays enabled (matching
 			// `clampAutoThinkingEffort` on the `auto` path). See #4579.
 			const requestedLevel = autoThinking
-				? this.#autoAdvisorThinkingLevel()
-				: (thinkingLevel ?? ThinkingLevel.Medium);
+				? automaticThinkingLevel(model, this.#autoAdvisorThinkingLevel())
+				: (thinkingLevel ?? automaticThinkingLevel(model, ThinkingLevel.Medium));
 			const resolvedLevel = resolveThinkingLevelForModel(model, requestedLevel);
 			const advisorThinkingLevel: ThinkingLevel = resolvedLevel ?? ThinkingLevel.Inherit;
 			// Record the status entry now (in roster order) so the Map's insertion
@@ -1880,7 +1881,9 @@ export class SessionAdvisors {
 			// A retry-fallback selector pinned its own effort for the fallback
 			// model; the retune resumes once the configured model is restored.
 			if (!advisor.autoThinking || advisor.runtime.disposed || advisor.retryFallback) continue;
-			const next = resolveThinkingLevelForModel(advisor.model, requested) ?? ThinkingLevel.Inherit;
+			const next =
+				resolveThinkingLevelForModel(advisor.model, automaticThinkingLevel(advisor.model, requested)) ??
+				ThinkingLevel.Inherit;
 			if (next === advisor.thinkingLevel) continue;
 			advisor.agent.setThinkingLevel(toReasoningEffort(next));
 			advisor.agent.setDisableReasoning(shouldDisableReasoning(next));

@@ -287,10 +287,13 @@ export interface ToolSession {
 	getSessionId?: () => string | null;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
 	getAgentId?: () => string | null;
+	/** Parent cache identity for sibling sharing, only when the parent model opts in. */
+	getPromptCacheKey?: () => string | undefined;
 	/** Look up a registered tool by name. */
 	getToolByName?: (name: string) => AgentTool | undefined;
 	/** Current session context for tool execution. */
 	getToolContext?: () => AgentToolContext | undefined;
+
 	/** Return whether a built-in tool is active in this turn's tool set. */
 	isToolActive?: (name: string) => boolean;
 	/** Update the active built-in tool predicate when a session changes tools mid-run. */

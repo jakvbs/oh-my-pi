@@ -562,6 +562,7 @@ describe("system prompt tool inventory", () => {
 		if (!nativeTools) expect(inventory).toContain(DIRECT_WEB_SEARCH.description);
 	});
 
+
 	it("uses a conservative fallback inventory when no tools map is provided", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			cwd: tempDir,

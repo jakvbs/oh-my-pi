@@ -4,6 +4,7 @@ import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import type {
 	CompactOptions,
 	ExtensionActions,
+	ExtensionApprovalPrompt,
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResult,
 	ExtensionCommandContextActions,
@@ -21,6 +22,7 @@ import type {
 	TerminalInputHandler,
 } from "../../extensibility/extensions";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
+import { ApprovalDialogComponent } from "@oh-my-pi/pi-tui/overlays/approval-dialog";
 import {
 	type AskDialogPrompt,
 	type AskDialogPromptValue,
@@ -40,6 +42,8 @@ import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { launchTerminal } from "../../subprocess/terminal-launch";
 
 const MAX_WIDGET_LINES = 10;
+const APPROVE_OPTION = "Approve";
+const DENY_OPTION = "Deny";
 
 function withTerminalLauncher(uiContext: ExtensionUIContext, hasUI: boolean): ExtensionUIContext {
 	if (!hasUI || uiContext.openTerminal) return uiContext;
@@ -101,6 +105,7 @@ export class ExtensionUiController {
 			confirm: (title, message, dialogOptions) => this.showHookConfirm(title, message, dialogOptions),
 			input: (title, placeholder, dialogOptions) => this.showHookInput(title, placeholder, dialogOptions),
 			askDialog: (questions, dialogOptions) => this.showAskDialog(questions, dialogOptions),
+			approve: (prompt, dialogOptions) => this.showApproval(prompt, dialogOptions),
 			notify: (message, type) => this.showHookNotify(message, type),
 			onTerminalInput: handler => this.addExtensionTerminalInputListener(handler),
 			setStatus: (key, text) => this.setHookStatus(key, text),
@@ -191,6 +196,8 @@ export class ExtensionUiController {
 			abort: () => this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL }),
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => this.ctx.requestShutdown(),
+			resolvePlanReview: (reviewId, choice, input) => this.ctx.resolvePlanReview(reviewId, choice, input),
+			getPendingPlanReview: () => this.ctx.getPendingPlanReview(),
 			getContextUsage: () => this.ctx.session.getContextUsage(),
 			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
 			getSystemPrompt: () => this.ctx.session.systemPrompt,
@@ -420,6 +427,8 @@ export class ExtensionUiController {
 			abort: () => this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL }),
 			hasPendingMessages: () => this.ctx.session.queuedMessageCount > 0,
 			shutdown: () => this.ctx.requestShutdown(),
+			resolvePlanReview: (reviewId, choice, input) => this.ctx.resolvePlanReview(reviewId, choice, input),
+			getPendingPlanReview: () => this.ctx.getPendingPlanReview(),
 			getContextUsage: () => this.ctx.session.getContextUsage(),
 			compact: instructionsOrOptions => this.#compactSession(instructionsOrOptions),
 			getSystemPrompt: () => this.ctx.session.systemPrompt,
@@ -566,6 +575,38 @@ export class ExtensionUiController {
 		this.ctx.ui.requestRender();
 	}
 
+	async showApproval(
+		prompt: ExtensionApprovalPrompt,
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<boolean> {
+		const choice = await this.#presentDialog(dialogOptions?.signal, settle => {
+			const callHidden = this.ctx.hideToolActivity;
+			const dialog = new ApprovalDialogComponent(
+				callHidden ? prompt.full : prompt.compact,
+				{ onApprove: () => settle(APPROVE_OPTION), onDeny: () => settle(DENY_OPTION) },
+				{
+					tui: this.ctx.ui,
+					wrapDetails: callHidden,
+					timeout: dialogOptions?.timeout,
+					onTimeout: dialogOptions?.onTimeout,
+					onTimeoutStart: dialogOptions?.onTimeoutStart,
+					onTimeoutReset: dialogOptions?.onTimeoutReset,
+				},
+			);
+			this.ctx.editorContainer.clear();
+			this.ctx.editorContainer.addChild(dialog);
+			this.ctx.ui.setFocus(dialog);
+			this.ctx.ui.requestRender();
+			return () => {
+				dialog.dispose();
+				this.ctx.editorContainer.clear();
+				this.ctx.editorContainer.addChild(this.ctx.editor);
+				this.ctx.ui.setFocus(this.ctx.editor);
+				this.ctx.ui.requestRender();
+			};
+		});
+		return choice === APPROVE_OPTION;
+	}
 	async showAskDialog(
 		questions: ExtensionAskDialogQuestion[],
 		dialogOptions?: ExtensionUIDialogOptions,

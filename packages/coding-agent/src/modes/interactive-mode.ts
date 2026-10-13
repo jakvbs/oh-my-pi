@@ -78,7 +78,12 @@ import type {
 	ExtensionWidgetContent,
 	ExtensionWidgetOptions,
 } from "../extensibility/extensions";
-import type { CompactOptions } from "../extensibility/extensions/types";
+import type {
+	CompactOptions,
+	PlanReviewChoice,
+	PlanReviewOption,
+	PlanReviewRequestedEvent,
+} from "../extensibility/extensions/types";
 import type { Skill } from "../extensibility/skills";
 import type { FileSlashCommand } from "../extensibility/slash-commands";
 import { loadSlashCommands } from "../extensibility/slash-commands";
@@ -1415,6 +1420,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#jobsSheetHandle: OverlayHandle | undefined;
 	/** Re-renders the open jobs sheet so output tails and pids stay live. */
 	#jobsSheetTimer: NodeJS.Timeout | undefined;
+
 	readonly lspServers: LspStartupServerInfo[] | undefined = undefined;
 	mcpManager?: MCPManager;
 	readonly #toolUiContextSetter: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
@@ -3615,7 +3621,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			if (message.role !== "toolResult") continue;
 			const resolved = livePendingTools.get(message.toolCallId);
 			if (!resolved) continue;
-			// A background task's initial `async.state === "running"` result is
+			// A background job call's initial `async.state === "running"` result is
 			// persisted while `EventController#handleToolExecutionEnd` deliberately
 			// keeps its component in `pendingTools` so a later
 			// `tool_execution_update`/`_end` settles it. Such a handle is still
@@ -4397,6 +4403,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		this.session.goalRuntime.clearAccounting();
+
 	}
 
 	async #enterGoalMode(options: { objective?: string; resume?: boolean; silent?: boolean }): Promise<void> {
@@ -4466,6 +4473,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
+
 	/** Apply the `tui.vimMode` setting to an editor and route Visual-mode yanks to the clipboard. */
 	#applyVimMode(editor: CustomEditor): void {
 		editor.setVimMode(cfgTuiVimMode.get(settings));
@@ -4526,6 +4534,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			});
 		}
 	}
+
 
 	async #handleGoalBudgetCommand(rawBudget: string): Promise<void> {
 		const state = this.session.getGoalModeState();
@@ -4862,6 +4871,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		return await this.#startGoalFromObjective(objective, input);
 	}
 
+
 	/**
 	 * Pool of consent-prompt variants. Each entry is `[headline, reassurance]`;
 	 * the second line always promises the same scope (tool name + confusion
@@ -4966,6 +4976,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	stop(): void {
+		this.#hidePlanReview();
 		this.#appearanceRefreshRequest = undefined;
 		// Settle any pending approval prompt as dismissed (deny). The
 		// controller stays aborted: approvals still queued behind the approval
@@ -5514,6 +5525,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	showPinnedError(message: string): void {
+
 		this.errorBannerContainer.clear();
 		this.errorBannerContainer.addChild(new ErrorBannerComponent(message, () => this.clearPinnedError()));
 		this.ui.requestRender();

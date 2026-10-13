@@ -30,7 +30,7 @@ import { createInMemoryAuthStorage } from "./helpers/agent-session-setup";
 
 const authStorage = createInMemoryAuthStorage();
 authStorage.keys.setRuntime("anthropic", "test-key");
-authStorage.keys.setRuntime("openai-codex", "test-key");
+authStorage.keys.setRuntime("mock", "test-key");
 const modelRegistry = new ModelRegistry(authStorage);
 
 afterAll(() => {
@@ -133,9 +133,8 @@ describe("experimental context management", () => {
 			new ContextNotesTool(toolSession),
 			new NewContextTool(toolSession),
 		];
-		const model = { ...mock.model, provider: "openai-codex" };
 		const agent = new Agent({
-			initialState: { model, systemPrompt: ["test"], tools, messages: history },
+			initialState: { model: mock.model, systemPrompt: ["test"], tools, messages: history },
 			getApiKey: () => "test-key",
 			streamFn: mock.stream,
 		});

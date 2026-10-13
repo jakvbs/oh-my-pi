@@ -34,7 +34,7 @@ import taskCoordinationAdvisoryTemplate from "../prompts/tools/task-coordination
 import taskSpawnFeedbackTemplate from "../prompts/tools/task-spawn-feedback.md" with { type: "text" };
 import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { type: "text" };
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
-import { truncateForPrompt } from "../tools/approval";
+import { type ApprovalDetailsOptions, truncateApprovalDetail, truncateForPrompt } from "../tools/approval";
 import { hasWaitTool } from "../tools/wait";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
@@ -55,7 +55,12 @@ import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimitAllSettled, Semaphore } from "./parallel";
 import { renderResult, renderCall as renderTaskCall } from "@oh-my-pi/pi-tui/tools/task";
 import { repairTaskParams } from "@oh-my-pi/pi-tui/tools/task-repair-args";
-import { resolveEffectiveSubagentPolicy, runStructuredSubagent, StructuredSubagentError } from "./structured-subagent";
+import {
+	resolveEffectiveSubagentPolicy,
+	runStructuredSubagent,
+	StructuredSubagentError,
+	type StructuredSubagentRequest,
+} from "./structured-subagent";
 import { SpawnRun, type SpawnPermit } from "./spawn-run";
 import { type TaskLauncher, TaskLaunchSession } from "./speculative-launch";
 
@@ -70,6 +75,7 @@ import {
 	cfgTaskMaxConcurrency,
 	cfgTaskMaxRuntimeMs,
 	cfgTaskSpeculativeLaunch,
+	cfgTaskStructured,
 } from "./settings";
 
 function renderSubagentUserPrompt(assignment: string): string {
@@ -140,6 +146,7 @@ interface TaskDescriptionOptions {
 	disabledAgents: string[];
 	batchEnabled: boolean;
 	effortEnabled: boolean;
+	structured: boolean;
 	asyncEnabled: boolean;
 	ircEnabled: boolean;
 }
@@ -160,6 +167,7 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		applyIsolatedChanges: options.applyIsolatedChanges,
 		batchEnabled: options.batchEnabled,
 		effortEnabled: options.effortEnabled,
+		structured: options.structured,
 		asyncEnabled: options.asyncEnabled,
 		hasModelMentions: options.sessionAgents.length > 0,
 		ircEnabled: options.ircEnabled,
@@ -458,7 +466,7 @@ export async function refreshAgentDiscovery(cwd: string, extensionRoots?: Effect
 export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetails, Theme> {
 	readonly name = "task";
 	readonly approval = "exec" as const;
-	readonly formatApprovalDetails = (args: unknown): string[] => {
+	readonly formatApprovalDetails = (args: unknown, options?: ApprovalDetailsOptions): string[] => {
 		const params = args as Partial<TaskParams>;
 		const lines: string[] = [];
 		if (typeof params.agent === "string") {
@@ -468,10 +476,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			lines.push(`Name: ${truncateForPrompt(params.name)}`);
 		}
 		if (typeof params.task === "string") {
-			lines.push(`Task:\n${truncateForPrompt(params.task)}`);
+			lines.push(`Task:\n${truncateApprovalDetail(params.task, options)}`);
 		}
 		if (typeof params.context === "string" && params.context.trim()) {
-			lines.push(`Context:\n${truncateForPrompt(params.context)}`);
+			lines.push(`Context:\n${truncateApprovalDetail(params.context, options)}`);
 		}
 		const tasks: unknown[] = Array.isArray(params.tasks) ? params.tasks : [];
 		if (tasks.length > 0) {
@@ -497,7 +505,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				}
 				lines.push(`Agent: ${truncateForPrompt(effectiveAgent(firstTask))}`);
 				if ("task" in firstTask && typeof firstTask.task === "string") {
-					lines.push(`Task:\n${truncateForPrompt(firstTask.task)}`);
+					lines.push(`Task:\n${truncateApprovalDetail(firstTask.task, options)}`);
 				}
 			}
 			if (tasks.length > 1) {
@@ -580,6 +588,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			isolationEnabled,
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
+			structured: this.#isStructured(),
 		});
 	}
 
@@ -601,6 +610,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			disabledAgents,
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
+			structured: this.#isStructured(),
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			ircEnabled: true,
 		});
@@ -615,6 +625,23 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	#isBatchEnabled(): boolean {
 		return cfgTaskBatch.get(this.session.settings);
+	}
+
+	#isStructured(): boolean {
+		return cfgTaskStructured.get(this.session.settings);
+	}
+
+	/**
+	 * Result contract for a spawn: with `task.structured` the caller's
+	 * `outputSchema`/`schemaMode` pass through; without it the child gets no
+	 * schema or `yield` tool and returns its final message.
+	 */
+	#resultParams(params: TaskParams): Pick<StructuredSubagentRequest, "outputSchema" | "schemaMode" | "structured"> {
+		if (!this.#isStructured()) return { structured: false };
+		return {
+			...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
+			...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
+		};
 	}
 
 	/** Session-retained id allocator; async ids are claimed before job registration. */
@@ -702,8 +729,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			assignment: (params.task ?? "").trim(),
 			context: this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined,
 			agent: params.agent,
-			...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
-			...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
+			...this.#resultParams(params),
 			...(params.effort !== undefined ? { effort: params.effort } : {}),
 			...("isolated" in params ? { isolation: { requested: params.isolated } } : {}),
 			blockedAgent: this.#blockedAgent,
@@ -1339,8 +1365,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				assignment,
 				context,
 				agent: params.agent,
-				...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
-				...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
+				...this.#resultParams(params),
 				...(params.effort !== undefined ? { effort: params.effort } : {}),
 				solutionSpace: params.solutionSpace,
 				// `name` is the spawn handle: keep it for id allocation when this
