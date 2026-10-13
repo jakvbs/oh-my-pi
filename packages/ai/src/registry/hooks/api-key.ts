@@ -5,12 +5,9 @@
  */
 import type { HeadersHook, Lazy, LoginHook } from "./types";
 
-export const API_KEY_HEADERS_HOOKS: Record<string, Lazy<HeadersHook>> = {
-	"cline-pass-client": () => import("@oh-my-pi/pi-catalog/wire/cline-pass").then(m => m.clinePassClientHeaders),
-};
+export const API_KEY_HEADERS_HOOKS: Record<string, Lazy<HeadersHook>> = {};
 
 export const API_KEY_LOGIN_HOOKS: Record<string, Lazy<LoginHook>> = {
 	"cloudflare-ai-gateway": () => import("../oauth/cloudflare-ai-gateway").then(m => m.loginCloudflareAiGateway),
 	"cloudflare-workers-ai": () => import("../oauth/cloudflare-workers-ai").then(m => m.loginCloudflareWorkersAi),
-	kilo: () => import("../oauth/kilo").then(m => m.loginKilo),
 };

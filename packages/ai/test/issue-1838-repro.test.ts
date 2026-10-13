@@ -29,7 +29,7 @@
  * The fix sends `thinking: { type: "enabled", keep: "all" }` to native
  * Moonshot / Kimi-code K2.6 endpoints. The field is K2.6-only — K2.5 and
  * earlier 400 on unknown fields — and Moonshot-host-only — every gateway
- * (OpenRouter, OpenCode, Kilo, Fireworks, …) translates thinking into its
+ * (OpenRouter, OpenCode, Fireworks, …) translates thinking into its
  * own native format and would reject the extra key.
  */
 import { describe, expect, it } from "bun:test";

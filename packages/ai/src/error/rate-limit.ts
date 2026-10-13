@@ -54,10 +54,6 @@ function matchesSubscriptionCapText(errorMessage: string): boolean {
 	return SUBSCRIPTION_CAP_PATTERN.test(errorMessage) && !TRANSIENT_INTERVAL_RATE_LIMIT_PATTERN.test(errorMessage);
 }
 const OPENROUTER_DAILY_FREE_LIMIT_PATTERN = /\bfree[-_ ]models[-_ ]per[-_ ]day\b/i;
-// ClinePass subscription-window exhaustion ("clinepass limit …") and free-tier
-// model caps ("free limit reached on model … try again in …") are account-local
-// quota exhaustion, not per-minute rate limiting.
-const CLINE_PASS_QUOTA_PATTERN = /clinepass limit|free limit reached on model/i;
 // gRPC/Connect end-streams carry the status as its name (`resource_exhausted`),
 // while HTTP bodies use the phrase ("resource exhausted"). Strip either form
 // before classifying explicit details; an otherwise opaque status is transient
@@ -259,10 +255,6 @@ export function parseRateLimitReason(errorMessage: string): RateLimitReason {
 		return "QUOTA_EXHAUSTED";
 	}
 
-	if (CLINE_PASS_QUOTA_PATTERN.test(errorMessage)) {
-		return "QUOTA_EXHAUSTED";
-	}
-
 	if (ANTHROPIC_CREDITS_REQUIRED_PATTERN.test(errorMessage)) {
 		return "QUOTA_EXHAUSTED";
 	}
@@ -333,7 +325,7 @@ export function calculateRateLimitBackoffMs(reason: RateLimitReason): number {
 
 /** Detect usage/quota limit errors in error messages (persistent, requires credential switch). */
 const USAGE_LIMIT_PATTERN =
-	/usage.?limit|usage_limit_reached|usage_not_included|limit_reached|quota.?(?:exceeded|reached|insufficient)|额度不足|额度耗尽|resource.?exhausted|exhausted your capacity|quota will reset|insufficient.?(?:balance|quota)|balance.?exhausted|run out of credits|out of credits|out of (?:extra )?usage|spending[- _]?limit|personal-team-blocked|clinepass limit|free limit reached on model|access_terminated_error/i;
+	/usage.?limit|usage_limit_reached|usage_not_included|limit_reached|quota.?(?:exceeded|reached|insufficient)|额度不足|额度耗尽|resource.?exhausted|exhausted your capacity|quota will reset|insufficient.?(?:balance|quota)|balance.?exhausted|run out of credits|out of credits|out of (?:extra )?usage|spending[- _]?limit|personal-team-blocked|access_terminated_error/i;
 
 /**
  * HTTP status codes that, absent richer body classification, represent an

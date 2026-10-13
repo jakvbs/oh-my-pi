@@ -24,7 +24,6 @@ export function getExtraHelpText(): string {
   CEREBRAS_API_KEY           - Cerebras models
   XAI_API_KEY                - xAI Grok models
   OPENROUTER_API_KEY         - OpenRouter aggregated models
-  KILO_API_KEY               - Kilo Gateway models
   MISTRAL_API_KEY            - Mistral models
   ZAI_API_KEY                - z.ai models (ZhipuAI/GLM)
   UMANS_AI_CODING_PLAN_API_KEY - Umans AI Coding Plan models
@@ -33,7 +32,6 @@ export function getExtraHelpText(): string {
   MINIMAX_API_KEY            - MiniMax models
   OPENCODE_API_KEY           - OpenCode Zen/OpenCode Go models
   CURSOR_ACCESS_TOKEN        - Cursor AI models
-  CLINE_API_KEY              - ClinePass subscription models
   COMMAND_CODE_API_KEY       - Command Code Provider API models
   CHARM_HYPER_API_KEY        - Charm Hyper inference gateway models
   AI_GATEWAY_API_KEY         - Vercel AI Gateway

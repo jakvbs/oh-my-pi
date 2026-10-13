@@ -208,9 +208,9 @@ describe("ModelBrowser search ranking", () => {
 	});
 
 	test("a configured role provider outranks punctuation-biased fuzzy scores", () => {
-		const kilo = makeModel("kilo", "liquid/lfm-2.5-2.6b:free");
+		const gateway = makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free");
 		const ollama = makeModel("ollama", "lfm2:2.6b");
-		const browser = makeBrowser([kilo, ollama], [], {
+		const browser = makeBrowser([gateway, ollama], [], {
 			roles: {
 				slow: {
 					model: ollama,
@@ -227,7 +227,7 @@ describe("ModelBrowser search ranking", () => {
 
 	test("recent use establishes provider affinity across models", () => {
 		const browser = makeBrowser(
-			[makeModel("kilo", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
+			[makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
 			["ollama/qwen2.5:7b"],
 		);
 
@@ -238,8 +238,8 @@ describe("ModelBrowser search ranking", () => {
 
 	test("explicit provider order takes precedence over inferred affinity", () => {
 		const browser = makeBrowser(
-			[makeModel("kilo", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
-			["kilo/qwen2.5:7b"],
+			[makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free"), makeModel("ollama", "lfm2:2.6b")],
+			["vercel-ai-gateway/qwen2.5:7b"],
 			{ providerOrder: ["ollama"] },
 		);
 
@@ -301,14 +301,14 @@ describe("ModelBrowser search ranking", () => {
 		// Both match; the contiguous-literal tier must keep the ":free" id on
 		// top rather than collapsing every zero-cost model into one tier.
 		const browser = makeBrowser(
-			[makeModel("nvidia", "nemotron-3-nano"), makeModel("kilo", "liquid/lfm-2.5-2.6b:free")],
+			[makeModel("nvidia", "nemotron-3-nano"), makeModel("vercel-ai-gateway", "liquid/lfm-2.5-2.6b:free")],
 			[],
 		);
 
 		browser.setQuery("free");
 
 		expect(browser.visibleCount).toBe(2);
-		expect(browser.getSelected()?.selector).toBe("kilo/liquid/lfm-2.5-2.6b:free");
+		expect(browser.getSelected()?.selector).toBe("vercel-ai-gateway/liquid/lfm-2.5-2.6b:free");
 	});
 
 	test("the cost keyword composes with multi-token search", () => {

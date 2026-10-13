@@ -33,7 +33,7 @@ on-api "google-generative-ai" "google-vertex" priority=-1 {
 
 // Anthropic wires and every other adapter bill Claude's high-res tier, the
 // largest per-image bill, so an unpriced reader is never undercounted.
-on-api "anthropic-messages" "bedrock-converse-stream" "openrouter" "ollama-chat" "apple-foundation-models" priority=-1 {
+on-api "anthropic-messages" "bedrock-converse-stream" "openrouter" "ollama-chat" priority=-1 {
 	image-tokenization {
 		regime "anthropic-patch"
 		max-edge 2576

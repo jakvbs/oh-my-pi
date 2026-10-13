@@ -4,15 +4,6 @@ import { getBundledModelReferenceIndex } from "../src/identity/bundled";
 import { inheritReferenceThinking, resolveModelReference } from "../src/identity/reference";
 import type { ModelSpec } from "../src/types";
 
-describe("Bundled model references", () => {
-	test("excludes providers isolated from cross-provider bare-id enrichment", () => {
-		const reference = resolveModelReference("glm-5.3-flash", getBundledModelReferenceIndex());
-
-		expect(reference).toBeDefined();
-		expect(reference?.provider).not.toBe("cline-pass");
-	});
-});
-
 describe("Portkey gateway model references", () => {
 	test("@modal ids do not fuzzy-match bundled catalog entries", () => {
 		const index = getBundledModelReferenceIndex();
@@ -33,10 +24,10 @@ describe("Portkey gateway model references", () => {
 
 	test("cross-provider references do not inherit wire routing thinking", () => {
 		const index = getBundledModelReferenceIndex();
-		const kiloGigaPotato = resolveModelReference("giga-potato", index);
-		expect(kiloGigaPotato?.provider).toBe("kilo");
-		expect(kiloGigaPotato?.thinking?.effortRouting).toBeDefined();
-		expect(inheritReferenceThinking(undefined, kiloGigaPotato, "gateway")).toBeUndefined();
+		const nanoGptTrinity = resolveModelReference("arcee-ai/trinity-large", index);
+		expect(nanoGptTrinity?.provider).toBe("nanogpt");
+		expect(nanoGptTrinity?.thinking?.effortRouting).toBeDefined();
+		expect(inheritReferenceThinking(undefined, nanoGptTrinity, "gateway")).toBeUndefined();
 	});
 });
 

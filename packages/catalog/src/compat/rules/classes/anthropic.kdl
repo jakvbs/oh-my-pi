@@ -292,7 +292,7 @@ class "anthropic" {
 			}
 		}
 	}
-	on "aimlapi" "kilo" "nanogpt" "venice" {
+	on "aimlapi" "nanogpt" "venice" {
 		thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 	}
 	on "amazon-bedrock" "anthropic" "cloudflare-ai-gateway" "github-copilot" \

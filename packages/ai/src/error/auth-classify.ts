@@ -1,5 +1,5 @@
 import { extractHttpStatusFromError } from "@oh-my-pi/pi-utils";
-import { isAccountPolicyError, isClinePassSurfaceGateMessage, isOAuthExpiry, isUsageLimit } from "./flags";
+import { isAccountPolicyError, isOAuthExpiry, isUsageLimit } from "./flags";
 import { OAuthError } from "./oauth";
 import { isConcurrencyCapExclusion, isUsageLimitOutcome } from "./rate-limit";
 
@@ -54,9 +54,6 @@ export function isAuthRetryableError(error: unknown): boolean {
 	const embeddedStatus = message ? extractHttpStatusFromError({ message }) : undefined;
 	const status = httpStatus ?? embeddedStatus;
 	if (isConcurrencyCapExclusion(status, message)) return false;
-	// A Cline surface-gate 403 is per-model client policy, not a credential
-	// problem: sibling keys fail identically, so rotation only burns them.
-	if (isClinePassSurfaceGateMessage(message)) return false;
 	if (status === 401 || status === 403) return true;
 	return isUsageLimitOutcome(status, message);
 }

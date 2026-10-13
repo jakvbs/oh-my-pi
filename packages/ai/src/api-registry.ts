@@ -27,7 +27,6 @@ const BUILTIN_API_IDS = [
 	"google-generative-ai",
 	"google-vertex",
 	"ollama-chat",
-	"apple-foundation-models",
 ] as const satisfies readonly KnownApi[];
 
 type _MissingBuiltinApis = Exclude<KnownApi, (typeof BUILTIN_API_IDS)[number]>;

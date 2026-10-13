@@ -24,7 +24,6 @@ import { ProviderHttpError } from "./error";
 import { isConcurrencyCapExclusion, isUsageLimitOutcome } from "./error/rate-limit";
 import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
-import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { GoogleOptions } from "./providers/google";
 import { getVertexAccessToken } from "./providers/google-auth";
 import type { GoogleVertexOptions } from "./providers/google-vertex";
@@ -35,7 +34,6 @@ import { streamPiNative } from "./providers/pi-native-client";
 import { streamSynthetic } from "./providers/synthetic";
 import {
 	streamAnthropic,
-	streamAppleFoundationModels,
 	streamAzureOpenAIResponses,
 	streamBedrock,
 	streamGoogle,
@@ -996,13 +994,6 @@ function streamDispatch<TApi extends Api>(
 
 		case "ollama-chat":
 			return streamOllama(providerModel as Model<"ollama-chat">, context, providerOptions as OllamaChatOptions);
-
-		case "apple-foundation-models":
-			return streamAppleFoundationModels(
-				providerModel as Model<"apple-foundation-models">,
-				context,
-				providerOptions as AppleFoundationModelsOptions,
-			);
 
 		default:
 			throw new AIError.ConfigurationError(`Unhandled API: ${api}`);
@@ -2120,13 +2111,6 @@ function mapOptionsForApi<TApi extends Api>(
 				reasoning: resolveOpenAiReasoningEffort(model, options),
 				disableReasoning: options?.disableReasoning,
 				toolChoice: options?.toolChoice,
-			});
-
-		case "apple-foundation-models":
-			return castApi<"apple-foundation-models">({
-				...base,
-				toolChoice: options?.toolChoice,
-				reasoning: options?.disableReasoning || options?.forceReasoningOff ? undefined : options?.reasoning,
 			});
 		default:
 			throw new AIError.ConfigurationError(`Unhandled API in mapOptionsForApi: ${model.api}`);

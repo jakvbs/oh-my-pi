@@ -11,7 +11,6 @@ import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { FallbackParam, StopDetails } from "./providers/anthropic-wire";
 import type { AzureOpenAIResponsesOptions } from "./providers/azure-openai-responses";
-import type { AppleFoundationModelsOptions } from "./providers/apple-foundation-models";
 import type { GoogleOptions } from "./providers/google";
 import type { GoogleVertexOptions } from "./providers/google-vertex";
 import type { OllamaChatOptions } from "./providers/ollama";
@@ -47,7 +46,6 @@ export interface ApiOptionsMap {
 	"google-generative-ai": GoogleOptions;
 	"google-vertex": GoogleVertexOptions;
 	"ollama-chat": OllamaChatOptions;
-	"apple-foundation-models": AppleFoundationModelsOptions;
 }
 // Compile-time exhaustiveness check - this will fail if ApiOptionsMap doesn't have all KnownApi keys
 type _CheckExhaustive =

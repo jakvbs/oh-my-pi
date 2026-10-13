@@ -59,7 +59,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | `omitReasoningEffort` | `true` when `supportsReasoningEffort` is `false` | Suppresses `reasoning_effort` even when thinking is on (the thinking toggle field still goes out) |
 | `reasoningEffortMap` | Baseline `{}`; KDL adds Kimi K3, MiMo, GLM, and first-party xAI maps | Remaps `Effort` values before the model's `thinking.effortMap` (e.g. Grok `minimal` → `low`; xhigh-capable SKUs preserve `xhigh`) |
 | `thinkingFormat` | Chat baseline: `"zai"` (native Kimi K2.x/Z.AI/Zhipu), `"qwen"` (DashScope/Qwen), `"qwen-chat-template"` (NVIDIA Qwen), `"openrouter"`, or `"openai"`; rules also select `"kimi"` / `"chat-template"` | Encodes `thinking: { type: "enabled" }` (zai), `thinking: { type: "enabled", effort }` (kimi), `enable_thinking: true` (qwen), `chat_template_kwargs.enable_thinking: true` (qwen-chat-template), `chat_template_kwargs: { thinking: true, reasoning_effort }` (chat-template), `reasoning: { effort }` (openrouter), or `reasoning_effort` (openai) |
-| `reasoningDisableMode` | Derived from `thinkingFormat`, with endpoint/rule overrides | Explicit off encoding: Venice `disable_thinking`, Z.AI/Kimi disabled `thinking`, Qwen `enable_thinking: false` (top-level or template kwargs), `chat-template-thinking-false` → `chat_template_kwargs.thinking: false`, OpenRouter/Cline `reasoning.enabled: false`, `none-effort`, `lowest-effort`, or `omit` (`encodeChatCompletionsDisabledReasoning`) |
+| `reasoningDisableMode` | Derived from `thinkingFormat`, with endpoint/rule overrides | Explicit off encoding: Venice `disable_thinking`, Z.AI/Kimi disabled `thinking`, Qwen `enable_thinking: false` (top-level or template kwargs), `chat-template-thinking-false` → `chat_template_kwargs.thinking: false`, OpenRouter `reasoning.enabled: false`, `none-effort`, `lowest-effort`, or `omit` (`encodeChatCompletionsDisabledReasoning`) |
 | `supportsReasoningParams` | Chat: `false` for GitHub Copilot. Responses: always `true` | When `false`, suppresses **all** reasoning params |
 | `reasoningContentField` | `"reasoning_content"` default; alternatives `"reasoning"`, `"reasoning_text"` | Key used when replaying assistant thinking on history messages |
 | `requiresReasoningContentForToolCalls` | Chat: Kimi (except OpenCode aliases), DeepSeek reasoning, OpenRouter reasoning requests. Responses: Kimi/DeepSeek/OpenRouter, only when reasoning-capable | Assistant tool-call turns in history must carry reasoning content (real or synthetic) |
@@ -77,7 +77,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | Flag | Default detection | Wire effect |
 | --- | --- | --- |
 | `supportsToolChoice` | Chat: `false` for direct DeepSeek reasoning. Responses: always `true` | When `false`, `tool_choice` is omitted entirely |
-| `supportsForcedToolChoice` | Chat: `false` for selected thinking-required models, OpenCode DeepSeek, and Cline Qwen. Responses: `false` for OpenCode Go/Zen | When `false`, `required`/named choices downgrade to `auto` |
+| `supportsForcedToolChoice` | Chat: `false` for selected thinking-required models, and OpenCode DeepSeek. Responses: `false` for OpenCode Go/Zen | When `false`, `required`/named choices downgrade to `auto` |
 | `supportsNamedToolChoice` | `false` for string-only hosts (llama.cpp, LM Studio) | When `false`, a named choice becomes: filter `tools` to that one function + `tool_choice: "required"` |
 | `disableReasoningOnForcedToolChoice` | Chat: Kimi (except native K3) or Anthropic model ids. Responses: all Kimi | Drops reasoning fields when tool choice is forced |
 | `disableReasoningOnToolChoice` | DeepSeek reasoning (except via OpenRouter) | Drops reasoning fields when **any** `tool_choice` is present |
@@ -101,7 +101,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | `sessionHeader` | `"x-litellm-session-id"` on the `litellm` provider and `discovery.type: "litellm"` aliases | Emits that HTTP header with the explicit conversation `sessionId`, independent of prompt caching; a configured header wins |
 | `supportsPromptCacheBreakpoints` / `promptCacheBreakpointTtl` | Official OpenAI GPT-5.6+ | Gates explicit prompt-cache breakpoints; `ConfigurationError` if requested unsupported. TTL default `"30m"` |
 | `isOpenRouterHost` | OpenRouter endpoint detection | Omits default max-token cap (optional fields are routing hints on OpenRouter) and attaches routing |
-| `wireModelIdMode` | `"raw"` baseline; gateway/discovery rules select `"cline-pass"`, `"firepass"`, `"fireworks"`, or `"openrouter"` | Model-id rewriting for gateway dispatch |
+| `wireModelIdMode` | `"raw"` baseline; gateway/discovery rules select `"firepass"`, `"fireworks"`, or `"openrouter"` | Model-id rewriting for gateway dispatch |
 
 #### Stream parsing / watchdogs
 
@@ -125,7 +125,7 @@ Types: `OpenAICompat` / `ResolvedOpenAISharedCompat` in `packages/catalog/src/ty
 | `supportsUsageInStreaming` | `false` for Cerebras | Adds `stream_options: { include_usage: true }` |
 | `maxTokensField` | `"max_tokens"` for Mistral, native Moonshot, Z.AI, Zhipu, Chutes, Fireworks, direct DeepSeek; else `"max_completion_tokens"` | Output-token field name (`resolveOpenAIOutputTokenParam`) |
 | `thinkingKeep` | `"all"` for native Moonshot Kimi K2.6 | Adds `thinking.keep: "all"` |
-| `cacheControlFormat` | `"anthropic"` for OpenRouter Anthropic and Cline Qwen/Anthropic | Adds Anthropic `cache_control: { type: "ephemeral" }` markers; also exists on the Responses view for OpenRouter Anthropic |
+| `cacheControlFormat` | `"anthropic"` for OpenRouter Anthropic | Adds Anthropic `cache_control: { type: "ephemeral" }` markers; also exists on the Responses view for OpenRouter Anthropic |
 | `toolStrictMode` | `"all_strict"` for Cerebras; `"mixed"` default | `all_strict` uses strict only if every tool can be adapted, otherwise collapses to `none`; `none` omits strict fields; `mixed` honors per-tool strictness |
 | `vercelGatewayRouting` / `isVercelGatewayHost` | Vercel AI Gateway hosts (also present on the Responses view) | Routing under `providerOptions.gateway` |
 | `dropThinkingWhenReasoningEffort` | Fireworks | Deletes the `thinking` block when `reasoning_effort` is present (Fireworks rejects both together) |

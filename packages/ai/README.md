@@ -66,7 +66,6 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 - **Venice** (requires `VENICE_API_KEY`)
 - **Wafer Serverless** (requires `WAFER_SERVERLESS_API_KEY`; pay-as-you-go)
 - **OpenRouter**
-- **Kilo Gateway** (supports OAuth `/login kilo` or `KILO_API_KEY`)
 - **LiteLLM** (requires `LITELLM_API_KEY`)
 - **zAI** (requires `ZAI_API_KEY`)
 - **Umans AI Coding Plan** (supports `/login umans` or `UMANS_AI_CODING_PLAN_API_KEY`)

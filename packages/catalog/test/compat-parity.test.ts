@@ -82,7 +82,6 @@ interface RowLike {
 function keepsExplicitThinking(row: RowLike): boolean {
 	if (isCollapsedVariantSpec(row as unknown as ModelSpec<Api>)) return true;
 	if (row.compatConfig?.thinkingFormat === "chat-template" && row.thinking) return true;
-	if (row.provider === "cline-pass" && row.thinking) return true;
 	if (row.compatConfig?.trustExplicitThinkingOnly === true) return true;
 	if (row.provider === "openrouter" && row.thinking?.requiresEffort === true) return true;
 	return false;

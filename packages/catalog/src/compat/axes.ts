@@ -151,7 +151,6 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 		"lowest-effort",
 		"none-effort",
 		"openrouter-enabled-false",
-		"cline-enabled-false",
 		"venice-disable-thinking",
 		"zai-thinking-disabled",
 		"qwen-enable-thinking-false",
@@ -216,13 +215,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 	"tool-strict-mode": wire("toolStrictMode", ["openai"], "scalar", ["all_strict", "none", "mixed"]),
 	"uses-openai-tool-call-id-limit": wire("usesOpenAIToolCallIdLimit", OAI),
 	"when-thinking": wire("whenThinking", ["openai"], "object"),
-	"wire-model-id-mode": wire("wireModelIdMode", OAI, "scalar", [
-		"raw",
-		"cline-pass",
-		"firepass",
-		"fireworks",
-		"openrouter",
-	]),
+	"wire-model-id-mode": wire("wireModelIdMode", OAI, "scalar", ["raw", "firepass", "fireworks", "openrouter"]),
 	"zai-reasoning-effort-dialect": wire("zaiReasoningEffortDialect", ["openai"]),
 
 	// ── wire: anthropic-messages ──

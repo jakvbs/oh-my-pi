@@ -29,7 +29,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"umans",
 	"opencode-zen",
 	"opencode-go",
-	"kilo",
 	"vercel-ai-gateway",
 	"cloudflare-ai-gateway",
 	"nanogpt",

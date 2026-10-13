@@ -43,7 +43,7 @@ The OpenAI Chat Completions provider implements HTTP POST JSON body streaming ov
 ### Auth & usage
 - **API-Key Validation**: `validateOpenAICompatibleApiKey` in `packages/ai/src/registry/api-key-validation.ts` validates API credentials by issuing a lightweight `POST /chat/completions` request with `messages: [{ role: "user", content: "ping" }]`, `max_tokens: 1`, `temperature: 0`, and `Authorization: Bearer ${apiKey}`.
 - **Credential resolution**: `getEnvApiKey` in `packages/ai/src/stream.ts` delegates to the compiled auth registry. Provider environment keys and hooks are declared in `packages/catalog/src/compat/rules/auth/*.kdl`; explicit request credentials and custom provider configuration can supply keys independently.
-- **Usage Accounting & Quota Surfacing**: `calculateOpenAIUsageAccounting` (`packages/ai/src/providers/openai-shared.ts`) reconciles input, output, cache-read, and cache-write tokens into standard `Usage` records. OpenRouter and ClinePass authoritative gateway charges are populated into `output.usage.cost` via `applyProviderReportedCost`. Copilot request counts are stored in `output.usage.premiumRequests`. Transport HTTP errors (e.g. 429 Rate Limit, 408 Timeout, 5xx Server Error) are thrown as `OpenAIHttpError` (`packages/ai/src/utils/openai-http.ts`), capturing status, headers, and error envelope details for upstream error mapping in `AIError.finalize`.
+- **Usage Accounting & Quota Surfacing**: `calculateOpenAIUsageAccounting` (`packages/ai/src/providers/openai-shared.ts`) reconciles input, output, cache-read, and cache-write tokens into standard `Usage` records. OpenRouter authoritative gateway charges are populated into `output.usage.cost` via `applyProviderReportedCost`. Copilot request counts are stored in `output.usage.premiumRequests`. Transport HTTP errors (e.g. 429 Rate Limit, 408 Timeout, 5xx Server Error) are thrown as `OpenAIHttpError` (`packages/ai/src/utils/openai-http.ts`), capturing status, headers, and error envelope details for upstream error mapping in `AIError.finalize`.
 
 ### Catalog model handling
 - **Provider entry (`openai`)**: `packages/catalog/src/compat/rules/providers/openai.kdl` declares default model `gpt-5.5`. Environment keys: `OPENAI_API_KEY`.
@@ -770,37 +770,6 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/hugg
 - **Catalog Descriptor**: `openAiCompletionsDescriptor` in `packages/catalog/src/provider-models/openai-compat.ts` registers `huggingface` in `PROVIDER_DESCRIPTORS` targeting `https://router.huggingface.co/v1`.
 - **Catalog Discovery**: Participating in catalog generation via `catalogDiscovery`, `generate-models.ts` (`packages/catalog/scripts/generate-models.ts`) resolves API tokens via `resolveProviderApiKey` and calls `fetchOpenAICompatibleModels` (`packages/catalog/src/discovery/openai-compatible.ts`) against `https://router.huggingface.co/v1/models` to discover available Hub inference endpoints.
 
-## Kilo Gateway (`kilo`)
-Kilo Gateway (`kilo`) is an AI model aggregator and proxy service (`https://api.kilo.ai/api/gateway`) using the OpenAI Chat Completions transport (`api: "openai-completions"`). It supports authentication via `KILO_API_KEY` or device-code OAuth flow (`/login kilo`), and allows unauthenticated dynamic model discovery from its OpenAI-compatible `/models` catalog endpoint.
-
-### Special casings
-
-Provider-specific overrides in `packages/catalog/src/compat/rules/providers/kilo.kdl` (more-specific selectors override provider defaults):
-
-- For models moonshotai/kimi-k2.6: `streamIdleTimeoutMs=300000`.
-- For class glm; family turbo: `thinking.efforts=["minimal","low","medium","high","xhigh"]`.
-- For class unknown: `thinking.efforts=["minimal","low","medium","high","xhigh"]`.
-- For models *thinking-2507, arcee-ai/trinity-large-thinking, nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free: `thinking.requiresEffort=true`.
-- For models deepseek/deepseek-chat-v3.1: `requiresReasoningContentForAllAssistantTurns=true`, `thinking.efforts=["high","max"]`.
-- For models deepseek/deepseek-r1, deepseek/deepseek-r1-0528, deepseek/deepseek-v3.1-terminus, deepseek/deepseek-v3.2, deepseek/deepseek-v3.2-exp, deepseek/deepseek-v4-flash, deepseek/deepseek-v4-flash-0731, deepseek/deepseek-v4-flash:discounted, ~deepseek/deepseek-v4-flash-latest: `requiresReasoningContentForAllAssistantTurns=true`.
-- For models openai/gpt-5.1-codex, openai/gpt-5.1-codex-max: `thinking.efforts=["minimal","low","medium","high"]`.
-- For models openai/gpt-5.1-codex-mini: `thinking.efforts=["medium","high"]`.
-- For models z-ai/glm-4.5*, z-ai/glm-4.7*, ~google*, ~openai*, z-ai/glm-4.6, z-ai/glm-4.6v, z-ai/glm-5, z-ai/glm-5.1, ~moonshotai/kimi-latest: `thinking.efforts=["minimal","low","medium","high","xhigh"]`.
-- For models z-ai/glm-5.2: `thinking.efforts=["minimal","low","medium","high","max"]`.
-- Provider defaults: `thinking.mode="effort"`.
-
-- **Device-Code OAuth Authentication**: Declared in `packages/catalog/src/compat/rules/auth/kilo.kdl` (`login "custom" hook="kilo"`) and implemented in `packages/ai/src/registry/oauth/kilo.ts` (`loginKilo`), initiating device authorization via `POST https://api.kilo.ai/api/device-auth/codes`, returning a user `code`, `verificationUrl`, and `expiresIn` seconds. It displays instructions via `callbacks.onAuth` and polls `GET https://api.kilo.ai/api/device-auth/codes/<userCode>` every 5,000ms until expiration. Handles HTTP 202 (pending), 403/410 (denied/expired), and rate limiting (HTTP 429), returning access tokens with 1-year expiration upon approval (`pollData.status === "approved"`). Supports cancellation via `callbacks.signal`.
-- **Host URL Matching**: Host mapping in `packages/catalog/src/hosts.ts` associates URL marker `api.kilo.ai` with provider `"kilo"`.
-- **Provider Priority**: Included in `packages/catalog/src/identity/priority.ts` provider priority sequence (`"opencode-go"`, `"kilo"`, `"vercel-ai-gateway"`).
-
-### Auth & usage
-- **API Key & OAuth Tokens**: Authenticates via static environment variable `KILO_API_KEY` or OAuth access tokens issued through the device-code flow (`/login kilo`).
-- **Bearer Token Headers**: Requests pass credentials as standard Bearer tokens (`Authorization: Bearer <key>`) against base URL `https://api.kilo.ai/api/gateway`.
-
-### Catalog model handling
-- **Provider entry (`kilo`)**: `packages/catalog/src/compat/rules/providers/kilo.kdl` declares default model `anthropic/claude-opus-5`. Environment keys: `KILO_API_KEY`.
-- **Model Manager & Wire Descriptor**: `kiloModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts` maps `providerId: "kilo"` to base URL `https://api.kilo.ai/api/gateway` and delegates dynamic model discovery to `fetchOpenAICompatibleModels`. Associated with `openAiCompletionsDescriptor("kilo", "kilo", "https://api.kilo.ai/api/gateway")`.
-
 ## Kimi Code (`kimi-code`)
 Kimi Code provides subscription-backed access to Kimi models (`kimi-for-coding`, `k3`) via Moonshot AI's `/coding/v1` API endpoints. It rides the [Kimi Code](#kimi-code) transport pipeline, delegating request execution to `streamKimi` (`packages/ai/src/providers/kimi.ts`) and `streamOpenAIAnthropicShim` (`packages/ai/src/providers/openai-anthropic-shim.ts`).
 
@@ -1202,7 +1171,7 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/open
 
 ### Auth & usage
 - **Auth Key Validation via `/api/v1/auth/key`**: Declared in `packages/catalog/src/compat/rules/auth/openrouter.kdl` as a `login "oauth-code"` rule (`packages/ai/src/registry/engine/oauth-code.ts`) with `paste-key` validation targeted at `https://openrouter.ai/api/v1/auth/key`. Public `/api/v1/models` returns HTTP 200 for unauthenticated requests, so `/api/v1/auth/key` is used as the canonical identity check (returning 200 for valid keys, 401 otherwise). Key resolution checks `OPENROUTER_API_KEY` via `getEnvApiKey` in `packages/ai/src/stream.ts`.
-- **Authoritative Reported Cost Reconciling**: `applyProviderReportedCost` in `packages/ai/src/providers/openai-shared.ts` extracts `rawUsage.cost` echoed by OpenRouter and ClinePass. If estimated token cost is finite and positive, input, output, cache-read, and cache-write costs are scaled by `reportedCost / estimatedCost` to match the exact billable total; otherwise, `usage.cost.input` is assigned the reported cost directly.
+- **Authoritative Reported Cost Reconciling**: `applyProviderReportedCost` in `packages/ai/src/providers/openai-shared.ts` extracts `rawUsage.cost` echoed by OpenRouter. If estimated token cost is finite and positive, input, output, cache-read, and cache-write costs are scaled by `reportedCost / estimatedCost` to match the exact billable total; otherwise, `usage.cost.input` is assigned the reported cost directly.
 
 ### Catalog model handling
 - **Provider entry (`openrouter`)**: `packages/catalog/src/compat/rules/providers/openrouter.kdl` declares default model `openai/gpt-5.5`. Environment keys: `OPENROUTER_API_KEY`.
@@ -1602,17 +1571,6 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/zenm
 - **Authored seeds**: `abliterated-model`, `abliterated-model-large-v2`, `abliterated-model-large`; bundle policy `fallback`. Limits, capabilities, and prices are authored alongside these rows.
 - Runtime manager: `abliterationModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`.
 
-## Apple Foundation Models (on-device) (`apple`)
-
-### Special casings
-- Apple Foundation Models is an in-process pi-natives bridge for macOS 27+ on Apple silicon. Availability is discovered at runtime; no models are bundled.
-
-### Auth & usage
-- No interactive login is declared for this route.
-
-### Catalog model handling
-- **Provider entry (`apple`)**: `packages/catalog/src/compat/rules/providers/apple.kdl` declares default model `on-device`. Model management permits unauthenticated access.
-
 ## Charm Hyper (`charm-hyper`)
 
 ### Special casings
@@ -1625,19 +1583,6 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/zenm
 - **Provider entry (`charm-hyper`)**: `packages/catalog/src/compat/rules/providers/charm-hyper.kdl` declares default model `glm-5.3`. Environment keys: `CHARM_HYPER_API_KEY`, `HYPER_API_KEY`. Model management permits unauthenticated access.
 - **Discovery replacement**: Successful authoritative discovery replaces fallback provider rows rather than retaining retired seed models.
 - Runtime manager: `charmHyperModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`.
-
-## ClinePass (`cline-pass`)
-
-### Special casings
-- Uses `openai-completions`; its dedicated catalog fetch maps live rows against bundled references. Gateway-reported cost is authoritative through `applyProviderReportedCost` in `openai-shared.ts`.
-
-### Auth & usage
-- Login kind `api-key` is declared in `packages/catalog/src/compat/rules/auth/cline-pass.kdl`. Environment keys: `CLINE_API_KEY`. Validation uses `models-endpoint`.
-
-### Catalog model handling
-- **Provider entry (`cline-pass`)**: `packages/catalog/src/compat/rules/providers/cline-pass.kdl` declares default model `kimi-k3`. Environment keys: `CLINE_API_KEY`.
-- **Discovery replacement**: Successful authoritative discovery replaces fallback provider rows rather than retaining retired seed models.
-- Runtime manager: `clinePassModelManagerOptions` in `packages/catalog/src/provider-models/openai-compat.ts`.
 
 ## Command Code (`commandcode`)
 

@@ -2,7 +2,6 @@ import {
 	type CapturedHttpErrorResponse,
 	finalizeErrorMessage,
 	type RawHttpRequestDump,
-	rewriteClinePassError,
 	rewriteCopilotError,
 } from "../utils/http-inspector";
 import { formatErrorMessageWithRetryAfter } from "../utils/retry-after";
@@ -38,9 +37,6 @@ export async function formatMessage(error: unknown, opts: FormatMessageOptions =
 		: formatErrorMessageWithRetryAfter(error);
 	if (opts.provider === "github-copilot") {
 		message = rewriteCopilotError(message, error, opts.provider);
-	}
-	if (opts.provider === "cline-pass") {
-		message = rewriteClinePassError(message, opts.provider);
 	}
 	if (opts.provider === "ollama") {
 		message = rewriteOllamaToolCallJsonError(message);

@@ -41,7 +41,6 @@ export const KNOWN_HOSTS = {
 	zai: { providers: ["zai"], urlMarkers: ["api.z.ai"] },
 	/** URL-only: Zhipu BigModel endpoints are reached through custom providers. */
 	zhipu: { urlMarkers: ["open.bigmodel.cn"] },
-	kilo: { providers: ["kilo"], urlMarkers: ["api.kilo.ai"] },
 	alibabaDashscope: { urlMarkers: ["dashscope"] },
 	umans: { providers: ["umans"], urlMarkers: ["api.code.umans.ai"] },
 	xai: { providers: ["xai", "xai-oauth"], urlMarkers: ["api.x.ai"] },

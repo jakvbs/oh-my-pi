@@ -16,8 +16,7 @@ export type KnownApi =
 	| "bedrock-converse-stream"
 	| "google-generative-ai"
 	| "google-vertex"
-	| "ollama-chat"
-	| "apple-foundation-models";
+	| "ollama-chat";
 export type Api = KnownApi | (string & {});
 
 /** Catalog kinds used to isolate role-specific runners from session chat models. */
@@ -272,7 +271,6 @@ export type OpenAIReasoningDisableMode =
 	| "lowest-effort"
 	| "none-effort"
 	| "openrouter-enabled-false"
-	| "cline-enabled-false"
 	| "venice-disable-thinking"
 	| "zai-thinking-disabled"
 	| "qwen-enable-thinking-false"
@@ -442,12 +440,9 @@ export interface OpenAICompat {
 	vercelGatewayRouting?: VercelGatewayRouting;
 	/**
 	 * Provider-specific wire model-id transform applied to the base id, overriding
-	 * the provider-detected default. Discovery layers set this per model when the
-	 * upstream roster declares the id's namespace (e.g. ClinePass free-tier models
-	 * arrive pre-namespaced and use `"raw"`), so wire form follows data rather
-	 * than id shape.
+	 * the provider-detected default.
 	 */
-	wireModelIdMode?: "raw" | "cline-pass" | "firepass" | "fireworks" | "openrouter";
+	wireModelIdMode?: "raw" | "firepass" | "fireworks" | "openrouter";
 	/** Extra fields to include in request body (e.g. gateway routing hints for OpenClaw-style proxies). */
 	extraBody?: Record<string, unknown>;
 	/** Request-session header that should mirror the normalized prompt-cache key. Default: unset. */
@@ -959,7 +954,7 @@ export interface ResolvedOpenAISharedCompat {
 	clampOutputToModelMax: boolean;
 	openRouterRouting?: OpenAICompat["openRouterRouting"];
 	/** Provider-specific wire model-id transform applied to the base id. */
-	wireModelIdMode: "raw" | "cline-pass" | "firepass" | "fireworks" | "openrouter";
+	wireModelIdMode: "raw" | "firepass" | "fireworks" | "openrouter";
 	/** See {@link OpenAICompat.toolSchemaFlavor}. Read by both wire paths when converting tools. */
 	toolSchemaFlavor?: OpenAICompat["toolSchemaFlavor"];
 	/** Strip image inputs before encoding (text-only serving of a multimodal id). */

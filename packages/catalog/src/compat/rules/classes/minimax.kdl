@@ -7,13 +7,13 @@ class "minimax" {
 	}
 	// Replaces the MiniMax lineage branch in both OpenAI baselines.
 	reasoning-deltas-may-be-cumulative #true
-	on "aimlapi" "fireworks" "huggingface" "kilo" "nanogpt" "novita" "nvidia" \
+	on "aimlapi" "fireworks" "huggingface" "nanogpt" "novita" "nvidia" \
 		"opencode-go" "opencode-zen" "together" "venice" "wafer-serverless" "zenmux" {
 		family "m3" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}
 	}
-	on "amazon-bedrock" "fireworks" "huggingface" "kilo" \
+	on "amazon-bedrock" "fireworks" "huggingface" \
 		"minimax" "minimax-cn" "nanogpt" "novita" "nvidia" \
 		"ollama-cloud" "opencode-go" "opencode-zen" "openrouter" "together" "venice" "vercel-ai-gateway" \
 		"zenmux" {
@@ -46,7 +46,7 @@ class "minimax" {
 	on "amazon-bedrock" "ollama-cloud" priority=1 {
 		thinking-efforts "minimal" "low" "medium" "high"
 	}
-	on "kilo" "novita" {
+	on "novita" {
 		family "m1" {
 			thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 		}

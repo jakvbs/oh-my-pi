@@ -1,4 +1,3 @@
-import { toClinePassWireModelId } from "@oh-my-pi/pi-catalog/cline-pass-model-id";
 import type { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { toFirepassWireModelId, toFireworksWireModelId } from "@oh-my-pi/pi-catalog/fireworks-model-id";
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
@@ -379,12 +378,7 @@ export function applyOpenAIResponsesServiceTierCost(
  * so both are covered.
  */
 export function applyProviderReportedCost(model: Pick<Model, "provider">, usage: Usage, rawUsage: unknown): void {
-	if (
-		(model.provider !== "openrouter" && model.provider !== "cline-pass") ||
-		typeof rawUsage !== "object" ||
-		rawUsage === null
-	)
-		return;
+	if (model.provider !== "openrouter" || typeof rawUsage !== "object" || rawUsage === null) return;
 	let reportedCost = Reflect.get(rawUsage, "cost");
 	// BYOK turns run on the account's own provider key: `cost` carries only the
 	// credits charge OpenRouter bills the turn (its BYOK fee, plan-dependent and
@@ -565,8 +559,6 @@ export function applyWireModelIdTransform(
 	openrouterVariant?: string,
 ): string {
 	switch (mode) {
-		case "cline-pass":
-			return toClinePassWireModelId(baseId);
 		case "firepass":
 			return toFirepassWireModelId(baseId);
 		case "fireworks":
@@ -811,7 +803,6 @@ export type OpenAICompletionsParams = Omit<ChatCompletionCreateParamsStreaming, 
 export interface ChatCompletionsReasoningOptions {
 	reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	disableReasoning?: boolean;
-	thinkingBudgets?: Partial<Record<Effort, number>>;
 }
 
 export type OpenAICompatEndpoint = "chat-completions" | "responses";
@@ -1059,7 +1050,6 @@ function encodeChatCompletionsDisabledReasoning(
 			params.chat_template_kwargs = { ...params.chat_template_kwargs, thinking: false };
 			break;
 		case "openrouter-enabled-false":
-		case "cline-enabled-false":
 			params.reasoning = { enabled: false };
 			break;
 		case "venice-disable-thinking":
@@ -1217,18 +1207,6 @@ export function applyChatCompletionsReasoningParams(
 		hasTools: options?.hasTools,
 	});
 	applyChatCompletionsCompatPolicy(params, policy);
-	if (
-		model.provider !== "cline-pass" ||
-		!policy.reasoning.enabled ||
-		model.thinking?.mode !== "budget" ||
-		options?.reasoning === undefined
-	) {
-		return;
-	}
-	const budget = options.thinkingBudgets?.[options.reasoning] ?? model.thinking.effortBudgets?.[options.reasoning];
-	if (budget === undefined) return;
-	delete params.reasoning_effort;
-	params.reasoning = { ...params.reasoning, max_tokens: budget };
 }
 
 export function disableChatCompletionsReasoningForDialect(
@@ -1254,17 +1232,14 @@ function isZaiReasoningEffortDialect(_model: Model<"openai-completions">, compat
  * Provider-specific Chat Completions output clamp.
  *
  * Most OpenAI-compatible endpoints retain the conservative 64k ceiling from
- * {@link resolveOpenAIOutputTokenParam}. ClinePass, Z.AI/GLM-5.2 reasoning,
- * and native Moonshot K3 explicitly accept their full advertised model caps,
+ * {@link resolveOpenAIOutputTokenParam}. Z.AI/GLM-5.2 reasoning and native
+ * Moonshot K3 explicitly accept their full advertised model caps,
  * so those routes clamp to `model.maxTokens` instead.
  */
 export function resolveOpenAICompletionsOutputClamp(
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompat,
 ): number | undefined {
-	if (model.provider === "cline-pass") {
-		return model.maxTokens ?? OPENAI_MAX_OUTPUT_TOKENS;
-	}
 	if (isZaiReasoningEffortDialect(model, compat)) {
 		return model.maxTokens ?? OPENAI_MAX_OUTPUT_TOKENS;
 	}

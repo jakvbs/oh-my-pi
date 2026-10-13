@@ -1,4 +1,3 @@
-import { isBareIdReferenceProvider } from "../compat/behavior";
 import { isZeroCostXaiOAuthReference } from "../identity/reference";
 import { getBundledModels, getBundledProviders } from "../models";
 import type { Api, Model, ModelSpec } from "../types";
@@ -46,9 +45,7 @@ function getGlobalReferences(): Map<string, Model<Api>> {
 	for (const provider of getBundledProviders()) {
 		for (const model of getBundledModels(provider as Parameters<typeof getBundledModels>[0])) {
 			const candidate = model as Model<Api>;
-			// Gateway-specific metadata must remain provider-local when proxy
-			// discovery resolves references by bare model id.
-			if (!isBareIdReferenceProvider(candidate.provider) || isZeroCostXaiOAuthReference(candidate)) {
+			if (isZeroCostXaiOAuthReference(candidate)) {
 				continue;
 			}
 			const existing = references.get(candidate.id);

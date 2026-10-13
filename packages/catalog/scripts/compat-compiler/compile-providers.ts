@@ -56,7 +56,6 @@ const KNOWN_APIS = [
 	"google-generative-ai",
 	"google-vertex",
 	"ollama-chat",
-	"apple-foundation-models",
 ] as const satisfies readonly KnownApi[];
 type _MissingKnownApis = Exclude<KnownApi, (typeof KNOWN_APIS)[number]>;
 true satisfies _MissingKnownApis extends never ? true : ["KNOWN_APIS is missing KnownApi values", _MissingKnownApis];
@@ -74,7 +73,6 @@ export const PROVIDER_CATALOG_NODES: ReadonlySet<string> = new Set([
 	"default-model",
 	"env",
 	"allow-unauthenticated",
-	"automatic-default",
 	"dynamic-models-authoritative",
 	"skip-cross-provider-reference-fills",
 	"discovery",
@@ -374,10 +372,6 @@ function parseProvider(node: KdlNodeView): ParsedProvider | undefined {
 			case "allow-unauthenticated":
 				if (provider.allowUnauthenticated !== undefined) malformed(child);
 				provider.allowUnauthenticated = singleBoolean(child);
-				break;
-			case "automatic-default":
-				if (provider.automaticDefault !== undefined) malformed(child);
-				provider.automaticDefault = singleBoolean(child);
 				break;
 			case "dynamic-models-authoritative":
 				if (provider.dynamicModelsAuthoritative !== undefined) malformed(child);

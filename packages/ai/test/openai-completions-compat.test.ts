@@ -1272,8 +1272,8 @@ describe("kimi model detection via detectCompat", () => {
 	// `reasoning_effort`. The generic Kimi model-id match MUST NOT default
 	// proxies to "zai": doing so regressed #827 (opencode-go strips
 	// reasoning_effort under forced tool_choice) and the Fire Pass xhigh capture
-	// (#1199), and would mis-shape 14+ gateways (Fireworks, OpenCode, Kilo,
-	// NVIDIA, Together, Vercel, …). Hosts that genuinely speak zai pin
+	// (#1199), and would mis-shape 14+ gateways (Fireworks, OpenCode, NVIDIA,
+	// Together, Vercel, …). Hosts that genuinely speak zai pin
 	// `compat.thinkingFormat` per catalog entry (e.g. kimi-code, wafer-serverless).
 	it("reserves zai for native Kimi hosts and defaults proxies to OpenAI reasoning_effort", () => {
 		// Native Moonshot surface → z.ai binary thinking.
@@ -1288,15 +1288,6 @@ describe("kimi model detection via detectCompat", () => {
 		const opencodeK26 = kimiOpenCodeModel("kimi-k2.6").compat;
 		expect(opencodeK26.thinkingFormat).toBe("openai");
 		expect(opencodeK26.thinkingKeep).toBeUndefined();
-		const kiloKimi: Model<"openai-completions"> = buildModel({
-			...gpt4oMiniSpec,
-			api: "openai-completions",
-			provider: "kilo",
-			baseUrl: "https://api.kilo.ai/api/gateway",
-			id: "moonshotai/kimi-k2.6",
-			reasoning: true,
-		} as ModelSpec<"openai-completions">);
-		expect(kiloKimi.compat.thinkingFormat).toBe("openai");
 
 		// OpenRouter normalizes reasoning via its own object and keeps precedence
 		// over the generic Kimi id match.

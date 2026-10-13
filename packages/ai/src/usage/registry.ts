@@ -2,7 +2,6 @@ import type { Provider } from "../types";
 import type { CredentialRankingStrategy, UsageProvider } from "../usage";
 import { charmHyperUsageProvider } from "./charm-hyper";
 import { claudeRankingStrategy, claudeUsageProvider } from "./claude";
-import { clinePassUsageProvider } from "./cline-pass";
 import { commandCodeRankingStrategy, commandCodeUsageProvider } from "./commandcode";
 import { githubCopilotUsageProvider } from "./github-copilot";
 import { kimiRankingStrategy, kimiUsageProvider } from "./kimi";
@@ -24,7 +23,6 @@ export const DEFAULT_USAGE_PROVIDERS: readonly UsageProvider[] = [
 	ollamaUsageProvider,
 	ollamaCloudUsageProvider,
 	claudeUsageProvider,
-	clinePassUsageProvider,
 	zaiUsageProvider,
 	umansUsageProvider,
 	opencodeGoUsageProvider,

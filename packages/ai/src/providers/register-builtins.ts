@@ -17,7 +17,6 @@ import {
 import * as AnthropicProvider from "./anthropic";
 import * as AzureOpenAIResponsesProvider from "./azure-openai-responses";
 import * as BedrockProvider from "./amazon-bedrock";
-import * as AppleFoundationModelsProvider from "./apple-foundation-models";
 import * as GoogleProvider from "./google";
 import * as GoogleVertexProvider from "./google-vertex";
 import * as OllamaProvider from "./ollama";
@@ -244,11 +243,6 @@ export const streamOpenAICompletions = createProviderStream<"openai-completions"
 export const streamOpenAIResponses = createProviderStream<"openai-responses">(
 	(model, context, options) => OpenAIResponsesProvider.streamOpenAIResponses(model, context, options),
 	PROVIDER_HANDLED_STREAM_TIMEOUTS,
-);
-
-/** Stream Apple's on-device Foundation Model through the shared watchdog. */
-export const streamAppleFoundationModels = createProviderStream<"apple-foundation-models">((model, context, options) =>
-	AppleFoundationModelsProvider.streamAppleFoundationModels(model, context, options),
 );
 
 /** Stream Ollama with OpenAI-compatible idle timeout precedence. */

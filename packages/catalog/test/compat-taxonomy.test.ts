@@ -50,11 +50,6 @@ describe("classifyModel", () => {
 			family: "flash",
 			revision: "4.0.0",
 		});
-		expect(classifyModel("cline-pass", "deepseek-v4.1-flash")).toMatchObject({
-			class: "deepseek",
-			family: "flash",
-			revision: "4.1.0",
-		});
 		for (const provider of ["deepseek", "opencode-go"]) {
 			expect(classifyModel(provider, "deepseek-flash")).toEqual({
 				class: "deepseek",
@@ -143,10 +138,11 @@ describe("classifyModel", () => {
 	});
 
 	test("provider-specific override beats provider-agnostic classification", () => {
-		expect(classifyModel("kilo", "qwq-32b")).toMatchObject({
-			class: "qwen",
-			logicalId: "qwen/qwq-32b",
+		expect(classifyModel("openrouter", "kimi-k2-thinking")).toMatchObject({
+			class: "kimi",
+			logicalId: "moonshotai/kimi-k2-thinking",
 		});
+		expect(classifyModel("custom", "kimi-k2-thinking").logicalId).toBe("kimi-k2");
 	});
 
 	test("reviewed Bonsai basenames and quantized namespaces retain their wire id and Qwen generation", () => {

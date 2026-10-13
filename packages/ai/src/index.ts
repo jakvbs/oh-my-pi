@@ -23,7 +23,6 @@ export * from "./providers/anthropic-state";
 export type * from "./providers/anthropic-client";
 export * from "./providers/anthropic-user-profiles";
 export * from "./providers/anthropic-slow-mode";
-export type * from "./providers/apple-foundation-models";
 export type * from "./providers/azure-openai-responses";
 export type * from "./providers/google";
 export type * from "./providers/google-vertex";

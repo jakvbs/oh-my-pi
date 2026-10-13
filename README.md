@@ -286,7 +286,7 @@ Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google V
 
 Subscription-routed. `/login` attaches the session.
 
-GitHub Copilot `oauth` · Kimi Code `plan` · Moonshot · Z.AI / GLM Coding Plan `plan` · Qianfan · Umans `plan` · NanoGPT · Novita · Venice · Kilo · ZenMux · OpenCode Go · OpenCode Zen
+GitHub Copilot `oauth` · Kimi Code `plan` · Moonshot · Z.AI / GLM Coding Plan `plan` · Qianfan · Umans `plan` · NanoGPT · Novita · Venice · ZenMux · OpenCode Go · OpenCode Zen
 
 ### Run it yourself
 

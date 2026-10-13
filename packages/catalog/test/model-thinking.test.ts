@@ -472,24 +472,6 @@ describe("model thinking derivation", () => {
 		]);
 		expect(zenOther.thinking?.requiresEffort).toBeUndefined();
 
-		// Other hosts proxying an ox-alpha SKU expose their own vocabularies and
-		// must not inherit the gateway ladder.
-		const kiloOxAlpha = createModel({
-			id: "stealth/ox-alpha",
-			api: "openai-completions",
-			provider: "kilo",
-			baseUrl: "https://api.kilo.ai/api/gateway",
-			thinking: staleThinking,
-		});
-		expect(getSupportedEfforts(kiloOxAlpha)).toEqual([
-			Effort.Minimal,
-			Effort.Low,
-			Effort.Medium,
-			Effort.High,
-			Effort.XHigh,
-		]);
-		expect(kiloOxAlpha.thinking?.requiresEffort).toBeUndefined();
-
 		// The name match needs a trailing boundary too: "Ox Alphabet" merely
 		// shares the prefix and must keep its shipped ladder.
 		const oxAlphabet = createModel({

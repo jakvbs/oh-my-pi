@@ -3,7 +3,7 @@
 class "qwen" {
 	// Groq owns its Qwen effort ladder in providers/groq.kdl.
 	on "aiand" "aimlapi" "amazon-bedrock" "huggingface" \
-		"kilo" "nanogpt" "novita" "nvidia" "ollama-cloud" "openrouter" "synthetic" \
+		"nanogpt" "novita" "nvidia" "ollama-cloud" "openrouter" "synthetic" \
 		"together" "venice" "wafer-serverless" "zenmux" {
 		thinking-efforts "minimal" "low" "medium" "high"
 	}
@@ -24,7 +24,7 @@ class "qwen" {
 	on "fireworks" "umans" "vercel-ai-gateway" {
 		thinking-efforts "minimal" "low" "medium" "high" "xhigh"
 	}
-	on "kilo" "nanogpt" "novita" "nvidia" "openrouter" {
+	on "nanogpt" "novita" "nvidia" "openrouter" {
 		// residue: hyphen-3-generation thinking SKUs (base/vl/next/omni) are
 		// reasoning-locked; `:thinking` route variants of the dotted 3.x
 		// generations stay out (they accept thinking-off).

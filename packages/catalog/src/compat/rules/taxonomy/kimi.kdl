@@ -19,7 +19,6 @@ class "kimi" {
     family "k3" glob="k3"
     family "k3" glob="k3-256k"
 
-    override id="kilo-kimi-k2-thinking-product" provider="kilo" model="kimi-k2-thinking" logical="moonshotai/kimi-k2-thinking" class="kimi" rationale="Oracle exposes this independently priced product rather than an effort route" provenance="fixtures/llm-oracle/catalog/models.normalized.json"
     override id="openrouter-kimi-k2-thinking-product" provider="openrouter" model="kimi-k2-thinking" logical="moonshotai/kimi-k2-thinking" class="kimi" rationale="Oracle exposes this independently priced product rather than an effort route" provenance="fixtures/llm-oracle/catalog/models.normalized.json"
     override id="vercel-kimi-k2-thinking-product" provider="vercel-ai-gateway" model="kimi-k2-thinking" logical="moonshotai/kimi-k2-thinking" class="kimi" rationale="Oracle exposes this independently priced product rather than an effort route" provenance="fixtures/llm-oracle/catalog/models.normalized.json"
 }

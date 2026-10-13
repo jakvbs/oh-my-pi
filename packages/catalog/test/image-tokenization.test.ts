@@ -54,8 +54,6 @@ describe("resolveImageTokenization", () => {
 		for (const [provider, id] of [
 			["openrouter", "~anthropic/claude-opus-latest"],
 			["openrouter", "~anthropic/claude-sonnet-latest"],
-			["kilo", "~anthropic/claude-opus-latest"],
-			["kilo", "~anthropic/claude-sonnet-latest"],
 			["nanogpt", "anthropic/claude-opus-latest"],
 			["nanogpt", "anthropic/claude-sonnet-latest"],
 		] as const) {

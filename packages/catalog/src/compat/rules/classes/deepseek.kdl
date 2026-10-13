@@ -2,13 +2,13 @@
 
 class "deepseek" {
 	on "aiand" "aimlapi" "baseten" "deepseek" "fireworks" \
-		"huggingface" "kilo" "nanogpt" "novita" "nvidia" "opencode-go" "opencode-zen" "together" \
+		"huggingface" "nanogpt" "novita" "nvidia" "opencode-go" "opencode-zen" "together" \
 		"venice" "wafer-serverless" "zenmux" {
 		family "pro" {
 			thinking-efforts "low" "high" "max"
 		}
 	}
-	on "aiand" "aimlapi" "deepseek" "fireworks" "gmi-cloud" "huggingface" "kilo" \
+	on "aiand" "aimlapi" "deepseek" "fireworks" "gmi-cloud" "huggingface" \
 		"nanogpt" "novita" "nvidia" "ollama-cloud" "opencode-go" "opencode-zen" "openrouter" \
 		"together" "venice" "wafer-serverless" "zenmux" {
 		family "flash" {

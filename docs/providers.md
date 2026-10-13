@@ -26,7 +26,7 @@ Availability is a fast configuration check, not a credential validation request:
 
 `disabledProviders` is checked _before_ credentials. If a provider ID is disabled, no stored key, OAuth session, environment variable, `.env` entry, or `models.yml` `apiKey` will make it selectable — the provider's models are dropped from availability regardless of credentials. Removing the ID from the effective list restores them.
 
-Implicit `ollama` and `lm-studio` discovery is keyless by default; implicit `llama.cpp` is keyless when no authentication is configured. Apple Foundation Models is also keyless on supported Apple Silicon systems. See [Built-in local engines](#built-in-local-engines).
+Implicit `ollama` and `lm-studio` discovery is keyless by default; implicit `llama.cpp` is keyless when no authentication is configured. See [Built-in local engines](#built-in-local-engines).
 
 ## Credentials and precedence
 
@@ -56,8 +56,6 @@ Outside a session, `omp login [<provider>]` runs the same login from the termina
 For headless or remote setups backed by a shared auth broker, the CLI exposes `omp auth-broker login <provider>` / `omp auth-broker logout` (and `status`, `list`, `import`, `migrate`). See [Secrets and credentials](./secrets.md) for the broker model.
 
 When a model has no credentials, `omp` tells you to run `/login` or set the provider's environment variable.
-
-For ClinePass, set `CLINE_API_KEY` or run `/login cline-pass` to open the Cline dashboard and validate a newly created API key against `/users/me`, without a completion probe or subscription-quota charge. OMP refreshes membership from Cline's public recommended-models endpoint and bundles reviewed Cline metadata for offline startup. New live IDs are enriched from upstream references or use conservative metadata without invented reasoning controls. `omp usage` reports five-hour, weekly, and monthly quota windows. Free-tier models are marked `(free)` and use the same key; subscription models show API-equivalent reference pricing, while streamed gateway cost is authoritative for the actual charge. Requests mirror Cline CLI client headers and a stable per-session task ID; reasoning controls remain model-specific.
 
 For Command Code, set `COMMAND_CODE_API_KEY` or run `/login commandcode`; login checks the key against Command Code's `/alpha/whoami` endpoint and rejects it only on a 401, as the Command Code CLI does, so a 403 or an unreachable check keeps the key. Claude models use the Anthropic Messages endpoint, the ten GPT models use the OpenAI Responses endpoint, and every other model uses Chat Completions, the same split the Command Code CLI uses. Thinking levels, image input, output limits, and prices follow the Command Code CLI's model registry; Claude Sonnet 5.5, which that registry does not list yet, takes them from Anthropic's catalog. The GPT models can run hosted web search, but not hosted image generation, which Command Code does not serve. TypeSafe's `typesafe/jev` decision model is available to the `judge` role. `omp usage`, `/usage`, and the status line show the credit balance, plus the five-hour and weekly windows on plans that have them. These figures come from the account endpoints the Command Code CLI uses; the Provider API docs do not document them.
 
@@ -135,7 +133,6 @@ The variables below supply credentials after runtime/config overrides and stored
 | `cloudflare-ai-gateway`          | `CLOUDFLARE_AI_GATEWAY_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_GATEWAY_ID` |
 | `cloudflare-workers-ai`          | `CLOUDFLARE_API_TOKEN`, then `CLOUDFLARE_AUTH_TOKEN`, + `CLOUDFLARE_ACCOUNT_ID` |
 | `litellm`                        | `LITELLM_API_KEY`; optional `LITELLM_BASE_URL` for the proxy endpoint         |
-| `kilo`                           | `KILO_API_KEY`                                                                |
 | `zai`                            | `ZAI_API_KEY`                                                                 |
 | `zenmux`                         | `ZENMUX_API_KEY`                                                              |
 | `umans`                          | `UMANS_AI_CODING_PLAN_API_KEY`                                                |
@@ -145,7 +142,6 @@ The variables below supply credentials after runtime/config overrides and stored
 | `sakana`                         | `SAKANA_API_KEY`, then `FUGU_API_KEY`                                         |
 | `aimlapi`                        | `AIMLAPI_API_KEY`                                                             |
 | `opencode-zen`, `opencode-go`    | `OPENCODE_API_KEY`                                                            |
-| `cline-pass`                     | `CLINE_API_KEY`                                                               |
 | `firepass`                       | `FIREPASS_API_KEY`                                                            |
 | `wafer-serverless`               | `WAFER_SERVERLESS_API_KEY`                                                    |
 | `ollama-cloud`                   | `OLLAMA_CLOUD_API_KEY`                                                        |
@@ -212,7 +208,7 @@ Ollama, llama.cpp, and LM Studio are discovered automatically without needing a 
 | `llama.cpp` | `LLAMA_CPP_BASE_URL`, else `http://127.0.0.1:8080`                                | Keyless unless authentication is configured.    |
 | `lm-studio` | `LM_STUDIO_BASE_URL`, else `http://127.0.0.1:1234/v1`                             | Keyless by default.                             |
 
-Implicit Ollama and llama.cpp models use `openai-responses`; LM Studio uses `openai-completions`. On macOS arm64, `apple` also probes the in-process Apple Foundation Models bridge (`local://apple-foundation-models`). It offers `apple/on-device` only when the bridge reports the model usable; an ineligible device, disabled Apple Intelligence, or build without the bridge yields no models. Its on-device context can be too small for the standard prompt plus project instructions, so OMP does not auto-select it; use `--model apple/on-device` or `/model` to opt in.
+Implicit Ollama and llama.cpp models use `openai-responses`; LM Studio uses `openai-completions`.
 
 These implicit engines are **skipped** when:
 
