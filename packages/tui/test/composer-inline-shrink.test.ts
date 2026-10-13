@@ -26,6 +26,18 @@ class InlineWidget implements Component {
 	}
 }
 
+/** An assistant reply that grows while streaming and retires once finalized. */
+class StreamedBlock implements Component {
+	rows = 0;
+	finalized = false;
+	render(): readonly string[] {
+		return Array.from({ length: this.rows }, (_, i) => `Reply row ${i}`);
+	}
+	isTranscriptBlockFinalized(): boolean {
+		return this.finalized;
+	}
+}
+
 interface Harness {
 	terminal: VirtualTerminal;
 	scheduler: VirtualRenderScheduler;
@@ -448,6 +460,28 @@ describe("composer inline shrink (#11007)", () => {
 		const view = h.terminal.getViewport().map(row => Bun.stripANSI(row).trimEnd());
 		expect(view.findIndex(row => row.includes("EDITOR"))).toBe(ROWS - 1);
 		expect(view.filter(row => row.startsWith("Tool row "))).toHaveLength(4);
+		h.composer.stop();
+	});
+
+	it("keeps every row of a block in scrollback or on screen while turn chrome streams the answer", async () => {
+		const rows = 12;
+		const card = ["CARD top", "CARD line 1", "CARD line 2", "CARD bottom"];
+		const h = makeHarness(COLUMNS, rows, 40);
+		await h.scheduler.settle(h.terminal);
+		h.hud.rows = 3;
+		h.transcript.addChild({ render: () => card });
+		const reply = new StreamedBlock();
+		h.transcript.addChild(reply);
+		const missing: string[] = [];
+		for (let step = 0; step <= rows; step++) {
+			reply.rows = step;
+			reply.finalized = step === rows;
+			h.composer.ui.requestRender();
+			await h.scheduler.settle(h.terminal);
+			const buffer = h.terminal.getScrollBuffer().map(row => Bun.stripANSI(row).trimEnd());
+			for (const row of card) if (buffer.filter(line => line === row).length !== 1) missing.push(`${step}: ${row}`);
+		}
+		expect(missing).toEqual([]);
 		h.composer.stop();
 	});
 });
