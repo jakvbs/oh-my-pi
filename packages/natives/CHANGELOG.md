@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Removed the unused Apple Foundation Models bridge, its native exports, and its dedicated Swift build toolchains. Native OAuth callbacks remain supported.
+
 ## [18.10.0] - 2026-10-12
 
 ### Added

@@ -4,9 +4,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { verifyHostAddonLoads } from "../../../scripts/bazel-natives";
 import { detectHostAvx2Support, resolveLocalHostAddon } from "../../../scripts/host-detect";
+import * as natives from "../native/index.js";
 import { checkGeneratedBindings, generateEnumExports, nativeExportNames } from "../scripts/gen-enums";
 
 const nativeDir = path.resolve(import.meta.dir, "../native");
+
+test("native OAuth remains available without Apple Foundation Models exports", () => {
+	expect(typeof natives.NativeOAuthCallback).toBe("function");
+	for (const name of ["appleFmAvailability", "appleFmGenerate", "appleFmCancel"]) {
+		expect(name in natives).toBe(false);
+	}
+});
 
 test("the host addon implements declared exports and rejects a removed AST export", async () => {
 	const addon = path.join(

@@ -1,6 +1,8 @@
 # Paths the fork removed on purpose. One path per line, relative to the repo root.
 # scripts/sync-upstream.ts deletes anything upstream re-adds under them;
 # scripts/check-fork-removed.ts fails while any of them exists.
+bazel/toolchains/swift
+crates/pi-natives/src/applefm
 crates/pi-natives/src/desktop
 crates/pi-natives/tools/cache
 crates/pi-voice

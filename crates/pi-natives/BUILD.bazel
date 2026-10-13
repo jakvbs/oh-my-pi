@@ -1,6 +1,5 @@
 load("@crates//:defs.bzl", "aliases", "all_crate_deps")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_shared_library", "rust_test")
-load("//bazel/toolchains/swift:defs.bzl", "applefm_bridge")
 load(":darwin_helper.bzl", "darwin_helper")
 
 package(default_visibility = ["//visibility:public"])
@@ -29,21 +28,6 @@ genrule(
 darwin_helper(
     name = "oauth_callback_darwin_helper",
     src = "src/oauth_callback/darwin-helper.m",
-)
-
-# Apple Foundation Models bridge (src/applefm/build-bridge.sh): a bridge.swift
-# dylib built with the //bazel/toolchains/swift toolchain (host Xcode on mac
-# exec hosts, pinned swift.org Swift + @macos_sdk on linux ones), else an empty
-# file. The addon embeds it as compile data and dlopens it only on macOS 27+.
-# Mac hosts key the action on the detected toolchain's fingerprint
-# (toolchain.txt), linux hosts on the pinned toolchain's files, so cached
-# outputs never cross toolchains. build.rs does the same for cargo builds.
-applefm_bridge(
-    name = "applefm_bridge",
-    src = "src/applefm/bridge.swift",
-    out = "libomp_applefm.dylib",
-    script = "src/applefm/build-bridge.sh",
-    target_compatible_with = ["@platforms//os:macos"],
 )
 
 rust_binary(
@@ -91,7 +75,6 @@ rust_shared_library(
         "fixtures/hpatch/*",
     ]) + select({
         "@platforms//os:macos": [
-            ":applefm_bridge",
             ":oauth_callback_darwin_helper",
         ],
         "//conditions:default": [":oauth_callback_relay"],
@@ -101,7 +84,6 @@ rust_shared_library(
     proc_macro_deps = all_crate_deps(proc_macro = True),
     rustc_env = select({
         "@platforms//os:macos": {
-            "OMP_APPLEFM_BRIDGE": "$(execpath :applefm_bridge)",
             "OMP_OAUTH_DARWIN_HELPER": "$(execpath :oauth_callback_darwin_helper)",
             "OMP_SYNTAX_SET": "$(execpath :syntax_set)",
         },
