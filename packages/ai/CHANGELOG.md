@@ -9,9 +9,9 @@
 - Removed the GitLab Duo providers (`gitlab-duo`, `gitlab-duo-agent`, `gitlab-duo-agent` API), their login flows, Duo Workflow transport and model discovery.
 - Removed the Cursor provider (`cursor`, `cursor-agent` API): login, discovery, usage, exec/MCP bridge, `execHandlers`/`cursorExecHandlers`/`cursorOnToolResult` stream options, `kCursorExecResolved`, `CursorHistoryPayload`, and the catalog protobuf tooling it alone used.
 - Removed the Google Antigravity and Google Gemini CLI providers (`google-antigravity`, `google-gemini-cli`, `google-gemini-cli` API): their Cloud Code Assist transport, OAuth logins, model discovery, usage reporting, image generation, `antigravityEndpointMode` stream option and `providers.antigravityEndpoint` setting.
-- Removed the Muse Code and Qwen Portal providers (`muse-code`, `qwen-portal`), their logins, transports, usage reporting and the `providers.muse-code.storeResponses` setting.
+- Removed the Qwen Portal provider (`qwen-portal`), its login and model discovery.
 - Removed the Alibaba Coding Plan, QwenCloud Token Plan, Xiaomi MiMo and MiniMax Token Plan providers (`alibaba-coding-plan`, `alibaba-token-plan`, `xiaomi`, `xiaomi-token-plan-ams`, `xiaomi-token-plan-cn`, `xiaomi-token-plan-sgp`, `minimax-code`, `minimax-code-cn`), their logins, model discovery and usage reporting.
-- Removed the Z.AI Coding Plan, Zhipu Coding Plan, Snowflake Cortex and CoreWeave providers (`zai-coding-plan`, `zhipu-coding-plan`, `snowflake`, `coreweave`) and the Z.AI OAuth sign-in; the plain `zai` API-key provider stays.
+- Removed the Zhipu Coding Plan, Snowflake Cortex and CoreWeave providers (`zhipu-coding-plan`, `snowflake`, `coreweave`), their logins, model discovery and usage reporting.
 - Removed the Kilo, ClinePass and Apple Foundation Models providers (`kilo`, `cline-pass`, `apple`, `apple-foundation-models` API) with the `reference-isolated-providers` and `automatic-default` catalog axes they alone used.
 
 ## [18.9.2] - 2026-10-11
