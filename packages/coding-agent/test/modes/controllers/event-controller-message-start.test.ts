@@ -5,6 +5,7 @@ import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { UiHelpers } from "@oh-my-pi/pi-coding-agent/modes/utils/ui-helpers";
 import type { CustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
 import type { Component } from "@oh-my-pi/pi-tui";
+import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { createInteractiveModeContext } from "../../helpers/interactive-mode-context";
 
 beforeAll(() => {
@@ -267,5 +268,31 @@ describe("EventController IRC expiry", () => {
 
 		expect(chatContainer.children).toHaveLength(1);
 		expect(requestRender).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("EventController message_start (custom role during a streaming reply)", () => {
+	it("mounts a displayOnly message above the streaming reply, where the session file stores it", async () => {
+		const reply = new AssistantMessageComponent();
+		const ctx = createInteractiveModeContext({ session: { isStreaming: true }, streamingComponent: reply });
+		ctx.chatContainer.addChild(reply);
+		const helpers = new UiHelpers(ctx);
+		ctx.addMessageToChat = vi.fn((message, options) => helpers.addMessageToChat(message, options));
+		const controller = new EventController(ctx);
+		const report: CustomMessage<undefined> = {
+			role: "custom",
+			customType: "progress-report",
+			content: "Agent read the workflow sources",
+			display: true,
+			details: undefined,
+			excludeFromContext: true,
+			timestamp: 1,
+		};
+
+		await controller.handleEvent({ type: "message_start", message: report });
+
+		expect(ctx.chatContainer.children).toHaveLength(2);
+		expect(ctx.chatContainer.children[0]!.render(80).join("\n")).toContain("Agent read the workflow sources");
+		expect(ctx.chatContainer.children[1]).toBe(reply);
 	});
 });
