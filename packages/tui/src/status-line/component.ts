@@ -158,7 +158,6 @@ const BRAND_FADE_FRAME_MS = 40;
  * out: their monthly row is not the session quota.
  */
 const MONTHLY_SUBSCRIPTION_PROVIDERS: Record<string, true> = {
-	cursor: true,
 	"opencode-go": true,
 };
 
@@ -2243,15 +2242,6 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		let daily: { percent: number; resetMinutes?: number } | undefined;
 		let sevenDay: { percent: number; resetHours?: number } | undefined;
 		let monthly: { percent: number; resetHours?: number } | undefined;
-		let monthlyPriority = Number.POSITIVE_INFINITY;
-		const cursorMonthlyPriority = (limitId: unknown): number => {
-			// When /auth/usage and /api/usage-summary are merged, prefer the personal
-			// dashboard rails over legacy per-model request fractions.
-			if (limitId === "cursor:usd:individual-auto") return 0;
-			if (limitId === "cursor:usd:individual-plan" || limitId === "cursor:usd:individual-overall") return 1;
-			if (typeof limitId === "string" && limitId.startsWith("cursor:usd:individual-")) return 2;
-			return 3;
-		};
 		for (const candidate of selectedGroup.candidates) {
 			if (candidate.windowClass === "5h" && !fiveHour) {
 				fiveHour = {
@@ -2280,18 +2270,14 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 							: undefined,
 				};
 			}
-			if (candidate.windowClass === "monthly") {
-				const priority = cursorMonthlyPriority(candidate.id);
-				if (priority < monthlyPriority) {
-					monthly = {
-						percent: candidate.fraction * 100,
-						resetHours:
-							typeof candidate.resetsAt === "number"
-								? Math.max(0, Math.round((candidate.resetsAt - now) / 3_600_000))
-								: undefined,
-					};
-					monthlyPriority = priority;
-				}
+			if (candidate.windowClass === "monthly" && !monthly) {
+				monthly = {
+					percent: candidate.fraction * 100,
+					resetHours:
+						typeof candidate.resetsAt === "number"
+							? Math.max(0, Math.round((candidate.resetsAt - now) / 3_600_000))
+							: undefined,
+				};
 			}
 		}
 		if (!fiveHour && !daily && !sevenDay && !monthly && !resetCredits) return null;

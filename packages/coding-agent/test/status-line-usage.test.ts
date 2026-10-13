@@ -476,7 +476,7 @@ describe("usage status-line segment", () => {
 		expect(content).not.toContain("7d");
 	});
 
-	it("renders monthly Cursor usage when five-hour and seven-day windows are absent", () => {
+	it("renders monthly usage when five-hour and seven-day windows are absent", () => {
 		const result = renderSegment("usage", {
 			usage: { monthly: { percent: 1.88, resetHours: 743 } },
 		} as unknown as SegmentContext);
@@ -484,69 +484,12 @@ describe("usage status-line segment", () => {
 
 		expect(result.visible).toBe(true);
 		expect(content).toContain("mo");
-		// Match Cursor web dashboard flooring (1.88 → 1%), not Math.round → 2%.
+		// Match dashboard flooring (1.88 → 1%), not Math.round → 2%.
 		expect(content).toContain("1%");
 		expect(content).not.toContain("2%");
 		expect(content).toContain("30d 23h");
 		expect(content).not.toContain("5h");
 		expect(content).not.toContain("7d");
-	});
-
-	it("keeps monthly Cursor personal usage from the active provider", async () => {
-		const component = makeComponent(
-			[
-				{
-					provider: "cursor",
-					limits: [
-						{
-							id: "cursor:usd:individual-plan",
-							scope: { windowId: "monthly" },
-							window: { id: "monthly", resetsAt: Date.now() + 743 * 3_600_000 },
-							amount: { usedFraction: 0.132 },
-						},
-					],
-				},
-			],
-			{ provider: "cursor" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-
-		expect(content).toContain("mo");
-		expect(content).toContain("13%");
-	});
-
-	it("prefers Cursor personal dashboard rails over legacy monthly request limits", async () => {
-		const component = makeComponent(
-			[
-				{
-					provider: "cursor",
-					limits: [
-						{
-							id: "cursor:requests:gpt-4",
-							scope: { windowId: "monthly" },
-							amount: { usedFraction: 0.9 },
-						},
-						{
-							id: "cursor:usd:individual-auto",
-							scope: { windowId: "monthly" },
-							amount: { usedFraction: 0.0185 },
-						},
-					],
-				},
-			],
-			{ provider: "cursor" },
-		);
-
-		component.refreshUsageInBackground();
-		await flushUsageRefresh();
-		const content = stripVTControlCharacters(component.getTopBorder(200).content);
-
-		expect(content).toContain("mo");
-		expect(content).toContain("1%");
-		expect(content).not.toContain("90%");
 	});
 
 	it("renders all three OpenCode Go windows including monthly", async () => {

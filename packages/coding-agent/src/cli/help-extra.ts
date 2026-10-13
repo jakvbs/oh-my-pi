@@ -31,7 +31,6 @@ export function getExtraHelpText(): string {
   UMANS_WEBSEARCH_PROVIDER    - Umans gateway web search backend (native or exa)
   MINIMAX_API_KEY            - MiniMax models
   OPENCODE_API_KEY           - OpenCode Zen/OpenCode Go models
-  CURSOR_ACCESS_TOKEN        - Cursor AI models
   COMMAND_CODE_API_KEY       - Command Code Provider API models
   CHARM_HYPER_API_KEY        - Charm Hyper inference gateway models
   AI_GATEWAY_API_KEY         - Vercel AI Gateway
