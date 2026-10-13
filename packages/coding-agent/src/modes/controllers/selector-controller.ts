@@ -92,13 +92,11 @@ import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
 import { getAssistantMessageLinkTargets } from "@oh-my-pi/pi-tui/prompt/interactive-context-helpers";
 import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "@oh-my-pi/pi-tui/overlays/advisor-config";
-import { createAgentsHubDeps } from "../agents-hub-deps";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { collapseSharedUsageReports } from "@oh-my-pi/pi-tui/overlays/usage-display";
 import { limitMatchesActiveAccount } from "../../slash-commands/helpers/active-oauth-account";
 import { AgentHubOverlayComponent } from "@oh-my-pi/pi-tui/overlays/agent-hub";
 import { createAgentHubRuntime } from "../agent-hub-runtime";
-import { AgentsHubComponent } from "@oh-my-pi/pi-tui/overlays/agents-hub";
 import { CopySelectorComponent } from "@oh-my-pi/pi-tui/overlays/copy-selector";
 import { ExtensionDashboard } from "@oh-my-pi/pi-tui/overlays/extensions/extension-dashboard";
 import { listLiveToolRecords, liveToolRecordFromSession } from "@oh-my-pi/pi-tui/overlays/extensions/live-tool-session";
@@ -143,7 +141,6 @@ import {
 	cfgStatusLineTransparent,
 	cfgTreeFilterMode,
 } from "../settings";
-import { cfgTaskAgentModelOverrides } from "../../task/settings";
 
 interface ModelOverlayModules {
 	ModelHubComponent: typeof ModelHubComponentType;
@@ -181,7 +178,7 @@ function loadProviderAuthUi(): ProviderAuthUiModules {
 }
 
 /** Menus that open at most once: a repeat request focuses the open one. */
-type MenuKind = "settings" | "model-picker" | "model-hub" | "agents-dashboard" | "agent-hub" | "usage-dashboard";
+type MenuKind = "settings" | "model-picker" | "model-hub" | "agent-hub" | "usage-dashboard";
 
 /** An open menu: registered when the request runs, filled once its component mounts. */
 interface OpenMenu {
@@ -654,49 +651,6 @@ export class SelectorController {
 	}
 
 	/**
-	 * Fullscreen agents hub on the alternate screen (the /models idiom): scope
-	 * sidebar, agent rows, and chip strips that dive into the model browser.
-	 */
-	async showAgentsDashboard(): Promise<void> {
-		if (this.#focusOpenMenu("agents-dashboard")) return;
-		const menu = this.#claimMenu("agents-dashboard");
-		const activeModel = this.ctx.session.model;
-		const activeModelPattern = activeModel ? `${activeModel.provider}/${activeModel.id}` : undefined;
-		const defaultModelPattern = this.ctx.settings.getModelRole("default");
-		let closed = false;
-		const done = () => {
-			if (closed) return;
-			closed = true;
-			hub?.dispose();
-			menu.handle?.hide();
-			this.#releaseMenu("agents-dashboard", menu);
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
-		let hub: AgentsHubComponent;
-		try {
-			hub = await AgentsHubComponent.create(
-				this.ctx.ui,
-				createAgentsHubDeps(
-					getProjectDir(),
-					this.ctx.settings,
-					this.ctx.session.modelRegistry,
-					() => this.ctx.session.effectiveExtensionRoots,
-					activeModelPattern,
-					defaultModelPattern,
-					model => this.ctx.session.effectiveServiceTier(model),
-				),
-				{ onCancel: () => done() },
-			);
-		} catch (error) {
-			// A dashboard that never opened must not block the next `/agents`.
-			this.#releaseMenu("agents-dashboard", menu);
-			throw error;
-		}
-		this.#mountMenu(menu, hub, () => this.#showFullscreenMenu(hub));
-	}
-
-	/**
 	 * Apply the side effects of a setting change the user made in this process
 	 * (settings selector, approved `cfg://` writes); the value is already stored.
 	 * Only `defaultThinkingLevel` needs this: it also switches the live session,
@@ -785,10 +739,6 @@ export class SelectorController {
 		const quickRoleOrder = cfgCycleOrder.get(this.ctx.settings);
 		const quickRoleCycle = this.ctx.session.getRoleModelCycle(quickRoleOrder);
 		const currentSelector = current ? `${current.provider}/${current.id}` : undefined;
-		// Preselect the effective Task model in task mode: the configured override,
-		// else the session model (the bundled task agent inherits it by default).
-		const taskOverride = cfgTaskAgentModelOverrides.get(this.ctx.settings).task;
-		const taskSelector = (Array.isArray(taskOverride) ? taskOverride[0] : taskOverride) ?? currentSelector;
 		let closed = false;
 		const done = () => {
 			if (closed) return;
@@ -829,23 +779,11 @@ export class SelectorController {
 						this.ctx.showError(error instanceof Error ? error.message : String(error));
 					}
 				},
-				onPickTask: (_model, selector) => {
-					// Session-only: layer the Task override onto the runtime settings
-					// layer so it is never persisted, mirroring the session-model pick.
-					cfgTaskAgentModelOverrides.override(this.ctx.settings, {
-						...cfgTaskAgentModelOverrides.get(this.ctx.settings),
-						task: selector,
-					});
-					this.ctx.showStatus(`Task subagent model (session-only): ${selector}. Use /agents to persist.`);
-					done();
-				},
 				onCancel: done,
 			},
 			{
 				currentContextTokens,
 				currentSelector,
-				taskModeKeys: this.ctx.keybindings.getKeys("app.model.selectTemporary"),
-				taskSelector,
 				quickRoles: quickRoleCycle?.models,
 				quickRoleOrder,
 				currentQuickRole: quickRoleCycle?.models[quickRoleCycle.currentIndex]?.role,

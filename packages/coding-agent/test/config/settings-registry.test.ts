@@ -15,7 +15,7 @@ import {
 } from "@oh-my-pi/pi-coding-agent/session/settings";
 import { cfgSteeringMode } from "@oh-my-pi/pi-coding-agent/modes/settings";
 import { cfgEditFuzzyMatch, cfgEditModelVariants } from "@oh-my-pi/pi-coding-agent/edit/settings";
-import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
+import { cfgGrepContextAfter } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import { cfgToolsIntentTracing } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import { cfgModelRoles } from "@oh-my-pi/pi-coding-agent/config/model-settings";
 import { cfgSearxngBasicPassword, cfgSearxngEndpoint } from "@oh-my-pi/pi-coding-agent/web/settings";
@@ -220,22 +220,22 @@ describe("settings registry", () => {
 
 	it("releases a soft-pinned default on a global write or unset of that setting", () => {
 		const written = Settings.isolated();
-		cfgTaskMaxConcurrency.pinDefault(written);
-		expect(cfgTaskMaxConcurrency.provenance(written)).toBe("runtime");
-		cfgTaskMaxConcurrency.set(written, 9);
-		expect(cfgTaskMaxConcurrency.get(written)).toBe(9);
-		expect(cfgTaskMaxConcurrency.provenance(written)).toBe("global");
+		cfgGrepContextAfter.pinDefault(written);
+		expect(cfgGrepContextAfter.provenance(written)).toBe("runtime");
+		cfgGrepContextAfter.set(written, 9);
+		expect(cfgGrepContextAfter.get(written)).toBe(9);
+		expect(cfgGrepContextAfter.provenance(written)).toBe("global");
 
 		const unset = Settings.isolated();
-		cfgTaskMaxConcurrency.pinDefault(unset);
-		cfgTaskMaxConcurrency.unset(unset);
-		expect(cfgTaskMaxConcurrency.provenance(unset)).toBe("default");
+		cfgGrepContextAfter.pinDefault(unset);
+		cfgGrepContextAfter.unset(unset);
+		expect(cfgGrepContextAfter.provenance(unset)).toBe("default");
 
 		// An explicit runtime override is not a soft pin: a global write stays beneath it.
 		const overridden = Settings.isolated();
-		cfgTaskMaxConcurrency.override(overridden, 4);
-		cfgTaskMaxConcurrency.set(overridden, 9);
-		expect(cfgTaskMaxConcurrency.get(overridden)).toBe(4);
+		cfgGrepContextAfter.override(overridden, 4);
+		cfgGrepContextAfter.set(overridden, 9);
+		expect(cfgGrepContextAfter.get(overridden)).toBe(4);
 	});
 
 	it("warns once per instance about an invalid configured value, unaffected by other instances", async () => {
@@ -372,9 +372,9 @@ describe("settings registry", () => {
 		expect(() => Settings.isolated({ "providers.maxInFlightRequests": { openai: 0 } })).toThrow(
 			"Provider request limits must be positive numbers: openai",
 		);
-		expect(() =>
-			Settings.isolated().overlay({ "task.agentCompactionThresholdOverrides": { scout: "eighty" } }),
-		).toThrow("Invalid task.agentCompactionThresholdOverrides.scout");
+		expect(() => Settings.isolated().overlay({ "compaction.modelThresholds": { "openai/gpt-5": "eighty" } })).toThrow(
+			"Invalid compaction.modelThresholds.openai/gpt-5",
+		);
 		expect(() => Settings.isolated({ temperature: "hot" })).toThrow("Invalid value for temperature");
 		expect(cfgModelRoles.get(Settings.isolated({ modelRoles: { smol: "a/b" } }))).toEqual({ smol: "a/b" });
 	});

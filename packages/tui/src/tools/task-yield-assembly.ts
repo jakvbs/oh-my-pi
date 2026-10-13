@@ -1,4 +1,13 @@
-import type { YieldItem } from "./yield";
+/** One yield call as the reviewer card in `task.ts` folds it. */
+export interface YieldItem {
+	data?: unknown;
+	status?: "success" | "aborted";
+	error?: string;
+	/** A string label is terminal; a non-empty array of labels is incremental. */
+	type?: string | string[];
+	useLastTurn?: boolean;
+	schemaOverridden?: boolean;
+}
 
 /**
  * Output-schema shape of each declared top-level property, keyed by incremental yield label.

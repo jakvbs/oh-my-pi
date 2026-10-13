@@ -43,16 +43,10 @@ function readYieldItem(details: unknown): YieldItem | undefined {
 	if (!isRecord(details)) return undefined;
 	const { status } = details;
 	if (status !== "success" && status !== "aborted") return undefined;
-	const type = details.type;
 	return {
 		data: details.data,
 		status,
 		error: typeof details.error === "string" ? details.error : undefined,
-		type:
-			typeof type === "string" || (Array.isArray(type) && type.every(label => typeof label === "string"))
-				? type
-				: undefined,
-		complete: details.complete === true ? true : undefined,
 		schemaOverridden: details.schemaOverridden === true ? true : undefined,
 	};
 }
@@ -104,7 +98,6 @@ export async function runSessionToYield(
 	const { signal } = options;
 	let accepted: YieldItem | undefined;
 	let invalidatedByAsync = false;
-	let forceFinalYield = false;
 	let consecutiveYieldErrors = 0;
 	let failure: string | undefined;
 	let turnStop: Promise<unknown> = Promise.resolve();
@@ -149,8 +142,6 @@ export async function runSessionToYield(
 		consecutiveYieldErrors = 0;
 		const item = readYieldItem(event.result?.details);
 		if (!item) return;
-		const incremental = Array.isArray(item.type) && item.type.length > 0;
-		if (incremental && !forceFinalYield && !item.complete && item.status !== "aborted") return;
 		accepted = item;
 		invalidatedByAsync = false;
 		stopTurn();
@@ -193,10 +184,8 @@ export async function runSessionToYield(
 		for (let reminder = 1; !accepted && !failure && reminder <= MAX_YIELD_REMINDERS && !signal?.aborted; reminder++) {
 			// A terminal provider error repeats on every retry; a turn parked on owner work is a scheduling pause.
 			if (lastTurnFailed() || session.hasPendingAsyncWork()) return;
-			// The last reminder pins the model to `yield`, so an incremental section cannot satisfy the pin forever.
 			const isFinal = reminder === MAX_YIELD_REMINDERS;
 			const toolChoice = isFinal ? buildNamedToolChoice("yield", session.model) : undefined;
-			forceFinalYield = isFinal;
 			try {
 				await dispatchPrompt(
 					prompt.render(yieldReminderTemplate, { retryCount: reminder, maxRetries: MAX_YIELD_REMINDERS }),
@@ -207,8 +196,6 @@ export async function runSessionToYield(
 			} catch (error) {
 				if (error instanceof PromptDispatchError) throw error;
 				logger.error("Yield reminder failed", { error: error instanceof Error ? error.message : String(error) });
-			} finally {
-				forceFinalYield = false;
 			}
 		}
 	};

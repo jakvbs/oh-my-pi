@@ -2672,21 +2672,8 @@ export class Settings {
 		delete raw["inspect_image.mode"];
 		delete raw["inspect_image.timeoutMs"];
 
-		const taskObj = raw.task as Record<string, unknown> | undefined;
-		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
-
-		// task.simple: removed — the task tool no longer accepts a per-call
-		// schema (workflows drive structured output via eval agent()) and the
-		// batch/context shape is gated by task.batch instead.
-		if (taskObj && "simple" in taskObj) {
-			delete taskObj.simple;
-		}
-
-		// task.eager / todo.eager: boolean -> enum (default | preferred | always).
+		// todo.eager: boolean -> enum (default | preferred | always).
 		// `true` reproduced the previous "on" behavior, which is now `always`.
-		if (taskObj && typeof taskObj.eager === "boolean") {
-			taskObj.eager = taskObj.eager ? "always" : "default";
-		}
 		const todoObj = raw.todo as Record<string, unknown> | undefined;
 		if (todoObj && typeof todoObj.eager === "boolean") {
 			todoObj.eager = todoObj.eager ? "always" : "default";
@@ -2716,39 +2703,12 @@ export class Settings {
 			}
 			delete raw["features.unexpectedStopDetection"];
 		}
-		// Split the legacy combined isolation setting into enablement and backend.
-		// Handle both nested YAML and quoted dotted keys. Explicit enabled and
-		// backend values win; legacy backend names are normalized everywhere.
+		// Normalize legacy isolation backend names, from nested YAML or a quoted dotted key.
 		const legacyIsolationBackends: Record<string, string> = {
 			worktree: "rcopy",
 			"fuse-overlay": "overlayfs",
 			"fuse-projfs": "projfs",
 		};
-		const legacyIsolationModePath = ["task", "isolation", "mode"].join(".");
-		const legacyIsolationMode =
-			typeof isolationObj?.mode === "string"
-				? isolationObj.mode
-				: typeof raw[legacyIsolationModePath] === "string"
-					? (raw[legacyIsolationModePath] as string)
-					: undefined;
-		const flatIsolationEnabled = raw["task.isolation.enabled"];
-		const explicitIsolationEnabled =
-			typeof isolationObj?.enabled === "boolean"
-				? isolationObj.enabled
-				: typeof flatIsolationEnabled === "boolean"
-					? flatIsolationEnabled
-					: undefined;
-		if (legacyIsolationMode !== undefined || explicitIsolationEnabled !== undefined) {
-			if (!isRecord(raw.task)) raw.task = {};
-			const targetTask = raw.task as Record<string, unknown>;
-			if (!isRecord(targetTask.isolation)) targetTask.isolation = {};
-			const targetIsolation = targetTask.isolation as Record<string, unknown>;
-			targetIsolation.enabled = explicitIsolationEnabled ?? legacyIsolationMode !== "none";
-			delete targetIsolation.mode;
-		}
-		delete raw[legacyIsolationModePath];
-		delete raw["task.isolation.enabled"];
-
 		const rootIsolation = isRecord(raw.isolation) ? (raw.isolation as Record<string, unknown>) : undefined;
 		const configuredBackend =
 			typeof rootIsolation?.backend === "string"
@@ -2756,14 +2716,10 @@ export class Settings {
 				: typeof raw["isolation.backend"] === "string"
 					? (raw["isolation.backend"] as string)
 					: undefined;
-		const derivedBackend =
-			legacyIsolationMode === undefined || legacyIsolationMode === "none"
-				? undefined
-				: (legacyIsolationBackends[legacyIsolationMode] ?? legacyIsolationMode);
-		const backend = configuredBackend ?? derivedBackend;
-		if (backend !== undefined) {
+		if (configuredBackend !== undefined) {
 			if (!rootIsolation) raw.isolation = {};
-			(raw.isolation as Record<string, unknown>).backend = legacyIsolationBackends[backend] ?? backend;
+			(raw.isolation as Record<string, unknown>).backend =
+				legacyIsolationBackends[configuredBackend] ?? configuredBackend;
 		}
 		delete raw["isolation.backend"];
 
@@ -3092,61 +3048,6 @@ export class Settings {
 		}
 		if (tierTouched) raw.tier = tierObj;
 		delete raw.fastModeScope;
-
-		// advisor.subagents (blanket advisor on every spawned subagent) → per-agent
-		// task.agentAdvisor, migrated to the bundled generic `task` agent. An
-		// explicit boolean maps to "on"/"off" IN THE SAME LAYER — migration runs
-		// per file, so a project-level `false` must keep overriding a global
-		// `true` after both layers migrate.
-		{
-			const advisorObj = isRecord(raw.advisor) ? raw.advisor : undefined;
-			const legacySubagents =
-				advisorObj && "subagents" in advisorObj ? advisorObj.subagents : raw["advisor.subagents"];
-			if (typeof legacySubagents === "boolean") {
-				const taskObj = isRecord(raw.task) ? raw.task : {};
-				const agentAdvisor = isRecord(taskObj.agentAdvisor) ? taskObj.agentAdvisor : {};
-				if (!("task" in agentAdvisor)) agentAdvisor.task = legacySubagents ? "on" : "off";
-				taskObj.agentAdvisor = agentAdvisor;
-				raw.task = taskObj;
-			}
-			if (advisorObj) delete advisorObj.subagents;
-			delete raw["advisor.subagents"];
-		}
-
-		// task.completionProbeMs (poll period, 0 = off) → task.completionProbe
-		// (on/off with a built-in backoff schedule). Mapped IN THE SAME LAYER so a
-		// project-level `0` keeps overriding a global period; an explicit new key wins.
-		{
-			const taskObj = isRecord(raw.task) ? raw.task : undefined;
-			const legacyProbeMs =
-				taskObj && "completionProbeMs" in taskObj ? taskObj.completionProbeMs : raw["task.completionProbeMs"];
-			if (typeof legacyProbeMs === "number") {
-				const target = taskObj ?? {};
-				if (!("completionProbe" in target) && !("task.completionProbe" in raw)) {
-					target.completionProbe = legacyProbeMs > 0;
-				}
-				raw.task = target;
-			}
-			if (taskObj) delete taskObj.completionProbeMs;
-			delete raw["task.completionProbeMs"];
-		}
-
-		// Early per-agent toggles were persisted as booleans even though the
-		// runtime record contract is "on"/"off"/model pattern. Normalize each
-		// layer before merging so project-level false still overrides global true.
-		{
-			const taskObj = isRecord(raw.task) ? raw.task : undefined;
-			if (taskObj) {
-				for (const key of ["agentPrewalk", "agentAdvisor"]) {
-					const overrides = isRecord(taskObj[key]) ? taskObj[key] : undefined;
-					if (!overrides) continue;
-					for (const agentName in overrides) {
-						const value = overrides[agentName];
-						if (typeof value === "boolean") overrides[agentName] = value ? "on" : "off";
-					}
-				}
-			}
-		}
 
 		// v17 renames that used to nest under a boolean parent path:
 		//   dev.autoqa.consent -> dev.autoqaConsent

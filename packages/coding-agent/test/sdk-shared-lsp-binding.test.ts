@@ -10,7 +10,6 @@ import { type CreateAgentSessionOptions, createAgentSession } from "@oh-my-pi/pi
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { createSubagentSettings } from "@oh-my-pi/pi-coding-agent/task/executor";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
 const modelSpec: ModelSpec<Api> = {
@@ -47,10 +46,7 @@ describe("shared LSP flag with subagents and helper sessions", () => {
 		const modelRegistry = new ModelRegistry(authStorage, tempDir.join("models.yml"));
 		const start = async (
 			settings: Settings,
-			extra: Pick<
-				CreateAgentSessionOptions,
-				"parentTaskPrefix" | "isSubagent" | "agentId" | "bindProcessState" | "enableLsp"
-			> = {},
+			extra: Pick<CreateAgentSessionOptions, "bindProcessState" | "enableLsp"> = {},
 		): Promise<AgentSession> => {
 			const { session } = await createAgentSession({
 				cwd: tempDir.path(),
@@ -76,7 +72,7 @@ describe("shared LSP flag with subagents and helper sessions", () => {
 		return { start, close: () => authStorage.close() };
 	};
 
-	it("a subagent session does not turn shared LSP off for its parent", async () => {
+	it("a helper session does not turn shared LSP off for its parent", async () => {
 		using tempDir = TempDir.createSync("@pi-shared-lsp-binding-");
 		const { start, close } = await starter(tempDir);
 		const spy = vi.spyOn(lspClient, "setSharedLspEnabled");
@@ -84,14 +80,6 @@ describe("shared LSP flag with subagents and helper sessions", () => {
 			const parent = Settings.isolated({ "compaction.enabled": false, "lsp.shared": true });
 			await start(parent, { enableLsp: true });
 			expect(spy).toHaveBeenLastCalledWith(true);
-
-			await start(createSubagentSettings(parent), {
-				parentTaskPrefix: "0-Sub",
-				isSubagent: true,
-				agentId: "0-Sub",
-				enableLsp: false,
-			});
-			expect(spy).not.toHaveBeenCalledWith(false);
 
 			await start(await parent.cloneForCwd(tempDir.path()), { bindProcessState: false, enableLsp: false });
 			expect(spy).not.toHaveBeenCalledWith(false);

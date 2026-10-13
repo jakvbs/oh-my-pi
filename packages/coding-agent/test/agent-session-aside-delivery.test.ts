@@ -210,15 +210,6 @@ describe("AgentSession aside delivery", () => {
 				agentId: "Main",
 				asyncJobManager: manager,
 			});
-			await session.setWorkPoolYieldItems([{ id: "pool#1", index: 1 }]);
-			await session.deliverIrcMessage({
-				id: "parked-peer",
-				from: "Peer",
-				to: "Main",
-				body: "deferred wake",
-				ts: Date.now(),
-			});
-			await setImmediate();
 			session.subscribe(event => {
 				if (event.type === "tool_execution_start" && event.toolName === "wait") waitStarted.resolve();
 			});
@@ -238,7 +229,6 @@ describe("AgentSession aside delivery", () => {
 				}
 				expect(JSON.stringify(contexts[1]?.messages)).toContain("ASIDE_DURING_WAIT");
 				expect(JSON.stringify(contexts[1]?.messages)).toContain("Wait interrupted by message.");
-				expect(JSON.stringify(contexts[1]?.messages)).not.toContain("deferred wake");
 				expect(manager.getRunningJobs({ ownerId: "Main" })).toHaveLength(1);
 			} finally {
 				job.resolve("JOB_RESULT_AFTER_ASIDE");
@@ -254,9 +244,6 @@ describe("AgentSession aside delivery", () => {
 			expect(
 				session.agent.state.messages.filter(message => JSON.stringify(message).includes("JOB_RESULT_AFTER_ASIDE")),
 			).toHaveLength(1);
-			await session.setWorkPoolYieldItems([]);
-			await session.waitForIdle();
-			expect(JSON.stringify(contexts.at(-1)?.messages)).toContain("deferred wake");
 		},
 	);
 

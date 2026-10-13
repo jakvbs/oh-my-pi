@@ -252,17 +252,6 @@
 				"clientOmit": []
 			},
 			{
-				"name": "set_subagent_subscription",
-				"doc": "Select which subagent frames are forwarded.",
-				"params": "SetSubagentSubscriptionParams",
-				"result": "SetSubagentSubscriptionResult",
-				"nullable": false,
-				"unwrap": "level",
-				"timeoutMs": null,
-				"completion": null,
-				"clientOmit": []
-			},
-			{
 				"name": "set_event_filter",
 				"doc": "Forward only the listed session event types; null forwards all.",
 				"params": "SetEventFilterParams",
@@ -274,50 +263,6 @@
 				"clientOmit": [
 					"messageUpdates"
 				]
-			},
-			{
-				"name": "get_subagents",
-				"doc": "List running subagents.",
-				"params": null,
-				"result": "GetSubagentsResult",
-				"nullable": false,
-				"unwrap": "subagents",
-				"timeoutMs": null,
-				"completion": null,
-				"clientOmit": []
-			},
-			{
-				"name": "get_subagent_messages",
-				"doc": "Read a subagent transcript by id or registered session file (`subagentId` wins).",
-				"params": "GetSubagentMessagesParams",
-				"result": "SubagentMessages",
-				"nullable": false,
-				"unwrap": null,
-				"timeoutMs": null,
-				"completion": null,
-				"clientOmit": []
-			},
-			{
-				"name": "cancel_subagent",
-				"doc": "Hard-kill one running subagent; false when it is not running.",
-				"params": "CancelSubagentParams",
-				"result": "CancelSubagentResult",
-				"nullable": false,
-				"unwrap": "cancelled",
-				"timeoutMs": null,
-				"completion": null,
-				"clientOmit": []
-			},
-			{
-				"name": "steer_subagent",
-				"doc": "Send a message to a running subagent as its user.",
-				"params": "SteerSubagentParams",
-				"result": null,
-				"nullable": false,
-				"unwrap": null,
-				"timeoutMs": null,
-				"completion": null,
-				"clientOmit": []
 			},
 			{
 				"name": "set_model",
@@ -2196,33 +2141,6 @@
 			],
 			"type": "string"
 		},
-		"SubagentSubscriptionLevel": {
-			"enum": [
-				"off",
-				"progress",
-				"events"
-			],
-			"type": "string",
-			"description": "Forwarded subagent frames: none, lifecycle and progress, or also raw session events."
-		},
-		"AgentSource": {
-			"enum": [
-				"bundled",
-				"user",
-				"project"
-			],
-			"type": "string"
-		},
-		"SubagentStatus": {
-			"enum": [
-				"pending",
-				"running",
-				"completed",
-				"failed",
-				"aborted"
-			],
-			"type": "string"
-		},
 		"TodoItem": {
 			"type": "object",
 			"properties": {
@@ -3166,100 +3084,6 @@
 				"leafId"
 			],
 			"description": "Raw session tree roots."
-		},
-		"SubagentSnapshot": {
-			"type": "object",
-			"properties": {
-				"id": {
-					"type": "string"
-				},
-				"index": {
-					"type": "integer"
-				},
-				"agent": {
-					"type": "string"
-				},
-				"agentSource": {
-					"$ref": "#/$defs/AgentSource"
-				},
-				"status": {
-					"$ref": "#/$defs/SubagentStatus"
-				},
-				"lastUpdate": {
-					"type": "integer"
-				},
-				"description": {
-					"type": "string"
-				},
-				"task": {
-					"type": "string"
-				},
-				"assignment": {
-					"type": "string"
-				},
-				"sessionFile": {
-					"type": "string"
-				},
-				"progress": {
-					"type": "object",
-					"properties": {},
-					"additionalProperties": {},
-					"description": "Raw `AgentProgress` record."
-				},
-				"parentToolCallId": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"id",
-				"index",
-				"agent",
-				"agentSource",
-				"status",
-				"lastUpdate"
-			]
-		},
-		"SubagentMessages": {
-			"type": "object",
-			"properties": {
-				"sessionFile": {
-					"type": "string"
-				},
-				"fromByte": {
-					"type": "integer"
-				},
-				"nextByte": {
-					"type": "integer",
-					"description": "Pass as the next `fromByte` to read incrementally."
-				},
-				"reset": {
-					"type": "boolean",
-					"description": "`fromByte` exceeded the file size and reading restarted at zero."
-				},
-				"entries": {
-					"type": "array",
-					"items": {
-						"type": "object",
-						"properties": {},
-						"additionalProperties": {}
-					}
-				},
-				"messages": {
-					"type": "array",
-					"items": {
-						"$ref": "#/$defs/AgentMessage"
-					}
-				}
-			},
-			"required": [
-				"sessionFile",
-				"fromByte",
-				"nextByte",
-				"reset",
-				"entries",
-				"messages"
-			],
-			"description": "Incremental subagent transcript read."
 		},
 		"BtwStatus": {
 			"enum": [
@@ -4392,161 +4216,6 @@
 			],
 			"description": "Slash-command catalog, pushed at startup and whenever command metadata changes."
 		},
-		"SubagentLifecycleStatus": {
-			"enum": [
-				"started",
-				"completed",
-				"failed",
-				"aborted"
-			],
-			"type": "string"
-		},
-		"SubagentLifecyclePayload": {
-			"type": "object",
-			"properties": {
-				"id": {
-					"type": "string"
-				},
-				"agent": {
-					"type": "string"
-				},
-				"agentSource": {
-					"$ref": "#/$defs/AgentSource"
-				},
-				"status": {
-					"$ref": "#/$defs/SubagentLifecycleStatus"
-				},
-				"index": {
-					"type": "integer"
-				},
-				"description": {
-					"type": "string"
-				},
-				"sessionFile": {
-					"type": "string"
-				},
-				"parentToolCallId": {
-					"type": "string"
-				},
-				"detached": {
-					"type": "boolean",
-					"description": "The subagent runs as a detached background job."
-				}
-			},
-			"required": [
-				"id",
-				"agent",
-				"agentSource",
-				"status",
-				"index"
-			]
-		},
-		"SubagentProgressPayload": {
-			"type": "object",
-			"properties": {
-				"index": {
-					"type": "integer"
-				},
-				"agent": {
-					"type": "string"
-				},
-				"agentSource": {
-					"$ref": "#/$defs/AgentSource"
-				},
-				"task": {
-					"type": "string"
-				},
-				"progress": {
-					"type": "object",
-					"properties": {},
-					"additionalProperties": {},
-					"description": "Raw `AgentProgress` record."
-				},
-				"parentToolCallId": {
-					"type": "string"
-				},
-				"assignment": {
-					"type": "string"
-				},
-				"sessionFile": {
-					"type": "string"
-				},
-				"detached": {
-					"type": "boolean"
-				}
-			},
-			"required": [
-				"index",
-				"agent",
-				"agentSource",
-				"task",
-				"progress"
-			]
-		},
-		"SubagentEventPayload": {
-			"type": "object",
-			"properties": {
-				"id": {
-					"type": "string"
-				},
-				"event": {
-					"$ref": "#/$defs/RpcAgentEvent",
-					"x-unknown-fallback": true
-				}
-			},
-			"required": [
-				"id",
-				"event"
-			]
-		},
-		"SubagentLifecycleEvent": {
-			"type": "object",
-			"properties": {
-				"type": {
-					"const": "subagent_lifecycle"
-				},
-				"payload": {
-					"$ref": "#/$defs/SubagentLifecyclePayload"
-				}
-			},
-			"required": [
-				"type",
-				"payload"
-			],
-			"description": "A subagent started or ended; sent at subscription level \"progress\" or \"events\"."
-		},
-		"SubagentProgressEvent": {
-			"type": "object",
-			"properties": {
-				"type": {
-					"const": "subagent_progress"
-				},
-				"payload": {
-					"$ref": "#/$defs/SubagentProgressPayload"
-				}
-			},
-			"required": [
-				"type",
-				"payload"
-			],
-			"description": "Aggregated subagent progress; sent at subscription level \"progress\" or \"events\"."
-		},
-		"SubagentEvent": {
-			"type": "object",
-			"properties": {
-				"type": {
-					"const": "subagent_event"
-				},
-				"payload": {
-					"$ref": "#/$defs/SubagentEventPayload"
-				}
-			},
-			"required": [
-				"type",
-				"payload"
-			],
-			"description": "A subagent's own session event; sent only at subscription level \"events\"."
-		},
 		"BtwDeltaEvent": {
 			"type": "object",
 			"properties": {
@@ -5594,15 +5263,6 @@
 					"$ref": "#/$defs/AvailableCommandsUpdateEvent"
 				},
 				{
-					"$ref": "#/$defs/SubagentLifecycleEvent"
-				},
-				{
-					"$ref": "#/$defs/SubagentProgressEvent"
-				},
-				{
-					"$ref": "#/$defs/SubagentEvent"
-				},
-				{
 					"$ref": "#/$defs/BtwDeltaEvent"
 				},
 				{
@@ -5966,28 +5626,6 @@
 				"schemes"
 			]
 		},
-		"SetSubagentSubscriptionParams": {
-			"type": "object",
-			"properties": {
-				"level": {
-					"$ref": "#/$defs/SubagentSubscriptionLevel"
-				}
-			},
-			"required": [
-				"level"
-			]
-		},
-		"SetSubagentSubscriptionResult": {
-			"type": "object",
-			"properties": {
-				"level": {
-					"$ref": "#/$defs/SubagentSubscriptionLevel"
-				}
-			},
-			"required": [
-				"level"
-			]
-		},
 		"SetEventFilterParams": {
 			"type": "object",
 			"properties": {
@@ -6034,71 +5672,6 @@
 			},
 			"required": [
 				"events"
-			]
-		},
-		"GetSubagentsResult": {
-			"type": "object",
-			"properties": {
-				"subagents": {
-					"type": "array",
-					"items": {
-						"$ref": "#/$defs/SubagentSnapshot"
-					}
-				}
-			},
-			"required": [
-				"subagents"
-			]
-		},
-		"GetSubagentMessagesParams": {
-			"type": "object",
-			"properties": {
-				"subagentId": {
-					"type": "string"
-				},
-				"sessionFile": {
-					"type": "string"
-				},
-				"fromByte": {
-					"type": "integer"
-				}
-			}
-		},
-		"CancelSubagentParams": {
-			"type": "object",
-			"properties": {
-				"subagentId": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"subagentId"
-			]
-		},
-		"CancelSubagentResult": {
-			"type": "object",
-			"properties": {
-				"cancelled": {
-					"type": "boolean"
-				}
-			},
-			"required": [
-				"cancelled"
-			]
-		},
-		"SteerSubagentParams": {
-			"type": "object",
-			"properties": {
-				"subagentId": {
-					"type": "string"
-				},
-				"message": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"subagentId",
-				"message"
 			]
 		},
 		"SetModelParams": {

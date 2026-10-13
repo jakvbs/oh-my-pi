@@ -23,12 +23,6 @@ export const stateDefs = {
 	GoalOp: "'get' | 'create' | 'resume' | 'pause' | 'drop'",
 	GoalStatus: "'active' | 'paused' | 'budget-limited' | 'complete' | 'dropped'",
 	SlashCommandSource: "'builtin' | 'skill' | 'extension' | 'custom' | 'mcp_prompt' | 'file'",
-	SubagentSubscriptionLevel: doc(
-		"'off' | 'progress' | 'events'",
-		"Forwarded subagent frames: none, lifecycle and progress, or also raw session events.",
-	),
-	AgentSource: "'bundled' | 'user' | 'project'",
-	SubagentStatus: "'pending' | 'running' | 'completed' | 'failed' | 'aborted'",
 
 	TodoItem: {
 		content: "string",
@@ -259,31 +253,6 @@ export const stateDefs = {
 		"OMP-native session entries in append order.",
 	),
 	SessionTree: doc({ tree: `${JSON_OBJECT}[]`, leafId: "string | null" }, "Raw session tree roots."),
-	SubagentSnapshot: {
-		id: "string",
-		index: "number.integer",
-		agent: "string",
-		agentSource: "AgentSource",
-		"description?": "string",
-		status: "SubagentStatus",
-		"task?": "string",
-		"assignment?": "string",
-		"sessionFile?": "string",
-		lastUpdate: "number.integer",
-		"progress?": doc(JSON_OBJECT, "Raw `AgentProgress` record."),
-		"parentToolCallId?": "string",
-	},
-	SubagentMessages: doc(
-		{
-			sessionFile: "string",
-			fromByte: "number.integer",
-			nextByte: doc("number.integer", "Pass as the next `fromByte` to read incrementally."),
-			reset: doc("boolean", "`fromByte` exceeded the file size and reading restarted at zero."),
-			entries: `${JSON_OBJECT}[]`,
-			messages: "AgentMessage[]",
-		},
-		"Incremental subagent transcript read.",
-	),
 	BtwStatus: doc(
 		"'running' | 'complete' | 'cancelled' | 'error' | 'interrupted'",
 		"Side-question turn lifecycle; `interrupted` marks a turn whose process died while it ran.",

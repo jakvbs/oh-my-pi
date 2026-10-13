@@ -18,8 +18,6 @@ import { type LocalProtocolOptions } from "../internal-urls";
 import { stripXdUrlPrefix, XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
 import { deduplicateMCPToolsByName, resolveMCPToolAlias } from "../mcp/tool-bridge";
 import { invalidateToolSchemaMetadata } from "@oh-my-pi/pi-tui/status-line/context-usage";
-import type { AgentDefinition } from "../task/types";
-import sessionAgentNoticePrompt from "../prompts/system/session-agent-notice.md" with { type: "text" };
 import toolRosterNoticePrompt from "../prompts/system/tool-roster-notice.md" with { type: "text" };
 import xdevMountNoticePrompt from "../prompts/system/xdev-mount-notice.md" with { type: "text" };
 import { isMCPToolName, normalizeToolNames } from "../tools/builtin-names";
@@ -69,8 +67,6 @@ export interface SessionToolsHost {
 	emitNotice(level: "info" | "warning" | "error", message: string, source?: string): void;
 	notifyCommandMetadataChanged(): void;
 	localProtocolOptions(): LocalProtocolOptions;
-	/** Live user-tagged model agents; candidates for the next base rebuild's advertised snapshot. */
-	sessionAgents(): readonly AgentDefinition[];
 }
 
 /** Registry delta applied by the SDK's settings-gated tool reconcile. */
@@ -198,7 +194,6 @@ export function projectMountedMCPXdevGuidance(routes: Iterable<MountedMCPToolRou
 
 const TOOL_ROSTER_NOTICE_MESSAGE_TYPE = "tool-roster-notice";
 const XDEV_MOUNT_NOTICE_MESSAGE_TYPE = "xdev-mount-notice";
-const SESSION_AGENT_NOTICE_MESSAGE_TYPE = "session-agent-notice";
 
 /** Custom entry holding the digest of the base prompt the branch's primary model calls are built from. */
 const SYSTEM_PROMPT_DIGEST_CUSTOM_TYPE = "system-prompt-digest";
@@ -233,12 +228,6 @@ interface XdevMountNoticeDetails {
 	removed: string[];
 }
 
-/** Agent pseudonyms added/removed by one hidden {@link SESSION_AGENT_NOTICE_MESSAGE_TYPE} message. */
-interface SessionAgentNoticeDetails {
-	added: string[];
-	removed: string[];
-}
-
 /**
  * Prompt-affecting state frozen at each base rebuild. Tools render their
  * provider-visible text from this snapshot instead of live settings, so
@@ -248,8 +237,6 @@ interface SessionAgentNoticeDetails {
 interface PromptSurface {
 	/** Skill-URI hints in `bash`/`read` (mid-session `/skillful` toggles). */
 	skillHintVisible: boolean;
-	/** User-tagged model agents listed in the task description. */
-	sessionAgents: readonly AgentDefinition[];
 }
 
 interface PendingNoticePreview<T> {
@@ -532,19 +519,10 @@ export class SessionTools {
 		return (this.#promptSurfaceScope.getStore() ?? this.#promptSurface).skillHintVisible;
 	}
 
-	/**
-	 * User-tagged model agents the task description advertises (see
-	 * {@link #promptSurface}); the candidate inside a rebuild frame.
-	 */
-	get advertisedSessionAgents(): readonly AgentDefinition[] {
-		return (this.#promptSurfaceScope.getStore() ?? this.#promptSurface).sessionAgents;
-	}
-
 	/** Derives the candidate surface from live state without publishing it. */
 	#derivePromptSurface(): PromptSurface {
 		return {
 			skillHintVisible: cfgSkillful.get(this.#host.settings) === true && (this.#skills?.length ?? 0) > 0,
-			sessionAgents: this.#host.sessionAgents(),
 		};
 	}
 	/** Drops cached per-session ACP `allow_always`/`reject_always` decisions. */
@@ -1038,13 +1016,7 @@ export class SessionTools {
 					this.#promptSurfaceScope.run(surface, () =>
 						this.#computeAppliedToolSignature(promptToolNames, promptTools, mountedSignatureTools),
 					);
-				// Model-mention changes alone never trigger a rebuild: they ride their
-				// hidden notice. The trigger keeps the committed set; a rebuild caused
-				// by anything else absorbs the live one.
-				const triggerSignature = computeSignature({
-					...candidate,
-					sessionAgents: this.#promptSurface.sessionAgents,
-				});
+				const triggerSignature = computeSignature(candidate);
 				const freezeImplicitPromptRefresh =
 					!forcePromptRefresh &&
 					triggerSignature !== this.#lastAppliedToolSignature &&
@@ -1431,44 +1403,6 @@ export class SessionTools {
 				removed: removed.length > 0 ? removed.join(", ") : undefined,
 			}),
 			details: { added, removed },
-			attribution: "agent",
-			display: false,
-			timestamp: Date.now(),
-		};
-	}
-
-	/**
-
-	 * Builds the hidden notice reconciling the user-tagged model agents the task
-	 * description advertises with the live set. Delivered with the next user
-	 * prompt instead of rewriting the task description, so tagging a model
-	 * mid-session keeps the provider cache prefix intact.
-	 *
-	 * Known agents are the committed base snapshot, then every agent notice still
-	 * in context, applied in order.
-	 */
-	takeSessionAgentNotice(): CustomMessage<SessionAgentNoticeDetails> | undefined {
-		const known = new Set(this.#promptSurface.sessionAgents.map(agent => agent.name));
-		for (const message of this.#host.agent.state.messages) {
-			if (message.role !== "custom" || message.customType !== SESSION_AGENT_NOTICE_MESSAGE_TYPE) continue;
-			const details = message.details;
-			if (!isRecord(details) || !Array.isArray(details.added) || !Array.isArray(details.removed)) continue;
-			for (const name of details.added) if (typeof name === "string") known.add(name);
-			for (const name of details.removed) if (typeof name === "string") known.delete(name);
-		}
-		const live = this.#host.sessionAgents();
-		const liveNames = new Set(live.map(agent => agent.name));
-		const added = live.filter(agent => !known.has(agent.name));
-		const removed = [...known].filter(name => !liveNames.has(name));
-		if (added.length === 0 && removed.length === 0) return undefined;
-		return {
-			role: "custom",
-			customType: SESSION_AGENT_NOTICE_MESSAGE_TYPE,
-			content: prompt.render(sessionAgentNoticePrompt, {
-				added: added.map(agent => ({ name: agent.name, description: agent.description })),
-				removed,
-			}),
-			details: { added: added.map(agent => agent.name), removed },
 			attribution: "agent",
 			display: false,
 			timestamp: Date.now(),
@@ -1896,7 +1830,7 @@ export class SessionTools {
 	 *
 	 * Inputs NOT covered: tool input schemas; memory instructions read from disk;
 	 * and SDK-init-time closure constants in `sdk.ts` (`inlineToolDescriptors`,
-	 * `eagerTasks`, `intentField`, `mcpDiscoveryEnabled`). The
+	 * `intentField`, `mcpDiscoveryEnabled`). The
 	 * closure-captured ones cannot change at runtime regardless of skip behavior.
 	 * For everything else, callers must explicitly call {@link refreshBaseSystemPrompt}
 	 * after side-effecting changes; see the memory hooks and {@link syncAfterModelChange}.

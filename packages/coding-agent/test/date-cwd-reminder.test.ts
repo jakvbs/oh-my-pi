@@ -252,7 +252,6 @@ describe("date-cwd reminder on the provider wire", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		sessions.push(session);
@@ -358,7 +357,6 @@ describe("date-cwd reminder on the provider wire", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		sessions.push(session);

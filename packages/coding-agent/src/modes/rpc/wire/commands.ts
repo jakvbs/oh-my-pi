@@ -146,43 +146,12 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 		unwrap: "schemes",
 	},
 	{
-		name: "set_subagent_subscription",
-		doc: "Select which subagent frames are forwarded.",
-		params: { level: "SubagentSubscriptionLevel" },
-		result: { level: "SubagentSubscriptionLevel" },
-		unwrap: "level",
-	},
-	{
 		name: "set_event_filter",
 		doc: "Forward only the listed session event types; null forwards all.",
 		params: { events: "string[] | null", "messageUpdates?": "MessageUpdates" },
 		result: { events: "string[] | null", "messageUpdates?": "MessageUpdates" },
 		unwrap: "events",
 		clientOmit: ["messageUpdates"],
-	},
-	{
-		name: "get_subagents",
-		doc: "List running subagents.",
-		result: { subagents: "SubagentSnapshot[]" },
-		unwrap: "subagents",
-	},
-	{
-		name: "get_subagent_messages",
-		doc: "Read a subagent transcript by id or registered session file (`subagentId` wins).",
-		params: { "subagentId?": "string", "sessionFile?": "string", "fromByte?": "number.integer" },
-		result: "SubagentMessages",
-	},
-	{
-		name: "cancel_subagent",
-		doc: "Hard-kill one running subagent; false when it is not running.",
-		params: { subagentId: "string" },
-		result: { cancelled: "boolean" },
-		unwrap: "cancelled",
-	},
-	{
-		name: "steer_subagent",
-		doc: "Send a message to a running subagent as its user.",
-		params: { subagentId: "string", message: "string" },
 	},
 
 	{

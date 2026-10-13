@@ -74,7 +74,6 @@ describe("primary-agent provider settings changed mid-session", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		sessions.push(session);

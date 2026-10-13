@@ -1,10 +1,10 @@
 /**
- * Ownership marker for task-isolation sandboxes under `~/.omp/wt/`.
+ * Read side of the ownership markers left by task-isolation sandboxes under `~/.omp/wt/`.
  *
- * Each isolation base dir (`ensureIsolation` in {@link ./worktree}) holds a
- * compact `m` mount plus this marker file naming the omp process that created
- * it. `omp worktree clear` consults the marker so it can distinguish a live
- * subagent's sandbox from a crashed run's leftover instead of deleting both.
+ * The task tool no longer creates these sandboxes, but directories from earlier versions may
+ * remain. `omp worktree clear` consults the markers so it can tell a live omp process's sandbox
+ * from a crashed run's leftover, and tear down retained mounts natively instead of deleting
+ * through the mountpoint.
  */
 import * as path from "node:path";
 import * as natives from "@oh-my-pi/pi-natives";
@@ -58,18 +58,6 @@ async function processStartToken(pid: number): Promise<string | null> {
 	if (res.exitCode !== 0) return null;
 	const started = res.text().trim();
 	return started.length > 0 ? started : null;
-}
-
-/**
- * Record the current process as owner of the sandbox rooted at `baseDir`.
- *
- * Written before the isolation backend materialises `m` so a concurrent
- * `omp worktree clear` never sees an owner-less sandbox mid-creation.
- */
-export async function writeIsolationOwner(baseDir: string, id: string): Promise<void> {
-	const startToken = await processStartToken(process.pid);
-	const owner: IsolationOwner = { pid: process.pid, id, ...(startToken ? { startToken } : {}) };
-	await Bun.write(path.join(baseDir, ISOLATION_OWNER_FILE), JSON.stringify(owner));
 }
 
 /**
@@ -128,18 +116,6 @@ export const RETAINED_BACKEND_FILE = ".omp-retained-backend.json";
  */
 export function needsNativeTeardown(backend: unknown): backend is number {
 	return backend === IsoBackendKind.Overlayfs || backend === IsoBackendKind.Projfs || backend === IsoBackendKind.Btrfs;
-}
-
-/**
- * Record which backend built a retained workspace, so cleanup can route it
- * through native teardown before removal. Best-effort: retention stays valid
- * without it (the workspace merely falls back to plain recursive removal).
- */
-export async function writeRetainedBackend(baseDir: string, backend: number): Promise<void> {
-	await Bun.write(
-		path.join(baseDir, RETAINED_BACKEND_FILE),
-		JSON.stringify({ backend, retainedAt: new Date().toISOString() }),
-	);
 }
 
 /**

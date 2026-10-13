@@ -104,7 +104,6 @@ describe("createAgentSession deferred role alias on discoverable provider (#8863
 				slashCommands: [],
 				enableMCP: false,
 				enableLsp: false,
-				isSubagent: true,
 				agentId: "SubAgent",
 			});
 			session = result.session;

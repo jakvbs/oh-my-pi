@@ -17,7 +17,7 @@ import { getModelMatchPreferences, parseModelPattern, resolveRoleSelection } fro
 import type { Settings } from "../config/settings";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import compressDescriptionPrompt from "../prompts/skills/compress-description.md" with { type: "text" };
-import { Semaphore } from "../task/parallel";
+import { Semaphore } from "../utils/parallel";
 import type { Skill } from "./skills";
 
 const MAX_PREVIEW_CHARS = 100;

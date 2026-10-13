@@ -299,16 +299,10 @@ function callerSession(context: ResolveContext | WriteContext | undefined): Tool
 
 /**
  * Settings of a caller allowed to write. Refuses sessions that must not raise
- * approval prompts: subagents (the user is not driving them) and sessions without
- * `settingsApproval` (print, RPC, ACP, `/tan` forks, programmatic agents).
+ * approval prompts: sessions without `settingsApproval` (print, RPC, ACP, programmatic agents).
  */
 function writerSettings(context: WriteContext | undefined): Settings {
 	const session = callerSession(context);
-	if (session.isSubagent) {
-		throw new Error(
-			`Subagents cannot change settings. Report the setting you need changed to the parent agent instead of writing ${CFG_URL_PREFIX}.`,
-		);
-	}
 	if (session.settingsApproval !== true) {
 		throw new Error(
 			`Changing settings requires user approval, but this session has no interactive UI. Ask the user to change the setting themselves.`,

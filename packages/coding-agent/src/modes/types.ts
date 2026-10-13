@@ -162,8 +162,6 @@ export interface InteractiveModeContext {
 	lspServers?: LspStartupServerInfo[];
 	eventController: EventController;
 	eventBus?: EventBus;
-	/** Root-scoped bus carrying this session tree's `task:subagent:*` frames. */
-	subagentEventBus?: EventBus;
 
 	// State
 	isInitialized: boolean;
@@ -465,7 +463,6 @@ export interface InteractiveModeContext {
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
-	showAgentsDashboard(): void;
 	/** Open the fullscreen git UI, optionally pinned to a revision (`/git <rev>`). */
 	showGitUi(revision?: string): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
@@ -511,7 +508,6 @@ export interface InteractiveModeContext {
 		detached?: Pick<SubmittedUserInput, "text" | "images" | "imageLinks">,
 	): Promise<void>;
 	handleBtwCommand(question: string): Promise<void>;
-	handleTanCommand(work: string): Promise<void>;
 	hasActiveBtw(): boolean;
 	handleBtwEscape(): boolean;
 	handleBtwBranchKey(): Promise<boolean>;

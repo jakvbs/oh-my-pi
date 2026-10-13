@@ -70,7 +70,7 @@ import {
 } from "../exec/settings";
 import { registerFnoxSecrets } from "../secrets/fnox";
 import { cfgSkillful } from "../session/settings";
-import { cfgWorktreeClone } from "../task/settings";
+import { cfgWorktreeClone } from "../session/worktree-settings";
 import { formatBashCaptureNotice } from "@oh-my-pi/pi-tui/tools/bash-result";
 import { completeBashResult, type CapturedBashResult } from "../exec/bash-result";
 

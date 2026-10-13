@@ -143,28 +143,6 @@ describe("runSessionToYield reminders", () => {
 		expect(handle.prompts[3]?.options?.toolChoice).toEqual({ type: "tool", name: "yield" });
 	});
 
-	it("ends the run on a pinned yield that comes back as an incremental section", async () => {
-		const handle = createScriptedSession(turn => {
-			if (turn.promptIndex <= 3) return textTurn(turn, `Working ${turn.promptIndex}`);
-			yieldTurn(turn, { status: "success", data: { report: "section" }, type: ["notes"] });
-		});
-		const outcome = await runSessionToYield(handle.session, "Inventory.", strictOptions);
-		expect(outcome).toEqual({ kind: "yielded", data: { report: "section" } });
-		expect(handle.prompts).toHaveLength(4);
-	});
-
-	it("keeps an unpinned incremental section from ending the run", async () => {
-		const handle = createScriptedSession(turn => {
-			if (turn.promptIndex === 1) {
-				yieldTurn(turn, { status: "success", data: { report: "partial" }, type: ["notes"] });
-				return;
-			}
-			yieldTurn(turn, reportYield("FINAL"));
-		});
-		const outcome = await runSessionToYield(handle.session, "Inventory.", strictOptions);
-		expect(outcome).toEqual({ kind: "yielded", data: { report: "FINAL" } });
-	});
-
 	it("stops the free-running turn once the yield is accepted", async () => {
 		const handle = createScriptedSession(turn => yieldTurn(turn, reportYield("DONE")));
 		await runSessionToYield(handle.session, "Inventory.", strictOptions);

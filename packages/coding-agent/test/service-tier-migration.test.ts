@@ -3,10 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ServiceTierByFamily } from "@oh-my-pi/pi-ai";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import {
-	resolveAgentServiceTierOverride,
-	validateAgentServiceTierOverrides,
-} from "@oh-my-pi/pi-coding-agent/config/service-tier";
+import { resolveAgentServiceTierOverride } from "@oh-my-pi/pi-coding-agent/config/service-tier";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
@@ -95,64 +92,5 @@ describe("serviceTier → tier.* settings migration", () => {
 		});
 		expect(cfgTierSubagent.get(settings)).toBe("priority"); // claude-only → priority
 		expect(cfgTierAdvisor.get(settings)).toBe("flex");
-	});
-});
-
-describe("task.agentServiceTierOverrides", () => {
-	it("resolves every documented setting for the OpenAI family", () => {
-		const parentTiers: ServiceTierByFamily = { openai: "priority", anthropic: "priority", google: "flex" };
-
-		expect(resolveAgentServiceTierOverride("inherit", openAIModel, parentTiers)).toEqual(parentTiers);
-		expect(resolveAgentServiceTierOverride("none", openAIModel, parentTiers)).toEqual({});
-		expect(resolveAgentServiceTierOverride("auto", openAIModel, parentTiers)).toEqual({ openai: "auto" });
-		expect(resolveAgentServiceTierOverride("default", openAIModel, parentTiers)).toEqual({ openai: "default" });
-		expect(resolveAgentServiceTierOverride("flex", openAIModel, parentTiers)).toEqual({ openai: "flex" });
-		expect(resolveAgentServiceTierOverride("scale", openAIModel, parentTiers)).toEqual({ openai: "scale" });
-		expect(resolveAgentServiceTierOverride("priority", openAIModel, parentTiers)).toEqual({ openai: "priority" });
-	});
-
-	it("rejects values outside the documented service-tier set during settings load", async () => {
-		await expect(
-			Settings.loadIsolated({
-				inMemory: true,
-				overrides: { "task.agentServiceTierOverrides": { scout: "turbo" } },
-			}),
-		).rejects.toThrow(
-			"Invalid service tier for task.agentServiceTierOverrides.scout: turbo. Expected one of: inherit, none, auto, default, flex, scale, priority, ultrafast.",
-		);
-	});
-
-	it("rejects a scalar or array container during settings load instead of disabling every override", async () => {
-		await expect(
-			Settings.loadIsolated({
-				inMemory: true,
-				overrides: { "task.agentServiceTierOverrides": "priority" },
-			}),
-		).rejects.toThrow(
-			"Invalid task.agentServiceTierOverrides: expected a map of agent name to service tier, got a string.",
-		);
-		expect(() => validateAgentServiceTierOverrides([{ scout: "priority" }])).toThrow(
-			"Invalid task.agentServiceTierOverrides: expected a map of agent name to service tier, got an array.",
-		);
-		// An empty YAML mapping (`agentServiceTierOverrides:`) is `null`, not a typo.
-		expect(validateAgentServiceTierOverrides(null)).toEqual({});
-	});
-
-	it("applies concrete values only when the effective model family supports them", () => {
-		const inherited: ServiceTierByFamily = { openai: "priority", anthropic: "priority", google: "flex" };
-		expect(resolveAgentServiceTierOverride("priority", anthropicModel, inherited)).toEqual({
-			anthropic: "priority",
-		});
-		expect(resolveAgentServiceTierOverride("flex", googleModel, inherited)).toEqual({ google: "flex" });
-		expect(resolveAgentServiceTierOverride("scale", anthropicModel, inherited)).toEqual({});
-		expect(resolveAgentServiceTierOverride("default", googleModel, inherited)).toEqual({});
-	});
-
-	it("never broadcasts a concrete value across families when no model resolved", () => {
-		const inherited: ServiceTierByFamily = { openai: "flex" };
-		expect(resolveAgentServiceTierOverride("priority", undefined, inherited)).toEqual({});
-		expect(resolveAgentServiceTierOverride("scale", undefined, inherited)).toEqual({});
-		expect(resolveAgentServiceTierOverride("none", undefined, inherited)).toEqual({});
-		expect(resolveAgentServiceTierOverride("inherit", undefined, inherited)).toEqual(inherited);
 	});
 });

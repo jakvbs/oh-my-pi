@@ -99,7 +99,6 @@ import type { AgentHubRegistry } from "@oh-my-pi/pi-tui/overlays/agent-hub-types
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { registerPersistedSubagents } from "../registry/persisted-agents";
 import type { AgentMetrics } from "@oh-my-pi/pi-tui/overlays/agent-hub-projection";
-import { sumSubagentTreeCost } from "./agent-hub-runtime";
 import { type AgentSession, type AgentSessionEvent, type DroppedPrompt } from "../session/agent-session";
 import type { CompactMode } from "../session/compact-modes";
 import { HistoryStorage } from "../session/history-storage";
@@ -107,8 +106,8 @@ import { syncTextPrediction, textPredictionBackend } from "../predict/client";
 import { setWordPredictionHost } from "@oh-my-pi/pi-tui/prompt/word-completion";
 import { resolveMarkdownLinkHrefs } from "../internal-urls/hyperlink-targets";
 import type { ResolveContext } from "../internal-urls/index";
-import { modelMentionDisplayName } from "@oh-my-pi/pi-tui/prompt/model-mention-syntax";
-import { modelMentionChipLabel, shiftImageMarkers } from "@oh-my-pi/pi-tui/prompt/composer-attachments";
+import { shiftImageMarkers } from "@oh-my-pi/pi-tui/prompt/composer-attachments";
+import { sumSubagentTreeCost } from "./agent-hub-runtime";
 import type { SessionContext } from "../session/session-context";
 import type { SessionManager } from "../session/session-manager";
 import {
@@ -124,7 +123,6 @@ import { buildStaticInlineHint } from "../slash-commands/builtin-completions";
 import { formatCoarseDuration } from "@oh-my-pi/pi-tui/chrome/format";
 import { resolveCliEntryCmd } from "../subprocess/worker-client";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
-import { labelEchoesHandle } from "../task/label";
 import { agentTypeBadge, formatTaskId } from "@oh-my-pi/pi-tui/tools/task";
 import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import type { LspStartupServerInfo } from "../tools";
@@ -228,7 +226,6 @@ import { OmfgController } from "./controllers/omfg-controller";
 import { SelectorController } from "./controllers/selector-controller";
 import { SessionFocusController } from "./controllers/session-focus-controller";
 import { SSHCommandController } from "./controllers/ssh-command-controller";
-import { TanCommandController } from "./controllers/tan-command-controller";
 import { TodoCommandController } from "./controllers/todo-command-controller";
 import { imageReferenceHyperlink } from "@oh-my-pi/pi-tui/prompt/image-references";
 import { describeLoopCondition, evaluateLoopCondition, type LoopConditionVerdict } from "./loop-condition";
@@ -337,7 +334,7 @@ import {
 	cfgTuiVimModeDisplay,
 } from "./settings";
 import { cfgTasksTodoClearDelay } from "../tools/settings";
-import { cfgWorktreeOnExit, cfgWorktreeOnStart } from "../task/settings";
+import { cfgWorktreeOnExit, cfgWorktreeOnStart } from "../session/worktree-settings";
 import { cfgExpandThinkingBlocks, cfgProseOnlyThinking } from "../session/settings";
 import { cfgHideThinkingBlock } from "../session/settings";
 import { cfgGoalContinuationModes, cfgGoalEnabled } from "../goals/settings";
@@ -1014,11 +1011,9 @@ export function renderSubagentHudLines(
 				const modelLead = modelBadge ? `${modelBadge} ` : "";
 				let line = `${dot} ${modelLead}${theme.fg("accent", theme.bold(displayId))}${badge}`;
 				const description = session.description?.trim() || session.progress?.description?.trim();
-				const distinctDescription =
-					description && !labelEchoesHandle(session.id, description) ? description : undefined;
-				if (distinctDescription) {
+				if (description) {
 					const budget = Math.max(0, rowWidth - visibleWidth(line) - visibleWidth(": "));
-					const formatted = replaceTabs(distinctDescription).replace(/\s*[\r\n]+\s*/g, " ↵ ");
+					const formatted = replaceTabs(description).replace(/\s*[\r\n]+\s*/g, " ↵ ");
 					if (budget > 0) {
 						line += `${theme.fg("accent", ":")} ${theme.fg("accent", truncateToWidth(formatted, budget))}`;
 					}
@@ -1026,7 +1021,7 @@ export function renderSubagentHudLines(
 					// No spawn description: fall back to a muted task preview, same as
 					// the inline task rows when a row has no label.
 					const taskPreview = session.progress?.task?.trim();
-					if (taskPreview && !labelEchoesHandle(session.id, taskPreview)) {
+					if (taskPreview) {
 						const formatted = replaceTabs(taskPreview).replace(/\s*[\r\n]+\s*/g, " ↵ ");
 						const budget = Math.min(TRUNCATE_LENGTHS.SHORT, Math.max(0, rowWidth - visibleWidth(line) - 1));
 						if (budget > 0) line += ` ${theme.fg("muted", truncateToWidth(formatted, budget))}`;
@@ -1422,7 +1417,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	readonly #codexResetFireworksController: CodexResetFireworksController;
 	readonly #btwController: BtwController;
-	readonly #tanCommandController: TanCommandController;
 	readonly #omfgController: OmfgController;
 	readonly #commandController: CommandController;
 	readonly #todoCommandController: TodoCommandController;
@@ -1550,7 +1544,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Click override for the pinned jump-list density; undefined follows `display.pinnedAgents`. */
 	#pinnedHudOverride: boolean | undefined;
 	#eventBus?: EventBus;
-	#subagentEventBus?: EventBus;
 	#eventBusUnsubscribers: Array<() => void> = [];
 	/** Mirror of `tui.mouse`, read by the TUI's per-frame inline mouse tracking probe. */
 	#mouseCapture = false;
@@ -1573,11 +1566,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		requestRender: () => this.ui.requestRender(),
 	};
 
-	/** Root-scoped bus carrying this session tree's `task:subagent:*` frames. */
-	get subagentEventBus(): EventBus | undefined {
-		return this.#subagentEventBus;
-	}
-
 	constructor(
 		session: AgentSession,
 		version: string,
@@ -1587,7 +1575,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		mcpManager?: MCPManager,
 		eventBus?: EventBus,
 		composer?: Composer,
-		subagentEventBus?: EventBus,
 	) {
 		this.session = session;
 		this.sessionManager = session.sessionManager;
@@ -1614,11 +1601,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.composerState = () => this.#composerNativeState();
 		this.editor.imageReferenceHyperlink = imageReferenceHyperlink;
 		this.editor.skillFilePath = name => this.skillCommands.get(`skill:${name}`)?.filePath;
-		this.editor.modelMentionLabel = selector => {
-			const model = this.session.findMentionableModel(selector);
-			return model ? modelMentionChipLabel(modelMentionDisplayName(model)) : undefined;
-		};
-		this.editor.modelMentionSelector = agent => this.session.modelMentions.find(m => m.agent === agent)?.selector;
 		this.editor.fileHyperlink = (filePath, text) => fileHyperlink(filePath, text, { line: 1 });
 		this.#ownsStartedUi = wasStarted;
 		this.keybindings = KeybindingsManager.inMemory();
@@ -1632,7 +1614,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			new MCPCommandController(this).handleMCPAuthChallenge(serverName, challenge),
 		);
 		this.#eventBus = eventBus;
-		this.#subagentEventBus = subagentEventBus;
 		if (eventBus) {
 			this.#eventBusUnsubscribers.push(
 				eventBus.on(LSP_STARTUP_EVENT_CHANNEL, data => {
@@ -1774,7 +1755,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		this.#uiHelpers = new UiHelpers(this);
 		this.#btwController = new BtwController(this);
-		this.#tanCommandController = new TanCommandController(this);
 		this.#omfgController = new OmfgController(this);
 		this.#extensionUiController = new ExtensionUiController(this);
 		this.#eventController = new EventController(this);
@@ -2022,7 +2002,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// Wire observer registry to EventBus
 		if (this.#eventBus) {
-			this.#observerRegistry.subscribeToEventBus(this.#eventBus, this.#subagentEventBus ?? this.#eventBus);
+			this.#observerRegistry.subscribeToEventBus(this.#eventBus, this.#eventBus);
 		}
 		this.#observerRegistry.setMainSession(this.sessionManager.getSessionFile() ?? undefined);
 		this.syncRunningSubagentBadge();
@@ -5305,11 +5285,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		nextEditor.attachmentChips = previousEditor.attachmentChips;
 		nextEditor.imageReferenceHyperlink = imageReferenceHyperlink;
 		nextEditor.skillFilePath = name => this.skillCommands.get(`skill:${name}`)?.filePath;
-		nextEditor.modelMentionLabel = selector => {
-			const model = this.session.findMentionableModel(selector);
-			return model ? modelMentionChipLabel(modelMentionDisplayName(model)) : undefined;
-		};
-		nextEditor.modelMentionSelector = agent => this.session.modelMentions.find(m => m.agent === agent)?.selector;
 		nextEditor.fileHyperlink = (filePath, text) => fileHyperlink(filePath, text, { line: 1 });
 		nextEditor.onAutocompleteCancel = () => {
 			this.ui.requestRender(true);
@@ -6072,9 +6047,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		void this.#selectorController.showExtensionsDashboard();
 	}
 
-	showAgentsDashboard(): void {
-		void this.#selectorController.showAgentsDashboard();
-	}
 	showGitUi(revision?: string): void {
 		void this.#selectorController.showGitTui(revision);
 	}
@@ -6196,10 +6168,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handleBtwCommand(question: string): Promise<void> {
 		return this.#btwController.start(question);
-	}
-
-	handleTanCommand(work: string): Promise<void> {
-		return this.#tanCommandController.start(work);
 	}
 
 	hasActiveBtw(): boolean {

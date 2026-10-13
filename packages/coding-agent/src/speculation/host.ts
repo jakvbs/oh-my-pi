@@ -32,7 +32,6 @@ import {
 import { isCpuProfilePath } from "../utils/cpuprofile";
 import { isSampleProfilePath } from "../utils/sample-profile";
 import { isVideoPath } from "@oh-my-pi/pi-tui/prompt/video";
-import { cfgTaskSpeculativeLaunch } from "../task/settings";
 
 import {
 	cfgToolsApproval,
@@ -330,7 +329,7 @@ export function createSpeculativeToolExecutionConfig(
 	const host = new CodingAgentSpeculativeExecutionHost(settings, toolSession, extensionRunner);
 	return {
 		get enabled() {
-			return cfgToolsSpeculativeExecutionEnabled.get(settings) || cfgTaskSpeculativeLaunch.get(settings);
+			return cfgToolsSpeculativeExecutionEnabled.get(settings);
 		},
 		get maxInFlight() {
 			return cfgToolsSpeculativeExecutionMaxInFlight.get(settings);

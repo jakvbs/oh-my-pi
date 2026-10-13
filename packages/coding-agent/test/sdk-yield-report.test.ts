@@ -72,9 +72,7 @@ async function harness(
 		enableLsp: false,
 		requireYieldTool: true,
 		toolNames: ["yield"],
-		parentTaskPrefix: "report-child",
 		agentId: "report-child",
-		isSubagent: true,
 		outputSchema: options.outputSchema,
 		extensions: delayed
 			? [
@@ -197,15 +195,6 @@ describe("SDK data-less yield report", () => {
 		const result = session.messages.find(message => message.role === "toolResult");
 		expect(result).toMatchObject({ isError: true });
 		expect(JSON.stringify(result)).not.toContain("Other child's report");
-	});
-
-	it("does not reuse preceding prose for incremental sections", async () => {
-		const { session } = await harness({ input: { type: ["notes"] } });
-		session.agent.replaceMessages([createAssistantMessage("Earlier report"), reminder()]);
-		await session.agent.continue();
-		const result = session.messages.find(message => message.role === "toolResult");
-		expect(result).toMatchObject({ isError: true });
-		expect(JSON.stringify(result)).not.toContain("Earlier report");
 	});
 
 	it("retains strict-mode null-as-omitted semantics", async () => {

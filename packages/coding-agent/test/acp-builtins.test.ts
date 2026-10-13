@@ -19,7 +19,7 @@ import { executeAcpBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-c
 import { getProjectDir, removeWithRetries, setProjectDir } from "@oh-my-pi/pi-utils";
 
 import { cfgExtendedContext } from "@oh-my-pi/pi-coding-agent/session/context-settings";
-import { cfgWorktreeCleanSource } from "@oh-my-pi/pi-coding-agent/task/settings";
+import { cfgWorktreeCleanSource } from "@oh-my-pi/pi-coding-agent/session/worktree-settings";
 
 interface FakeAcpBuiltinSession {
 	fastMode: boolean;

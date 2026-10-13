@@ -51,7 +51,6 @@ async function closedBookSession(responses: MockResponseSource, toolNames: strin
 		rules: [],
 		enableMCP: false,
 		enableLsp: false,
-		enableIrc: false,
 		hasUI: false,
 		bindProcessState: false,
 		requireYieldTool: true,

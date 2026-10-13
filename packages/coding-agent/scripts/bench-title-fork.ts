@@ -377,7 +377,6 @@ async function createHeadlessSession(cwd: string, config: Config, agentId: strin
 		thinkingLevel: config.thinking,
 		enableMCP: false,
 		enableLsp: false,
-		enableIrc: false,
 		disableExtensionDiscovery: true,
 		cacheWarming: false,
 		agentId,

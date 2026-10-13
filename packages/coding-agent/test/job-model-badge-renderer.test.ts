@@ -2,14 +2,17 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import { visibleWidth } from "@oh-my-pi/pi-tui";
 import { AsyncJobManager } from "../src/async/job-manager";
-import { resetSettingsForTest, Settings, settings } from "../src/config/settings";
+import { resetSettingsForTest, Settings } from "../src/config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "@oh-my-pi/pi-tui/theme";
 import type { ToolSession } from "../src/tools";
 import { type CoordinationDetails, waitToolRenderer } from "@oh-my-pi/pi-tui/tools/wait";
 import { snapshotJobs } from "../src/async/job-control";
-import { formatDuration, thinkingLevelGlyph } from "@oh-my-pi/pi-tui/render/render-utils";
-
-import { cfgTaskShowResolvedModelBadge } from "@oh-my-pi/pi-coding-agent/task/settings";
+import {
+	formatDuration,
+	isFeedModelBadgeEnabled,
+	setFeedModelBadgeEnabled,
+	thinkingLevelGlyph,
+} from "@oh-my-pi/pi-tui/render/render-utils";
 
 const ansiPattern = /\x1b\[[0-9;]*m/g;
 const hyperlinkPattern = /\x1b\]8;[^\x1b\x07]*(?:\x07|\x1b\\)/g;
@@ -39,17 +42,16 @@ describe("hub jobs task model badges", () => {
 	});
 
 	beforeEach(() => {
-		priorShowResolvedModelBadge = cfgTaskShowResolvedModelBadge.get(settings);
+		priorShowResolvedModelBadge = isFeedModelBadgeEnabled();
 	});
 
 	afterEach(() => {
-		cfgTaskShowResolvedModelBadge.override(settings, priorShowResolvedModelBadge);
-		cfgTaskShowResolvedModelBadge.clearOverride(settings);
+		setFeedModelBadgeEnabled(priorShowResolvedModelBadge);
 		vi.restoreAllMocks();
 	});
 
 	it("keeps a literal thinking suffix in a completed task's identity with a separate thinking glyph", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const identity = "p/model:high";
 		const text = renderJobText({
 			jobs: [
@@ -74,7 +76,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("fits a long model badge around the agent name and duration at 60 columns", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const text = renderJobText(
 			{
 				jobs: [
@@ -105,7 +107,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("keeps the ID and badge ahead of a long description and preserves expanded continuation", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const text = renderJobText(
 			{
 				jobs: [
@@ -137,7 +139,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("renders a running task snapshot's advisor badge and keeps it on the settled result", async () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const identity = "p/runtime:max";
 		const reported = Promise.withResolvers<void>();
 		const finish = Promise.withResolvers<string>();
@@ -183,7 +185,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("preserves a legacy selector without inferring a thinking glyph", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const text = renderJobText({
 			jobs: [
 				{
@@ -202,7 +204,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("hides a task job's resolved model selector when the badge setting is disabled", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, false);
+		setFeedModelBadgeEnabled(false);
 		const selector = "p/model:high";
 		const text = renderJobText({
 			jobs: [
@@ -226,7 +228,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("does not render resolved model metadata on bash job rows", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const selector = "p/model:high";
 		const text = renderJobText({
 			jobs: [
@@ -282,7 +284,7 @@ describe("hub jobs task model badges", () => {
 				value: { ...uiTheme.tree, branch: "界├", last: "界界└", vertical: "界界│" },
 			});
 			for (const enabled of [true, false]) {
-				cfgTaskShowResolvedModelBadge.override(settings, enabled);
+				setFeedModelBadgeEnabled(enabled);
 				for (const width of [40, 120]) {
 					const id = `LongWorker${"界".repeat(40)}`;
 					const text = renderJobText(
@@ -318,7 +320,7 @@ describe("hub jobs task model badges", () => {
 	});
 
 	it("renders task rows with missing or malformed resolved model metadata without leaking bogus badges", () => {
-		cfgTaskShowResolvedModelBadge.override(settings, true);
+		setFeedModelBadgeEnabled(true);
 		const text = renderJobText(
 			{
 				jobs: [

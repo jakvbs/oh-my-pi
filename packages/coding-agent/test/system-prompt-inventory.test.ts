@@ -500,28 +500,6 @@ describe("system prompt tool inventory", () => {
 		expect(text).not.toContain("Reads files from disk.");
 	});
 
-	it("renders exactly one of the map-unknown-code and inline-first delegation rules per bias", async () => {
-		const renderDelegation = async (delegationBias: "eager" | "restrained" | "gated", eagerTasks: boolean) => {
-			const { systemPrompt } = await buildSystemPrompt({
-				cwd: tempDir,
-				contextFiles: [],
-				skills: [],
-				rules: [],
-				toolNames: ["read", "task"],
-				workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
-				delegationBias,
-				eagerTasks,
-			});
-			const count = (needle: string) => systemPrompt[0].split(needle).length - 1;
-			return [count("Map unknown code via `task`"), count("Inline first.")];
-		};
-		expect(await renderDelegation("eager", false)).toEqual([1, 0]);
-		expect(await renderDelegation("eager", true)).toEqual([1, 0]);
-		expect(await renderDelegation("restrained", true)).toEqual([1, 0]);
-		expect(await renderDelegation("restrained", false)).toEqual([0, 1]);
-		expect(await renderDelegation("gated", true)).toEqual([0, 0]);
-	});
-
 	it("renders the functions namespace (not a name list) when tools are not native", async () => {
 		const text = await render({ nativeTools: false, inlineToolDescriptors: false });
 		expect(text).toContain("namespace functions {");

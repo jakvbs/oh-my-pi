@@ -1,6 +1,5 @@
 import type { AuthApiKeyOptions, AuthStorage, SessionRestrictionLease } from "@oh-my-pi/pi-ai/auth-storage";
 import type { Api, Model } from "@oh-my-pi/pi-ai/types";
-import { isRecord } from "@oh-my-pi/pi-utils";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
 import type { ModelRegistry } from "./model-registry";
 
@@ -10,46 +9,6 @@ import type { ModelRegistry } from "./model-registry";
  * and never an API key; an empty list allows no account.
  */
 export type OAuthAccountPools = Readonly<Record<string, readonly string[]>>;
-
-/**
- * Validate the exact-agent `task.agentAccountPools` map (agent name → provider
- * id → identity keys). An absent or empty (`null`) mapping means no pools, and
- * a `null` agent entry clears one inherited from a lower-priority settings
- * layer. Any other malformed level fails settings load: dropping it would
- * silently widen a restricted agent to every account. Both levels are
- * null-prototype maps, so a name such as `__proto__` stays an own entry.
- */
-export function validateAgentAccountPools(value: unknown): Record<string, OAuthAccountPools> {
-	if (value === undefined || value === null) return {};
-	if (!isRecord(value)) {
-		throw new Error(
-			`Invalid task.agentAccountPools: expected a map of agent name to provider account pools, got ${Array.isArray(value) ? "an array" : `a ${typeof value}`}.`,
-		);
-	}
-	const pools: Record<string, OAuthAccountPools> = Object.create(null);
-	for (const [agentName, providers] of Object.entries(value)) {
-		if (providers === null) continue;
-		if (!isRecord(providers)) {
-			throw new Error(
-				`Invalid task.agentAccountPools.${agentName}: expected a map of provider to OAuth identity keys, got ${Array.isArray(providers) ? "an array" : `a ${typeof providers}`}.`,
-			);
-		}
-		const agentPools: Record<string, readonly string[]> = Object.create(null);
-		for (const [provider, identityKeys] of Object.entries(providers)) {
-			if (
-				!Array.isArray(identityKeys) ||
-				!identityKeys.every((key): key is string => typeof key === "string" && key.length > 0 && key.trim() === key)
-			) {
-				throw new Error(
-					`Invalid task.agentAccountPools.${agentName}.${provider}: expected a list of OAuth identity keys such as "email:you@example.com|org:<org-id>".`,
-				);
-			}
-			agentPools[provider] = identityKeys;
-		}
-		pools[agentName] = agentPools;
-	}
-	return pools;
-}
 
 /** Unscoped registry behind each registry {@link SessionAccountPoolScope.registry} returned. */
 const scopedRegistryTargets = new WeakMap<ModelRegistry, ModelRegistry>();

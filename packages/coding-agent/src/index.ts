@@ -54,22 +54,6 @@ export * from "./session/session-migrations";
 export * from "./session/session-storage";
 export * from "./session/sql-session-storage";
 export * from "./session/run-to-yield";
-export * from "./task/executor";
-export type * from "./task/types";
-export type {
-	AgentSource,
-	StructuredSubagentSchemaSource,
-	StructuredSubagentValidationStatus,
-	StructuredSubagentOutput,
-	TaskItem,
-	TaskParams,
-	ReviewFinding,
-	ReviewSummary,
-	ReviewData,
-	AgentProgress,
-	SingleResult,
-	TaskToolDetails,
-} from "@oh-my-pi/pi-tui/tools/task";
 export type { YieldItem } from "@oh-my-pi/pi-tui/tools/yield";
 // Tools (detail types and utilities)
 export type { OutputSchemaMode } from "./tools/output-schema-validator";

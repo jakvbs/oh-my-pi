@@ -11,7 +11,6 @@ import { type CreateAgentSessionOptions, createAgentSession, discoverAuthStorage
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
-import { createSubagentSettings } from "@oh-my-pi/pi-coding-agent/task/executor";
 import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
 import { createInteractiveModeContext } from "../helpers/interactive-mode-context";
 
@@ -43,7 +42,7 @@ describe("defaultThinkingLevel on running sessions", () => {
 
 	const start = async (
 		settings: Settings,
-		extra: Pick<CreateAgentSessionOptions, "thinkingLevel" | "isSubagent" | "parentTaskPrefix" | "agentId">,
+		extra: Pick<CreateAgentSessionOptions, "thinkingLevel">,
 	): Promise<AgentSession> => {
 		const cwd = path.join(os.tmpdir(), `pi-thinking-default-${Snowflake.next()}`);
 		tempDirs.push(cwd);
@@ -68,29 +67,6 @@ describe("defaultThinkingLevel on running sessions", () => {
 		sessions.push(session);
 		return session;
 	};
-
-	it("keeps a subagent at its spawn-time level when the parent's default changes", async () => {
-		const parent = Settings.isolated();
-		cfgDefaultThinkingLevel.set(parent, Effort.High);
-		const subagent = await start(createSubagentSettings(parent), {
-			thinkingLevel: Effort.Low,
-			isSubagent: true,
-			parentTaskPrefix: "0-Sub",
-			agentId: "0-Sub",
-		});
-		expect(subagent.thinkingLevel).toBe(Effort.Low);
-
-		cfgDefaultThinkingLevel.set(parent, Effort.Minimal);
-		// Settings listeners are coalesced onto one microtask.
-		await Promise.resolve();
-
-		expect(subagent.thinkingLevel).toBe(Effort.Low);
-		// The subagent's own default stays the spawn-time snapshot, so what it later seeds from
-		// that default (a reload without a thinking entry, the children it spawns) is not
-		// re-steered by the parent's edit either.
-		expect(cfgDefaultThinkingLevel.get(subagent.settings)).toBe(Effort.High);
-		expect(cfgDefaultThinkingLevel.get(createSubagentSettings(subagent.settings))).toBe(Effort.High);
-	});
 
 	it("switches the main session only for a settings-panel change, not a plain settings write", async () => {
 		const settings = Settings.isolated();

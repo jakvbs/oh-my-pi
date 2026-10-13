@@ -291,7 +291,6 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 - [`src/extensibility/plugins/parser.ts`](../packages/coding-agent/src/extensibility/plugins/parser.ts) — install spec and package-name parsing helpers
 - [`src/extensibility/plugins/types.ts`](../packages/coding-agent/src/extensibility/plugins/types.ts) — manifest/runtime/override type contracts
 - [`src/discovery/omp-plugins.ts`](../packages/coding-agent/src/discovery/omp-plugins.ts) — conventional capability discovery for npm/link extension packages
-- [`src/task/discovery.ts`](../packages/coding-agent/src/task/discovery.ts) — conventional `agents/` discovery for extension and marketplace plugin roots
 - [`src/discovery/claude-plugins.ts`](../packages/coding-agent/src/discovery/claude-plugins.ts) — marketplace-plugin capability discovery
 - [`src/discovery/agent-plugins.ts`](../packages/coding-agent/src/discovery/agent-plugins.ts) — portable Agent Plugins skills and MCP discovery
 - [`src/extensibility/extensions/directory-resolution.ts`](../packages/coding-agent/src/extensibility/extensions/directory-resolution.ts) — shared extension-directory precedence

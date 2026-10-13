@@ -22,7 +22,6 @@ import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { discoverAgents } from "@oh-my-pi/pi-coding-agent/task/discovery";
 import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
 
 import { cfgExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/settings";
@@ -40,15 +39,6 @@ function buildSkillPackage(dir: string, skillName: string): void {
 	fs.writeFileSync(
 		path.join(dir, "skills", skillName, "SKILL.md"),
 		`---\nname: ${skillName}\ndescription: ${skillName} fixture\n---\nbody\n`,
-	);
-}
-
-/** Write a minimal extension package exposing a single task agent. */
-function buildAgentPackage(dir: string, agentName: string): void {
-	fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "agents", `${agentName}.ts`),
-		`export default { name: "${agentName}", description: "${agentName} fixture", systemPrompt: "Handle the assigned task." };\n`,
 	);
 }
 
@@ -122,29 +112,6 @@ describe("AgentSession extension-root discovery (post-startup)", () => {
 		const names = session.skills.map(skill => skill.name);
 		expect(names).toContain("explicit-skill");
 		expect(names).not.toContain("configured-skill");
-	});
-
-	it("discovers sibling task agents from an inherited explicit-only root policy", async () => {
-		const explicitExt = path.join(tempDir, "explicit-pkg");
-		const configuredExt = path.join(tempDir, "configured-pkg");
-		buildAgentPackage(explicitExt, "explicit-sibling");
-		buildAgentPackage(configuredExt, "configured-sibling");
-		const extensionRoots = (): EffectiveExtensionRoots => ({
-			explicit: [explicitExt],
-			mode: "explicit-only",
-			configured: [configuredExt],
-			configuredLevel: "project",
-		});
-		const session = await makeSession({
-			extensions: [configuredExt],
-			extensionRoots,
-		});
-
-		const { agents } = await discoverAgents(tempDir, tempDir, session.effectiveExtensionRoots);
-		const names = agents.map(agent => agent.name);
-
-		expect(names).toContain("explicit-sibling");
-		expect(names).not.toContain("configured-sibling");
 	});
 
 	it("reflects a runtime extensions override on the next refresh", async () => {

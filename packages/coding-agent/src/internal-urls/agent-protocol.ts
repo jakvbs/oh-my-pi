@@ -174,7 +174,7 @@ export class AgentProtocolHandler implements ProtocolHandler {
 		if (!session) throw new Error("agent:// messaging requires a tool session");
 		const registry = session.agentRegistry;
 		const senderId = session.getAgentId?.();
-		if (!registry || !senderId || session.enableIrc === false) {
+		if (!registry || !senderId) {
 			throw new Error("Peer messaging is unavailable in this session.");
 		}
 		const to = url.rawHost || url.hostname;

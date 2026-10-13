@@ -208,10 +208,6 @@ import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { buildResolveReminderMessage, isPreviewResolutionToolCall, writeDeviceDispatch } from "../tools/resolve";
 import { supportsExternalThinking } from "../tools/think";
 import type { TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
-import type { WorkPoolYieldItem } from "../task/workpool-yield";
-import type { AgentDefinition } from "../task/types";
-import type { ModelMention } from "@oh-my-pi/pi-tui/prompt/model-mention-syntax";
-import { ModelMentionRegistry } from "./model-mentions";
 import { parseCommandArgs } from "../utils/command-args";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import { extractFileMentions, generateFileMentionMessages } from "../utils/file-mentions";
@@ -853,16 +849,6 @@ export class AgentSession implements SettingsScope {
 	#stopTimeTodoRemindersEnabled = true;
 	readonly #todo: TodoTracker;
 	readonly #contextBudget = new ContextBudgetReminder();
-	readonly #modelMentions: ModelMentionRegistry;
-	#workPoolYieldItems: readonly WorkPoolYieldItem[] = [];
-	/** Item set matching the last successfully rebuilt provider prompt. The base
-	 *  prompt starts consistent with the empty set; every later value is a
-	 *  snapshot taken after a prompt rebuild resolves. Rollback restores this —
-	 *  never the merely requested previous set, which may belong to a transition
-	 *  that itself failed. Never mutated in place; replaced wholesale. */
-	#lastPublishedWorkPoolYieldItems: readonly WorkPoolYieldItem[] = [];
-	/** Serialized tail of pooled-turn yield contract transitions; never rejects. */
-	#workPoolYieldTransition: Promise<void> = Promise.resolve();
 	#replanTitleRefreshInFlight: Promise<void> | undefined = undefined;
 	/** Resolved TITLE_SYSTEM.md override applied to every automatic session-title
 	 *  generation path. Refresh via {@link AgentSession.setTitleSystemPrompt} when
@@ -1188,13 +1174,6 @@ export class AgentSession implements SettingsScope {
 		if (this.#modeExitDrainSuppressionDepth > 0 || this.#isDisposed || this.isStreaming || !this.#irc.hasPending()) {
 			return;
 		}
-		// A pooled yield contract means a pool turn owns this worker (installed,
-		// dispatching, or dispatch-imminent). Waking here would either emit keyed
-		// yields against its items or re-queue into the deferral path forever, so
-		// leave the records pending until the contract clears.
-		if (this.#workPoolYieldItems.length > 0) {
-			return;
-		}
 		// Session transitions call #disconnectFromAgent() BEFORE `await abort()`, and only bump
 		// #sessionGeneration/clear the IRC queue several awaits later once they reach agent.reset().
 		// A normalization await that resolves in that gap sees an unchanged generation and an idle,
@@ -1292,26 +1271,8 @@ export class AgentSession implements SettingsScope {
 		const generation = this.#promptGeneration;
 		this.#beginInFlight();
 		let turnError: unknown;
-		// A pooled-turn yield transition (item-set mutation + prompt rebuild) may be
-		// in flight when the wake lands. Starting the turn on the stale prompt would
-		// advertise one yield schema while the runtime enforces the other, so join
-		// the transition before building the turn from a consistent contract.
-		void this.whenWorkPoolYieldSettled()
+		void Promise.resolve()
 			.then(() => {
-				// Synchronous ownership check, atomic with the dispatch below:
-				// agent.prompt() claims streaming with no await in between, and the
-				// yield contract above mutates synchronously, so no install can
-				// interleave here.
-				if (this.#workPoolYieldItems.length > 0) {
-					// A pooled turn owns this worker (installed, running, or
-					// dispatch-imminent): park wake-intended records where pooled
-					// turns cannot flush them, for a monitored wake after clearing.
-					// Flushing them as ordinary asides would feed them to the batch
-					// with no observer to reply to the sender.
-					this.#irc.queueDeferredWake(records);
-					logger.debug("IRC wake turn parked while pooled");
-					return;
-				}
 				if (this.agent.state.isStreaming) {
 					this.#irc.queueAside(records);
 					logger.debug("IRC wake turn deferred behind the running turn");
@@ -1322,16 +1283,9 @@ export class AgentSession implements SettingsScope {
 			})
 			.catch(error => {
 				if (error instanceof AgentBusyError) {
-					// Lost the prompt race after passing the checks above: an
-					// ordinary running turn takes these as asides, but a pooled
-					// turn must not flush them, so park them instead.
-					if (this.#workPoolYieldItems.length > 0) {
-						this.#irc.queueDeferredWake(records);
-						logger.debug("IRC wake turn parked while pooled");
-					} else {
-						this.#irc.queueAside(records);
-						logger.debug("IRC wake turn deferred behind the running turn");
-					}
+					// Lost the prompt race after passing the checks above.
+					this.#irc.queueAside(records);
+					logger.debug("IRC wake turn deferred behind the running turn");
 					return;
 				}
 				turnError = error;
@@ -1597,12 +1551,6 @@ export class AgentSession implements SettingsScope {
 			consumeLastServedToolChoiceLabel: () => this.#toolChoiceQueue.consumeLastServedLabel(),
 		};
 		this.#todo = new TodoTracker(todoHost);
-		this.#modelMentions = new ModelMentionRegistry({
-			sessionManager: this.sessionManager,
-			modelRegistry: this.#modelRegistry,
-			scopedModels: () => this.scopedModels.map(s => s.model),
-			inheritedAgents: config.inheritedSessionAgents,
-		});
 		this.#ownedAsyncJobManager = config.ownedAsyncJobManager;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		const modelControlsHost: ModelControlsHost = {
@@ -1885,7 +1833,6 @@ export class AgentSession implements SettingsScope {
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
 			notifyCommandMetadataChanged: () => this.#notifyCommandMetadataChanged(),
 			localProtocolOptions: () => this.#localProtocolOptions(),
-			sessionAgents: () => this.getSessionAgents(),
 		};
 		this.#tools = new SessionTools(sessionToolsHost, {
 			autoApprove: config.autoApprove,
@@ -2002,7 +1949,6 @@ export class AgentSession implements SettingsScope {
 		this.agent.providerSessionState = this.#providerSessionState;
 		this.#syncAgentSessionId();
 		this.#todo.syncFromBranch();
-		this.#modelMentions.syncFromBranch();
 		this.#goalRuntime = new GoalRuntime({
 			getState: () => this.#goalModeState,
 			setState: state => {
@@ -2193,7 +2139,6 @@ export class AgentSession implements SettingsScope {
 			resetCodexProviderAfterCompaction: compaction => this.#resetCodexProviderAfterCompaction(compaction),
 			syncTodoPhasesFromBranch: () => {
 				this.#todo.syncFromBranch();
-				this.#modelMentions.syncFromBranch();
 			},
 			resetAdvisorRuntimes: (reason, options) => this.#advisors.resetAllRuntimes(reason, options),
 			rebaseAdvisorPrefix: reason => this.#advisors.rebaseDeliveredPrefixes(reason),
@@ -5780,19 +5725,13 @@ export class AgentSession implements SettingsScope {
 		const { init } = cached;
 		if (!init) return;
 		const base = this.#tools.baseOfSystemPrompt(prompt);
-		const items = this.#workPoolYieldItems;
-		const persistedItems = init.workPoolYieldItems ?? [];
 		if (
 			base.length === init.systemPrompt.length &&
-			base.every((block, index) => block === init.systemPrompt[index]) &&
-			items.length === persistedItems.length &&
-			items.every(
-				(item, index) => item.id === persistedItems[index]?.id && item.index === persistedItems[index]?.index,
-			)
+			base.every((block, index) => block === init.systemPrompt[index])
 		) {
 			return;
 		}
-		cached.init = { ...init, systemPrompt: base, workPoolYieldItems: items.length > 0 ? [...items] : undefined };
+		cached.init = { ...init, systemPrompt: base };
 		this.sessionManager.appendSessionInit(cached.init);
 	}
 
@@ -5942,15 +5881,6 @@ export class AgentSession implements SettingsScope {
 	/** Restores a non-MCP presentation snapshot while retaining the current MCP selection. */
 	restoreNonMCPToolPresentation(nonMCPToolNames: string[], nonMCPMountedToolNames: string[]): Promise<void> {
 		return this.#tools.restoreNonMCPToolPresentation(nonMCPToolNames, nonMCPMountedToolNames);
-	}
-
-	/**
-	 * User-tagged model agents frozen into the task description (see
-	 * {@link SessionTools.advertisedSessionAgents}). Later tags ride a hidden
-	 * notice so the provider cache prefix stays intact.
-	 */
-	getAdvertisedSessionAgents(): readonly AgentDefinition[] {
-		return this.#tools.advertisedSessionAgents;
 	}
 
 	/** Rebuilds the stable base prompt, optionally discarding a stale asynchronous rebuild. */
@@ -6577,7 +6507,7 @@ export class AgentSession implements SettingsScope {
 
 		// Expand file-based prompt templates if requested
 		const templated = expandPromptTemplates ? expandPromptTemplate(text, [...this.#promptTemplates]) : text;
-		const expandedText = options?.synthetic ? templated : this.#modelMentions.expandMentions(templated);
+		const expandedText = options?.synthetic ? templated : templated;
 
 		// Magic keywords (see modes/magic-keywords.ts): append hidden system notices after the
 		// user's message that steer this turn. User-authored prompts only — synthetic /
@@ -6639,8 +6569,6 @@ export class AgentSession implements SettingsScope {
 				: undefined;
 		const eagerTodoPrelude =
 			!options?.synthetic && !hasPendingUserDirective ? this.#todo.createEagerTodoPrelude(expandedText) : undefined;
-		const eagerTaskPrelude =
-			!options?.synthetic && !hasPendingUserDirective ? this.#todo.createEagerTaskPrelude(expandedText) : undefined;
 		const attachmentSourceNotices = this.#createAttachmentSourceNotices(options?.images, submittedAt);
 		const normalizedImages = await this.#normalizeImagesForModel(options?.images);
 
@@ -6723,9 +6651,6 @@ export class AgentSession implements SettingsScope {
 			}
 			preludeMessages.push(eagerTodoPrelude.message);
 		}
-		if (eagerTaskPrelude) {
-			preludeMessages.push(eagerTaskPrelude);
-		}
 
 		// A user prompt on a kept-alive subagent (focused-session steering) starts a
 		// turn no task executor drives: observe it like an IRC wake so an accepted
@@ -6733,7 +6658,7 @@ export class AgentSession implements SettingsScope {
 		// prompts are agent-attributed and run under their own monitor; a pooled
 		// turn owns the worker's yield contract.
 		const observation =
-			(options?.userInitiated === true || promptAttribution === "user") && this.#workPoolYieldItems.length === 0
+			options?.userInitiated === true || promptAttribution === "user"
 				? this.#startTurnObservation([message])
 				: undefined;
 		let turnError: unknown;
@@ -7229,14 +7154,12 @@ export class AgentSession implements SettingsScope {
 			const toolRosterNotice = isUserQueuedMessage(message)
 				? this.#tools.takePendingToolRosterNotice({ baseDelivered: baseXdevCatalogDelivered })
 				: undefined;
-			const sessionAgentNotice = isUserQueuedMessage(message) ? this.#tools.takeSessionAgentNotice() : undefined;
-			if (xdevMountNotice || toolRosterNotice || sessionAgentNotice) {
+			if (xdevMountNotice || toolRosterNotice) {
 				messages.splice(
 					xdevMountNoticeIndex,
 					0,
 					...(xdevMountNotice ? [xdevMountNotice] : []),
 					...(toolRosterNotice ? [toolRosterNotice] : []),
-					...(sessionAgentNotice ? [sessionAgentNotice] : []),
 				);
 			}
 
@@ -8438,102 +8361,12 @@ export class AgentSession implements SettingsScope {
 		return this.#tools.skillWarnings;
 	}
 
-	/** Session-local general-purpose agents pinned to user-tagged models. */
-	getSessionAgents(): AgentDefinition[] {
-		return this.#modelMentions.sessionAgents();
-	}
-
-	/** Registered model pseudonyms on the active branch. */
-	get modelMentions(): readonly ModelMention[] {
-		return this.#modelMentions.mentions;
-	}
-
-	/** Resolve a model selector within the session picker's scope. */
-	findMentionableModel(selector: string): Model | undefined {
-		return this.#modelMentions.findMentionable(selector);
-	}
-
 	getTodoPhases(): TodoPhase[] {
 		return this.#todo.phases;
 	}
 
 	setTodoPhases(phases: TodoPhase[]): void {
 		this.#todo.setPhases(phases);
-	}
-
-	/** Active item labels accepted by this pooled turn's incremental yield tool. */
-	getWorkPoolYieldItems(): readonly WorkPoolYieldItem[] {
-		return this.#workPoolYieldItems;
-	}
-
-	/** Replace the pooled-turn yield contract and rebuild the provider prompt when it changes. */
-	setWorkPoolYieldItems(items: readonly WorkPoolYieldItem[]): Promise<void> {
-		// Publish the new contract synchronously: prompt dispatchers (IRC wakes,
-		// follow-up turns) decide on live state in await-free sections, so the
-		// mutation must be visible before the first await. Live state is always
-		// post-last-call, so the change check cannot go stale; the prompt rebuild
-		// stays async on the serialized tail below.
-		const current = this.#workPoolYieldItems;
-		if (
-			current.length === items.length &&
-			current.every((item, index) => item.id === items[index]?.id && item.index === items[index]?.index)
-		) {
-			return this.#workPoolYieldTransition;
-		}
-		const applied = items.map(item => ({ ...item }));
-		this.#workPoolYieldItems = applied;
-		const run = this.#workPoolYieldTransition.then(async () => {
-			try {
-				await this.refreshBaseSystemPrompt();
-			} catch (error) {
-				// Roll back to the last successfully published contract so gated
-				// readers never observe a half-applied runtime/provider pair. A
-				// newer transition may have replaced the set meanwhile; only
-				// restore what this one installed. `previous` is deliberately not
-				// the target: when overlapping transitions fail in sequence, it can
-				// belong to a transition whose caller already saw a rejection.
-				if (this.#workPoolYieldItems === applied) {
-					this.#workPoolYieldItems = this.#lastPublishedWorkPoolYieldItems;
-					// Republish inline so waiters gated on this transition observe
-					// the restored pair: a trailing entry would settle those
-					// waiters before the repair runs. An overlapping refresh may
-					// already have published newer bytes, and the equality fast
-					// path would otherwise never repair the mismatch. A republish
-					// failure only warns since the caller already sees error.
-					try {
-						await this.refreshBaseSystemPrompt();
-					} catch (republishError) {
-						logger.warn("WorkPool yield contract republish failed", {
-							error: republishError instanceof Error ? republishError.message : String(republishError),
-						});
-						throw error;
-					}
-					this.#resumeStrandedIrcAsides();
-				}
-				throw error;
-			}
-			// Record what this rebuild published for future rollbacks: the live set
-			// as of success. Then drain any wake parked while pooled.
-			this.#lastPublishedWorkPoolYieldItems = this.#workPoolYieldItems.map(item => ({ ...item }));
-			// Persist the contract now: a batch-end clear makes no model call, and a
-			// cold revival must not restore the finished batch's items. Only once a
-			// model call has resolved this transcript's session_init; before that,
-			// the executor has not written it yet.
-			if (this.#sessionInit?.init && this.#sessionInit.sessionFile === this.sessionManager.getSessionFile()) {
-				this.#recordModelCallSystemPrompt(this.#tools.baseSystemPrompt);
-			}
-			// A deferred wake may be parked while pooled; now that the fresh
-			// contract is published, let it wake (or stay parked when pooled).
-			this.#resumeStrandedIrcAsides();
-		});
-		this.#workPoolYieldTransition = run.catch(() => {});
-		return run;
-	}
-
-	/** Settles when any in-flight yield prompt rebuild completes. Wake-turn entry
-	 *  joins it so a turn never builds from stale provider bytes. */
-	whenWorkPoolYieldSettled(): Promise<void> {
-		return this.#workPoolYieldTransition;
 	}
 
 	#buildReplanTitleContext(): string {
@@ -9832,7 +9665,6 @@ export class AgentSession implements SettingsScope {
 		this.agent.replaceMessages(activeMessages ?? sessionContext.messages);
 		this.#advisors.resetSessionState({ preserveCost: true });
 		this.#todo.syncFromBranch();
-		this.#modelMentions.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 		this.#checkpointState = undefined;
 		this.#pendingRewindReport = undefined;
@@ -10651,7 +10483,6 @@ export class AgentSession implements SettingsScope {
 			this.#reseedTokenRate();
 			this.#advisors.resetSessionState({ preserveCost: true });
 			this.#todo.syncFromBranch();
-			this.#modelMentions.syncFromBranch();
 			if (switchingToDifferentSession) {
 				this.#closeAllProviderSessions("session switch");
 			} else if (didReloadConversationChange) {
@@ -10821,7 +10652,6 @@ export class AgentSession implements SettingsScope {
 				this.#emit({ type: "model_changed" });
 			}
 			this.#todo.syncFromBranch();
-			this.#modelMentions.syncFromBranch();
 			this.#advisors.resetAllRuntimes();
 			this.#advisors.reattachRecorderFeeds();
 			this.#reconnectToAgent();
@@ -10989,7 +10819,6 @@ export class AgentSession implements SettingsScope {
 			this.#clearSessionScopedToolState();
 			this.#rehydrateCheckpointRewindState();
 			this.#todo.syncFromBranch();
-			this.#modelMentions.syncFromBranch();
 			this.#freshProviderSessionId = undefined;
 			this.#clearInheritedProviderPromptCacheKey();
 			this.#syncAgentSessionId();
@@ -11110,7 +10939,6 @@ export class AgentSession implements SettingsScope {
 			});
 			this.sessionManager.appendMessage(sanitizeAssistantForReparentedHistory(assistantMessage));
 			this.#todo.syncFromBranch();
-			this.#modelMentions.syncFromBranch();
 			this.#freshProviderSessionId = undefined;
 			this.#syncAgentSessionId();
 
@@ -11454,7 +11282,6 @@ export class AgentSession implements SettingsScope {
 		this.#rehydrateCheckpointRewindState();
 		this.#advisors.resetSessionState({ preserveCost: true });
 		this.#todo.syncFromBranch();
-		this.#modelMentions.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 
 		this.#branchSummaryAbortController = undefined;

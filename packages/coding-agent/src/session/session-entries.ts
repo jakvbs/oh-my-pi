@@ -8,7 +8,6 @@ import type {
 	Usage,
 } from "@oh-my-pi/pi-ai";
 import type { CompactionMethod } from "./compaction-methods";
-import type { WorkPoolYieldItem } from "../task/workpool-yield";
 import type { OutputSchemaMode } from "../tools/output-schema-validator";
 import type { RetryFallbackRole } from "./retry-fallback-chains";
 
@@ -279,8 +278,6 @@ export interface SessionInitEntry extends SessionEntryBase {
 	compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
 	/** True when the subagent ran inside an isolation worktree: never revivable, transcript-only after park. Absent on older files. */
 	isolated?: boolean;
-	/** Work-pool yield items of the last model call; revival restores them so the yield tool matches. Absent when none. */
-	workPoolYieldItems?: WorkPoolYieldItem[];
 }
 
 /** Mode change entry - tracks agent mode transitions (e.g. goal mode). */

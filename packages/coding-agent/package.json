@@ -363,14 +363,6 @@
 			"types": "./src/ssh/*.ts",
 			"import": "./src/ssh/*.ts"
 		},
-		"./task": {
-			"types": "./src/task/index.ts",
-			"import": "./src/task/index.ts"
-		},
-		"./task/*": {
-			"types": "./src/task/*.ts",
-			"import": "./src/task/*.ts"
-		},
 		"./tools": {
 			"types": "./src/tools/index.ts",
 			"import": "./src/tools/index.ts"

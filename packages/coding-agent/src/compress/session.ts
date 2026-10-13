@@ -62,7 +62,6 @@ export async function createCompressSession(options: {
 		slashCommands: [],
 		disableExtensionDiscovery: true,
 		enableMCP: false,
-		enableIrc: false,
 		enableLsp: false,
 		hasUI: false,
 		autoApprove: true,

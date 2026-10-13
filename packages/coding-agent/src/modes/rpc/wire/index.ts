@@ -68,9 +68,6 @@ const notificationDefs = {
 			"ExtensionError",
 			"ExtensionUiRequest",
 			"AvailableCommandsUpdateEvent",
-			"SubagentLifecycleEvent",
-			"SubagentProgressEvent",
-			"SubagentEvent",
 			"BtwDeltaEvent",
 			"BtwRecordEvent",
 			"CommandOutputEvent",
@@ -96,7 +93,7 @@ const notificationDefs = {
  *   prompts (May 2026) sent as a bare scalar; decoders wrap the scalar.
  */
 const PROPERTY_MARKERS: Record<string, Record<string, readonly string[]>> = {
-	"x-unknown-fallback": { SubagentEventPayload: ["event"] },
+	"x-unknown-fallback": {},
 	"x-scalar-or-array": { SessionState: ["systemPrompt"] },
 };
 

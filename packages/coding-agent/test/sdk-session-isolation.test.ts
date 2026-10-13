@@ -153,49 +153,6 @@ describe("createAgentSession session storage isolation", () => {
 			await session.dispose();
 		}
 	});
-	it("keeps subagent local:// mappings from replacing the process-global override", async () => {
-		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-local-override-${Snowflake.next()}-`));
-		tempDirs.push(tempDir);
-		const cwd = path.join(tempDir, "project");
-		fs.mkdirSync(cwd, { recursive: true });
-		const globalOptions = {
-			getArtifactsDir: () => path.join(tempDir, "active-artifacts"),
-			getSessionId: () => "active-session",
-		};
-		const subagentOptions = {
-			getArtifactsDir: () => path.join(tempDir, "parent-artifacts"),
-			getSessionId: () => "parent-session",
-		};
-		LocalProtocolHandler.setOverride(globalOptions);
-
-		const { session } = await createAgentSession({
-			cwd,
-			agentDir: path.join(tempDir, "agent"),
-			modelRegistry: sharedModelRegistry,
-			settings: Settings.isolated(),
-			disableExtensionDiscovery: true,
-			skills: [],
-			contextFiles: [],
-			promptTemplates: [],
-			slashCommands: [],
-			toolNames: [],
-			enableMCP: false,
-			enableLsp: false,
-			agentRegistry: new AgentRegistry(),
-			agentId: "Tan-local-override-test",
-			agentDisplayName: "tan",
-			parentTaskPrefix: "Tan-local-override-test",
-			parentAgentId: "Main",
-			localProtocolOptions: subagentOptions,
-		});
-
-		try {
-			expect(LocalProtocolHandler.resolveOptions()).toBe(globalOptions);
-		} finally {
-			await session.dispose();
-		}
-	});
-
 	it("does not replace a newer registry generation when creation expected the id to be absent", async () => {
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-generation-cas-${Snowflake.next()}-`));
 		tempDirs.push(tempDir);
@@ -227,9 +184,6 @@ describe("createAgentSession session storage isolation", () => {
 				agentRegistry: registry,
 				agentId: "shared-worker",
 				agentDisplayName: "late A",
-				parentTaskPrefix: "shared-worker",
-				parentAgentId: "Main",
-				isSubagent: true,
 				expectedAgentRef: null,
 			}),
 		).rejects.toThrow("already owned by another session generation");
@@ -314,9 +268,6 @@ describe("createAgentSession session storage isolation", () => {
 				agentRegistry: registry,
 				agentId: "reused-worker",
 				agentDisplayName: "fresh generation",
-				parentTaskPrefix: "reused-worker",
-				parentAgentId: "Main",
-				isSubagent: true,
 				expectedAgentRef: null,
 			}));
 			const replacement = registry.get("reused-worker");
@@ -366,9 +317,6 @@ describe("createAgentSession session storage isolation", () => {
 			agentRegistry: registry,
 			agentId: "revived-worker",
 			agentDisplayName: "revived worker",
-			parentTaskPrefix: "revived-worker",
-			parentAgentId: "Main",
-			isSubagent: true,
 			expectedAgentRef: parked,
 		});
 		try {

@@ -14,12 +14,9 @@ import { getModelMatchPreferences, resolveModelScope } from "@oh-my-pi/pi-coding
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { buildSessionOptions as buildCliSessionOptions } from "@oh-my-pi/pi-coding-agent/main";
 import { createAgentSession, type ExtensionFactory } from "@oh-my-pi/pi-coding-agent/sdk";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
 import type { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
 import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
 import { createInMemoryAuthStorage } from "./helpers/agent-session-setup";
 
@@ -154,58 +151,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			expect(session.model?.provider).toBe("runtime-provider");
 			expect(session.model?.id).toBe("runtime-model");
 			expect(modelFallbackMessage).toBeUndefined();
-		} finally {
-			await session.dispose();
-		}
-	});
-
-	test("lets a child task spawn a model agent inherited from its parent", async () => {
-		const bundledTask: AgentDefinition = {
-			name: "task",
-			description: "General-purpose worker",
-			systemPrompt: "Do the task.",
-			source: "project",
-		};
-		const modelAgent: AgentDefinition = {
-			...bundledTask,
-			name: "m1",
-			model: ["runtime-provider/runtime-model"],
-		};
-		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [bundledTask], projectAgentsDir: null });
-		const dispatched: executorModule.ExecutorOptions[] = [];
-		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
-			dispatched.push(options);
-			return {
-				index: options.index,
-				id: options.id,
-				agent: options.agent.name,
-				agentSource: options.agent.source,
-				task: options.task,
-				exitCode: 0,
-				output: "done",
-				stderr: "",
-				truncated: false,
-				durationMs: 1,
-				tokens: 0,
-				requests: 1,
-			};
-		});
-		const { session } = await createAgentSession({
-			...buildSessionOptions("runtime-provider/runtime-model"),
-			settings: Settings.isolated({ "async.enabled": false }),
-			toolNames: ["task"],
-			inheritedSessionAgents: [modelAgent],
-		});
-
-		try {
-			const taskTool = session.getToolByName("task");
-			if (!taskTool) throw new Error("Expected child task tool");
-			await taskTool.execute("nested-model-agent-call", {
-				agent: "m1",
-				task: "Inspect the target with the tagged model.",
-			});
-
-			expect(dispatched[0]?.modelOverride).toEqual(["runtime-provider/runtime-model"]);
 		} finally {
 			await session.dispose();
 		}
@@ -1947,56 +1892,6 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			expect(session.model?.contextWindow).toBe(272_000);
 		} finally {
 			await session.dispose();
-		}
-	});
-
-	test("a subagent with its own compaction override does not inherit a model's compaction-point opt-in", async () => {
-		const authStorage = createInMemoryAuthStorage();
-		authStoragesToClose.push(authStorage);
-		authStorage.keys.setRuntime("openai", "sk-test");
-		const root = Settings.isolated({
-			extendedContext: false,
-			"compaction.modelThresholds": { "openai/gpt-5.6-terra": 400_000 },
-		});
-		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir, "models.yml"), { settings: root });
-		const child = executorModule.createSubagentSettings(
-			root,
-			executorModule.compactionThresholdSettings({ thresholdPercent: 80, thresholdTokens: -1 }),
-		);
-		const open = (settings: Settings) =>
-			createAgentSession({
-				cwd: tempDir,
-				agentDir: tempDir,
-				authStorage,
-				modelRegistry,
-				settings,
-				sessionManager: SessionManager.inMemory(),
-				disableExtensionDiscovery: true,
-				skills: [],
-				contextFiles: [],
-				promptTemplates: [],
-				slashCommands: [],
-				enableMCP: false,
-				enableLsp: false,
-				rules: [],
-				preloadedCustomToolPaths: [],
-				toolNames: ["read"],
-				modelPattern: "openai/gpt-5.6-terra",
-			});
-
-		const { session: parent } = await open(root);
-		const { session: subagent } = await open(child);
-		try {
-			expect(parent.model?.contextWindow).toBe(1_050_000);
-			expect(subagent.model?.contextWindow).toBe(272_000);
-			// Re-selecting the shared catalog row keeps the subagent on its own tier.
-			const row = modelRegistry.find("openai", "gpt-5.6-terra");
-			if (!row) throw new Error("Expected bundled gpt-5.6-terra");
-			await subagent.setModel(row, "default", { persist: false });
-			expect(subagent.model?.contextWindow).toBe(272_000);
-		} finally {
-			await subagent.dispose();
-			await parent.dispose();
 		}
 	});
 

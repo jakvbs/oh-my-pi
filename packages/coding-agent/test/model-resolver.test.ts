@@ -12,15 +12,9 @@ import {
 	formatModelStringWithRouting,
 	parseModelPattern,
 	pickDefaultAvailableModel,
-	resolveAgentAdvisorRolePattern,
-	resolveAgentAdvisorSelection,
-	resolveAgentModelPatterns,
-	resolveAgentModelSelection,
-	resolveAgentPrewalkPattern,
 	resolveAllowedModels,
 	resolveCliModel,
 	resolveConfiguredModelPatterns,
-	resolveExplicitModelRole,
 	resolveModelFromSettings,
 	resolveModelFromString,
 	resolveModelOverride,
@@ -1041,130 +1035,14 @@ describe("resolveModelRoleValue", () => {
 		expect(result.warning).toBeUndefined();
 	});
 });
-describe("resolveAgentPrewalkPattern", () => {
-	test("settings override decides: on → default target, pattern → custom, off/blank/absent → off", () => {
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "on" })).toBe("@smol");
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "openai/gpt-4o" })).toBe("openai/gpt-4o");
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "off" })).toBeUndefined();
-		expect(resolveAgentPrewalkPattern({ settingsOverride: "  " })).toBeUndefined();
-		expect(resolveAgentPrewalkPattern({})).toBeUndefined();
-	});
-});
-describe("resolveAgentAdvisorSelection", () => {
-	test("settings override decides: on → advisor role, pattern → custom model, off/blank/absent → off", () => {
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "on" })).toEqual({});
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "moonshot/k3" })).toEqual({ model: "moonshot/k3" });
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "off" })).toBeUndefined();
-		expect(resolveAgentAdvisorSelection({ settingsOverride: "  " })).toBeUndefined();
-		expect(resolveAgentAdvisorSelection({})).toBeUndefined();
-	});
-});
-describe("resolveAgentAdvisorRolePattern", () => {
-	test("a self-referential @advisor resolves to the owner's advisor role inside the spawned session", () => {
-		const owner = Settings.isolated({ modelRoles: { advisor: "anthropic/claude-haiku-4-5" } });
-		const child = Settings.isolated({
-			modelRoles: {
-				...owner.getModelRoles(),
-				advisor: resolveAgentAdvisorRolePattern("@advisor:high", owner),
-			},
-		});
-
-		expect(resolveConfiguredModelPatterns("@advisor", child)).toEqual(["anthropic/claude-haiku-4-5:high"]);
-	});
-});
-describe("resolveAgentModelPatterns", () => {
-	test("pairs the first non-empty source's role with its patterns, skipping aliases with no patterns", () => {
-		const settings = Settings.isolated({
-			modelRoles: {
-				empty: "",
-				override: "openai/gpt-4o",
-				definition: "anthropic/claude-sonnet-4-5",
-			},
-		});
-
-		expect(
-			resolveAgentModelSelection({
-				requestModel: "",
-				settingsOverride: "@override",
-				agentModel: ["@definition"],
-				settings,
-			}),
-		).toEqual({ patterns: ["openai/gpt-4o"], role: "override" });
-
-		expect(
-			resolveAgentModelSelection({
-				requestModel: "@empty",
-				settingsOverride: ",,",
-				agentModel: ["@definition"],
-				settings,
-			}),
-		).toEqual({ patterns: ["anthropic/claude-sonnet-4-5"], role: "definition" });
-
-		// An explicit selector carries no role identity, so the child must not
-		// capture the routing of a role that happens to name the same model.
-		expect(
-			resolveAgentModelSelection({
-				requestModel: "openai/gpt-4o",
-				settingsOverride: "@override",
-				agentModel: ["@definition"],
-				settings,
-			}),
-		).toEqual({ patterns: ["openai/gpt-4o"], role: undefined });
-	});
-
-	test("falls back to the active session model when @task is unset", () => {
-		const settings = Settings.isolated({
-			modelRoles: { default: "anthropic/claude-sonnet-4-5" },
-		});
-
-		const result = resolveAgentModelPatterns({
-			agentModel: "@task",
-			settings,
-			activeModelPattern: "openai/gpt-4o",
-		});
-
-		expect(result).toEqual(["openai/gpt-4o"]);
-	});
-
-	test("uses the configured task role before falling back to the session model", () => {
-		const settings = Settings.isolated({
-			modelRoles: {
-				default: "openai/gpt-4o",
-				task: "anthropic/claude-sonnet-4-5:high",
-			},
-		});
-
-		const result = resolveAgentModelPatterns({
-			agentModel: "@task",
-			settings,
-			activeModelPattern: "openai/gpt-4o",
-		});
-
-		expect(result).toEqual(["anthropic/claude-sonnet-4-5:high"]);
-	});
-
-	test("accepts YAML list values for configured task role patterns", () => {
-		const settings = Settings.isolated({
-			modelRoles: {
-				task: ["anthropic/claude-sonnet-4-6", "zai/glm-5.2:high"],
-			},
-		});
-
-		const result = resolveAgentModelPatterns({
-			agentModel: "@task",
-			settings,
-		});
-
-		expect(result).toEqual(["anthropic/claude-sonnet-4-6", "zai/glm-5.2:high"]);
-	});
-
+describe("role alias expansion to model patterns", () => {
 	test("uses default for unconfigured smol and slow agent roles before priority defaults", () => {
 		const settings = Settings.isolated({
 			modelRoles: { default: "local/llama" },
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).toEqual(["local/llama"]);
-		expect(resolveAgentModelPatterns({ agentModel: "@slow", settings })).toEqual(["local/llama"]);
+		expect(resolveConfiguredModelPatterns("@smol", settings)).toEqual(["local/llama"]);
+		expect(resolveConfiguredModelPatterns("@slow", settings)).toEqual(["local/llama"]);
 	});
 
 	test("uses configured smol for unconfigured tiny before priority defaults", () => {
@@ -1175,7 +1053,7 @@ describe("resolveAgentModelPatterns", () => {
 			},
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@tiny", settings })).toEqual(["baseten/custom-smol:max"]);
+		expect(resolveConfiguredModelPatterns("@tiny", settings)).toEqual(["baseten/custom-smol:max"]);
 	});
 
 	test("uses configured slow for unconfigured advisor before priority defaults", () => {
@@ -1186,7 +1064,7 @@ describe("resolveAgentModelPatterns", () => {
 			},
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@advisor", settings })).toEqual(["baseten/custom-slow:max"]);
+		expect(resolveConfiguredModelPatterns("@advisor", settings)).toEqual(["baseten/custom-slow:max"]);
 	});
 
 	test("expands nested role aliases from the configured slow fallback", () => {
@@ -1229,10 +1107,10 @@ describe("resolveAgentModelPatterns", () => {
 	});
 
 	test("keeps advisor on the built-in slow chain when slow is unconfigured", () => {
-		const baseline = resolveAgentModelPatterns({ agentModel: "@advisor", settings: Settings.isolated() });
+		const baseline = resolveConfiguredModelPatterns("@advisor", Settings.isolated());
 		const settings = Settings.isolated({ modelRoles: { default: "local/default" } });
 
-		const advisor = resolveAgentModelPatterns({ agentModel: "@advisor", settings });
+		const advisor = resolveConfiguredModelPatterns("@advisor", settings);
 
 		expect(advisor).not.toContain("local/default");
 		expect(advisor).toEqual(baseline);
@@ -1240,10 +1118,10 @@ describe("resolveAgentModelPatterns", () => {
 
 	test("breaks the tiny/smol fallback cycle via a default alias", () => {
 		const settings = Settings.isolated({ modelRoles: { default: "@tiny" } });
-		const baseline = resolveAgentModelPatterns({ agentModel: "@smol", settings: Settings.isolated() });
+		const baseline = resolveConfiguredModelPatterns("@smol", Settings.isolated());
 
-		const tiny = resolveAgentModelPatterns({ agentModel: "@tiny", settings });
-		const smol = resolveAgentModelPatterns({ agentModel: "@smol", settings });
+		const tiny = resolveConfiguredModelPatterns("@tiny", settings);
+		const smol = resolveConfiguredModelPatterns("@smol", settings);
 
 		expect(baseline.length).toBeGreaterThan(0);
 		expect(tiny).not.toContain("@tiny");
@@ -1254,9 +1132,9 @@ describe("resolveAgentModelPatterns", () => {
 
 	test("preserves thinking suffix when breaking the smol fallback cycle", () => {
 		const settings = Settings.isolated({ modelRoles: { smol: "@tiny:high" } });
-		const baseline = resolveAgentModelPatterns({ agentModel: "@smol", settings: Settings.isolated() });
+		const baseline = resolveConfiguredModelPatterns("@smol", Settings.isolated());
 
-		const tiny = resolveAgentModelPatterns({ agentModel: "@tiny", settings });
+		const tiny = resolveConfiguredModelPatterns("@tiny", settings);
 
 		expect(tiny).toEqual(baseline.map(pattern => `${pattern}:high`));
 	});
@@ -1266,12 +1144,12 @@ describe("resolveAgentModelPatterns", () => {
 			modelRoles: { default: "@slow", slow: "anthropic/claude-sonnet-4-5" },
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).toEqual(["anthropic/claude-sonnet-4-5"]);
+		expect(resolveConfiguredModelPatterns("@smol", settings)).toEqual(["anthropic/claude-sonnet-4-5"]);
 	});
 
 	test("slow priority falls forward to Opus 4.8 before older Opus aliases", () => {
 		const settings = Settings.isolated();
-		const patterns = resolveAgentModelPatterns({ agentModel: "@slow", settings });
+		const patterns = resolveConfiguredModelPatterns("@slow", settings);
 
 		const dottedRegistry = {
 			getAvailable: () => [
@@ -2171,29 +2049,6 @@ describe("resolveModelFromString", () => {
 		const result = resolveModelFromString("example/runtime:auto", mockAutoSuffixModels);
 		expect(result?.provider).toBe("example");
 		expect(result?.id).toBe("runtime:auto");
-	});
-});
-
-describe("resolveExplicitModelRole", () => {
-	test("extracts built-in, custom, legacy, default, and thinking-suffixed aliases before expansion", () => {
-		const settings = Settings.isolated({
-			modelRoles: {
-				reviewer: "openai/gpt-4o",
-			},
-		});
-
-		expect(resolveExplicitModelRole("@task", settings)).toBe("task");
-		expect(resolveExplicitModelRole("pi/reviewer:high", settings)).toBe("reviewer");
-		expect(resolveExplicitModelRole("@reviewer:xhigh", settings)).toBe("reviewer");
-		expect(resolveExplicitModelRole("*:low", settings)).toBe("default");
-	});
-
-	test("does not infer a role from an explicit model selector", () => {
-		const settings = Settings.isolated({ modelRoles: { reviewer: "openai/gpt-4o" } });
-		expect(resolveExplicitModelRole("openai/gpt-4o", settings)).toBeUndefined();
-		expect(resolveExplicitModelRole("openai/gpt-4o:high", settings)).toBeUndefined();
-		expect(resolveExplicitModelRole("openai/gpt-4o:max", settings)).toBeUndefined();
-		expect(resolveExplicitModelRole(["openai/gpt-4o", "@reviewer:high"], settings)).toBe("reviewer");
 	});
 });
 

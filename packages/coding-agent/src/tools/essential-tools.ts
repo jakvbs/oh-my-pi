@@ -27,7 +27,6 @@ export const ESSENTIAL_BUILTIN_TOOL_NAMES: Record<string, true> = {
 	edit: true,
 	glob: true,
 	find: true,
-	task: true,
 	wait: true,
 	manage_skill: true,
 	context_notes: true,

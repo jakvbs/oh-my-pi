@@ -29,7 +29,6 @@ import type { Dialect } from "@oh-my-pi/pi-ai/dialect";
 import { prewarmOpenAICodexResponses } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
 import { isOpenAICodexWebSocketPreferred } from "@oh-my-pi/pi-ai/providers/openai-codex-transport";
 import { withCredentialRedaction } from "@oh-my-pi/pi-ai/providers/transform-messages";
-import { resolveCatalogPolicy } from "@oh-my-pi/pi-catalog/compat/catalog-policy";
 import { FALLBACK_DIALECT, preferredDialect } from "@oh-my-pi/pi-catalog/identity";
 import type { Component } from "@oh-my-pi/pi-tui";
 import { $env } from "@oh-my-pi/pi-utils/env";
@@ -48,13 +47,7 @@ import {
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability, reset as resetCapabilities } from "./capability";
-import {
-	MAIN_AGENT_RULE_NAME,
-	type Rule,
-	ruleCapability,
-	setActiveRules,
-	SUB_AGENT_RULE_NAME,
-} from "./capability/rule";
+import { MAIN_AGENT_RULE_NAME, type Rule, ruleCapability, setActiveRules } from "./capability/rule";
 import { bucketRules } from "./capability/rule-buckets";
 import type { EffectiveExtensionRoots } from "./capability/types";
 import { type OAuthAccountPools, SessionAccountPoolScope } from "./config/account-pools";
@@ -223,10 +216,6 @@ import {
 	projectSystemPromptToolMetadata,
 	readSystemPromptSource,
 } from "./system-prompt";
-import type { AgentDefinition } from "./task/types";
-import { AgentOutputManager } from "./task/output-manager";
-import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import { sessionDelegationBias } from "./task/prompt-policy";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -349,7 +338,6 @@ import {
 	cfgSnapcompactToolResults,
 	cfgWorkspaceAdditionalDirectories,
 } from "./session/context-settings";
-import { cfgTaskBatch, cfgTaskEager, cfgTaskMaxConcurrency } from "./task/settings";
 
 /** Agent-level tool-call switches, snapshotted by the agent loop per prompt run. */
 const cfgToolCallSwitches = combine({
@@ -491,8 +479,6 @@ export interface CreateAgentSessionOptions {
 	additionalDirectories?: string[];
 	/** Global config directory. Default: ~/.omp/agent */
 	agentDir?: string;
-	/** User-authorized model agents inherited from the parent session for nested delegation. */
-	inheritedSessionAgents?: readonly AgentDefinition[];
 
 	/** Auth storage for credentials. Default: discoverAuthStorage(agentDir) */
 	authStorage?: AuthStorage;
@@ -678,13 +664,6 @@ export interface CreateAgentSessionOptions {
 	/** Shared event bus for tool/extension communication. Default: creates new bus. */
 	eventBus?: EventBus;
 
-	/**
-	 * Root-scoped bus carrying `task:subagent:*` observability frames for this
-	 * session and every subagent it spawns. Default: creates a new bus per
-	 * root session; `buildSubagentSessionOptions` inherits the spawner's.
-	 */
-	subagentEventBus?: EventBus;
-
 	/** Skills. Default: discovered from multiple locations */
 	skills?: Skill[];
 	/** Rules. Default: discovered from multiple locations */
@@ -720,8 +699,6 @@ export interface CreateAgentSessionOptions {
 	enableLsp?: boolean;
 	/** Restrict LSP to navigation and diagnostics even when enabled. Defaults to true for restricted sessions. */
 	lspReadOnly?: boolean;
-	/** Whether this invocation may expose IRC. `false` removes it even for subagents. */
-	enableIrc?: boolean;
 	/** Tool names explicitly requested (enables disabled-by-default tools) */
 	toolNames?: string[];
 	/** Limit the session to explicitly supplied tool names, without discovered extras. */
@@ -743,12 +720,10 @@ export interface CreateAgentSessionOptions {
 	 * Whether this top-level session takes over, until disposed, the process-global state that
 	 * follows one settings instance: setting effects and capability provider toggles. Helper
 	 * sessions a host session spawns on its behalf (security scan, agent-spec generation) pass
-	 * `false`. Subagents (`parentTaskPrefix`/`isSubagent`) never bind. Default: true.
+	 * `false`. Default: true.
 	 */
 	bindProcessState?: boolean;
-	/** Whether this is a subagent session. Default: false. */
-	isSubagent?: boolean;
-	/** Pre-allocated agent identity for IRC routing. Default: "Main" for top-level, parentTaskPrefix-derived for sub. */
+	/** Pre-allocated agent identity for IRC routing. Default: "Main". */
 	agentId?: string;
 	/** Display name for the agent in IRC. Default: "main" or "sub". */
 	agentDisplayName?: string;
@@ -769,18 +744,6 @@ export interface CreateAgentSessionOptions {
 	 * @internal
 	 */
 	expectedAgentRef?: AgentRef | null;
-	/** Parent task ID prefix for nested artifact naming (e.g., "Extensions") */
-	parentTaskPrefix?: string;
-	/** Parent's async jobs and delivery sinks; child sessions never resolve a process-global manager. */
-	asyncJobManager?: AsyncJobManager;
-	/**
-	 * Registry id of the spawning agent, recorded as this subagent's parent in
-	 * the agent registry. Distinct from `parentTaskPrefix`, which is this agent's
-	 * own artifact/output-id prefix (the executor passes the child's own id
-	 * there, so it must never double as the parent link). Undefined for the
-	 * top-level "Main" session, which has no parent.
-	 */
-	parentAgentId?: string;
 
 	/** Session manager. Default: session stored under the configured agentDir sessions root */
 	sessionManager?: SessionManager;
@@ -882,8 +845,6 @@ export interface CreateAgentSessionResult {
 	startBackgroundModelDiscovery?: () => Promise<void>;
 	/** Shared event bus for tool/extension communication */
 	eventBus: EventBus;
-	/** Root-scoped bus carrying this session tree's `task:subagent:*` frames. */
-	subagentEventBus?: EventBus;
 }
 
 export type DialectFormat = "auto" | "native" | Dialect;
@@ -1629,7 +1590,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	const cwd = options.cwd ?? getProjectDir();
 	const agentDir = options.agentDir ?? getAgentDir();
 	const eventBus = options.eventBus ?? new EventBus();
-	const subagentEventBus = options.subagentEventBus ?? new EventBus();
 
 	registerSshCleanup();
 
@@ -1640,8 +1600,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	// follow the newest holder: each top-level session holds both on its settings until disposed,
 	// then hands them back to the previous holder. Subagents and helper sessions never take them,
 	// so a parent's live edits keep reaching discovery and effects.
-	const isSubagentSession = options.isSubagent === true || Boolean(options.parentTaskPrefix);
-	const bindsProcessState = options.bindProcessState !== false && !isSubagentSession;
+	const bindsProcessState = options.bindProcessState !== false;
 	const restoreProviderToggles = bindsProcessState
 		? logger.time("initializeWithSettings", initializeWithSettings, settings)
 		: undefined;
@@ -2035,9 +1994,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 
 	// Agent identity must resolve before rule discovery: `agents` frontmatter decides
 	// which rules are bucketed into this session at all.
-	const agentKind: AgentKind = isSubagentSession ? SUB_AGENT_RULE_NAME : MAIN_AGENT_RULE_NAME;
+	const agentKind: AgentKind = MAIN_AGENT_RULE_NAME;
 	// Visuals (Mermaid, SVG figures, table charts) are drawn only in the top-level TUI transcript.
-	const tuiTranscript = options.tuiTranscript === true && !isSubagentSession;
+	const tuiTranscript = options.tuiTranscript === true;
 	const resolvedAgentName = (options.agentName ?? agentKind).trim().toLowerCase();
 
 	// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
@@ -2118,19 +2077,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 	// Every root owns its jobs and delivery sinks, even when another root is live.
 	// Children use the exact manager passed by their parent; the singleton remains
 	// only a legacy pointer to whichever root first installed it, never a routing fallback.
-	const asyncJobManager = !options.parentTaskPrefix
-		? new AsyncJobManager({
-				maxRunningJobs: () => Math.min(100, cfgAsyncMaxJobs.get(settings)),
-			})
-		: undefined;
-	const scopedAsyncJobManager = asyncJobManager ?? options.asyncJobManager;
+	const asyncJobManager = new AsyncJobManager({
+		maxRunningJobs: () => Math.min(100, cfgAsyncMaxJobs.get(settings)),
+	});
 
 	// A helper session does not own the process, so it must not claim the host's id
 	// ("Main") in the process-global registry: that would replace the host's ref, and
 	// concurrent helpers would replace each other mid-construction.
-	const agentRegistry =
-		options.agentRegistry ?? (bindsProcessState || isSubagentSession ? AgentRegistry.global() : new AgentRegistry());
-	const resolvedAgentId = options.agentId ?? options.parentTaskPrefix ?? MAIN_AGENT_ID;
+	const agentRegistry = options.agentRegistry ?? (bindsProcessState ? AgentRegistry.global() : new AgentRegistry());
+	const resolvedAgentId = options.agentId ?? MAIN_AGENT_ID;
 	const resolvedAgentDisplayName = options.agentDisplayName ?? agentKind;
 	let registeredAgentRef: AgentRef | undefined;
 	/**
@@ -2180,17 +2135,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			toolRegistry,
 			hasUI: options.hasUI ?? false,
 			canPromptUser: options.interactivePrompts ?? options.hasUI ?? false,
-			settingsApproval: options.settingsApproval === true && !isSubagentSession,
-			// Explicit resolvers retain their existing pass-through contract. Ordinary
-			// sessions inherit stored affinity into the child's own provider session.
+			settingsApproval: options.settingsApproval === true,
 			getApiKey: options.getApiKey,
-			getCredentialSourceSessionId: options.getApiKey ? undefined : () => agent.sessionId,
 			get additionalDirectories() {
 				return sessionManager.getAdditionalDirectories();
 			},
 			enableLsp,
 			lspReadOnly,
-			enableIrc: restrictToolNames ? false : options.enableIrc,
 			/**
 			 * Frozen at the last system-prompt rebuild: a mid-session `/skillful`
 			 * toggle rides the next turn's notice, never the tool prefix. The
@@ -2221,25 +2172,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			rules: allRules,
 			activeRules: [...rulebookRules, ...alwaysApplyRules, ...ttsrManager.getRules()],
 			eventBus,
-			subagentEventBus,
 			outputSchema: options.outputSchema,
 			outputSchemaMode: options.outputSchemaMode,
 			requireYieldTool: options.requireYieldTool,
-			get prewalkArmed() {
-				return prewalk !== undefined || deferredPrewalk !== undefined;
-			},
-			isSubagent: isSubagentSession,
 			getSessionFile: () => sessionManager.getSessionFile() ?? null,
 			sessionManager,
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
 			isDisposed: () => session?.isDisposed ?? false,
 			getAgentId: () => resolvedAgentId,
-			getPromptCacheKey: () => {
-				if (!session) return undefined;
-				const model = session.agent.state.model;
-				if (!model || resolveCatalogPolicy(model).taskSiblingPromptCache !== true) return undefined;
-				return session.getPromptCacheKeyForModel(model) ?? session.agent.sessionId;
-			},
 			getToolByName: name => session?.getToolByName(name),
 
 			agentRegistry,
@@ -2248,8 +2188,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// unrelated global ref. With no lifecycle, explicit cancellation falls back to
 			// dispose + unregister on the session's own registry.
 			agentLifecycle: agentRegistry === AgentRegistry.global() ? () => AgentLifecycleManager.global() : undefined,
-			getSessionAgents: () => session?.getSessionAgents() ?? [],
-			advertisedSessionAgents: () => session?.getAdvertisedSessionAgents() ?? [],
 			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),
 			getActiveModelString,
 			getActiveModel: () => agent?.state.model ?? model,
@@ -2259,11 +2197,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getGoalRuntime: () => session?.goalRuntime,
 			getUsageStatistics: () => sessionManager.getUsageStatistics(),
 			getTurnBudget: () => sessionManager.getTurnBudget(),
-			recordEvalSubagentUsage: output => sessionManager.recordEvalSubagentOutput(output),
 			getClientBridge: () => session?.clientBridge,
 			getObfuscator: () => obfuscator,
-			emitBeforeSubagentSpawn: (event, signal) =>
-				session?.extensionRunner?.emitBeforeSubagentSpawn(event, signal) ?? Promise.resolve(undefined),
 			queueDeferredDiagnostics: entry => session?.yieldQueue.enqueue(LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, entry),
 			queueLaunchCompletion: notification =>
 				session?.queueLaunchCompletion(notification) ??
@@ -2282,10 +2217,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getTodoPhases: () => session.getTodoPhases(),
 			setTodoPhases: phases => session.setTodoPhases(phases),
 			persistTodoPhases: phases => sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases }),
-			getWorkPoolYieldItems: () => session?.getWorkPoolYieldItems() ?? [],
 			getLastAssistantText: () => session?.getLastAssistantText(),
 			getYieldReportText: toolCallId => resolveYieldReportText(session?.messages ?? [], toolCallId),
-			setWorkPoolYieldItems: items => session.setWorkPoolYieldItems(items),
 			getCheckpointState: () => session.getCheckpointState(),
 			setCheckpointState: state => session.setCheckpointState(state ?? undefined),
 			getLastCompletedRewind: () => session.getLastCompletedRewind(),
@@ -2320,7 +2253,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			modelRegistry,
 			getTelemetry: () => agent?.telemetry,
 			// Tools and nested subagents use this root's manager, never another root's singleton.
-			asyncJobManager: scopedAsyncJobManager,
+			asyncJobManager,
 		};
 
 		// Wire process-wide internal URL singletons owned by their real classes.
@@ -2330,28 +2263,24 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// which collapses to the parent's dir for subagents (they adopt the
 		// parent's ArtifactManager) so one lookup hits everything.
 		const getArtifactsDir = () => sessionManager.getArtifactsDir();
-		if (!options.parentTaskPrefix) {
+		{
 			setActiveSkills(skills);
 			// Include TTSR rules so `rule://<name>` can resolve them too. They are
 			// registered with the manager and bucketed out before rulebook/always,
 			// so without this a TTSR-only rule (e.g. a triggered builtin) is not
 			// addressable and `rule://` reports "Available: none".
 			setActiveRules([...rulebookRules, ...alwaysApplyRules, ...ttsrManager.getRules()]);
-			if (asyncJobManager && !AsyncJobManager.instance()) AsyncJobManager.setInstance(asyncJobManager);
+			if (!AsyncJobManager.instance()) AsyncJobManager.setInstance(asyncJobManager);
 		}
 		const localProtocolOptions = options.localProtocolOptions ?? {
 			getArtifactsDir,
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
 		};
-		if (options.localProtocolOptions && !options.parentTaskPrefix) {
+		if (options.localProtocolOptions) {
 			LocalProtocolHandler.setOverride(options.localProtocolOptions);
 		}
 		toolSession.getArtifactsDir = getArtifactsDir;
 		toolSession.localProtocolOptions = localProtocolOptions;
-		toolSession.agentOutputManager = new AgentOutputManager(
-			getArtifactsDir,
-			options.parentTaskPrefix ? { parentPrefix: options.parentTaskPrefix } : undefined,
-		);
 
 		// Create built-in tools (already wrapped with meta notice formatting)
 		await logger.time("createAllTools", createTools, toolSession, options.toolNames);
@@ -2468,7 +2397,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// receive the parent's manager via `options.mcpManager`, and reassigning
 		// the singleton to the same value is a no-op — keep the gate explicit
 		// to mirror the AsyncJobManager ownership rule.
-		if (mcpManager && !options.parentTaskPrefix) MCPManager.setInstance(mcpManager);
+		if (mcpManager) MCPManager.setInstance(mcpManager);
 
 		const builtInToolNames = [...toolRegistry.keys()];
 		let customToolPaths: ToolPathWithSource[] = [];
@@ -3178,11 +3107,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			localProtocolOptions,
 			() => (hasSession ? session.getAsyncJobSnapshot() : null),
 			Object.freeze({
-				kind: isSubagentSession ? "sub" : "main",
+				kind: "main",
 				id: resolvedAgentId,
 				name: resolvedAgentName,
-				depth: options.isSubagent ? 1 : 0,
-				...(options.parentAgentId ? { parentId: options.parentAgentId } : {}),
+				depth: 0,
 			}),
 			createAnnotationsAPI,
 		);
@@ -3541,9 +3469,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				// the read tool rejects and hand children the stale set.
 				toolSession.rules = ruleItems;
 				toolSession.activeRules = nextActiveRules;
-				if (!options.parentTaskPrefix) {
-					setActiveRules(nextActiveRules);
-				}
+				setActiveRules(nextActiveRules);
 			}
 			const inlineToolDescriptors = resolveInlineToolDescriptors();
 			// Unset only during the initial build; the agent is constructed with it.
@@ -3650,12 +3576,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				inlineToolDescriptors,
 				nativeTools,
 				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
-				eagerTasks: cfgTaskEager.get(settings) !== "default",
-				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
-				taskBatch: cfgTaskBatch.get(settings),
-				taskMaxConcurrency: cfgTaskMaxConcurrency.get(settings),
-				delegationBias: sessionDelegationBias(toolSession),
-				taskIrcEnabled: !restrictToolNames,
 				autoQaEnabled: !restrictToolNames && isAutoQaEnabled(settings),
 				writeTransportOnly:
 					toolSession.deviceOnlyWrite === true && toolSession.pendingFullWriteDescription !== true,
@@ -3761,7 +3681,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			id: resolvedAgentId,
 			displayName: resolvedAgentDisplayName,
 			kind: agentKind,
-			parentId: options.parentAgentId,
 			session: null,
 			sessionFile: sessionManager.getSessionFile() ?? null,
 			status: "running" as const,
@@ -3965,19 +3884,14 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// Shared, settings-aware stream wrapper used by the main agent, advisor,
 		// and side-channel requests (`/btw`, `/omfg`, IRC auto-replies, handoff).
 		// Keeps OpenRouter sticky-routing variants, in-flight caps, and the loop
-		// guard consistent across every provider call the session drives. Wrapped in a per-provider concurrency limiter so
-		// each LLM HTTP request — not the whole subagent lifecycle — holds the
-		// slot, preventing the nested-spawn deadlock from issue #3749.
+		// guard consistent across every provider call the session drives.
 		const settingsBoundStreamFn = wrapStreamFnWithBlobUrlFallback(
-			wrapStreamFnWithProviderConcurrency(
-				settings,
-				createSettingsAwareStreamFn(settings, undefined, {
-					canAutoAccept: streamModel =>
-						anthropicSlowModeHasNoSiblingHeadroom(modelRegistry.authStorage, streamModel, session?.sessionId),
-					notify: (level, message) => session?.emitNotice(level, message, "anthropic-slow-mode"),
-					onLane: lane => session?.noteAnthropicSlowModeLane(lane),
-				}),
-			),
+			createSettingsAwareStreamFn(settings, undefined, {
+				canAutoAccept: streamModel =>
+					anthropicSlowModeHasNoSiblingHeadroom(modelRegistry.authStorage, streamModel, session?.sessionId),
+				notify: (level, message) => session?.emitNotice(level, message, "anthropic-slow-mode"),
+				onLane: lane => session?.noteAnthropicSlowModeLane(lane),
+			}),
 			() => blobBroker.current,
 		);
 		// Outbound credential-pattern redaction follows THIS session's `secrets.enabled` per
@@ -4276,9 +4190,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// AsyncJobManager on teardown; subagents inherit the parent's and
 			// **MUST NOT** tear it down.
 			ownedAsyncJobManager: asyncJobManager,
-			asyncJobManager: scopedAsyncJobManager,
+			asyncJobManager,
 			scopedModels: options.scopedModels,
-			inheritedSessionAgents: options.inheritedSessionAgents,
 			promptTemplates,
 			slashCommands,
 			extensionRunner,
@@ -4342,7 +4255,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			providerPromptCacheKeySource,
 			advisorTools,
 			titleSystemPrompt: options.titleSystemPrompt,
-			autoTitle: options.autoTitle === true && !isSubagentSession,
+			autoTitle: options.autoTitle === true,
 		});
 		hasSession = true;
 		credentialNoticeSession = session;
@@ -4867,7 +4780,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// `manage_skill` on the same setting, and captures resolve it per run. The
 		// subscription lives for the session's lifetime; the reference is
 		// intentionally discarded (the listener retains it).
-		if (!restrictToolNames && !isSubagentSession) {
+		if (!restrictToolNames) {
 			new AutoLearnController({
 				session,
 				settings,
@@ -4986,7 +4899,6 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			lspServers,
 			startBackgroundModelDiscovery: startRuntimeDiscovery,
 			eventBus,
-			subagentEventBus,
 		};
 	} catch (error) {
 		try {

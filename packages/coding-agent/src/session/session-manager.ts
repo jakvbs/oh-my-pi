@@ -40,7 +40,6 @@ import {
 	sanitizeRehydratedOpenAIResponsesAssistantMessage,
 	stripInternalDetailsFields,
 } from "./messages";
-import type { WorkPoolYieldItem } from "../task/workpool-yield";
 import type { OutputSchemaMode } from "../tools/output-schema-validator";
 import { createInterruptedToolResults, sessionExitFollowsLastMessage } from "./exit-diagnostics";
 import type { RetryFallbackRole } from "./retry-fallback-chains";
@@ -3516,7 +3515,6 @@ export class SessionManager {
 		advisor?: string;
 		compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
 		isolated?: boolean;
-		workPoolYieldItems?: WorkPoolYieldItem[];
 	}): string {
 		const entry: SessionInitEntry = { type: "session_init", ...this.#freshEntryFields(), ...init };
 		this.#recordEntry(entry);
@@ -4439,7 +4437,6 @@ export interface PersistedSessionInit {
 	advisor?: string;
 	compactionThreshold?: { thresholdPercent: number; thresholdTokens: number };
 	isolated?: boolean;
-	workPoolYieldItems?: WorkPoolYieldItem[];
 }
 
 /**
@@ -4467,7 +4464,6 @@ export function extractSessionInit(entries: readonly FileEntry[]): PersistedSess
 			advisor: entry.advisor,
 			isolated: entry.isolated,
 			...(entry.compactionThreshold !== undefined ? { compactionThreshold: entry.compactionThreshold } : undefined),
-			...(entry.workPoolYieldItems !== undefined ? { workPoolYieldItems: entry.workPoolYieldItems } : undefined),
 		};
 	}
 	return init;

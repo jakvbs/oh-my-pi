@@ -15,7 +15,6 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { finalizeSubagentLifecycle } from "@oh-my-pi/pi-coding-agent/task/executor";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import type { AdvisorConfig } from "@oh-my-pi/pi-tui/overlays/advisor-config";
 import { AdvisorLoopGuard } from "../src/advisor/loop-guard";
@@ -772,27 +771,6 @@ describe("advisor tool-call loop guard", () => {
 		);
 		expect(reviews).toHaveLength(1);
 		expect(JSON.stringify(reviews[0]!.messages)).toContain("ship the retry change");
-	});
-
-	it("finishes subagent teardown within its cleanup deadline despite a strict reviewer", async () => {
-		const { live, reviews } = await promptStrictFinalReviewer(10_000);
-
-		const started = performance.now();
-		await finalizeSubagentLifecycle({
-			id: "strict-reviewer-subagent",
-			session: live,
-			aborted: false,
-			keepAlive: false,
-			isolated: false,
-			agentIdleTtlMs: 0,
-			reviveSession: null,
-			cleanupDeadlineAt: Date.now() + 200,
-		});
-		session = undefined;
-
-		// The held final yield was still sent for review before disposal.
-		expect(reviews).toHaveLength(1);
-		expect(performance.now() - started).toBeLessThan(2_000);
 	});
 
 	it("leaves the advisor unbounded when the shared loop guard is disabled", async () => {

@@ -441,18 +441,6 @@ export const BUILTIN_LIFECYCLE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> =
 		},
 	},
 	{
-		name: "tan",
-		icon: "rocket",
-		description: "Run a full background agent on tangential work",
-		inlineHint: "<work>",
-		allowArgs: true,
-		handleTui: async (command, runtime) => {
-			const work = command.text.slice(`/${command.name}`.length).trim();
-			clearSubmittedText(runtime);
-			await runtime.ctx.handleTanCommand(work);
-		},
-	},
-	{
 		name: "omfg",
 		icon: "rule",
 		description: "Forge a TTSR rule from a complaint to stop a recurring behavior",

@@ -8,11 +8,7 @@ import { validateToolArguments } from "@oh-my-pi/pi-ai/utils/validation";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { buildOutputValidator } from "@oh-my-pi/pi-coding-agent/tools/output-schema-validator";
 import { YieldTool } from "@oh-my-pi/pi-coding-agent/tools/yield";
-import { buildWorkPoolOutputSchema } from "../../src/task/workpool-yield";
-import { yieldSectionShapes } from "../../src/task/yield-assembly";
-import { assembleYieldResult } from "@oh-my-pi/pi-tui/tools/task-yield-assembly";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
@@ -48,61 +44,6 @@ function makeCodexModel(): Model<"openai-codex-responses"> {
 }
 
 describe("YieldTool", () => {
-	it("accepts one workpool item per yield and completes on the final item", async () => {
-		let items: Array<{ id: string; index: number }> = [];
-		const tool = new YieldTool(createSession({ getWorkPoolYieldItems: () => items }));
-		expect(toRecord(tool.parameters).required).toEqual([]);
-
-		items = [
-			{ id: "review#1", index: 1 },
-			{ id: "review#2", index: 2 },
-		];
-		expect(toRecord(tool.parameters).required).toEqual(["key"]);
-		expect(tool.description).toContain("ONE workpool item at a time");
-		const first = await tool.execute("pool-1", { key: 1, data: "one" });
-		expect(first.content).toEqual([{ type: "text", text: "Item 1 submitted. Remaining item(s): 2." }]);
-		expect(first.details).toMatchObject({
-			status: "success",
-			type: ["review#1"],
-			complete: undefined,
-		});
-		await expect(tool.execute("pool-duplicate", { key: 1, data: { outcome: "again" } })).rejects.toThrow(
-			"already submitted",
-		);
-
-		const second = await tool.execute("pool-2", { key: 2, data: { outcome: "two" } });
-		expect(second.content).toEqual([
-			{ type: "text", text: "Item 2 submitted. All workpool items are complete; ending this turn." },
-		]);
-		expect(second.details).toMatchObject({ status: "success", type: ["review#2"], complete: true });
-
-		items = [{ id: "next#1", index: 1 }];
-		const next = await tool.execute("pool-next", { key: 1, data: { outcome: "new batch" } });
-		expect(next.details).toMatchObject({ type: ["next#1"], complete: true });
-	});
-
-	it("assembles per-key workpool yields into the batch output schema", () => {
-		const items = [
-			{ id: "review#1", index: 1 },
-			{ id: "review#2", index: 2 },
-		];
-		const schema = buildWorkPoolOutputSchema(items);
-		const assembled = assembleYieldResult(
-			[
-				{ status: "success", type: ["review#1"], data: { outcome: "one" } },
-				{ status: "success", type: ["review#2"], data: { outcome: "two" }, complete: true },
-			],
-			undefined,
-			yieldSectionShapes(schema),
-		);
-		expect(assembled?.data).toEqual({
-			"review#1": { outcome: "one" },
-			"review#2": { outcome: "two" },
-		});
-		const validator = buildOutputValidator(schema).validator;
-		expect(validator?.validate(assembled?.data).success).toBe(true);
-	});
-
 	it("commits a terminal yield emitted before parent steering lands (#10645)", async () => {
 		// The parent's `hub send` arrives while the child is still streaming its
 		// yield call. The already-generated yield must execute and settle the
@@ -167,27 +108,8 @@ describe("YieldTool", () => {
 			data: undefined,
 			status: "success",
 			error: undefined,
-			type: "summary",
 			useLastTurn: true,
 		});
-	});
-	it("rejects a schema-bound last-turn finalize with no accumulated sections as retryable", async () => {
-		// Instruction-followed punt observed in Gemini traces: `{type:"result"}`
-		// with a declared output schema. Accepting it terminates the child and
-		// finalization then fails post-mortem with an uncorrectable
-		// schema_violation; the tool must bounce it in-band instead.
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					type: "object",
-					properties: { summary: { type: "string" } },
-					required: ["summary"],
-				},
-			}),
-		);
-		await expect(tool.execute("call-schema-punt", { type: "result" } as never)).rejects.toThrow(
-			/structured output matching the declared schema/,
-		);
 	});
 	it("rejects a data-less useLastTurn finalize when the last turn carries no text", async () => {
 		// Thinking-only final turn: `useLastTurn` extraction resolves to empty, so
@@ -199,16 +121,6 @@ describe("YieldTool", () => {
 		);
 	});
 
-	it("rejects an empty incremental last-turn yield before it can mask an empty finalize", async () => {
-		const tool = new YieldTool(createSession({ getLastAssistantText: () => undefined }));
-		await expect(tool.execute("call-empty-section", { type: ["notes"] } as never)).rejects.toThrow(
-			/no text \(thinking only\)/,
-		);
-		await expect(tool.execute("call-empty-finalize", { type: "result" } as never)).rejects.toThrow(
-			/no text \(thinking only\)/,
-		);
-	});
-
 	it("accepts a data-less useLastTurn finalize when the last turn has text", async () => {
 		const tool = new YieldTool(createSession({ getLastAssistantText: () => "the actual answer" }));
 		const result = await tool.execute("call-text-last-turn", { type: "result" } as never);
@@ -216,7 +128,6 @@ describe("YieldTool", () => {
 			data: undefined,
 			status: "success",
 			error: undefined,
-			type: "result",
 			useLastTurn: true,
 		});
 	});
@@ -231,31 +142,6 @@ describe("YieldTool", () => {
 		const aborted = await tool.execute("call-empty-final", { type: "result" } as never);
 		expect(aborted.details?.status).toBe("aborted");
 		expect(aborted.details?.error).toMatch(/empty last-turn result after \d+ consecutive attempt/);
-	});
-
-	it("accepts a data-less finalize after incremental sections even when schema-bound", async () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					type: "object",
-					properties: { findings: { type: "array", items: { type: "string" } } },
-					required: ["findings"],
-				},
-			}),
-		);
-		const section = await tool.execute("call-section", {
-			type: ["findings"],
-			data: "one finding",
-		} as never);
-		expect(section.details?.status).toBe("success");
-		const finalize = await tool.execute("call-finalize", { type: "result" } as never);
-		expect(finalize.details).toEqual({
-			data: undefined,
-			status: "success",
-			error: undefined,
-			type: "result",
-			useLastTurn: true,
-		});
 	});
 
 	it("parses JSON-string data when the schema rejects the string form", async () => {
@@ -292,118 +178,6 @@ describe("YieldTool", () => {
 		).toEqual({ data: { summary: '{"purge":13,"keep":20}' } });
 	});
 
-	it("passes array-typed success through as an incremental result", async () => {
-		const tool = new YieldTool(createSession());
-		const result = await tool.execute("call-incremental", {
-			type: ["notes", "plan"],
-			data: { step: 1 },
-		} as never);
-		expect(result.details).toEqual({
-			data: { step: 1 },
-			status: "success",
-			error: undefined,
-			type: ["notes", "plan"],
-		});
-	});
-
-	it("does not validate incremental array-typed sections against the full output schema", async () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					type: "object",
-					properties: {
-						overall_correctness: { type: "string" },
-						explanation: { type: "string" },
-						confidence: { type: "number" },
-					},
-					required: ["overall_correctness", "explanation", "confidence"],
-				},
-			}),
-		);
-		// A single finding cannot satisfy the full schema, but an incremental
-		// (array-typed) section is a partial and must be accepted without retry.
-		const result = await tool.execute("call-incremental-partial", {
-			type: ["findings"],
-			data: { title: "bug", body: "details" },
-		} as never);
-		expect(result.details).toEqual({
-			data: { title: "bug", body: "details" },
-			status: "success",
-			error: undefined,
-			type: ["findings"],
-			useLastTurn: undefined,
-			schemaOverridden: undefined,
-		});
-	});
-
-	it("validates incremental sections against per-label sub-schemas with retry feedback", async () => {
-		// Regression for issue #3870: DeepSeek emits `type: ["overall_correctness"]` with
-		// non-enum values like "Correct" or "approved". The yield tool used to skip
-		// validation for incremental yields entirely, so the model got no retry feedback
-		// and the parent saw a fatal `schema_violation` post-mortem.
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: {
-						overall_correctness: { enum: ["correct", "incorrect"] },
-						explanation: { type: "string" },
-						confidence: { type: "number" },
-					},
-					optionalProperties: {
-						findings: {
-							elements: { properties: { title: { type: "string" }, body: { type: "string" } } },
-						},
-					},
-				},
-			}),
-		);
-
-		// Attempt 1: off-enum value rejected with the section label in the error.
-		await expect(
-			tool.execute("call-bad-1", { type: ["overall_correctness"], data: "Correct" } as never),
-		).rejects.toThrow(/Section "overall_correctness" does not match schema.*2 retry attempt\(s\) remain/);
-
-		// Attempt 2 and 3 advertise dwindling retries; attempt 3 names this as the last one.
-		await expect(
-			tool.execute("call-bad-2", { type: ["overall_correctness"], data: "correct." } as never),
-		).rejects.toThrow(/1 retry attempt\(s\) remain/);
-		await expect(
-			tool.execute("call-bad-3", { type: ["overall_correctness"], data: "approved" } as never),
-		).rejects.toThrow(/this is the final retry/);
-
-		// 4th invalid yield is accepted with schemaOverridden so the parent still gets a result.
-		const overrideResult = await tool.execute("call-bad-4", {
-			type: ["overall_correctness"],
-			data: "still-wrong",
-		} as never);
-		expect(overrideResult.details?.schemaOverridden).toBe(true);
-
-		// A fresh tool accepts a valid enum value without ticking the counter.
-		const fresh = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: {
-						overall_correctness: { enum: ["correct", "incorrect"] },
-						explanation: { type: "string" },
-						confidence: { type: "number" },
-					},
-				},
-			}),
-		);
-		const valid = await fresh.execute("call-good", {
-			type: ["overall_correctness"],
-			data: "correct",
-		} as never);
-		expect(valid.details).toEqual({
-			data: "correct",
-			status: "success",
-			error: undefined,
-			type: ["overall_correctness"],
-			useLastTurn: undefined,
-			schemaOverridden: undefined,
-		});
-	});
-
 	it("never drops the schema in strict mode, however many attempts fail", async () => {
 		const tool = new YieldTool(
 			createSession({
@@ -420,336 +194,12 @@ describe("YieldTool", () => {
 		expect(valid.details).toMatchObject({ data: { answer: "ok" }, status: "success", schemaOverridden: undefined });
 	});
 
-	it("validates incremental items for array-typed labels against the element schema", async () => {
-		// Each `type: ["findings"]` yield is one finding; the per-call validator runs against the
-		// items schema (not the array schema), so a missing required field surfaces immediately
-		// instead of being swallowed by the post-mortem assembly.
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					optionalProperties: {
-						findings: {
-							elements: {
-								properties: {
-									title: { type: "string" },
-									body: { type: "string" },
-								},
-							},
-						},
-					},
-				},
-			}),
-		);
-
-		const accepted = await tool.execute("call-finding-ok", {
-			type: ["findings"],
-			data: { title: "bug", body: "details" },
-		} as never);
-		expect(accepted.details?.data).toEqual({ title: "bug", body: "details" });
-
-		await expect(
-			tool.execute("call-finding-missing", {
-				type: ["findings"],
-				data: { title: "only-title" },
-			} as never),
-		).rejects.toThrow(/Section "findings" does not match schema.*body/);
-	});
-
-	it("leaves user-defined section labels unconstrained", async () => {
-		// Open JSON Schema output contracts can still use scratchpad/streaming
-		// sections that the agent invents at runtime, so unknown labels stay loose.
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					type: "object",
-					additionalProperties: true,
-					properties: {
-						overall_correctness: { enum: ["correct", "incorrect"] },
-						explanation: { type: "string" },
-						confidence: { type: "number" },
-					},
-				},
-			}),
-		);
-		const result = await tool.execute("call-scratchpad", {
-			type: ["scratchpad"],
-			data: { anything: "goes", n: 3 },
-		} as never);
-		expect(result.details?.data).toEqual({ anything: "goes", n: 3 });
-	});
-
-	it("rejects unknown incremental labels for closed caller output schemas without consuming retries", async () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: {
-						issue_key: { type: "string" },
-						verdict: { enum: ["clean", "blockers"] },
-					},
-					optionalProperties: {
-						blockers: {
-							elements: { properties: { title: { type: "string" } } },
-						},
-						non_blocking_notes: {
-							elements: { type: "string" },
-						},
-					},
-				},
-			}),
-		);
-
-		// Unknown labels are a hard contract mismatch with the caller schema. They MUST
-		// reject every time with the schema's labels listed and never bump the retry
-		// counter — otherwise the MAX_SCHEMA_RETRIES override accepts the stale-label
-		// payload and the post-mortem finalizer takes it as success (issue #3927 review).
-		for (let attempt = 1; attempt <= 5; attempt++) {
-			await expect(
-				tool.execute(`call-native-reviewer-label-${attempt}`, {
-					type: ["findings"],
-					data: { title: "native reviewer finding" },
-				} as never),
-			).rejects.toThrow(
-				/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers", "non_blocking_notes"\./,
-			);
-		}
-
-		// The last-turn short-circuit (`type: ["findings"]`) MUST also reject
-		// the unknown label. Otherwise the stale section silently accepts the last assistant
-		// text and rides along when a sibling section trips MAX_SCHEMA_RETRIES and
-		// schemaOverridden in finalization (issue #3927 follow-up review).
-		await expect(
-			tool.execute("call-native-reviewer-label-last-turn", {
-				type: ["findings"],
-			} as never),
-		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers", "non_blocking_notes"\./,
-		);
-
-		// Schema-retry budget intact: a separate, shape-only mismatch still fires the
-		// first-attempt retry hint (`2 retry attempt(s) remain`), proving the unknown-label
-		// path didn't burn the override.
-		await expect(
-			tool.execute("call-shape-error", {
-				type: ["verdict"],
-				data: "approved",
-			} as never),
-		).rejects.toThrow(/Section "verdict" does not match schema.*2 retry attempt\(s\) remain/);
-	});
-
-	it("rejects unknown incremental labels when the closed caller schema is a root $ref into $defs", async () => {
-		// Caller schemas exported as `{ $ref: "#/$defs/Closed", $defs: { Closed: ... } }` MUST
-		// resolve the root ref before the yield tool derives the valid-label set and the
-		// closed-schema flag. Otherwise stale labels slip past the yield gate and only fail
-		// later as a parent-side schema_violation (#3927 follow-up review).
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					$ref: "#/$defs/Closed",
-					$defs: {
-						Closed: {
-							type: "object",
-							properties: {
-								issue_key: { type: "string" },
-								verdict: { enum: ["clean", "blockers"] },
-							},
-							required: ["issue_key", "verdict"],
-							additionalProperties: false,
-						},
-					},
-				},
-			}),
-		);
-
-		await expect(
-			tool.execute("call-rooted-ref-stale-label", {
-				type: ["findings"],
-				data: { title: "native reviewer finding" },
-			} as never),
-		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict"\./,
-		);
-	});
-
-	it("accepts schema-declared closed labels without concrete per-section validators", async () => {
-		const permissiveKnownLabel = new YieldTool(
-			createSession({
-				outputSchema: {
-					type: "object",
-					properties: { notes: true },
-					additionalProperties: false,
-				},
-			}),
-		);
-		const known = await permissiveKnownLabel.execute("call-boolean-schema-label", {
-			type: ["notes"],
-			data: "plain text note",
-		} as never);
-		expect(known.details?.data).toBe("plain text note");
-
-		const patternBackedLabel = new YieldTool(
-			createSession({
-				outputSchema: {
-					type: "object",
-					patternProperties: {
-						"^section_[a-z]+$": { type: "object", additionalProperties: true },
-					},
-					additionalProperties: false,
-				},
-			}),
-		);
-		const pattern = await patternBackedLabel.execute("call-pattern-schema-label", {
-			type: ["section_alpha"],
-			data: { ok: true },
-		} as never);
-		expect(pattern.details?.data).toEqual({ ok: true });
-		await expect(
-			patternBackedLabel.execute("call-pattern-schema-miss", {
-				type: ["findings"],
-				data: { title: "native reviewer finding" },
-			} as never),
-		).rejects.toThrow(/unknown incremental yield label/);
-	});
-
-	it("rejects unknown incremental labels when allOf contains a closed caller schema", async () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					allOf: [
-						{
-							type: "object",
-							properties: {
-								issue_key: { type: "string" },
-								verdict: { enum: ["clean", "blockers"] },
-							},
-							required: ["issue_key", "verdict"],
-							additionalProperties: false,
-						},
-					],
-				},
-			}),
-		);
-
-		await expect(
-			tool.execute("call-allof-stale-label", {
-				type: ["findings"],
-				data: { title: "native reviewer finding" },
-			} as never),
-		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict"\./,
-		);
-	});
-
-	it("rejects unknown incremental labels for JTD discriminator (oneOf-of-closed) caller schemas", async () => {
-		// JTD discriminator output schemas compile to a top-level `oneOf` of closed object
-		// variants (no root `additionalProperties: false`, no `allOf`). Closure MUST be derived
-		// across the union — otherwise a stale label is accepted here and, once a sibling section
-		// exhausts MAX_SCHEMA_RETRIES, finalizeSubprocessOutput honors schemaOverridden and the
-		// stale label lands in a "successful" result (PR #3927 review).
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					discriminator: "verdict",
-					mapping: {
-						clean: {
-							properties: { issue_key: { type: "string" } },
-						},
-						blockers: {
-							properties: { issue_key: { type: "string" } },
-							optionalProperties: {
-								blockers: { elements: { properties: { title: { type: "string" } } } },
-							},
-						},
-					},
-				},
-			}),
-		);
-
-		await expect(
-			tool.execute("call-jtd-discriminator-stale-label", {
-				type: ["findings"],
-				data: { title: "native reviewer finding" },
-			} as never),
-		).rejects.toThrow(
-			/Section "findings" uses unknown incremental yield label\(s\): "findings"\. Resubmit with one of the schema's labels: "issue_key", "verdict", "blockers"\./,
-		);
-
-		// A label declared by only ONE variant is known: union semantics are disjunctive, the
-		// assembled output only has to match one variant.
-		const singleVariantLabel = await tool.execute("call-jtd-discriminator-variant-label", {
-			type: ["blockers"],
-			data: { title: "blocker from the blockers variant" },
-		} as never);
-		expect(singleVariantLabel.details?.data).toEqual({ title: "blocker from the blockers variant" });
-
-		// The discriminator property itself is declared by every variant.
-		const discriminatorLabel = await tool.execute("call-jtd-discriminator-tag-label", {
-			type: ["verdict"],
-			data: "blockers",
-		} as never);
-		expect(discriminatorLabel.details?.data).toBe("blockers");
-	});
-
-	it("does not gate incremental labels when a oneOf variant is open", async () => {
-		// One open variant (`additionalProperties` not false) accepts arbitrary top-level
-		// properties, so the union places no constraint on labels — engaging the gate would
-		// reject labels the schema actually allows.
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					oneOf: [
-						{
-							type: "object",
-							properties: {
-								issue_key: { type: "string" },
-								verdict: { enum: ["clean", "blockers"] },
-							},
-							required: ["issue_key", "verdict"],
-							additionalProperties: false,
-						},
-						{
-							type: "object",
-							properties: { notes: { type: "string" } },
-						},
-					],
-				},
-			}),
-		);
-
-		const result = await tool.execute("call-open-variant-label", {
-			type: ["findings"],
-			data: { title: "accepted because one variant is open" },
-		} as never);
-		expect(result.details?.data).toEqual({ title: "accepted because one variant is open" });
-	});
-
-	it("detects array-valued labels when the closed caller schema is a root $ref", () => {
-		const shapes = yieldSectionShapes({
-			$ref: "#/$defs/Closed",
-			$defs: {
-				Closed: {
-					type: "object",
-					properties: {
-						blockers: {
-							type: "array",
-							items: { type: "object", properties: { title: { type: "string" } } },
-						},
-					},
-					additionalProperties: false,
-				},
-			},
-		});
-
-		expect(shapes.get("blockers")).toBe("array");
-	});
-
 	it("rejects missing success data unless a yield type requests last-turn mode", async () => {
 		const tool = new YieldTool(createSession());
 		await expect(tool.execute("call-untyped-empty", {} as never)).rejects.toThrow(
 			"yield must contain either `data` or `error`",
 		);
-		await expect(tool.execute("call-empty-type", { type: [] } as never)).rejects.toThrow(
-			"type must be a string or non-empty array of strings",
-		);
+		await expect(tool.execute("call-empty-type", { type: [] } as never)).rejects.toThrow("type must be a string");
 		await expect(tool.execute("call-both", { data: { ok: true }, error: "boom" } as never)).rejects.toThrow(
 			"yield cannot contain both data and error",
 		);
@@ -819,11 +269,8 @@ describe("YieldTool", () => {
 		const tool = new YieldTool(createSession());
 		const parameters = tool.parameters as unknown as Record<string, unknown>;
 		const typeSchema = toRecord(toRecord(parameters.properties).type);
-		const variants = Array.isArray(typeSchema.anyOf) ? typeSchema.anyOf.map(toRecord) : [];
 
-		expect(variants.map(variant => variant.type)).toEqual(["string", "array"]);
-		expect(variants[1]?.minItems).toBe(1);
-		expect(toRecord(variants[1]?.items).type).toBe("string");
+		expect(typeSchema.type).toBe("string");
 
 		const toolDefinition: Tool = {
 			name: tool.name,
@@ -893,7 +340,6 @@ describe("YieldTool", () => {
 			data: { answer: "ok" },
 			status: "success",
 			error: undefined,
-			type: undefined,
 			useLastTurn: undefined,
 			schemaOverridden: undefined,
 		});
@@ -904,7 +350,6 @@ describe("YieldTool", () => {
 			data: undefined,
 			status: "success",
 			error: undefined,
-			type: "summary",
 			useLastTurn: true,
 		});
 	});
@@ -1147,77 +592,6 @@ describe("YieldTool", () => {
 		).rejects.toThrow("Output does not match schema");
 	});
 
-	it("expands section variants so a strict reviewer can submit one incremental section", () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: {
-						overall_correctness: { enum: ["correct", "incorrect"] },
-						explanation: { type: "string" },
-						confidence: { type: "number" },
-					},
-					optionalProperties: {
-						findings: {
-							elements: {
-								properties: {
-									title: { type: "string" },
-									body: { type: "string" },
-									priority: { type: "number" },
-								},
-							},
-						},
-					},
-				},
-			}),
-		);
-
-		expect(tool.strict).toBe(true);
-
-		const toolDefinition: Tool = {
-			name: tool.name,
-			description: tool.description,
-			parameters: tool.parameters,
-			strict: tool.strict,
-		};
-
-		// One incremental finding (a single element, not the full output) must validate.
-		expect(
-			validateToolArguments(toolDefinition, {
-				type: "toolCall",
-				id: "call-one-finding",
-				name: tool.name,
-				arguments: { type: ["findings"], data: { title: "t", body: "b", priority: 1 } },
-			}),
-		).toBeDefined();
-		// A lone verdict value must validate too.
-		expect(
-			validateToolArguments(toolDefinition, {
-				type: "toolCall",
-				id: "call-verdict",
-				name: tool.name,
-				arguments: { type: ["overall_correctness"], data: "incorrect" },
-			}),
-		).toBeDefined();
-		// The full terminal output still validates.
-		expect(
-			validateToolArguments(toolDefinition, {
-				type: "toolCall",
-				id: "call-full",
-				name: tool.name,
-				arguments: {
-					data: { overall_correctness: "incorrect", explanation: "x", confidence: 0.5 },
-				},
-			}),
-		).toBeDefined();
-
-		// Stays Codex-valid: strict, no top-level combinator.
-		const [converted] = convertOpenAICodexResponsesTools([toolDefinition], makeCodexModel());
-		if (converted.type !== "function") throw new Error("expected a function tool payload");
-		expect(converted.strict).toBe(true);
-		for (const combinator of ["allOf", "anyOf", "oneOf", "enum", "const", "not"]) {
-			expect(converted.parameters[combinator]).toBeUndefined();
-		}
-	});
 	it("supports $defs/$ref output schemas by inlining definitions and degrades after first runtime failure", async () => {
 		const outputSchema = {
 			$defs: {
@@ -1561,112 +935,33 @@ describe("YieldTool", () => {
 		});
 	});
 
-	it("resets the schema-retry budget after a schema-valid incremental section", async () => {
-		// Reproduces the RolesFallbacksReview incident: two malformed findings
-		// must not exhaust the verdict section's budget when a valid section
-		// lands in between. Incremental sections stay nonterminal, so the
-		// counter reset is observable across submissions on one tool instance.
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: {
-						overall_correctness: { enum: ["correct", "incorrect"] },
-						explanation: { type: "string" },
-						confidence: { type: "number" },
-					},
-					optionalProperties: {
-						findings: {
-							elements: { properties: { title: { type: "string" }, body: { type: "string" } } },
-						},
-					},
-				},
-			}),
-		);
-		const finding = { title: "bug", body: "details" };
-		// Two malformed findings: bare string, then double-encoded wrapper.
-		await expect(
-			tool.execute("call-reset-bad-1", { type: ["findings"], data: "just text" } as never),
-		).rejects.toThrow(/Section "findings" does not match schema.*2 retry attempt\(s\) remain/);
-		await expect(
-			tool.execute("call-reset-bad-2", {
-				type: ["findings"],
-				data: JSON.stringify({ findings: [finding] }),
-			} as never),
-		).rejects.toThrow(/Section "findings" does not match schema.*1 retry attempt\(s\) remain/);
-		// One valid finding: budget resets to full.
-		const ok = await tool.execute("call-reset-good", { type: ["findings"], data: finding } as never);
-		expect(ok.details?.data).toEqual(finding);
-		// Three invalid verdicts must ALL reject again — the earlier two
-		// failures no longer count against this independent section.
-		await expect(
-			tool.execute("call-reset-v1", { type: ["overall_correctness"], data: "Correct" } as never),
-		).rejects.toThrow(/2 retry attempt\(s\) remain/);
-		await expect(
-			tool.execute("call-reset-v2", { type: ["overall_correctness"], data: "correct." } as never),
-		).rejects.toThrow(/1 retry attempt\(s\) remain/);
-		await expect(
-			tool.execute("call-reset-v3", { type: ["overall_correctness"], data: "approved" } as never),
-		).rejects.toThrow(/final retry/);
-		const override = await tool.execute("call-reset-v4", {
-			type: ["overall_correctness"],
-			data: "still-wrong",
-		} as never);
-		expect(override.details?.schemaOverridden).toBe(true);
-		expect(override.content).toEqual([
-			{ type: "text", text: "Result submitted (schema validation overridden after 4 failed attempt(s))." },
-		]);
-	});
-
 	it("recovers double-encoded JSON primitives only when raw validation fails", async () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: {
-						overall_correctness: { enum: ["correct", "incorrect"] },
-						verdict_count: { type: "number" },
-					},
-				},
-			}),
-		);
+		const enumTool = new YieldTool(createSession({ outputSchema: { enum: ["correct", "incorrect"] } }));
 		// Double-encoded enum: raw `"correct"` (with quotes) fails the enum,
 		// decoded `correct` validates — adopted without spending retries twice.
-		const recovered = await tool.execute("call-prim-enum", {
-			type: ["overall_correctness"],
-			data: '"correct"',
-		} as never);
+		const recovered = await enumTool.execute("call-prim-enum", { data: '"correct"' } as never);
 		expect(recovered.details?.data).toBe("correct");
-		// Double-encoded number on its own label.
-		const recoveredNum = await tool.execute("call-prim-num", {
-			type: ["verdict_count"],
-			data: "42",
-		} as never);
-		expect(recoveredNum.details?.data).toBe(42);
 		// Decoded-but-still-invalid stays rejected: `"still-wrong"` parses to
 		// a string that still misses the enum.
-		await expect(
-			tool.execute("call-prim-bad", { type: ["overall_correctness"], data: '"still-wrong"' } as never),
-		).rejects.toThrow(/Section "overall_correctness" does not match schema/);
+		await expect(enumTool.execute("call-prim-bad", { data: '"still-wrong"' } as never)).rejects.toThrow(
+			/Output does not match schema/,
+		);
 		// Decoded `null` stays rejected with a retryable error: finalization
 		// treats null data as missing, so accepting it would warn post-mortem.
-		await expect(
-			tool.execute("call-prim-null", { type: ["overall_correctness"], data: "null" } as never),
-		).rejects.toThrow(/Section "overall_correctness" does not match schema/);
+		await expect(enumTool.execute("call-prim-null", { data: "null" } as never)).rejects.toThrow(
+			/Output does not match schema/,
+		);
+
+		const numberTool = new YieldTool(createSession({ outputSchema: { type: "number" } }));
+		const recoveredNum = await numberTool.execute("call-prim-num", { data: "42" } as never);
+		expect(recoveredNum.details?.data).toBe(42);
 	});
 
 	it("leaves raw-valid strings untouched by JSON recovery", async () => {
-		const tool = new YieldTool(
-			createSession({
-				outputSchema: {
-					properties: { explanation: { type: "string" } },
-				},
-			}),
-		);
+		const tool = new YieldTool(createSession({ outputSchema: { type: "string" } }));
 		// `"42"` is already a valid string but also parses as JSON — recovery
 		// must not run before raw validation and coerce it to `42`.
-		const result = await tool.execute("call-raw-str", {
-			type: ["explanation"],
-			data: "42",
-		} as never);
+		const result = await tool.execute("call-raw-str", { data: "42" } as never);
 		expect(result.details?.data).toBe("42");
 	});
 

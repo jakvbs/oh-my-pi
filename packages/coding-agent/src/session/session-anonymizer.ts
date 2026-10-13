@@ -602,7 +602,6 @@ const ARG_SCHEMAS: Record<string, ArgSchema> = {
 	grep: argSchema("pattern path case gitignore skip# limit# hidden glob context#"),
 	glob: argSchema("path pattern hidden gitignore limit# skip#"),
 	find: argSchema("query path grep_keywords limit# hidden"),
-	task: argSchema("op context tasks name task agent solutionSpace tools isolated schemaMode"),
 	todo: argSchema("op items task phase list reason tasks content status phase_note"),
 	wait: argSchema("ids timeout#"),
 	web_search: argSchema("query limit# recency num_search_results# max_tokens# temperature#"),

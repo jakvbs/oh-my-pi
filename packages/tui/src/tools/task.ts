@@ -45,7 +45,7 @@ import { framedToolCard } from "../render/tool-card";
 import { formatOutputInline, renderJsonTreeLines } from "./json-tree";
 import { repairDoubleEncodedJsonString } from "./task-repair-args";
 import { getSubprocessToolRenderer } from "./subprocess";
-import { assembleYieldResult, type YieldSectionShapes } from "./task-yield-assembly";
+import { assembleYieldResult, type YieldItem, type YieldSectionShapes } from "./task-yield-assembly";
 import type { TspAgentProps, TspTone } from "@oh-my-pi/pi-wire";
 import { compact, kv, md, node, span, text } from "../native/describe";
 import type { NativeNode } from "../native/node";
@@ -55,7 +55,6 @@ import { errorText, noteText, resultText } from "./native-view";
 import { describeJsonTree } from "./json-tree";
 import { taskSummary } from "../overlays/agent-hub-renderer";
 import type { NativeToolView, ToolRenderResult } from "./renderer";
-import type { YieldItem } from "./yield";
 
 /** Render context threaded in from `ToolExecutionComponent.#buildRenderContext`. */
 interface TaskRenderContext {

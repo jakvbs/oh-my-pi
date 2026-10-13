@@ -950,7 +950,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -1034,7 +1033,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -2337,7 +2335,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 			agentId: "SubAgent",
 		});
 		try {
@@ -2410,7 +2407,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 		});
 		try {
 			await session.sendUserMessage("rewrite this");
@@ -2491,7 +2487,6 @@ describe("AgentSession message pipeline", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			isSubagent: true,
 		});
 		try {
 			const turn = session.sendUserMessage("rewrite this");

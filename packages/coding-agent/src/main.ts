@@ -91,7 +91,6 @@ import {
 import { ensureTheme, initTheme, stopThemeWatcher } from "@oh-my-pi/pi-tui/theme";
 import type { SubmittedUserInput } from "./modes/types";
 import { createWarpEventBridgeExtension } from "./modes/warp-events";
-import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import {
 	type CreateAgentSessionOptions,
 	type CreateAgentSessionResult,
@@ -109,8 +108,6 @@ import { ForkSourceNotFoundError, SessionManager, SessionMoveRefusedError } from
 import { forkIfMovedAway } from "./session/session-transfer";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput, systemPromptSourceOf } from "./system-prompt";
-import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
-import { type RestoreOutcome, restoreSession } from "./task/restore";
 import { createTelemetryExportConfig, initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { cfgTelemetryOtlpExportEnabled } from "./telemetry-settings";
 import { registerLocalInferenceApi } from "./tiny/local-inference-api";
@@ -156,7 +153,6 @@ import {
 	cfgPrewalkEnabled,
 } from "./session/settings";
 import { cfgDisabledProviders, cfgEnabledModels } from "./config/model-settings";
-import { cfgTaskAgentIdleTtlMs } from "./task/settings";
 import { cfgSkillsIncludeSkills } from "./extensibility/settings";
 import { cfgWorkspaceAdditionalDirectories } from "./session/context-settings";
 
@@ -583,13 +579,12 @@ async function runInteractiveMode(
 	forceSetupWizard: boolean,
 	showStartupSplash: boolean,
 	eventBus?: EventBus,
-	subagentEventBus?: EventBus,
 	initialMessage?: string,
 	initialImages?: ImageContent[],
 	startDeferredStartupWork?: () => void,
 	startupLease?: ComposerLease,
 	startupGoal?: string,
-	startupRestore?: () => Promise<RestoreOutcome>,
+	startupRestore?: () => Promise<boolean>,
 ): Promise<void> {
 	const InteractiveModeConstructor = await loadInteractiveModeConstructor();
 	let mode: InteractiveMode;
@@ -603,7 +598,6 @@ async function runInteractiveMode(
 			mcpManager,
 			eventBus,
 			startupLease?.composer,
-			subagentEventBus,
 		);
 		startupLease?.adopt();
 	} catch (error) {
@@ -714,16 +708,9 @@ async function runInteractiveMode(
 	if (startupRestore) {
 		try {
 			using _keepalive = new EventLoopKeepalive();
-			const { turn, subagents } = await startupRestore();
-			const agents = subagents.length === 1 ? "1 subagent" : `${subagents.length} subagents`;
+			const turn = await startupRestore();
 			mode.showStatus(
-				turn && subagents.length > 0
-					? `Restored: going on with the interrupted turn and ${agents}.`
-					: turn
-						? "Restored: going on with the interrupted turn."
-						: subagents.length > 0
-							? `Restored: ${agents} going on with their interrupted turns.`
-							: "Restored: nothing was left unfinished.",
+				turn ? "Restored: going on with the interrupted turn." : "Restored: nothing was left unfinished.",
 			);
 		} catch (error: unknown) {
 			mode.showError(error instanceof Error ? error.message : "Unknown error occurred");
@@ -2117,7 +2104,6 @@ export async function runRootCommand(
 			}
 
 			const eventBus = new EventBus();
-			const subagentEventBus = new EventBus();
 			const extensionsResult = parsedArgs.trustedExtensions?.length
 				? await loadTrustedSessionExtensions(sessionOptions, cwd, eventBus)
 				: await loadSessionExtensions(sessionOptions, cwd, settingsInstance, eventBus);
@@ -2217,7 +2203,6 @@ export async function runRootCommand(
 			} = await createSession({
 				...sessionOptions,
 				eventBus,
-				subagentEventBus,
 				preloadedExtensions: extensionsResult,
 				// runInteractiveMode validates once init has painted the first frame.
 				deferRetryFallbackValidation: isInteractive,
@@ -2231,25 +2216,6 @@ export async function runRootCommand(
 				throw error;
 			}
 
-			// Cold-revive support: a `parked` subagent ref restored from disk (Agent Hub
-			// scan, collab mirror, resumed process) has a sessionFile but no in-memory
-			// reviver, so `ensureLive` (IRC sends, hub focus) would refuse it. Install a
-			// factory — bound to THIS top-level session — that rebuilds the subagent from
-			// its persisted JSONL (see persisted-revive.ts). Scoped to the non-ACP
-			// bootstrap: ACP keeps several concurrent top-level sessions and a single
-			// process-global factory must not be clobbered by the most recent one.
-			AgentLifecycleManager.global().setPersistedSubagentReviverFactory(
-				createPersistedSubagentReviverFactory({
-					session,
-					authStorage,
-					modelRegistry,
-					settings: settingsInstance,
-					enableLsp: sessionOptions.enableLsp ?? true,
-					eventBus,
-					subagentEventBus,
-				}),
-				() => Math.trunc(Number(cfgTaskAgentIdleTtlMs.get(settingsInstance)) || 0),
-			);
 			if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 				authStorage.keys.setRuntime(session.model.provider, parsedArgs.apiKey);
 			}
@@ -2340,7 +2306,6 @@ export async function runRootCommand(
 				await runRpcMode(session, {
 					setToolUIContext: mode === "rpc-ui" ? setToolUIContext : undefined,
 					headless: parsedArgs.noUi === true,
-					subagentEventBus,
 					input: rpcInput,
 				});
 			} else if (isInteractive) {
@@ -2382,13 +2347,12 @@ export async function runRootCommand(
 						deps.forceSetupWizard === true,
 						showStartupSplash,
 						eventBus,
-						subagentEventBus,
 						initialMessage,
 						initialImages,
 						startDeferredStartupWork,
 						startupLease,
 						initialArgs.goal,
-						parsedArgs.restore ? () => restoreSession(session, { eventBus, subagentEventBus }) : undefined,
+						parsedArgs.restore ? () => session.restoreInterruptedTurn() : undefined,
 					);
 				} finally {
 					startupLease?.dispose();

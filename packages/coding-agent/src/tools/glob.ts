@@ -8,7 +8,6 @@ import { InternalUrlRouter, sessionResolveContext } from "../internal-urls";
 import { InternalUrlFilesystem, type UrlFileStat } from "../internal-urls/url-filesystem";
 import globDescription from "../prompts/tools/glob.md" with { type: "text" };
 import { truncateHead } from "@oh-my-pi/pi-tui/tools/streaming-output";
-import { sessionDelegationBias } from "../task/prompt-policy";
 import type { ToolSession } from ".";
 import { resolveToolTier } from "./approval";
 import { isFindEnabled } from "./jfind";
@@ -118,11 +117,10 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	readonly label = "Glob";
 	get description(): string {
 		const hasFind = this.session.isToolActive?.("find") ?? isFindEnabled(this.session);
-		const eagerDelegation = sessionDelegationBias(this.session) === "eager";
-		// Every render input is a boolean; pack them so repeat reads skip the template render.
-		const key = (hasFind ? 1 : 0) | (eagerDelegation ? 2 : 0);
+		// The only render input is a boolean; cache by it so repeat reads skip the template render.
+		const key = hasFind ? 1 : 0;
 		if (key !== this.#descriptionKey) {
-			this.#description = prompt.render(globDescription, { hasFind, eagerDelegation });
+			this.#description = prompt.render(globDescription, { hasFind });
 			this.#descriptionKey = key;
 		}
 		return this.#description;

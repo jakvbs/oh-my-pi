@@ -235,6 +235,7 @@ packages/coding-agent/src/session/foreign-session-jsonl.ts
 packages/coding-agent/src/session/foreign-session-store.ts
 packages/coding-agent/src/sharpshooter
 packages/coding-agent/src/stt
+packages/coding-agent/src/task
 packages/coding-agent/src/tools/ast-edit.ts
 packages/coding-agent/src/tools/ast-grep.ts
 packages/coding-agent/src/tools/browser
@@ -266,6 +267,7 @@ packages/coding-agent/test/live
 packages/coding-agent/test/memories
 packages/coding-agent/test/plan-mode
 packages/coding-agent/test/security
+packages/coding-agent/test/task
 packages/coding-agent/test/tts
 packages/coding-agent/test/vibe
 packages/coding-agent/test/xiaomi-tp-discovery-merge.test.ts

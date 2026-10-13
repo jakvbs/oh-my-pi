@@ -17,8 +17,8 @@ import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manage
 import { Snowflake } from "@oh-my-pi/pi-utils";
 import { createInMemoryAuthStorage } from "./helpers/agent-session-setup";
 
-// Extensions need to know which agent they run in: the same factory is rebound to every
-// subagent, and hooks such as a Claude-style SubagentStart must act only there.
+// Extensions need to know which agent they run in: hooks scoped to the main agent must not
+// act on the advisor's own tool calls.
 describe("ExtensionContext.agent", () => {
 	let tempDir: string;
 	const authStorages: AuthStorage[] = [];
@@ -80,44 +80,6 @@ describe("ExtensionContext.agent", () => {
 	test("a top-level session reports itself as the main agent", async () => {
 		expect(await agentSeenByExtensions({})).toEqual({ kind: "main", id: "Main", name: "main", depth: 0 });
 	});
-
-	test("a subagent session reports its kind, id, definition name, depth and parent", async () => {
-		expect(
-			await agentSeenByExtensions({
-				isSubagent: true,
-				parentTaskPrefix: "0-Explore",
-				agentId: "0-Explore",
-				agentDisplayName: "Explore",
-				agentName: "Explore",
-				parentAgentId: "Main",
-			}),
-		).toEqual({ kind: "sub", id: "0-Explore", name: "explore", depth: 1, parentId: "Main" });
-	});
-
-	test("a spawned session outside the task tool is a subagent at depth 0", async () => {
-		// `/tan` clones pass a parent prefix but no explicit subagent flag or definition.
-		expect(
-			await agentSeenByExtensions({
-				parentTaskPrefix: "Main-tan-1",
-				agentId: "Main-tan-1",
-				agentDisplayName: "tan",
-				parentAgentId: "Main",
-			}),
-		).toEqual({ kind: "sub", id: "Main-tan-1", name: "sub", depth: 0, parentId: "Main" });
-	});
-
-	test.each([{ isSubagent: true }, { parentTaskPrefix: "legacy-child" }])(
-		"omits task from a child session even when explicitly requested: %j",
-		async options => {
-			const session = await createSession(() => {}, { ...options, toolNames: ["read", "task"] });
-			try {
-				expect(session.getEnabledToolNames()).toContain("read");
-				expect(session.getEnabledToolNames()).not.toContain("task");
-			} finally {
-				await session.dispose();
-			}
-		},
-	);
 
 	// Advisors share the session's runner for approval enforcement; an extension scoping
 	// tool hooks to the main agent (e.g. injecting hints into tool results) must not act

@@ -82,30 +82,6 @@ export function isServiceTierInheritSettingValue(value: unknown): value is Servi
 	return typeof value === "string" && SERVICE_TIER_INHERIT_SETTING_VALUES.some(serviceTier => serviceTier === value);
 }
 
-/**
- * Validate the sparse exact-agent-name tier map used by task dispatch. An absent
- * or empty (`null`) mapping means no overrides; any other non-mapping container is
- * a config typo that would otherwise silently disable every override.
- */
-export function validateAgentServiceTierOverrides(value: unknown): Record<string, ServiceTierInheritSettingValue> {
-	const overrides: Record<string, ServiceTierInheritSettingValue> = {};
-	if (value === undefined || value === null) return overrides;
-	if (typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(
-			`Invalid task.agentServiceTierOverrides: expected a map of agent name to service tier, got ${Array.isArray(value) ? "an array" : `a ${typeof value}`}.`,
-		);
-	}
-	for (const [agentName, setting] of Object.entries(value)) {
-		if (!isServiceTierInheritSettingValue(setting)) {
-			throw new Error(
-				`Invalid service tier for task.agentServiceTierOverrides.${agentName}: ${String(setting)}. Expected one of: ${SERVICE_TIER_INHERIT_SETTING_VALUES.join(", ")}.`,
-			);
-		}
-		overrides[agentName] = setting;
-	}
-	return overrides;
-}
-
 export const SERVICE_TIER_OPENAI_OPTIONS: ReadonlyArray<SubmenuOption<ServiceTierOpenAISettingValue>> = [
 	{ value: "none", label: "None", description: "Omit service_tier (standard processing)" },
 	{ value: "auto", label: "Auto", description: "Provider default tier selection" },
