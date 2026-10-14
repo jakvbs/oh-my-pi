@@ -10,7 +10,7 @@ import waitDescription from "../prompts/tools/wait.md" with { type: "text" };
 import type { ToolSession } from ".";
 import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
 import { buildJobResult, snapshotJobs, undeliveredJobs } from "../async/job-control";
-import { type OutputAlert, OutputAlertWatch } from "../async/output-alert";
+import { type OutputActivity, type OutputAlert, OutputAlertWatch } from "../async/output-alert";
 import { hasLiveOwnedService, listServicesTolerant, waitForOwnedServiceCompletion } from "../launch/services";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { CoordinationDetails } from "@oh-my-pi/pi-tui/tools/wait";
@@ -23,6 +23,14 @@ const WAIT_MAX_MS = 30 * 60_000;
 const PROGRESS_INTERVAL_MS = 500;
 const OUTPUT_STALL_MS = 5 * 60_000;
 const OUTPUT_CHECK_INTERVAL_MS = 1_000;
+
+/** Why a blocked wait returned; every result names its wake. */
+type WaitWake =
+	| { kind: "settled" }
+	| { kind: "service" }
+	| { kind: "output"; alert: OutputAlert }
+	| { kind: "limit" }
+	| { kind: "abort" };
 
 export interface WaitToolOptions {
 	/** Silence in a running bash job's output that wakes the wait. */
@@ -61,7 +69,10 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 	) {
 		this.#outputWatch = new OutputAlertWatch(options.stallMs ?? OUTPUT_STALL_MS);
 		this.#outputCheckIntervalMs = options.outputCheckIntervalMs ?? OUTPUT_CHECK_INTERVAL_MS;
-		this.description = prompt.render(waitDescription, { stallMinutes: this.#outputWatch.stallMs / 60_000 });
+		this.description = prompt.render(waitDescription, {
+			stallMinutes: this.#outputWatch.stallMs / 60_000,
+			limitMinutes: WAIT_MAX_MS / 60_000,
+		});
 	}
 
 	async execute(
@@ -133,14 +144,14 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 		};
 		checkOutput();
 		const outputTimer = setInterval(checkOutput, this.#outputCheckIntervalMs);
-		let wake: "job" | "service" | "timeout" | "abort" | OutputAlert;
+		let wake: WaitWake;
 		try {
-			wake = await Promise.race([
-				...jobs.map(job => job.promise.then(() => "job" as const)),
-				outputAlert.promise,
-				...(serviceLeg ? [serviceLeg.then(() => "service" as const)] : []),
-				timeout.then(() => "timeout" as const),
-				abort.promise.then(() => "abort" as const),
+			wake = await Promise.race<WaitWake>([
+				...jobs.map(job => job.promise.then(() => ({ kind: "settled" as const }))),
+				outputAlert.promise.then(alert => ({ kind: "output" as const, alert })),
+				...(serviceLeg ? [serviceLeg.then(() => ({ kind: "service" as const }))] : []),
+				timeout.then(() => ({ kind: "limit" as const })),
+				abort.promise.then(() => ({ kind: "abort" as const })),
 			]);
 		} finally {
 			clearTimeout(timer);
@@ -166,25 +177,55 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 				}
 				throwIfAborted(signal);
 			}
-			if (manager && typeof wake === "object")
-				return withOutputAlert(buildJobResult(this.session, manager, "wait", jobs, []), wake);
-			if (manager && jobs.length > 0) return buildJobResult(this.session, manager, "wait", jobs, []);
+			const snapshot =
+				manager && jobs.length > 0 ? buildJobResult(this.session, manager, "wait", jobs, []) : undefined;
+			if (snapshot && wake.kind === "output") return withOutputAlert(snapshot, wake.alert);
+			if (wake.kind === "limit") {
+				const now = Date.now();
+				const status = jobs
+					.filter(job => job.status === "running")
+					.map(job => describeRunningJob(job, this.#outputWatch.activity(job.id), now));
+				return withWaitLimit(snapshot, status);
+			}
+			if (snapshot) return snapshot;
 			return {
-				content: [
-					{
-						type: "text",
-						text:
-							wake === "service"
-								? "A service finished. Read proc:// for its status and output."
-								: "Wait limit reached; background work may still be running. Read proc:// for status.",
-					},
-				],
+				content: [{ type: "text", text: "A service finished. Read proc:// for its status and output." }],
 				details: { op: "wait", jobs: [] },
 			};
 		} finally {
 			manager?.unwatchJobs(watchedIds);
 		}
 	}
+}
+
+const minutes = (ms: number) => `${Math.round(ms / 60_000)} min`;
+
+function describeRunningJob(job: AsyncJob, activity: OutputActivity | undefined, now: number): string {
+	const ran = `\`${job.id}\` has run ${minutes(now - job.startTime)}`;
+	if (job.type !== "bash" || !activity) return `${ran}.`;
+	if (!activity.printed) return `${ran} and printed nothing.`;
+	const quietMs = now - activity.changedAt;
+	return quietMs < 60_000
+		? `${ran}; its output changed within the last minute.`
+		: `${ran}; its output last changed ${minutes(quietMs)} ago.`;
+}
+
+/**
+ * Leads the snapshot with the limit that ended the wait, so the result never
+ * reads like a wait that returned at once.
+ */
+function withWaitLimit(
+	snapshot: AgentToolResult<CoordinationDetails> | undefined,
+	status: readonly string[],
+): AgentToolResult<CoordinationDetails> {
+	const text = [
+		"## Wait limit reached\n",
+		`This wait blocked for its ${minutes(WAIT_MAX_MS)} limit. Nothing finished, printed an error line, or stalled.`,
+		...status,
+		"Call `wait` again to keep waiting, or cancel a job you no longer need.",
+		...(snapshot ? ["", ...snapshot.content.flatMap(part => (part.type === "text" ? [part.text] : []))] : []),
+	].join("\n");
+	return { ...(snapshot ?? { details: { op: "wait", jobs: [] } }), content: [{ type: "text", text }] };
 }
 
 /**
@@ -198,7 +239,7 @@ function withOutputAlert(
 	const reason =
 		alert.kind === "error"
 			? `\`${alert.jobId}\` printed an error line and is still running.`
-			: `\`${alert.jobId}\` printed nothing for ${Math.round(alert.silentMs / 60_000)} min and is still running.`;
+			: `\`${alert.jobId}\` printed nothing for ${minutes(alert.silentMs)} after steady output and is still running.`;
 	const text = [
 		"## Output alert\n",
 		reason,

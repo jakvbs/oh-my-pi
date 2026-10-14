@@ -247,7 +247,7 @@ For PTY execution, live rendering is handled by custom UI overlay, not by `onUpd
 
 `BashTool` has no `async` parameter; an `async` field sent by an older caller is ignored. Auto-backgrounding (`bash.autoBackground.enabled`, default `true`) runs the command as a managed bash job, waits up to `bash.autoBackground.thresholdMs` (default 60,000 ms; `0` backgrounds immediately), then returns a running result with a job id and stores completion through the session job manager; it is skipped for PTY and client-bridge terminal routes and falls back to foreground execution when the job manager is at capacity. A queued steering message can background a still-running auto-background candidate early.
 
-A non-service command containing a literal `sleep` longer than `bash.autoBackground.thresholdMs` (GNU duration sums such as `sleep 1m 30s`, and `sleep infinity`) fails before it runs, with a `ToolError` pointing at `wait`: sleeping to poll holds the turn while `wait` wakes on completion, an error line, or a stall. A threshold of `0` disables the guard.
+A non-service command containing a literal `sleep` longer than `bash.autoBackground.thresholdMs` (GNU duration sums such as `sleep 1m 30s`, and `sleep infinity`) fails before it runs, with a `ToolError` pointing at `wait`: sleeping to poll holds the turn while `wait` wakes on completion, a new error line, or a stall after steady output (see `docs/tools/wait.md`). A threshold of `0` disables the guard.
 
 ## Result shaping, metadata, and error mapping
 

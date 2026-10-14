@@ -20,7 +20,7 @@
 
 ### Added
 
-- `wait` also wakes when a running bash job prints a failure-shaped line (`error:`, `FAILED`, `panicked at`, `error TS…:` and similar) or stays silent for 5 minutes, quoting the triggering output under `## Output alert` while the job keeps running. Each line or silent stretch wakes once.
+- `wait` also wakes when a running bash job prints a new failure-shaped line (`error:`, `FAILED`, `panicked at`, `error TS…:` and similar) or goes silent for 5 minutes after printing steadily, quoting the triggering output under `## Output alert` while the job keeps running. A job that printed nothing, such as `gh run watch` redirected to `/dev/null`, never wakes it for silence, and a status table redrawn every interval wakes it once per distinct error line.
 - SDK embedders can drive a session they own to its structured result with `runSessionToYield` (exported from `@oh-my-pi/pi-coding-agent`): it re-prompts with a reminder ladder until the session yields, and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
 - Context budget reminders: the agent gets one hidden `<system-reminder>` with its token count and the limit when context first reaches 25, 50, 70 or 85% of the auto-compaction threshold (the model window when compaction is off). Disable with `compaction.budgetReminders: false`.
 - `ContextUsage` (from `ctx.getContextUsage()`, session stats and RPC state) carries `compactionThreshold`, the token count at which auto-compaction triggers for the active model including `compaction.modelThresholds`; it is absent when compaction is off.
@@ -38,6 +38,7 @@
 
 ### Fixed
 
+- A `wait` that reaches its 30-minute limit now starts with `## Wait limit reached` and says how long each job has run and when its output last changed, instead of a bare `## Still Running` list that looked like an immediate return.
 - Long single-line `--system-prompt` text no longer prevents sessions from starting with `ENAMETOOLONG`.
 - Fixed SDK consumers losing asynchronous cleanup on SIGINT and SIGTERM while preserving the CLI's signal shutdown behavior.
 - A session started with `--system-prompt` keeps it when resumed without the flag and in sessions started with `/new`, and switching sessions renders each session's own policy. A file is re-read on every prompt rebuild, so edits reach the session; a recorded file that no longer exists stops startup with an error instead of falling back to `~/.agents/AGENTS.md`.

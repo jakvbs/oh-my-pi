@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import { TOOL_INTERRUPT_ABORT_REASON } from "@oh-my-pi/pi-agent-core";
+import { type AgentToolResult, TOOL_INTERRUPT_ABORT_REASON } from "@oh-my-pi/pi-agent-core";
 import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import * as daemonClient from "@oh-my-pi/pi-coding-agent/launch/client";
@@ -14,6 +14,10 @@ function session(manager?: AsyncJobManager, agentId = "Main", launch = false): T
 		asyncJobManager: manager,
 		getAgentId: () => agentId,
 	} as unknown as ToolSession;
+}
+
+function textOf(result: AgentToolResult<unknown>): string {
+	return result.content.map(part => (part.type === "text" ? part.text : "")).join("");
 }
 
 describe("wait", () => {
@@ -114,23 +118,93 @@ describe("wait", () => {
 		expect((await second).details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "build failed" });
 	});
 
-	test("wakes once when a running bash job falls silent", async () => {
+	test("a job silent by design does not wake the wait before it finishes", async () => {
 		vi.useFakeTimers();
 		const manager = new AsyncJobManager({ onJobComplete: () => {} });
 		const { promise, resolve } = Promise.withResolvers<string>();
-		const id = manager.register("bash", "gh run watch", async () => promise, { ownerId: "Main" });
+		const id = manager.register("bash", "gh run watch 1 >/dev/null 2>&1", async () => promise, { ownerId: "Main" });
+		const wait = new WaitTool(session(manager), { stallMs: 5 * 60_000, outputCheckIntervalMs: 1_000 });
+		const waiting = wait.execute("wait-silent", {});
+		vi.advanceTimersByTime(10 * 60_000);
+		resolve("run passed");
+		const result = await waiting;
+		expect(result.details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "run passed" });
+	});
+
+	test("wakes once when a job that kept printing falls silent", async () => {
+		vi.useFakeTimers();
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const { promise, resolve } = Promise.withResolvers<string>();
+		let report!: (text: string) => Promise<void>;
+		const id = manager.register(
+			"bash",
+			"bun test",
+			async ({ reportProgress }) => {
+				report = reportProgress;
+				return promise;
+			},
+			{ ownerId: "Main" },
+		);
 		const wait = new WaitTool(session(manager), { stallMs: 5 * 60_000, outputCheckIntervalMs: 1_000 });
 		const stalled = wait.execute("wait-stall", {});
-		vi.advanceTimersByTime(5 * 60_000 + 1_000);
-		expect((await stalled).content[0]).toMatchObject({
-			type: "text",
-			text: expect.stringContaining(`\`${id}\` printed nothing for 5 min and is still running.`),
-		});
+		let output = "";
+		for (const line of ["(pass) a", "(pass) b", "(pass) c", "running d"]) {
+			output += `${line}\n`;
+			await report(output);
+			vi.advanceTimersByTime(20_000);
+		}
+		vi.advanceTimersByTime(5 * 60_000);
+		const text = textOf(await stalled);
+		expect(text).toContain(`\`${id}\` printed nothing for 5 min`);
+		expect(text).toContain("(pass) c\nrunning d\n```");
 
 		const second = wait.execute("wait-after-stall", {});
 		vi.advanceTimersByTime(20 * 60_000);
-		resolve("run passed");
-		expect((await second).details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "run passed" });
+		resolve("suite passed");
+		expect((await second).details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "suite passed" });
+	});
+
+	test("an error line that a redrawn status frame repeats wakes only once", async () => {
+		vi.useFakeTimers();
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const { promise, resolve } = Promise.withResolvers<string>();
+		let report!: (text: string) => Promise<void>;
+		const id = manager.register(
+			"bash",
+			"watch-status",
+			async ({ reportProgress }) => {
+				report = reportProgress;
+				return promise;
+			},
+			{ ownerId: "Main" },
+		);
+		const frame = (state: string) => `Refreshing status every 60 seconds.\nFAIL lint\n${state} build\n`;
+		await report(frame("*"));
+		const wait = new WaitTool(session(manager), { stallMs: 5 * 60_000, outputCheckIntervalMs: 1_000 });
+		const first = await wait.execute("wait-first-frame", {});
+		expect(textOf(first)).toContain(`\`${id}\` printed an error line`);
+
+		const second = wait.execute("wait-redraws", {});
+		await report(frame("*") + frame("*"));
+		vi.advanceTimersByTime(60_000);
+		await report(frame("*") + frame("*") + frame("✓"));
+		vi.advanceTimersByTime(60_000);
+		resolve("run finished");
+		expect((await second).details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "run finished" });
+	});
+
+	test("a wait that reaches its limit says so and how long each job has run", async () => {
+		vi.useFakeTimers();
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const { promise, resolve } = Promise.withResolvers<string>();
+		const id = manager.register("bash", "gh run watch 2", async () => promise, { ownerId: "Main" });
+		const wait = new WaitTool(session(manager), { stallMs: 5 * 60_000, outputCheckIntervalMs: 1_000 });
+		const waiting = wait.execute("wait-limit", {});
+		vi.advanceTimersByTime(30 * 60_000);
+		const text = textOf(await waiting);
+		expect(text).toStartWith("## Wait limit reached\n");
+		expect(text).toContain(`\`${id}\` has run 30 min and printed nothing.`);
+		resolve("done");
 	});
 
 	test("a message interrupt returns a non-error result and leaves the completion auto-deliverable", async () => {
