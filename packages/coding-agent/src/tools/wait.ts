@@ -10,6 +10,7 @@ import waitDescription from "../prompts/tools/wait.md" with { type: "text" };
 import type { ToolSession } from ".";
 import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
 import { buildJobResult, snapshotJobs, undeliveredJobs } from "../async/job-control";
+import { type OutputAlert, OutputAlertWatch } from "../async/output-alert";
 import { hasLiveOwnedService, listServicesTolerant, waitForOwnedServiceCompletion } from "../launch/services";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { CoordinationDetails } from "@oh-my-pi/pi-tui/tools/wait";
@@ -20,6 +21,15 @@ import { cfgLaunchEnabled } from "./settings";
 const waitSchema = type({});
 const WAIT_MAX_MS = 30 * 60_000;
 const PROGRESS_INTERVAL_MS = 500;
+const OUTPUT_STALL_MS = 5 * 60_000;
+const OUTPUT_CHECK_INTERVAL_MS = 1_000;
+
+export interface WaitToolOptions {
+	/** Silence in a running bash job's output that wakes the wait. */
+	stallMs?: number;
+	/** How often running bash output is scanned for error lines and stalls. */
+	outputCheckIntervalMs?: number;
+}
 
 /** Whether `session` has the `wait` tool active, so prompts may point blocked callers at it. */
 export function hasWaitTool(session: ToolSession): boolean {
@@ -34,7 +44,6 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 	readonly name = "wait";
 	readonly label = "Wait";
 	readonly summary = "Wait for the next result of a background job or service you started";
-	readonly description = prompt.render(waitDescription);
 	readonly parameters = waitSchema;
 	readonly strict = true;
 	readonly interruptible = true;
@@ -42,7 +51,18 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 	readonly loadMode = "essential";
 	readonly intent = "optional";
 
-	constructor(private readonly session: ToolSession) {}
+	readonly #outputWatch: OutputAlertWatch;
+	readonly #outputCheckIntervalMs: number;
+	readonly description: string;
+
+	constructor(
+		private readonly session: ToolSession,
+		options: WaitToolOptions = {},
+	) {
+		this.#outputWatch = new OutputAlertWatch(options.stallMs ?? OUTPUT_STALL_MS);
+		this.#outputCheckIntervalMs = options.outputCheckIntervalMs ?? OUTPUT_CHECK_INTERVAL_MS;
+		this.description = prompt.render(waitDescription, { stallMinutes: this.#outputWatch.stallMs / 60_000 });
+	}
 
 	async execute(
 		_toolCallId: string,
@@ -73,7 +93,11 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 		return this.#blockUntilWake({ jobs, manager, serviceRunning, signal, onUpdate });
 	}
 
-	/** Block until an owned job settles, an owned service finishes, the cap elapses, or the call aborts. */
+	/**
+	 * Block until an owned job settles, a running bash job prints an error line
+	 * or falls silent, an owned service finishes, the cap elapses, or the call
+	 * aborts.
+	 */
 	async #blockUntilWake(args: {
 		jobs: AsyncJob[];
 		manager: AsyncJobManager | undefined;
@@ -101,10 +125,19 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 			});
 		const progressTimer = onUpdate && jobs.length > 0 ? setInterval(emitProgress, PROGRESS_INTERVAL_MS) : undefined;
 		if (jobs.length > 0) emitProgress();
-		let wake: "job" | "service" | "timeout" | "abort";
+		this.#outputWatch.forget(new Set(jobs.map(job => job.id)));
+		const outputAlert = Promise.withResolvers<OutputAlert>();
+		const checkOutput = () => {
+			const alert = this.#outputWatch.check(jobs, Date.now());
+			if (alert) outputAlert.resolve(alert);
+		};
+		checkOutput();
+		const outputTimer = setInterval(checkOutput, this.#outputCheckIntervalMs);
+		let wake: "job" | "service" | "timeout" | "abort" | OutputAlert;
 		try {
 			wake = await Promise.race([
 				...jobs.map(job => job.promise.then(() => "job" as const)),
+				outputAlert.promise,
 				...(serviceLeg ? [serviceLeg.then(() => "service" as const)] : []),
 				timeout.then(() => "timeout" as const),
 				abort.promise.then(() => "abort" as const),
@@ -112,6 +145,7 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 		} finally {
 			clearTimeout(timer);
 			clearInterval(progressTimer);
+			clearInterval(outputTimer);
 			serviceAbort.abort();
 			signal?.removeEventListener("abort", onAbort);
 		}
@@ -132,6 +166,8 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 				}
 				throwIfAborted(signal);
 			}
+			if (manager && typeof wake === "object")
+				return withOutputAlert(buildJobResult(this.session, manager, "wait", jobs, []), wake);
 			if (manager && jobs.length > 0) return buildJobResult(this.session, manager, "wait", jobs, []);
 			return {
 				content: [
@@ -149,4 +185,30 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 			manager?.unwatchJobs(watchedIds);
 		}
 	}
+}
+
+/**
+ * Leads the jobs snapshot with the output that woke the wait. The job still
+ * runs, so the result is new information even though every job is running.
+ */
+function withOutputAlert(
+	result: AgentToolResult<CoordinationDetails>,
+	alert: OutputAlert,
+): AgentToolResult<CoordinationDetails> {
+	const reason =
+		alert.kind === "error"
+			? `\`${alert.jobId}\` printed an error line and is still running.`
+			: `\`${alert.jobId}\` printed nothing for ${Math.round(alert.silentMs / 60_000)} min and is still running.`;
+	const text = [
+		"## Output alert\n",
+		reason,
+		"```",
+		alert.fragment || "(no output)",
+		"```",
+		"Call `wait` again to keep waiting, or cancel the job if this output makes the rest of the run moot.",
+		"",
+		...result.content.flatMap(part => (part.type === "text" ? [part.text] : [])),
+	].join("\n");
+	const { useless: _useless, ...rest } = result;
+	return { ...rest, content: [{ type: "text", text }] };
 }

@@ -1,6 +1,6 @@
 # wait
 
-> Block until the next background job result, service exit, or steering interrupt when there is no other work to do.
+> Block until the next background job result, an error line or stall in a running bash job's output, a service exit, or a steering interrupt when there is no other work to do.
 
 ## Source
 - Entry: `packages/coding-agent/src/tools/wait.ts`
@@ -12,6 +12,7 @@
 
 ## Behavior
 - Returns on the first settled caller-owned job or owned-service exit. Job results delivered by this call are consumed so no duplicate async-result follows.
+- A running bash job wakes the wait when its output gains a line shaped like a failure (`error:`, `error[E…]:`, `error TS…:`, `FAIL`/`FAILED`, `(fail)`, `panicked at`, a Python traceback, `npm ERR!`, `##[error]`, `Segmentation fault`) or prints nothing for 5 minutes. The result leads with an `## Output alert` section quoting the triggering lines, followed by the jobs snapshot; the job keeps running. Each error line and each silent stretch wakes once per tool instance: a later `wait` ignores output it already reported, and a stall re-arms only after new output.
 - A steering/tool interrupt returns `Wait interrupted by message.` with `details.interrupted=true`; other aborts propagate. Handle the incoming notice before calling `wait` again.
 - An owned-job or owned-service wait has a 30-minute safety cap. There is no caller-selectable timeout; hitting the cap returns a notice to read `proc://` for status.
 - If no owned job or service is running, the call fails with `Nothing to wait for`.

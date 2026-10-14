@@ -70,6 +70,69 @@ describe("wait", () => {
 		expect(delivered).toEqual(["finished afterward"]);
 	});
 
+	test("wakes on an error line in a running bash job and does not wake again for it", async () => {
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const { promise, resolve } = Promise.withResolvers<string>();
+		let report!: (text: string) => Promise<void>;
+		const started = Promise.withResolvers<void>();
+		const id = manager.register(
+			"bash",
+			"cargo build",
+			async ({ reportProgress }) => {
+				report = reportProgress;
+				started.resolve();
+				return promise;
+			},
+			{ ownerId: "Main" },
+		);
+		await started.promise;
+		await report("Compiling a v0.1.0\n");
+		const wait = new WaitTool(session(manager), { stallMs: 60_000, outputCheckIntervalMs: 5 });
+		const first = wait.execute("wait-error", {});
+		await report("Compiling a v0.1.0\nerror[E0308]: mismatched types\n  --> src/lib.rs:3:5\n");
+		const result = await first;
+		expect(result.content).toEqual([
+			{
+				type: "text",
+				text: [
+					"## Output alert\n",
+					`\`${id}\` printed an error line and is still running.`,
+					"```",
+					"Compiling a v0.1.0\nerror[E0308]: mismatched types\n  --> src/lib.rs:3:5",
+					"```",
+					"Call `wait` again to keep waiting, or cancel the job if this output makes the rest of the run moot.",
+					"",
+					"## Still Running (1)\n",
+					`- \`${id}\` [bash] — cargo build`,
+				].join("\n"),
+			},
+		]);
+		expect(result.useless).toBeUndefined();
+
+		const second = wait.execute("wait-after-error", {});
+		resolve("build failed");
+		expect((await second).details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "build failed" });
+	});
+
+	test("wakes once when a running bash job falls silent", async () => {
+		vi.useFakeTimers();
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const { promise, resolve } = Promise.withResolvers<string>();
+		const id = manager.register("bash", "gh run watch", async () => promise, { ownerId: "Main" });
+		const wait = new WaitTool(session(manager), { stallMs: 5 * 60_000, outputCheckIntervalMs: 1_000 });
+		const stalled = wait.execute("wait-stall", {});
+		vi.advanceTimersByTime(5 * 60_000 + 1_000);
+		expect((await stalled).content[0]).toMatchObject({
+			type: "text",
+			text: expect.stringContaining(`\`${id}\` printed nothing for 5 min and is still running.`),
+		});
+
+		const second = wait.execute("wait-after-stall", {});
+		vi.advanceTimersByTime(20 * 60_000);
+		resolve("run passed");
+		expect((await second).details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "run passed" });
+	});
+
 	test("a message interrupt returns a non-error result and leaves the completion auto-deliverable", async () => {
 		const manager = new AsyncJobManager({ onJobComplete: () => {} });
 		const delivered: string[] = [];
