@@ -217,7 +217,7 @@ export class ProcProtocolHandler implements ProtocolHandler {
 			};
 		}
 		if (job && session.asyncJobManager) {
-			const result = executeCancel(session, session.asyncJobManager, ownerId, [id]);
+			const result = await executeCancel(session, session.asyncJobManager, ownerId, [id]);
 			return { content: result.content, details: { proc: result.details } };
 		}
 		throw new Error(`Background job or service not found: ${id}`);

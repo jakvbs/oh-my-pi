@@ -20,6 +20,7 @@
 - If no owned job or service is running, the call fails with `Nothing to wait for`.
 - With no owned jobs, a service finishing returns a notice directing the caller to `proc://` for status/output; with jobs, the call returns their current snapshot/result instead.
 - Results also auto-deliver without calling `wait`. Continue useful work instead of polling.
+- A job result longer than 12,000 characters, recovered here or auto-delivered, is replaced by a 4 KB preview (first 1 KB, last 3 KB) and `Full output: artifact://<id>`, pointing at the raw capture when the tool kept one. Read or grep the artifact for the middle. Owner: `formatBackgroundResult` in `packages/coding-agent/src/session/async-job-delivery.ts`.
 - Already-settled but undelivered owned jobs are returned without another wait.
 - Job waits emit progress snapshots every 500 ms when an update callback is present. Job results/snapshots use `details: { op: "wait", jobs: ... }`.
 

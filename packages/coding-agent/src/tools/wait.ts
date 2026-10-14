@@ -178,7 +178,7 @@ export class WaitTool implements AgentTool<typeof waitSchema, CoordinationDetail
 				throwIfAborted(signal);
 			}
 			const snapshot =
-				manager && jobs.length > 0 ? buildJobResult(this.session, manager, "wait", jobs, []) : undefined;
+				manager && jobs.length > 0 ? await buildJobResult(this.session, manager, "wait", jobs, []) : undefined;
 			if (snapshot && wake.kind === "output") return withOutputAlert(snapshot, wake.alert);
 			if (wake.kind === "limit") {
 				const now = Date.now();

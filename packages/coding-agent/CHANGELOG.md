@@ -35,6 +35,7 @@
 - Maintained fork: `omp update` refuses to install upstream releases and the startup "update available" notice is disabled; `omp update --check` and `omp update --plugins` still work.
 - The working directory and git state are no longer rendered in the system prompt. The first-turn date/cwd reminder now also carries the OMP session ID.
 - `bash` jobs started with `async: true` no longer inherit the 300s default deadline; they run until they finish or are cancelled unless `timeout` is set. The foreground default is unchanged.
+- A background job result longer than 12,000 characters now arrives as a 4 KB preview of its first 1 KB and last 3 KB with a link to the full output, both in the automatic delivery and in a `wait` that recovers it. Before, the delivery usually showed only the first 4,000 characters, dropping the summary and exit code at the end, and `wait` inlined up to 50 KB. Foreground results keep their budget.
 
 ### Fixed
 

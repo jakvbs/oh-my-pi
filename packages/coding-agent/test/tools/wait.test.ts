@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
+import * as path from "node:path";
+import { TempDir } from "@oh-my-pi/pi-utils";
 import { type AgentToolResult, TOOL_INTERRUPT_ABORT_REASON } from "@oh-my-pi/pi-agent-core";
 import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
@@ -244,4 +246,35 @@ describe("wait", () => {
 		const result = await waiting;
 		expect(result.details?.jobs?.[0]).toMatchObject({ id, status: "completed", resultText: "build complete" });
 	});
+
+	// A failing command settles as a failed job whose log is its error text, not its result.
+	for (const outcome of ["completed", "failed"] as const) {
+		test(`a recovered long ${outcome} job shows its tail inline and keeps the full output in an artifact`, async () => {
+			await using temp = await TempDir.create("@wait-preview-");
+			const artifactPath = path.join(temp.path(), "1.async.log");
+			const manager = new AsyncJobManager({ onJobComplete: () => {} });
+			const toolSession: ToolSession = {
+				cwd: temp.path(),
+				hasUI: false,
+				getSessionFile: () => null,
+				settings: Settings.isolated({ "launch.enabled": false }),
+				asyncJobManager: manager,
+				getAgentId: () => "Main",
+				allocateOutputArtifact: async () => ({ id: "1", path: artifactPath }),
+			};
+			const log = `${"compiling module\n".repeat(1500)}MIDDLE-OF-LOG\n${"linking\n".repeat(1500)}Tests: 3 failed, 77 passed`;
+			const { promise, resolve, reject } = Promise.withResolvers<string>();
+			manager.register("bash", "verify", async () => promise, { ownerId: "Main" });
+			const waiting = new WaitTool(toolSession).execute("wait-long", {});
+			if (outcome === "completed") resolve(log);
+			else reject(new Error(log));
+			const text = textOf(await waiting);
+			expect(text).toContain(`[bash] — ${outcome}`);
+			expect(text).toContain("Tests: 3 failed, 77 passed");
+			expect(text).not.toContain("MIDDLE-OF-LOG");
+			expect(text).toContain("Full output: artifact://1");
+			expect(text.length).toBeLessThan(5_000);
+			expect(await Bun.file(artifactPath).text()).toBe(log);
+		});
+	}
 });
