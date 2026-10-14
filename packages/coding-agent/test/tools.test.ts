@@ -2553,7 +2553,8 @@ function b() {
 			const result = await autoBackgroundBashTool.execute(
 				"test-call-9-auto-running",
 				{
-					command: "printf 'start\\n'; sleep 0.03; printf 'done\\n'",
+					// A top-level `sleep` over the 10 ms threshold is rejected as a poll.
+					command: "printf 'start\\n'; sh -c 'sleep 0.03'; printf 'done\\n'",
 					timeout: 3_600,
 				},
 				undefined,
