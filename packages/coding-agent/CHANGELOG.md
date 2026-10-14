@@ -39,6 +39,7 @@
 ### Fixed
 
 - A `wait` that reaches its 30-minute limit now starts with `## Wait limit reached` and says how long each job has run and when its output last changed, instead of a bare `## Still Running` list that looked like an immediate return.
+- A truncated `bash` result from a status watcher such as `gh run watch` now shows the last redraw and the output after it, instead of spending the budget on stale earlier frames.
 - Long single-line `--system-prompt` text no longer prevents sessions from starting with `ENAMETOOLONG`.
 - Fixed SDK consumers losing asynchronous cleanup on SIGINT and SIGTERM while preserving the CLI's signal shutdown behavior.
 - A session started with `--system-prompt` keeps it when resumed without the flag and in sessions started with `/new`, and switching sessions renders each session's own policy. A file is re-read on every prompt rebuild, so edits reach the session; a recorded file that no longer exists stops startup with an error instead of falling back to `~/.agents/AGENTS.md`.

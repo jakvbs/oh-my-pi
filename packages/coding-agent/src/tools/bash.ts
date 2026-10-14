@@ -16,7 +16,7 @@ import type {
 	ToolTier,
 } from "@oh-my-pi/pi-agent-core";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+import { countNewlines, isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
 import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
 import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
 import type { Settings } from "../config/settings";
@@ -37,6 +37,7 @@ import type { ToolSession } from ".";
 import { type ApprovalDetailsOptions, truncateApprovalDetail } from "./approval";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
+import { foldRedraws, formatRedrawNotice } from "./bash-redraw";
 import { longestSleepSeconds } from "./bash-sleep-guard";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
@@ -651,8 +652,22 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		const exitCode = status.kind === "exited" ? status.exitCode : undefined;
 		const failedExit = exitCode !== undefined && exitCode !== 0;
 
+		// The shown text is then one contiguous tail, so the truncation notice
+		// describes it as a tail range of the full output.
+		const redraws = result.truncated ? foldRedraws(result.output) : undefined;
+		if (redraws) {
+			result = {
+				...result,
+				output: redraws.text,
+				outputLines: countNewlines(redraws.text) + 1,
+				outputBytes: Buffer.byteLength(redraws.text, "utf-8"),
+				elidedBytes: undefined,
+				elidedLines: undefined,
+			};
+		}
+
 		const outputLines = [this.#formatResultOutput(result), "", formatBashCaptureNotice(capture)];
-		const notices: string[] = [];
+		const notices: string[] = redraws ? [formatRedrawNotice(redraws)] : [];
 		const wallTimeMs = options.wallTimeMs;
 		const wallTimeNoticeEmitted = wallTimeMs !== undefined && wallTimeMs >= WALL_TIME_NOTICE_MIN_MS;
 		if (wallTimeNoticeEmitted) {

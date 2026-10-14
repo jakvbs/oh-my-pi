@@ -233,6 +233,10 @@ The bash executor builds the sink with `headBytes` and `maxColumns` from setting
 
 Runtime truncation is byte-threshold based in `OutputSink` (50 KiB shared head/tail budget by default, plus marker text). It does not enforce a hard line-count cap in this code path.
 
+### Status redraws
+
+Off a terminal, status watchers such as `gh run watch` reprint their whole frame every interval, and each frame starts with the output's first line. When the sink already truncated the output and the captured text holds at least three such frames, `BashTool` drops everything before the last frame that starts in the retained tail (`packages/coding-agent/src/tools/bash-redraw.ts`). The result shows the latest frame and whatever the command printed after it, describes that text as a tail range of the full output, and adds a notice that earlier redraws were elided. Error-shaped lines that appear only in the elided frames are listed in that notice. The artifact keeps the full log. Untruncated output is never folded.
+
 Kitty direct-image and Sixel frames are extracted before text sanitization/truncation and returned as image content. Their control bytes are not preserved as ordinary artifact text.
 
 ### Shell output minimizer
