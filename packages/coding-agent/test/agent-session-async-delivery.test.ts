@@ -319,6 +319,59 @@ describe("AgentSession owner-routed async delivery", () => {
 		}
 	});
 
+	it("shows the end of a long background result in its follow-up preview", async () => {
+		await using temp = await TempDir.create("@followup-tail-");
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
+		const mock = createMockModel({ handler: () => ({ content: ["Done"] }) });
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [] },
+			convertToLlm,
+			streamFn: mock.stream,
+		});
+		const authStorage = await AuthStorage.create(":memory:");
+		authStorages.push(authStorage);
+		authStorage.keys.setRuntime("anthropic", "test-key");
+		const manager = new AsyncJobManager({});
+		AsyncJobManager.setInstance(manager);
+		const store = SessionManager.inMemory(temp.path());
+		store.adoptArtifactManager(new ArtifactManager(path.join(temp.path(), "artifacts")));
+		session = new AgentSession({
+			agent,
+			sessionManager: store,
+			settings: Settings.isolated(),
+			modelRegistry: new ModelRegistry(authStorage),
+			agentId: "TailOwner",
+			asyncJobManager: manager,
+		});
+		const log = `${"compiling module\n".repeat(1000)}Tests: 3 failed, 77 passed\nCommand exited with code 1`;
+		try {
+			manager.register("bash", "verify", async () => log, { id: "verify-job", ownerId: "TailOwner" });
+			await session.settleAsyncWork();
+			const followUp = agent.state.messages
+				.filter(
+					(message): message is CustomMessage =>
+						message.role === "custom" && message.customType === "async-result",
+				)
+				.map(message =>
+					typeof message.content === "string"
+						? message.content
+						: message.content.map(block => (block.type === "text" ? block.text : "")).join("\n"),
+				)
+				.join("\n");
+			expect(followUp).toContain("Tests: 3 failed, 77 passed\nCommand exited with code 1");
+			expect(followUp.length).toBeLessThan(5_000);
+			const artifactId = followUp.match(/Full output: artifact:\/\/(\d+)/)?.[1];
+			if (!artifactId) throw new Error("Expected the follow-up to link the full output");
+			const artifactPath = await store.getArtifactPath(artifactId);
+			if (!artifactPath) throw new Error("Expected the full output on disk");
+			expect(await Bun.file(artifactPath).text()).toBe(log);
+		} finally {
+			await session.dispose();
+			await store.close();
+		}
+	});
+
 	it("links a background bash follow-up to the sink's raw capture instead of its elided body", async () => {
 		await using temp = await TempDir.create("@bash-followup-raw-");
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;

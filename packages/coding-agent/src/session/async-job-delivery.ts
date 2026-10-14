@@ -8,12 +8,14 @@
  * This replaces the old single hardwired `onJobComplete` closure that routed
  * every completion — regardless of owner — into the first top-level session.
  */
-import { prompt } from "@oh-my-pi/pi-utils";
+import { logger, prompt } from "@oh-my-pi/pi-utils";
 import type { AsyncJob, AsyncJobType } from "../async";
 import asyncResultTemplate from "../prompts/tools/async-result.md" with { type: "text" };
+import { writeArtifact } from "./artifacts";
 import { escapeHarnessTags } from "./harness-tags";
 import type { CustomMessage } from "./messages";
-import type { OutputMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
+import { formatArtifactErrorNotice, type OutputMeta, stripOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
+import { truncateMiddle } from "@oh-my-pi/pi-tui/tools/streaming-output";
 
 /**
  * `customType` of the injected async-result follow-up message. `runSessionToYield`
@@ -23,13 +25,56 @@ import type { OutputMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
 export const ASYNC_RESULT_MESSAGE_TYPE = "async-result";
 
 /** Result payloads longer than this spill to an artifact with an inline preview. */
-export const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
-export const ASYNC_PREVIEW_MAX_CHARS = 4_000;
+const ASYNC_INLINE_RESULT_MAX_CHARS = 12_000;
+const ASYNC_PREVIEW_MAX_BYTES = 4_000;
 /**
- * Tail share of the preview when the link points at a raw capture: tools append
- * notices (wall time, exit code, timeout) after the captured stream.
+ * Head share of the preview. Agents read a long job's end first (summary, exit
+ * code, wall time) and grep the artifact for errors in the middle, so the tail
+ * gets the rest.
  */
-export const ASYNC_PREVIEW_TAIL_CHARS = 1_000;
+const ASYNC_PREVIEW_HEAD_BYTES = 1_000;
+
+/** Reserves a session artifact for a background result that has no raw capture. */
+export type AllocateResultArtifact = () => Promise<{ id?: string; path?: string } | undefined>;
+
+/**
+ * Bound a background job's result before it reaches the model, through either
+ * an async-result follow-up or a `wait` that recovers it. A long result becomes
+ * a head and tail preview linked to its full output.
+ */
+export async function formatBackgroundResult(
+	result: string,
+	meta: OutputMeta | undefined,
+	allocate: AllocateResultArtifact | undefined,
+): Promise<string> {
+	if (result.length <= ASYNC_INLINE_RESULT_MAX_CHARS) return result;
+	if (meta?.artifactError) {
+		// Strip the already-rendered source notice before taking the preview,
+		// then retain its capture warning once even when the original footer is elided.
+		const body = stripOutputNotice(result, meta).trimEnd();
+		return `${previewOf(body)}\n[${formatArtifactErrorNotice(meta.artifactError)}]`;
+	}
+	// The producing tool's output sink already mirrored the raw stream to an
+	// artifact; `result` is its elided inline body, so link the raw capture.
+	const rawArtifactId = meta?.truncation?.artifactId ?? meta?.limits?.columnTruncated?.artifactId;
+	if (rawArtifactId) return `${previewOf(result)}\nFull output: artifact://${rawArtifactId}`;
+	try {
+		const artifact = await allocate?.();
+		if (artifact?.path && artifact.id) {
+			await writeArtifact(artifact.path, result);
+			return `${previewOf(result)}\nFull output: artifact://${artifact.id}`;
+		}
+	} catch (error) {
+		logger.warn("Failed to persist background result artifact", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+	return previewOf(result);
+}
+
+function previewOf(text: string): string {
+	return truncateMiddle(text, { maxBytes: ASYNC_PREVIEW_MAX_BYTES, maxHeadBytes: ASYNC_PREVIEW_HEAD_BYTES }).content;
+}
 
 export interface AsyncResultEntry {
 	jobId: string;
