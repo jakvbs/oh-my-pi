@@ -5,6 +5,10 @@
 ### Breaking Changes
 
 - Removed the unused Apple Foundation Models bridge, its native exports, and its dedicated Swift build toolchains. Native OAuth callbacks remain supported.
+### Fixed
+
+- A PTY command's output no longer ends with a stray blank line on Linux. Closing the PTY writer sends a newline and EOF to the terminal, and its echo sometimes reached the output before EOF (8 of 1,500 runs); the echo is now switched off first.
+
 ## [18.10.4] - 2026-10-13
 
 ### Fixed
