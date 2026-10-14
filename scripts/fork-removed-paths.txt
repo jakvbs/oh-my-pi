@@ -352,6 +352,7 @@ packages/tui/src/tools/task-yield-assembly.ts
 packages/tui/src/tools/task.ts
 packages/typescript-edit-benchmark
 python/robomp
+scripts/install-tests/settings-session.ts
 scripts/session-stats
 sdk/go/omp-rpc
 sdk/python/omp-rpc

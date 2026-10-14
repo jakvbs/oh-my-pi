@@ -1,5 +1,9 @@
+import { postmortem } from "@oh-my-pi/pi-utils";
 import { Settings } from "../../src/config/settings.ts";
 import { runPrintMode } from "../../src/modes/print-mode.ts";
+
+// Stands in for the CLI process owner, which opts into signal shutdown in cli.ts.
+postmortem.registerProcessSignalHandling();
 
 const marker = process.argv[2];
 if (!marker) throw new Error("Missing disposal marker path");
