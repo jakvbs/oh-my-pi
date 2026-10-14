@@ -4,12 +4,15 @@ import { validateToolArguments } from "@oh-my-pi/pi-ai/utils/validation";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { BashInterceptorRule } from "@oh-my-pi/pi-coding-agent/exec/settings";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { BashTool, type BashToolInput } from "@oh-my-pi/pi-coding-agent/tools/bash";
+import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
 import { checkBashInterception } from "@oh-my-pi/pi-coding-agent/tools/bash-interceptor";
 import { DEFAULT_BASH_INTERCEPTOR_RULES } from "@oh-my-pi/pi-coding-agent/exec/settings";
 
 function createBashTool(rules: BashInterceptorRule[]): BashTool {
 	const session = {
+		cwd: process.cwd(),
+		hasUI: false,
+		getSessionFile: () => null,
 		settings: Settings.isolated({
 			"bashInterceptor.enabled": true,
 			"bashInterceptor.patterns": rules,
@@ -258,17 +261,32 @@ describe("default bash service rules", () => {
 });
 
 describe("BashTool argument validation", () => {
-	it("preserves async requests so disabled async mode returns the explicit error", async () => {
+	it("runs a call that still sends `async: true` as a plain command", async () => {
 		const tool = createBashTool([]);
 		const args = validateToolArguments(tool, {
 			type: "toolCall",
 			id: "tool-call",
 			name: tool.name,
-			arguments: { command: "echo should-not-run", async: true },
+			arguments: { command: "echo inline", async: true },
 		});
+		const result = await tool.execute("tool-call", args as { command: string });
+		expect(result.content[0]).toMatchObject({ type: "text", text: expect.stringMatching(/^inline\n/) });
+		expect(result.details?.async).toBeUndefined();
+	});
+});
 
-		await expect(tool.execute("tool-call", args as unknown as BashToolInput)).rejects.toThrow(
-			"Async bash execution is disabled",
-		);
+describe("BashTool sleep guard", () => {
+	it.each(["sleep 61", "sleep 2m", "gh run view 1 && sleep 1m 30s && gh run view 1", "sleep infinity"])(
+		"rejects %s, which outlasts the auto-background threshold",
+		async command => {
+			await expect(createBashTool([]).execute("tool-call", { command })).rejects.toThrow(
+				"sleeps over 60s poll instead of waiting",
+			);
+		},
+	);
+
+	it("runs a sleep within the threshold", async () => {
+		const result = await createBashTool([]).execute("tool-call", { command: "sleep 0 && echo slept" });
+		expect(result.content[0]).toMatchObject({ type: "text", text: expect.stringMatching(/^slept\n/) });
 	});
 });

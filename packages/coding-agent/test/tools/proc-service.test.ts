@@ -360,7 +360,6 @@ describe("bash services via proc://", () => {
 				name: "echo-service",
 				ready: { log: "REPLACED", host: "", timeout: 5 },
 				pty: false,
-				async: false,
 			});
 			expect(restarted.content[0]?.type === "text" ? restarted.content[0].text : "").toContain("REPLACED");
 			const write = new WriteTool(session);
@@ -387,30 +386,6 @@ describe("bash services via proc://", () => {
 				),
 			).toContain("must remain persistent");
 			await proc.write(parseInternalUrl("proc://detach-candidate/kill"), "", { session });
-			// `name` + `async` is the argument shape models fall into for finite
-			// jobs; it must run as a background job, not reject, so the model is
-			// never sent into a retry loop.
-			const jobManager = new AsyncJobManager({});
-			session.asyncJobManager = jobManager;
-			const degraded = await bash.execute("name-with-async", {
-				command: "printf 'JOB\\n'",
-				name: "bad",
-				ready: { timeout: 600 },
-				async: true,
-				pty: false,
-			});
-			const degradedText = degraded.content[0]?.type === "text" ? degraded.content[0].text : "";
-			expect(degraded.details?.service).toBeUndefined();
-			expect(degraded.details?.async).toMatchObject({ state: "running", type: "bash" });
-			expect(degradedText).toContain("Ignored name/ready");
-			expect(degradedText).toContain('start service "bad"');
-			const degradedJob = jobManager.getJob(degraded.details?.async?.jobId ?? "");
-			expect(degradedJob).toBeDefined();
-			await degradedJob?.promise;
-			expect(degradedJob?.resultText).toContain("JOB");
-			await jobManager.dispose({ timeoutMs: 1_000 });
-			const daemons = await client.request({ op: "list" });
-			expect(daemons.op === "list" ? daemons.daemons.map(daemon => daemon.name) : []).not.toContain("bad");
 			const timed = await bash.execute("name-with-timeout", {
 				command: "printf 'TIMED\\n'; read line",
 				name: "timed",
@@ -460,7 +435,6 @@ describe("bash services via proc://", () => {
 				timeout: 120,
 				cwd: process.cwd(),
 				pty: false,
-				async: false,
 				name: "",
 				ready: { log: "", port: 1, host: "", timeout: 1 },
 			});

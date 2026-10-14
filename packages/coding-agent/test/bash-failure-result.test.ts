@@ -17,16 +17,15 @@ afterEach(() => {
 	mock.restore();
 });
 
-function makeSession(asyncEnabled = false): ToolSession {
+function makeSession(backgroundImmediately = false): ToolSession {
 	return {
 		cwd: "/tmp",
 		hasUI: false,
 		skills: [],
 		getSessionFile: () => null,
 		settings: Settings.isolated({
-			"async.enabled": asyncEnabled,
-			"bash.autoBackground.enabled": false,
-			"bash.autoBackground.thresholdMs": 60_000,
+			"bash.autoBackground.enabled": backgroundImmediately,
+			"bash.autoBackground.thresholdMs": backgroundImmediately ? 0 : 60_000,
 			"bashInterceptor.enabled": false,
 			"grep.enabled": false,
 			"glob.enabled": false,
@@ -46,7 +45,6 @@ describe("BashTool execution results", () => {
 			session.allocateOutputArtifact = toolType => artifacts.allocatePath(toolType);
 			const start = await new BashTool(session).execute("background-capture", {
 				command: "printf 'background diagnostic\\n'; exit 7",
-				async: true,
 			});
 			await manager.waitForAll();
 			const job = manager.getJob(start.details!.async!.jobId);

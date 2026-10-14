@@ -15,9 +15,12 @@
 - Removed `--from-claude`, `--from-codex`, and the Claude Code/Codex prompt-history seeding of text prediction.
 - Removed the `task.*` settings, `display.pinnedAgents`, `display.subagentLivePreview`, `tier.subagent`, the `app.agents.hub` and `app.session.observe` keybindings, and the `enableIrc` SDK option; existing values are ignored. `isolation.backend` and `worktree.*` stay for `/wt`, `gh pr checkout`, and `omp worktree`.
 - Removed the `@oh-my-pi/pi-coding-agent/task` and `@oh-my-pi/pi-coding-agent/task/*` package exports.
+- Removed the `bash` tool's `async` parameter. Every non-PTY command runs in the foreground until `bash.autoBackground.thresholdMs` (default 60 s), then moves to a background job; `thresholdMs: 0` backgrounds immediately. An `async` field from an older caller is ignored.
+- `bash` rejects a command whose literal `sleep` outlasts `bash.autoBackground.thresholdMs`, pointing at `wait` instead of letting the agent poll.
 
 ### Added
 
+- `wait` also wakes when a running bash job prints a failure-shaped line (`error:`, `FAILED`, `panicked at`, `error TS…:` and similar) or stays silent for 5 minutes, quoting the triggering output under `## Output alert` while the job keeps running. Each line or silent stretch wakes once.
 - SDK embedders can drive a session they own to its structured result with `runSessionToYield` (exported from `@oh-my-pi/pi-coding-agent`): it re-prompts with a reminder ladder until the session yields, and returns the yielded data or why there is none (provider error, abort, missing yield, schema violation).
 - Context budget reminders: the agent gets one hidden `<system-reminder>` with its token count and the limit when context first reaches 25, 50, 70 or 85% of the auto-compaction threshold (the model window when compaction is off). Disable with `compaction.budgetReminders: false`.
 - `ContextUsage` (from `ctx.getContextUsage()`, session stats and RPC state) carries `compactionThreshold`, the token count at which auto-compaction triggers for the active model including `compaction.modelThresholds`; it is absent when compaction is off.

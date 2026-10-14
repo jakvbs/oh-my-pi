@@ -339,7 +339,8 @@ describe("AgentSession owner-routed async delivery", () => {
 		const settings = Settings.isolated({
 			"async.enabled": true,
 			"bashInterceptor.enabled": false,
-			"bash.autoBackground.enabled": false,
+			"bash.autoBackground.enabled": true,
+			"bash.autoBackground.thresholdMs": 0,
 		});
 		session = new AgentSession({
 			agent,
@@ -363,7 +364,6 @@ describe("AgentSession owner-routed async delivery", () => {
 		try {
 			const started = await new BashTool(toolSession).execute("raw-followup", {
 				command: "seq 1 20000; exit 3",
-				async: true,
 			});
 			const jobId = started.details?.async?.jobId;
 			if (!jobId) throw new Error("Expected background job");

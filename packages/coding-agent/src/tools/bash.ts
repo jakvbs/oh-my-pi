@@ -37,6 +37,7 @@ import type { ToolSession } from ".";
 import { type ApprovalDetailsOptions, truncateApprovalDetail } from "./approval";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
+import { longestSleepSeconds } from "./bash-sleep-guard";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
@@ -50,13 +51,14 @@ import {
 	resolveOutputSinkHeadBytes,
 } from "./output-meta";
 import { resolveToCwd } from "./path-utils";
+import { hasWaitTool } from "./wait";
 import { extractLeadingCdTarget, extractLiteralAndChainSegments, tokenizeShellSegments } from "./shell-tokenize";
 import { ToolAbortError } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, TOOL_TIMEOUTS } from "./tool-timeouts";
 
-import { cfgAsyncEnabled, cfgGlobEnabled, cfgGrepEnabled, cfgLaunchEnabled, cfgToolsMaxTimeout } from "./settings";
+import { cfgGlobEnabled, cfgGrepEnabled, cfgLaunchEnabled, cfgToolsMaxTimeout } from "./settings";
 import {
 	cfgBashAllowCompoundCommands,
 	cfgBashAutoBackgroundEnabled,
@@ -320,14 +322,6 @@ const bashSchemaBase = type({
 	"pty?": "boolean",
 });
 
-const bashSchemaWithAsync = type({
-	command: "string",
-	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
-	"cwd?": "string",
-	"pty?": "boolean",
-	"async?": "boolean",
-});
-
 const bashSchemaWithService = type({
 	command: "string",
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
@@ -342,26 +336,7 @@ const bashSchemaWithService = type({
 	}),
 });
 
-const bashSchemaWithAsyncAndService = type({
-	command: "string",
-	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
-	"cwd?": "string",
-	"pty?": "boolean",
-	"async?": "boolean",
-	"name?": "string <= 48",
-	"ready?": type({
-		"log?": "string",
-		"port?": "number",
-		"host?": "string",
-		"timeout?": "number",
-	}),
-});
-
-type BashToolSchema =
-	| typeof bashSchemaBase
-	| typeof bashSchemaWithAsync
-	| typeof bashSchemaWithService
-	| typeof bashSchemaWithAsyncAndService;
+type BashToolSchema = typeof bashSchemaBase | typeof bashSchemaWithService;
 
 export interface BashToolInput {
 	command: string;
@@ -369,7 +344,6 @@ export interface BashToolInput {
 	cwd?: string;
 	name?: string;
 	ready?: ServiceReady;
-	async?: boolean;
 	pty?: boolean;
 }
 
@@ -583,7 +557,6 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 	get description(): string {
 		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
 		return prompt.render(bashDescription, {
-			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			// The deadline an omitted `timeout` resolves to, after the `tools.maxTimeout` cap.
 			defaultTimeoutSec: clampTimeout("bash", undefined, cfgToolsMaxTimeout.get(this.session.settings)),
 			autoBackgroundEnabled: cfgBashAutoBackgroundEnabled.get(this.session.settings),
@@ -603,11 +576,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			isWindows: process.platform === "win32",
 		});
 	}
-	/** Schema variant for the live `async.enabled` and `launch.enabled` settings. */
+	/** Schema variant for the live `launch.enabled` setting. */
 	get parameters(): BashToolSchema {
-		const asyncEnabled = cfgAsyncEnabled.get(this.session.settings);
-		if (this.#launchEnabled) return asyncEnabled ? bashSchemaWithAsyncAndService : bashSchemaWithService;
-		return asyncEnabled ? bashSchemaWithAsync : bashSchemaBase;
+		return this.#launchEnabled ? bashSchemaWithService : bashSchemaBase;
 	}
 	// Non-pty calls run alongside each other (the executor isolates overlapping
 	// runs on the same shell session); pty takes over the terminal UI and must
@@ -930,15 +901,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 	async execute(
 		_toolCallId: string,
-		{
-			command: rawCommand,
-			timeout: rawTimeout,
-			cwd,
-			name: rawName,
-			ready: rawReady,
-			async: rawAsync,
-			pty,
-		}: BashToolInput,
+		{ command: rawCommand, timeout: rawTimeout, cwd, name: rawName, ready: rawReady, pty }: BashToolInput,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<BashToolDetails>,
 		ctx?: AgentToolContext,
@@ -959,28 +922,17 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 		// Mode selection runs on normalized fields: a caller that materializes
 		// every optional argument with empty or placeholder values still asked
-		// for a plain command. Only `async: true` is an async request, a blank
-		// `name` is no service name, and service-only fields with nothing in
-		// them are not a service request.
+		// for a plain command. A blank `name` is no service name, and
+		// service-only fields with nothing in them are not a service request.
 		//
 		// Conflicting fields degrade instead of failing: running the command
-		// the caller did ask for beats rejecting the call. `async: true` is the
-		// stronger signal (a finite job the caller wants to wait on later), so
-		// it wins over `name`/`ready`; a bare `timeout` next to `name` keeps the
-		// service and is dropped, because services have no deadline. A
-		// rejection here used to send models into a retry loop that re-sent the
-		// same arguments with `ready.timeout` added.
-		let name = blankToUndefined(rawName);
-		let ready = normalizeReady(rawReady);
-		const asyncRequested = rawAsync === true;
+		// the caller did ask for beats rejecting the call. A bare `timeout`
+		// next to `name` keeps the service and is dropped, because services
+		// have no deadline. A rejection here used to send models into a retry
+		// loop that re-sent the same arguments with `ready.timeout` added.
+		const name = blankToUndefined(rawName);
+		const ready = normalizeReady(rawReady);
 		const pendingNotices: string[] = [];
-		if (name !== undefined && asyncRequested) {
-			pendingNotices.push(
-				`Ignored name${ready === undefined ? "" : "/ready"}: \`async\` runs a finite background job, not a service; ran as a background job. Omit \`async\` to start service "${name}".`,
-			);
-			name = undefined;
-			ready = undefined;
-		}
 		if (name !== undefined) {
 			if (!this.#launchEnabled) throw new ToolError("Service launch is disabled in this session.");
 			if (rawTimeout !== undefined)
@@ -989,9 +941,6 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			// Nothing can honour ready without a service to attach it to;
 			// running the command the caller did ask for beats failing the call.
 			pendingNotices.push("Ignored ready: service-only, and no service name was given.");
-		}
-		if (asyncRequested && !cfgAsyncEnabled.get(this.session.settings)) {
-			throw new ToolError("Async bash execution is disabled. Enable async.enabled to use async mode.");
 		}
 
 		// Check both the original command and the cwd-normalized command so
@@ -1008,6 +957,19 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					throw new ToolError(interception.message ?? "Command blocked");
 				}
 			}
+		}
+
+		// A sleep past the auto-background threshold is a poll: it holds the
+		// turn (or a job slot) while `wait` would wake on the event itself.
+		const sleepLimitSec = cfgBashAutoBackgroundThresholdMs.get(this.session.settings) / 1000;
+		const sleepSec = name === undefined ? longestSleepSeconds(command) : 0;
+		if (sleepLimitSec > 0 && sleepSec > sleepLimitSec) {
+			const waitHint = hasWaitTool(this.session)
+				? "then call `wait`, which wakes on completion, an error line in the output, or a stall"
+				: "its result arrives automatically as a follow-up message";
+			throw new ToolError(
+				`Blocked \`sleep ${sleepSec}\`: sleeps over ${sleepLimitSec}s poll instead of waiting. Run the command you are waiting on directly (it moves to the background after ${sleepLimitSec}s) and ${waitHint}.`,
+			);
 		}
 
 		if (cfgWorktreeClone.get(this.session.settings)) {
@@ -1111,10 +1073,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 		// A timeout of 0 is an explicit long-running-command contract: the user
 		// must still cancel the call or job, but OMP does not impose a deadline.
-		// An explicit `async` job defaults to that contract: a silent default
-		// deadline killed long background jobs (CI watches, audits) mid-run and
-		// skipped their cleanup, and models kept omitting `timeout`.
-		const requestedTimeoutSec = rawTimeout ?? (asyncRequested ? 0 : 300);
+		const requestedTimeoutSec = rawTimeout ?? 300;
 		const timeoutDisabled = requestedTimeoutSec === 0;
 		const maxTimeout = cfgToolsMaxTimeout.get(this.session.settings);
 		const timeoutSec = timeoutDisabled ? undefined : clampTimeout("bash", requestedTimeoutSec, maxTimeout);
@@ -1122,27 +1081,6 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		if (timeoutSec !== undefined) {
 			const timeoutClampNotice = formatTimeoutClampNotice(requestedTimeoutSec, timeoutSec, maxTimeout);
 			if (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);
-		}
-
-		if (asyncRequested) {
-			if (!this.session.asyncJobManager) {
-				throw new ToolError("Async job manager unavailable for this session.");
-			}
-			const job = this.#startManagedBashJob({
-				command,
-				commandCwd,
-				timeoutMs,
-				timeoutSec,
-				requestedTimeoutSec,
-				notices: pendingNotices,
-				onUpdate,
-				foreground: false,
-				approvalTier,
-			});
-			return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
-				requestedTimeoutSec,
-				notices: pendingNotices,
-			});
 		}
 
 		// The client-bridge terminal provides a live terminal card in the editor;
