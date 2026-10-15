@@ -818,7 +818,7 @@ export function encodeStream(
 							controller.enqueue(
 								sseFrame("content_block_delta", {
 									type: "content_block_delta",
-									index: ev.contentIndex,
+									index: wireIndex(ev.contentIndex),
 									delta: { type: "text_delta", text: ev.delta },
 								}),
 							);
@@ -854,7 +854,7 @@ export function encodeStream(
 							controller.enqueue(
 								sseFrame("content_block_delta", {
 									type: "content_block_delta",
-									index: ev.contentIndex,
+									index: wireIndex(ev.contentIndex),
 									delta: { type: "thinking_delta", thinking: ev.delta },
 								}),
 							);
@@ -866,7 +866,7 @@ export function encodeStream(
 								controller.enqueue(
 									sseFrame("content_block_delta", {
 										type: "content_block_delta",
-										index: ev.contentIndex,
+										index: wireIndex(ev.contentIndex),
 										delta: { type: "signature_delta", signature: c.thinkingSignature },
 									}),
 								);
@@ -898,7 +898,7 @@ export function encodeStream(
 							controller.enqueue(
 								sseFrame("content_block_delta", {
 									type: "content_block_delta",
-									index: ev.contentIndex,
+									index: wireIndex(ev.contentIndex),
 									delta: { type: "input_json_delta", partial_json: ev.delta },
 								}),
 							);
