@@ -20,6 +20,7 @@
 ### Fixed
 
 - Rows a turn's working loader or HUD covered while an answer streamed no longer go missing between scrollback and the screen until the turn ends; rows the transcript adds under that chrome retire to scrollback from the first new row.
+- A long Markdown list no longer disappears from its first items until the answer finishes: items in front of the one still streaming retire to scrollback as soon as the next item starts.
 
 ## [18.10.4] - 2026-10-13
 
