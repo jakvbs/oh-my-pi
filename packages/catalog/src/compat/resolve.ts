@@ -275,6 +275,7 @@ function hasLocalLoopbackBaseUrl(baseUrl: string | undefined): boolean {
 	let hostname: string;
 	try {
 		hostname = new URL(baseUrl).hostname.toLowerCase();
+		if (hostname.endsWith(".")) hostname = hostname.slice(0, -1);
 	} catch {
 		return false;
 	}

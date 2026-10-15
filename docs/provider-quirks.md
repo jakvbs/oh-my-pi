@@ -1491,7 +1491,7 @@ Provider-specific overrides in `packages/catalog/src/compat/rules/providers/xai-
 ### Catalog model handling
 - **Provider entry (`xai-oauth`)**: `packages/catalog/src/compat/rules/providers/xai-oauth.kdl` declares default model `grok-4.6`. Environment keys: `XAI_OAUTH_TOKEN`, `XAI_API_KEY`.
 - **Authored seeds**: `grok-build`, `grok-build-0.1`, `grok-4.3`, `grok-4.5`, `grok-4.6`, `grok-4.7`, `grok-4.20-multi-agent-0309`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-composer-2.5-fast`, `grok-tts`, `grok-imagine-image`; bundle policy `always`. Limits, capabilities, and prices are authored alongside these rows.
-- **Dynamic Curation Overlay**: `applyXAIOAuthCuration` (`openai-compat.ts`, `xaiOAuthModelManagerOptions`) filters non-chat prefixes (`grok-imagine-`, `grok-stt-`, `grok-voice-`), overlays curated context windows (up to 2M), sets `maxTokens` equal to `contextWindow`, preserves image capabilities and reasoning flags, and injects missing curated models.
+- **Dynamic Curation Overlay**: `applyXAIOAuthCuration` (`openai-compat.ts`, `xaiOAuthModelManagerOptions`) filters non-chat prefixes (`grok-imagine-`, `grok-stt-`, `grok-voice-`), overlays curated context windows (up to 1M; api.x.ai rejects larger prompts on the Grok 4.20 0309 models), sets `maxTokens` equal to `contextWindow`, preserves image capabilities and reasoning flags, and injects missing curated models.
 
 ## Z.AI (GLM Coding Plan) (`zai`)
 Z.AI provides GLM family models (such as `glm-5.2`) via Zhipu AI's coding plan infrastructure using the Anthropic Messages transport (`https://api.z.ai/api/anthropic`). Authentication supports both direct API keys and an OAuth browser sign-in flow that mints a durable API key.

@@ -508,6 +508,7 @@ export function createAcpExtensionUiContext(
 		},
 		addAutocompleteProvider: () => {},
 		setEditorComponent: () => {},
+		getEditorComponent: () => undefined,
 		get theme() {
 			return theme;
 		},

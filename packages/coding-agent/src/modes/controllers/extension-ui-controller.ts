@@ -131,6 +131,7 @@ export class ExtensionUiController {
 			editor: (title, prefill, dialogOptions, editorOptions) =>
 				this.showHookEditor(title, prefill, dialogOptions, editorOptions),
 			addAutocompleteProvider: factory => this.ctx.addAutocompleteProvider(factory),
+			getEditorComponent: () => this.ctx.getEditorComponent(),
 			get theme() {
 				return theme;
 			},
