@@ -4643,14 +4643,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * The jobs pill's sheet: live background jobs in a dismissable overlay.
 	 * Unlike `/jobs` it adds nothing to the transcript, so a click mid-turn
 	 * leaves no deferred command preview above the editor.
-	 *
-	 * It lists the viewed session's jobs, as the pill counts them. A focused
-	 * subagent view opens it without the Cancel action: the view only watches
-	 * that agent, as `/jobs kill` stays main-session only.
 	 */
 	showJobsSheet(): void {
 		if (this.#jobsSheetHandle) return;
-		const session = this.viewSession;
+		const session = this.session;
 		if (!session.getAsyncJobSnapshot()) {
 			this.showWarning("Async background jobs are unavailable in this session.");
 			return;
@@ -4658,12 +4654,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		const sheet = new JobsSheet({
 			load: () => session.getAsyncJobSnapshot({ recentLimit: 5 }) ?? { running: [], recent: [] },
 			inspect: id => session.inspectAsyncJob(id),
-			cancel: this.focusedAgentId
-				? undefined
-				: id => {
-						session.cancelAsyncJob(id);
-						this.ui.requestRender();
-					},
+			cancel: id => {
+				session.cancelAsyncJob(id);
+				this.ui.requestRender();
+			},
 			close: () => this.#hideJobsSheet(),
 		});
 		this.#jobsSheetHandle = this.ui.showOverlay(sheet, { anchor: "center", width: "90%", maxHeight: "90%" });
