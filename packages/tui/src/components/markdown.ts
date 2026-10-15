@@ -682,6 +682,10 @@ const mathBlockExtension: TokenizerAndRendererExtension = {
 // starts at offset 0" guards keep fenced/indented `\begin{cases}` code blocks
 // for marked's own code rules.
 const BARE_ENV_BEGIN = /(?:^|\n)[ \t]{0,3}\\begin\{([A-Za-z]+\*?)\}/;
+const STARTED_LIST_ITEM_RE = / *(?:[-+*]|\d{1,9}[.)])[ \t]+\S/y;
+// Display math can regroup list lines once a closer arrives, so lists that may
+// hold it publish nothing past the settled prefix.
+const DISPLAY_MATH_HINT_RE = /\$\$|\\\[|\\begin\{/;
 const BLANK_LINE_RE = /\n[ \t]*\n/;
 
 /** Where a search for an `\end{…}` closer in a lexer source started, and what it found. */
@@ -2053,12 +2057,22 @@ export class Markdown implements Component {
 	/**
 	 * Width-independent source prefix of the last render ending at a frozen
 	 * Markdown block boundary that no append can move: it stops in front of a
-	 * display-math opener whose block an append could still close. Only
-	 * meaningful while streaming (transient render cache on); grows
-	 * monotonically under append-only `setText`.
+	 * display-math opener whose block an append could still close. A trailing
+	 * list extends it through every item in front of a sibling that has started
+	 * with content: appends cannot reach back into those items, and list rows do
+	 * not depend on later items. Only meaningful while streaming (transient
+	 * render cache on); grows monotonically under append-only `setText`.
 	 */
 	getLastRenderStableText(): string {
-		return this.#transientRenderCache ? (this.#streamSettledText ?? "") : "";
+		if (!this.#transientRenderCache) return "";
+		const settled = this.#streamSettledText ?? "";
+		const list = this.#streamingListCache;
+		if (list === undefined || list.start !== settled.length || list.tailStart === list.start) return settled;
+		// A bare `3.` may still become `3.5`, lazy text of the item above it.
+		STARTED_LIST_ITEM_RE.lastIndex = list.tailStart;
+		if (!STARTED_LIST_ITEM_RE.test(list.text)) return settled;
+		if (DISPLAY_MATH_HINT_RE.test(list.text.slice(list.start, list.tailStart))) return settled;
+		return list.text.slice(0, list.tailStart);
 	}
 
 	get transientRenderCache(): boolean {

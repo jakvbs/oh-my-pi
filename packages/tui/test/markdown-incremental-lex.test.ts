@@ -1084,10 +1084,13 @@ describe("Streamed list stable text", () => {
 		const streaming = new Markdown("", 0, 0, THEME);
 		streaming.transientRenderCache = true;
 		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.")).toBe("Intro.\n\n");
-		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.5 stopni")).toBe("Intro.\n\n1. a\n");
-		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.5 stopni\n3. c")).toBe("Intro.\n\n1. a\n2. b\n3.5 stopni\n");
-		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.5 stopni\n3. c\n\n4. d")).toBe(
-			"Intro.\n\n1. a\n2. b\n3.5 stopni\n3. c\n\n",
-		);
+		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3. c")).toBe("Intro.\n\n1. a\n2. b\n");
+		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3. c\n\n4. d")).toBe("Intro.\n\n1. a\n2. b\n3. c\n\n");
+	});
+
+	it("publishes no list items that hold display math", () => {
+		const streaming = new Markdown("", 0, 0, THEME);
+		streaming.transientRenderCache = true;
+		expect(streamTo(streaming, "Intro.\n\n1. a\n   $$\n   x\n2. b\n3. c")).toBe("Intro.\n\n");
 	});
 });
