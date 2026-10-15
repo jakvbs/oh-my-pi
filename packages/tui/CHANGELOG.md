@@ -19,7 +19,7 @@
 
 ### Fixed
 
-- Rows a turn's working loader or HUD covered while an answer streamed no longer go missing between scrollback and the screen until the turn ends; once the transcript grows under that chrome, they retire to scrollback.
+- Rows a turn's working loader or HUD covered while an answer streamed no longer go missing between scrollback and the screen until the turn ends; rows the transcript adds under that chrome retire to scrollback from the first new row.
 
 ## [18.10.4] - 2026-10-13
 

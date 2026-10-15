@@ -258,6 +258,8 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	// with rows — so it is retained across resizes rather than rediscovered
 	// from whatever chrome is expanded when the height changes.
 	#chromeFloor: number | undefined;
+	/** Fewest live transcript rows seen while the chrome stays above its floor. */
+	#coveredLiveRows: number | undefined;
 	/** Rows the chrome below each below-transcript root took in the last frame (see {@link rowsBelow}). */
 	#rowsBelow = new Map<Component, number>();
 	#lastInterruptAt = 0;
@@ -376,16 +378,25 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// one open frame renders each of them once for both.
 		transcript.beginFrame(frame);
 		// Chrome above its floor covers live rows so they return when it
-		// shrinks. A transcript that outgrows the floor's capacity is streaming
-		// under that chrome; the rows it covers would sit between scrollback and
-		// the screen, visible nowhere, for the whole turn. Retirement then bills
-		// the current chrome.
-		const floor = Math.min(this.#chromeFloor ?? after.length, after.length);
-		const floorCapacity = Math.max(0, rows - preRoots.length - floor);
-		this.#chromeFloor =
-			after.length > floor && transcript.liveRowCount(width, floorCapacity) > floorCapacity ? after.length : floor;
-		const belowFloor = this.#chromeFloor;
-		const history = this.#offerHistory(transcript, width, rows, preRoots.length + belowFloor);
+		// shrinks. Rows the transcript adds under that chrome were never on
+		// screen: kept live they would sit between scrollback and the screen,
+		// visible nowhere, for the whole turn. Growth therefore bills the
+		// current chrome.
+		let floor = Math.min(this.#chromeFloor ?? after.length, after.length);
+		if (after.length === floor) {
+			this.#coveredLiveRows = undefined;
+		} else {
+			const floorCapacity = Math.max(0, rows - preRoots.length - floor);
+			const liveRows = transcript.liveRowCount(width, floorCapacity);
+			const covered = Math.min(this.#coveredLiveRows ?? liveRows, liveRows, floorCapacity);
+			this.#coveredLiveRows = covered;
+			if (liveRows > covered) {
+				floor = after.length;
+				this.#coveredLiveRows = undefined;
+			}
+		}
+		this.#chromeFloor = floor;
+		const history = this.#offerHistory(transcript, width, rows, preRoots.length + floor);
 		const headerVisible = !this.#headerRetired && this.#offeredHistory?.source !== "header";
 		const headerRows = headerVisible ? this.#header.render(width) : [];
 		const before = [...headerRows, ...preRoots];
@@ -394,7 +405,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// inter-block blanks) engages only when a block genuinely cannot retire.
 		// Rows the chrome above its floor displaces are clipped from the top by
 		// the `drop` slice below; they stay live until the chrome shrinks.
-		const active = transcript.renderViewport(width, Math.max(0, rows - before.length - belowFloor), frame);
+		const active = transcript.renderViewport(width, Math.max(0, rows - before.length - floor), frame);
 		const activeSpans: ViewportClickSpan[] = [];
 		for (const span of transcript.getLastViewportSpans()) {
 			const ids = (span.component as Partial<{ getClickFocusAgentIds(): string[] }>).getClickFocusAgentIds?.();
@@ -898,6 +909,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	setRuntimeChildren(children: readonly Component[], options: RuntimeChildrenOptions = {}): void {
 		if (this.#stopped) return;
 		this.#chromeFloor = undefined;
+		this.#coveredLiveRows = undefined;
 		this.#nativeDock = options.nativeDock;
 		this.ui.removeChild(this.#statusHost);
 		if (this.#runtimeMounted) {
