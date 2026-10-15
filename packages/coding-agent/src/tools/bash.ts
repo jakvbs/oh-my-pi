@@ -34,7 +34,7 @@ import { DEFAULT_MAX_BYTES, enforceInlineByteCap, OutputSink } from "@oh-my-pi/p
 import { resolveCliEntryCmd } from "../subprocess/worker-client";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import type { ToolSession } from ".";
-import { type ApprovalDetailsOptions, truncateApprovalDetail } from "./approval";
+import { truncateForPrompt } from "./approval";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
 import { foldRedraws, formatRedrawNotice } from "./bash-redraw";
@@ -42,7 +42,7 @@ import { longestSleepSeconds } from "./bash-sleep-guard";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
-import { startService, type ServiceReady } from "../launch/services";
+import { serviceLogs, startService, type ServiceReady } from "../launch/services";
 import { isFindEnabled } from "./jfind";
 import { formatOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
 import {
@@ -548,10 +548,10 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 		return "exec";
 	};
-	readonly formatApprovalDetails = (args: unknown, options?: ApprovalDetailsOptions): string[] => {
+	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const rawCommand = (args as Partial<BashToolInput>).command;
 		const command = typeof rawCommand === "string" ? rawCommand : "(missing)";
-		return [`Command: ${truncateApprovalDetail(command, options)}`];
+		return [`Command: ${truncateForPrompt(command)}`];
 	};
 	readonly label = "Bash";
 	readonly loadMode = "essential";
@@ -1050,6 +1050,8 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 
 		if (name !== undefined) {
+			// Only a readiness wait can outlast a steer; without `ready` the start
+			// returns once the process spawns.
 			const service = await startService(
 				this.session,
 				{
@@ -1060,8 +1062,22 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					ready,
 				},
 				signal,
+				ready === undefined ? undefined : ctx?.toolCall?.steeringSignal,
 			);
 			const daemon = service.daemon;
+			if (service.readyInterrupted) {
+				// A queued message arrived mid-wait: return so it injects promptly.
+				// The broker keeps starting the service, inspectable via proc://.
+				return {
+					content: [
+						{
+							type: "text",
+							text: `${name}: starting${daemon.pid === undefined ? "" : ` pid=${daemon.pid}`}\nReadiness wait interrupted early to handle an incoming message; the service is still starting and keeps running. Read proc://${name} for status.`,
+						},
+					],
+					details: { service: { name, state: daemon.state, ready: false, timedOut: false, pid: daemon.pid } },
+				};
+			}
 			const lines = [
 				`${daemon.name}: ${daemon.state}${daemon.pid === undefined ? "" : ` pid=${daemon.pid}`}${daemon.readyAt === undefined ? "" : " ready"}`,
 			];
@@ -1070,7 +1086,8 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					`NOT ready — readiness timed out after ${ready?.timeout ?? 30}s; process state: ${daemon.state}.`,
 				);
 			if (daemon.exitReason) lines.push(`Reason: ${daemon.exitReason}`);
-			if (service.log) lines.push(service.log);
+			const log = await serviceLogs(this.session, name, signal);
+			if (log) lines.push(log);
 			lines.push(...pendingNotices);
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],

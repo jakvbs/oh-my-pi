@@ -36,6 +36,7 @@ export const ANONYMIZED_REVIEW_NOTE =
  * - `content`: string or content blocks. `struct`: nested omp structure.
  * - `args`/`details`/`data`: tool-call args, tool-result details, custom-entry data — walked only
  *   for built-in tools / omp's own entries, otherwise opaque.
+ * - `runtime`: the build stamp; version and commit kept, branch/diff/label tokenized.
  * - `opaque`: replaced whole by a marker.
  */
 type Rule =
@@ -61,7 +62,8 @@ type Rule =
 	| "data"
 	| "opaque"
 	| "transforms"
-	| "sessionPath";
+	| "sessionPath"
+	| "runtime";
 
 function fields(rule: Rule, keys: readonly string[]): Record<string, Rule> {
 	return Object.fromEntries(keys.map(key => [key, rule]));
@@ -330,6 +332,7 @@ const FIELD_RULES: Record<string, Rule> = {
 	inputTransformations: "transforms",
 	parentSession: "sessionPath",
 	previousSessionFiles: "sessionPath",
+	runtime: "runtime",
 	content: "content",
 	...fields("struct", [
 		"message",
@@ -1429,6 +1432,19 @@ export class SessionAnonymizer {
 		return out;
 	}
 
+	/** A `runtime` build stamp: release version and commit hash are not user content; the rest is. */
+	#runtimeStamp(stamp: JsonObject): JsonObject {
+		const out: JsonObject = {};
+		for (const [key, value] of Object.entries(stamp)) {
+			if (typeof value !== "string") out[this.placeholder(key)] = this.#opaque(value);
+			else if (key === "version") out[key] = /^\d+\.\d+\.\d+[\w.+-]*$/.test(value) ? value : this.placeholder(value);
+			else if (key === "commit") out[key] = /^[0-9a-f]{7,64}$/.test(value) ? value : this.placeholder(value);
+			else if (key === "branch" || key === "diff" || key === "label") out[key] = this.placeholder(value);
+			else out[this.placeholder(key)] = this.#opaque(value);
+		}
+		return out;
+	}
+
 	#field(rule: Rule, value: unknown, parent: JsonObject, key: string, fromTool: boolean): unknown {
 		// Payload scopes come first: a primitive inside an untrusted payload is still untrusted.
 		switch (rule) {
@@ -1450,6 +1466,8 @@ export class SessionAnonymizer {
 				return parent.type === "custom" && parent.customType === "tool_execution_start" && isObject(value)
 					? this.#executionLog(value)
 					: this.#opaque(value);
+			case "runtime":
+				return isObject(value) ? this.#runtimeStamp(value) : this.#opaque(value);
 			case "name":
 				return this.#field(
 					TOOL_CALL_TYPES[String(parent.type)] === true ? "tool" : "label",

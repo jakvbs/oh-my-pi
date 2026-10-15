@@ -358,3 +358,9 @@ sdk/go/omp-rpc
 sdk/python/omp-rpc
 sdk/rust/omp-rpc
 packages/catalog/test/kilo-discovery.test.ts
+packages/coding-agent/test/agent-session-eval-compaction-fork.test.ts
+packages/coding-agent/test/sdk-task-async-guidance.test.ts
+packages/coding-agent/test/stt-online-worker.test.ts
+packages/coding-agent/test/tan-tool-presentation.test.ts
+packages/coding-agent/test/tools/browser-cmux-page-text.test.ts
+packages/coding-agent/test/tools/browser-run-listeners.test.ts

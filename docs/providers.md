@@ -140,6 +140,7 @@ The variables below supply credentials after runtime/config overrides and stored
 | `synthetic`                      | `SYNTHETIC_API_KEY`                                                           |
 | `minimax`                        | `MINIMAX_API_KEY`                                                             |
 | `sakana`                         | `SAKANA_API_KEY`, then `FUGU_API_KEY`                                         |
+| `sambanova`                      | `SAMBANOVA_API_KEY`                                                           |
 | `aimlapi`                        | `AIMLAPI_API_KEY`                                                             |
 | `opencode-zen`, `opencode-go`    | `OPENCODE_API_KEY`                                                            |
 | `firepass`                       | `FIREPASS_API_KEY`                                                            |
