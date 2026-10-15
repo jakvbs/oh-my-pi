@@ -154,8 +154,36 @@ jobs:
                 echo "channel=$channel"
               } >> "$GITHUB_OUTPUT"
 
+   # Fork main only fast-forwards to a sync/main SHA whose CI already passed,
+   # and caches saved on sync/main are invisible to main, so re-running there
+   # rebuilt every native artifact cold (~30 min, run 38510263084) to repeat
+   # a verdict. A main push without such a run (a direct push) runs in full.
+   verdict:
+      name: Reuse sync/main verdict
+      if: github.event_name == 'push' && github.repository != 'can1357/oh-my-pi'
+      runs-on: ubuntu-22.04
+      permissions:
+         actions: read
+      outputs:
+         reused: ${{ steps.find.outputs.reused }}
+      steps:
+         - id: find
+           env:
+              GH_TOKEN: ${{ github.token }}
+           run: |
+              run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&status=success&per_page=20" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_branch == \"sync/main\")][0].id // empty" || true)"
+              if [ -n "$run_id" ]; then
+                echo "::notice title=CI verdict reused::$GITHUB_SHA passed in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id"
+                echo "reused=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "reused=false" >> "$GITHUB_OUTPUT"
+              fi
+
    fast_checks:
       name: Formatting, lint & structural checks
+      needs: [verdict]
+      if: ${{ !cancelled() && needs.verdict.outputs.reused != 'true' }}
       runs-on: ubuntu-22.04
       steps:
          - uses: actions/checkout@v4
@@ -174,19 +202,35 @@ jobs:
 
    native_bindings:
       name: Check native bindings & licenses
-      needs: [fast_checks]
+      needs: [verdict]
+      if: ${{ !cancelled() && needs.verdict.outputs.reused != 'true' }}
       runs-on: ${{ (github.event_name == 'pull_request' || github.repository != 'can1357/oh-my-pi') && 'ubuntu-22.04' || 'omp-kata' }}
       steps:
          - uses: actions/checkout@v4
            with:
+              # Full commit history for the merge-base, blobs on demand.
               fetch-depth: 0
+              filter: blob:none
+         - name: Look up verified binding inputs
+           id: verified
+           uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+           with:
+              path: .bindings-verified
+              key: bindings-verified-v1-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/**', 'deny.toml', 'packages/natives/**', 'scripts/bazel-natives.ts', 'scripts/host-detect.ts', 'scripts/stamp-native-version.ts') }}
+              lookup-only: true
          - uses: ./.github/actions/bun-install
          - name: Detect native binding changes
            id: bindings
            env:
               BEFORE: ${{ github.event.before }}
               PR_BASE: ${{ github.event.pull_request.base.sha }}
+              VERIFIED: ${{ steps.verified.outputs.cache-hit }}
            run: |
+              # An earlier run already passed both checks for these exact inputs.
+              if [ "$VERIFIED" = true ]; then
+                echo "changed=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               base="${PR_BASE:-$BEFORE}"
               # workflow_dispatch has no `before`; sync/main is verified against the last green main.
               if [ -z "$base" ] && [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
@@ -213,6 +257,7 @@ jobs:
            if: steps.bindings.outputs.changed == 'true'
            run: bun run --cwd packages/natives build:bindings --check
          - name: Verify Rust license compliance (cargo-deny 0.20.2)
+           if: steps.verified.outputs.cache-hit != 'true'
            run: |
               # Prebuilt release binary checked against digests pinned here:
               # `cargo install` compiled cargo-deny from source on every run
@@ -238,6 +283,17 @@ jobs:
               # omp-kata, whose Cargo cache is warm. Fetch first.
               cargo fetch --locked
               cargo deny --locked --offline check licenses sources
+         - name: Record verified binding inputs
+           if: steps.verified.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+           continue-on-error: true
+           run: mkdir -p .bindings-verified && echo "$GITHUB_SHA" > .bindings-verified/sha
+         - name: Save verified binding inputs
+           if: steps.verified.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+           continue-on-error: true
+           uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+           with:
+              path: .bindings-verified
+              key: ${{ steps.verified.outputs.cache-primary-key }}
 
    # MODULE.bazel.lock caches the crate_universe (@crates) extension result,
    # keyed by Cargo.toml/Cargo.lock/member-manifest hashes. While current, a
@@ -314,7 +370,8 @@ jobs:
    # prefix match: tests must exercise the native sources in this checkout.
    native_addons:
       name: Build native addons (bazel)
-      needs: [fast_checks]
+      needs: [verdict]
+      if: ${{ !cancelled() && needs.verdict.outputs.reused != 'true' }}
       runs-on: ${{ (github.event_name == 'pull_request' || github.repository != 'can1357/oh-my-pi') && 'ubuntu-22.04' || 'omp-kata' }}
       # actions: write lets trusted branches prune their own addon entries.
       permissions:
@@ -336,6 +393,7 @@ jobs:
            run: |
               echo "prefix=natives-linux-x64-v1-" >> "$GITHUB_OUTPUT"
               echo "key=natives-linux-x64-v1-$NATIVE_INPUTS_HASH" >> "$GITHUB_OUTPUT"
+              echo "hash=$NATIVE_INPUTS_HASH" >> "$GITHUB_OUTPUT"
 
          # `ci-natives` is a plain workspace-relative path on purpose: the
          # cache version hashes the literal path list, so kata (save) and
@@ -348,9 +406,21 @@ jobs:
               path: ci-natives
               key: ${{ steps.natives-key.outputs.key }}
 
+         # Hosted runners have no remote cache; without this every native
+         # input change rebuilt both addons from scratch (~30 min). A prefix
+         # match is safe here: Bazel keys each action by its inputs.
+         - name: Restore Bazel disk cache
+           if: steps.natives-cache.outputs.cache-hit != 'true' && github.repository != 'can1357/oh-my-pi'
+           uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+           with:
+              path: ~/.cache/omp-bazel
+              key: bazel-disk-linux-x64-v1-${{ steps.natives-key.outputs.hash }}
+              restore-keys: bazel-disk-linux-x64-v1-
          - id: cache
            if: steps.natives-cache.outputs.cache-hit != 'true'
            uses: ./.github/actions/bazel-cache
+           with:
+              disk-cache: ${{ github.repository != 'can1357/oh-my-pi' && '~/.cache/omp-bazel' || '' }}
          - name: Build linux-x64 native addons
            if: steps.natives-cache.outputs.cache-hit != 'true'
            run: |
@@ -463,6 +533,13 @@ jobs:
            with:
               path: ci-natives
               key: ${{ steps.natives-key.outputs.key }}
+         - name: Save Bazel disk cache
+           if: steps.natives-cache.outputs.cache-hit != 'true' && github.repository != 'can1357/oh-my-pi' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/sync/main')
+           continue-on-error: true
+           uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+           with:
+              path: ~/.cache/omp-bazel
+              key: bazel-disk-linux-x64-v1-${{ steps.natives-key.outputs.hash }}
          - name: Prune superseded native addon cache entries
            if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/sync/main') && steps.natives-cache.outputs.cache-hit != 'true'
            continue-on-error: true
@@ -472,11 +549,14 @@ jobs:
               PREFIX: ${{ steps.natives-key.outputs.prefix }}
            run: |
               # Best-effort: a failed prune leaves eviction to GitHub's LRU.
-              gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$PREFIX" \
-                  --sort created_at --order desc --limit 100 --json id --jq '.[2:][].id' \
-                | while read -r id; do
-                    gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || true
-                  done || true
+              # Disk caches run to GiBs and only the newest seeds the next build.
+              for spec in "$PREFIX:2" "bazel-disk-linux-x64-v1-:1"; do
+                gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "${spec%:*}" \
+                    --sort created_at --order desc --limit 100 --json id --jq ".[${spec##*:}:][].id" \
+                  | while read -r id; do
+                      gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || true
+                    done || true
+              done
 
          - name: Upload linux-x64 native addon artifact
            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

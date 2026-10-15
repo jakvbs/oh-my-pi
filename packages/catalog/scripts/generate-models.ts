@@ -42,6 +42,7 @@ import {
 	kimiCodeMaxTokens,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
+	openCodeGoBaseUrlForApi,
 	projectOpenAIProReasoningAliases,
 	stripFireworksDeepSeekThinkingToggle,
 } from "../src/provider-models/openai-compat";
@@ -69,6 +70,10 @@ const packageRoot = path.join(import.meta.dir, "..");
  * and never written to models.json.
  */
 const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litellm"]);
+/**
+ * Account-scoped catalogs are discovered at runtime, not bundled from private credentials.
+ */
+const CREDENTIAL_SCOPED_PROVIDERS = new Set(["sambanova"]);
 /**
  * Providers whose authored seed is the complete documented fallback
  * catalog: their previous-snapshot rows are never resurrected, so an id
@@ -139,6 +144,7 @@ export function mergePreviousSnapshotModels(
 			if (
 				!fetchedKeys.has(`${model.provider}/${model.id}`) &&
 				!DISCOVERY_ONLY_PROVIDERS.has(model.provider) &&
+				!CREDENTIAL_SCOPED_PROVIDERS.has(model.provider) &&
 				!STATIC_SEED_COMPLETE_PROVIDERS.has(model.provider) &&
 				!isRetiredProvider(model.provider) &&
 				!excludedProviders.has(model.provider)
@@ -469,6 +475,7 @@ async function generateModels(selectedProvider?: string) {
 		(descriptor): descriptor is CatalogProviderDescriptor =>
 			isCatalogDescriptor(descriptor) &&
 			!DISCOVERY_ONLY_PROVIDERS.has(descriptor.providerId) &&
+			!CREDENTIAL_SCOPED_PROVIDERS.has(descriptor.providerId) &&
 			(selectedProvider === undefined || descriptor.providerId === selectedProvider),
 	);
 	const catalogProviderModelBatches = await Promise.all(
@@ -573,6 +580,11 @@ async function generateModels(selectedProvider?: string) {
 	allModels = applyKimiMaxTokensCap(allModels);
 	allModels = applyFireworksDeepSeekReasoningShape(allModels);
 	allModels = filterModelsDevCatalogRows(allModels);
+	// Previous-snapshot fallbacks keep their old baseUrl; re-base every OpenCode
+	// Go row so retained rows follow gateway endpoint moves (#15722).
+	allModels = allModels.map(model =>
+		model.provider === "opencode-go" ? { ...model, baseUrl: openCodeGoBaseUrlForApi(model.api) } : model,
+	);
 	// Normalize display names: gateway author prefixes ("OpenAI: …"), alias
 	// markers ("(latest)"), provider attribution, and
 	// price/promo tags are model-extrinsic — strip them from the bundle.

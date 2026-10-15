@@ -117,7 +117,7 @@ A nonblank `name` routes to `startService()` before finite-command timeout, asyn
 - Services execute the configured external shell with its args, prefix, and shell environment, not the embedded shell or finite-command direnv preflight.
 - `pty` defaults to `true`; no command deadline is imposed.
 - `ready` must include a log regex or TCP port (1–65535). When both are present, both must pass. TCP host defaults to `127.0.0.1`; readiness timeout defaults to 30 seconds and is clamped to 0.05–3600 seconds.
-- Without a readiness condition, startup returns the running service. With one, startup waits for readiness, exit, or the readiness deadline. A readiness timeout is reported without stopping the process.
+- Without a readiness condition, startup returns the running service. With one, startup waits for readiness, exit, or the readiness deadline. A readiness timeout is reported without stopping the process. A queued steering message ends the readiness wait early: the call returns `starting` and the service keeps starting.
 - New services use session lifetime, no automatic restart, and are not detached. Completion notifications are associated with their owning session.
 - `read proc://<name>` inspects state and logs; `write proc://<name>` sends input (empty content sends Enter), `write proc://<name>/kill` stops it, and `/mode` accepts `persist`, `session`, or `detached`.
 
@@ -233,6 +233,10 @@ The bash executor builds the sink with `headBytes` and `maxColumns` from setting
 
 Runtime truncation is byte-threshold based in `OutputSink` (50 KiB shared head/tail budget by default, plus marker text). It does not enforce a hard line-count cap in this code path.
 
+### Status redraws
+
+Off a terminal, status watchers such as `gh run watch` reprint their whole frame every interval, and each frame starts with the output's first line. When the sink already truncated the output and the captured text holds at least three such frames, `BashTool` drops everything before the last frame that starts in the retained tail (`packages/coding-agent/src/tools/bash-redraw.ts`). The result shows the latest frame and whatever the command printed after it, describes that text as a tail range of the full output, and adds a notice that earlier redraws were elided. Error-shaped lines that appear only in the elided frames are listed in that notice. The artifact keeps the full log. Untruncated output is never folded.
+
 Kitty direct-image and Sixel frames are extracted before text sanitization/truncation and returned as image content. Their control bytes are not preserved as ordinary artifact text.
 
 ### Shell output minimizer
@@ -245,7 +249,9 @@ For non-PTY foreground execution, `BashTool` passes an `onPreview` callback to `
 
 For PTY execution, live rendering is handled by custom UI overlay, not by `onUpdate` text chunks.
 
-When `async.enabled` is true and the call passes `async: true`, `BashTool` starts a managed bash job immediately, returns a running result with a job id, and stores completion through the session job manager. Auto-backgrounding (`bash.autoBackground.enabled`, default `true`) can also use this path after `bash.autoBackground.thresholdMs` (default 60,000 ms); it is skipped for PTY and client-bridge terminal routes and falls back to foreground execution when the job manager is at capacity. A queued steering message can background a still-running auto-background candidate early.
+`BashTool` has no `async` parameter; an `async` field sent by an older caller is ignored. Auto-backgrounding (`bash.autoBackground.enabled`, default `true`) runs the command as a managed bash job, waits up to `bash.autoBackground.thresholdMs` (default 60,000 ms; `0` backgrounds immediately), then returns a running result with a job id and stores completion through the session job manager; it is skipped for PTY and client-bridge terminal routes and falls back to foreground execution when the job manager is at capacity. A queued steering message can background a still-running auto-background candidate early.
+
+A non-service command containing a literal `sleep` longer than `bash.autoBackground.thresholdMs` (GNU duration sums such as `sleep 1m 30s`, and `sleep infinity`) fails before it runs, with a `ToolError` pointing at `wait`: sleeping to poll holds the turn while `wait` wakes on completion, a new error line, or a stall after steady output (see `docs/tools/wait.md`). A threshold of `0` disables the guard.
 
 ## Result shaping, metadata, and error mapping
 

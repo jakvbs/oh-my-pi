@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed SDK imports terminating an embedding process before its asynchronous signal cleanup completes; CLI owners now explicitly register OMP signal handling.
+
 ## [18.10.0] - 2026-10-12
 
 ### Added

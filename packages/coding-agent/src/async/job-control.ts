@@ -13,6 +13,7 @@ import type { CancelOutcome, CoordinationDetails, JobSnapshot } from "@oh-my-pi/
 
 import { isWaitingPollDetails } from "@oh-my-pi/pi-tui/tools/wait";
 import { formatArtifactErrorNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
+import { formatBackgroundResult } from "../session/async-job-delivery";
 
 /**
  * Resolve a list of job ids to job records visible to the calling agent.
@@ -90,13 +91,13 @@ export function snapshotJobs(
 	});
 }
 
-export function buildJobResult(
+export async function buildJobResult(
 	session: ToolSession,
 	manager: AsyncJobManager,
 	op: "wait" | "cancel" | "jobs",
 	jobs: TrackedJobLike[],
 	cancelOutcomes: CancelOutcome[],
-): AgentToolResult<CoordinationDetails> {
+): Promise<AgentToolResult<CoordinationDetails>> {
 	// Deduplicate by id (cancelled jobs may also appear in the watched set).
 	const seen = new Set<string>();
 	const uniqueJobs = jobs.filter(j => {
@@ -139,6 +140,8 @@ export function buildJobResult(
 			);
 		}
 	} else if (completed.length > 0) {
+		const allocateOutputArtifact = session.allocateOutputArtifact;
+		const allocate = allocateOutputArtifact && (() => allocateOutputArtifact("async"));
 		lines.push(`## Completed (${completed.length})\n`);
 		for (const j of completed) {
 			lines.push(`### ${j.id} [${j.type}] — ${j.status}`);
@@ -151,10 +154,10 @@ export function buildJobResult(
 				);
 			}
 			if (j.resultText) {
-				lines.push("```", j.resultText, "```");
+				lines.push("```", await formatBackgroundResult(j.resultText, j.meta, allocate), "```");
 			}
 			if (j.errorText) {
-				lines.push(`Error: ${j.errorText}`);
+				lines.push(`Error: ${await formatBackgroundResult(j.errorText, j.meta, allocate)}`);
 			}
 			lines.push("");
 		}
@@ -191,12 +194,12 @@ export function buildJobResult(
 }
 
 /** `cancel`: kill the named jobs; returns immediately with outcomes + snapshots. */
-export function executeCancel(
+export async function executeCancel(
 	session: ToolSession,
 	manager: AsyncJobManager,
 	ownerId: string | undefined,
 	ids: string[],
-): AgentToolResult<CoordinationDetails> {
+): Promise<AgentToolResult<CoordinationDetails>> {
 	const cancelOutcomes: CancelOutcome[] = [];
 	for (const id of ids) {
 		const existing = manager.getJob(id);

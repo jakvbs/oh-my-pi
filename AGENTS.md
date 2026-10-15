@@ -16,6 +16,7 @@ Upstream is integrated by merge, never by rebase: `bun run sync:upstream` (`scri
 | Native declarations and generated exports match the source and built addon | `bun run --cwd packages/natives build:bindings --check` in CI; `test/bindings-contract.test.ts` rejects removed exports |
 | Line-count reports identify both endpoint commits and distinguish removals from net change | `bun run diff:stats BASE HEAD`; `scripts/diff-stats.test.ts` checks +15/-4232 = -4217 and excludes intermediate churn |
 | Lockfiles are never merged by hand | `.gitattributes` `merge=upstream-lock` + regeneration in `sync:upstream` |
+| Resolved tracked files match the index before lock regeneration and before the merge commit | `sync:upstream` rejects unstaged changes and requests explicit staging; CLI regressions in `scripts/sync-upstream.test.ts` |
 | Fork changelog bullets stay under `[Unreleased]` | `sync:upstream` fails on bullets outside `[Unreleased]` that upstream does not have |
 | Same conflict is resolved once | `rerere.enabled` set by `sync:upstream` |
 | CI runs the Bun version developers run | `packageManager` in `package.json` is an exact pin (`bun@1.4.2`); `.github/actions/bun-install` installs exactly that. A floor (`>=`) installs the latest release, and Bun 1.4.3 broke two upstream tests the day it shipped. Bump the pin in its own commit together with the fixes it needs. |

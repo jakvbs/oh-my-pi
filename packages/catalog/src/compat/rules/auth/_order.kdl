@@ -3,7 +3,7 @@
 // without a login flow sort alphabetically after this list.
 login-order "openai-codex" "anthropic" "zai" "zai-coding-plan" "kimi-code" "openrouter" "github-copilot" \
 	"openai-codex-device" "xai" "xai-oauth" \
-	"aiand" "abliteration" "umans" "sakana" \
+	"aiand" "abliteration" "umans" "sakana" "sambanova" \
 	"firepass" "commandcode" "charm-hyper" "deepseek" "stepfun" "muse-code" "meta" "moonshot" \
 	"cerebras" "baseten" "helmcode" "fireworks" "together" "nvidia" "novita" "deepinfra" "huggingface" "perplexity" \
 	"qianfan" "venice" "siliconflow" "siliconflow-cn" "synthetic" "nanogpt" "wafer-serverless" \

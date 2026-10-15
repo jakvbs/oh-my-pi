@@ -22,7 +22,7 @@ use napi::{
 use napi_derive::napi;
 use parking_lot::Mutex;
 use pi_shell::output_decode::OutputDecoder;
-use portable_pty::{CommandBuilder, ExitStatus, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system};
 
 use crate::{
 	js::into_string,
@@ -586,7 +586,7 @@ fn run_pty_sync(
 	// ClosePseudoConsole. This signals to ConPTY that no more input will
 	// arrive, allowing its internal I/O threads to finish processing and
 	// eventually close the output pipe.
-	drop(writer);
+	close_writer_silently(master.as_ref(), writer);
 
 	// Step 2: Drop master so the reader sees EOF if the slave is gone, then
 	// drain JS. Successful finite runs wait until every accepted chunk has
@@ -616,6 +616,31 @@ fn run_pty_sync(
 	);
 	drop(pump_task);
 	Ok(PtyRunResult { exit_code, cancelled, timed_out })
+}
+
+/// Drops the master writer without its EOF newline reaching the output.
+///
+/// portable-pty's Unix writer writes `\n` and VEOF on drop, so a process still
+/// reading the slave sees EOF. With `ECHO` on, the line discipline echoes that
+/// newline as `\r\n`; on Linux it reached the reader before EOF in about one
+/// run in 200 and ended the command's output with a blank line. Clearing
+/// `ECHO`/`ECHONL` first keeps the EOF and drops only the echo.
+fn close_writer_silently(master: &dyn MasterPty, writer: Box<dyn Write + Send>) {
+	#[cfg(unix)]
+	if let Some(fd) = master.as_raw_fd() {
+		// SAFETY: `fd` is the open master descriptor `master` owns for this call,
+		// and `termios` is a plain C struct that `tcgetattr` fully initializes.
+		unsafe {
+			let mut termios: libc::termios = std::mem::zeroed();
+			if libc::tcgetattr(fd, &raw mut termios) == 0 {
+				termios.c_lflag &= !(libc::ECHO | libc::ECHONL);
+				libc::tcsetattr(fd, libc::TCSANOW, &raw const termios);
+			}
+		}
+	}
+	#[cfg(not(unix))]
+	let _ = master;
+	drop(writer);
 }
 
 /// Wait for the JS pump after the child has exited and the master is dropped.
@@ -976,5 +1001,56 @@ mod zombie_repro_tests {
 			"only {spawned}/{ITERATIONS} iterations reached the post-spawn cancellation path; the \
 			 storm is not exercising the reap"
 		);
+	}
+}
+
+#[cfg(all(test, unix))]
+mod writer_close_tests {
+	use std::{io::Read, time::Duration};
+
+	use portable_pty::{PtySize, native_pty_system};
+
+	use super::close_writer_silently;
+
+	/// Output read from the master within `wait` after the writer closes, while
+	/// the slave stays open so no EOF ends the read early.
+	fn output_after_writer_close(silent: bool) -> Vec<u8> {
+		let pair = native_pty_system()
+			.openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+			.expect("openpty");
+		let writer = pair.master.take_writer().expect("writer");
+		let mut reader = pair.master.try_clone_reader().expect("reader");
+		if silent {
+			close_writer_silently(pair.master.as_ref(), writer);
+		} else {
+			drop(writer);
+		}
+		let (tx, rx) = flume::unbounded();
+		std::thread::spawn(move || {
+			let mut buf = [0u8; 64];
+			while let Ok(n) = reader.read(&mut buf) {
+				if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+					break;
+				}
+			}
+		});
+		let mut out = Vec::new();
+		while let Ok(chunk) = rx.recv_timeout(Duration::from_millis(300)) {
+			out.extend(chunk);
+		}
+		drop(pair.slave);
+		out
+	}
+
+	#[test]
+	fn plain_writer_drop_echoes_its_eof_newline() {
+		// macOS also echoes the VEOF itself as `^D\x08\x08` (ECHOCTL).
+		let out = output_after_writer_close(false);
+		assert!(out.starts_with(b"\r\n"), "echo: {out:?}");
+	}
+
+	#[test]
+	fn silent_writer_close_echoes_nothing() {
+		assert_eq!(output_after_writer_close(true), b"");
 	}
 }

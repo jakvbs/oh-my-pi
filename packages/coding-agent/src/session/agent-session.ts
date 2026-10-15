@@ -251,17 +251,12 @@ import type {
 	SteerOptions,
 	UsageFallbackConfirmer,
 } from "./agent-session-types";
-import { writeArtifact } from "./artifacts";
 import { renderAttachmentSourceNotice } from "./attachment-source-notice";
-import { formatArtifactErrorNotice, type OutputMeta, stripOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
-import { truncateMiddle } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import {
-	ASYNC_INLINE_RESULT_MAX_CHARS,
-	ASYNC_PREVIEW_MAX_CHARS,
-	ASYNC_PREVIEW_TAIL_CHARS,
 	ASYNC_RESULT_MESSAGE_TYPE,
 	type AsyncResultEntry,
 	buildAsyncResultBatchMessage,
+	formatBackgroundResult,
 } from "./async-job-delivery";
 import { BashRunner, type BashRunnerHost } from "./bash-runner";
 import {
@@ -551,6 +546,7 @@ const noOpUIContext: ExtensionUIContext = {
 	setFooter: () => {},
 	setHeader: () => {},
 	setEditorComponent: () => {},
+	getEditorComponent: () => undefined,
 	getToolsExpanded: () => false,
 	setToolsExpanded: () => {},
 };
@@ -2548,7 +2544,9 @@ export class AgentSession implements SettingsScope {
 		// must not enqueue — the suppression marker alone is unreliable because
 		// job-id reuse clears it.
 		const epoch = this.#asyncDeliveryEpoch;
-		const formatted = await this.#formatAsyncResultForFollowUp(text, job?.latestDetails?.meta);
+		const formatted = await formatBackgroundResult(text, job?.latestDetails?.meta, () =>
+			this.sessionManager.allocateArtifactPath("async"),
+		);
 		if (this.#isDisposed) return;
 		if (epoch !== this.#asyncDeliveryEpoch) return;
 		if (manager.isDeliverySuppressed(jobId)) return;
@@ -2614,41 +2612,6 @@ export class AgentSession implements SettingsScope {
 			{ customType: "ttsr-injection", content, display: false, details: { rules: ruleNames }, attribution: "agent" },
 			{ deliverAs: "aside" },
 		);
-	}
-
-	async #formatAsyncResultForFollowUp(result: string, meta?: OutputMeta): Promise<string> {
-		if (result.length <= ASYNC_INLINE_RESULT_MAX_CHARS) {
-			return result;
-		}
-		// Strip the already-rendered source notice before taking the smaller preview,
-		// then retain its capture warning once even when the original footer is elided.
-		const body = meta?.artifactError ? stripOutputNotice(result, meta).trimEnd() : result;
-		const preview = `${body.slice(0, ASYNC_PREVIEW_MAX_CHARS)}\n\n[Output truncated. Showing first ${ASYNC_PREVIEW_MAX_CHARS.toLocaleString()} characters.]`;
-		if (meta?.artifactError) return `${preview}\n[${formatArtifactErrorNotice(meta.artifactError)}]`;
-		// The producing tool's output sink already mirrored the raw stream to an
-		// artifact; `result` is its elided inline body, so link the raw capture.
-		// The capture lacks notices the tool appended after the stream (exit code,
-		// wall time, timeout), so the preview keeps `result`'s tail as well.
-		const rawArtifactId = meta?.truncation?.artifactId ?? meta?.limits?.columnTruncated?.artifactId;
-		if (rawArtifactId) {
-			const headTail = truncateMiddle(result, {
-				maxBytes: ASYNC_PREVIEW_MAX_CHARS,
-				maxHeadBytes: ASYNC_PREVIEW_MAX_CHARS - ASYNC_PREVIEW_TAIL_CHARS,
-			}).content;
-			return `${headTail}\nFull output: artifact://${rawArtifactId}`;
-		}
-		try {
-			const { path: artifactPath, id: artifactId } = await this.sessionManager.allocateArtifactPath("async");
-			if (artifactPath && artifactId) {
-				await writeArtifact(artifactPath, result);
-				return `${preview}\nFull output: artifact://${artifactId}`;
-			}
-		} catch (error) {
-			logger.warn("Failed to persist async follow-up artifact", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-		return preview;
 	}
 
 	// =========================================================================
@@ -4527,11 +4490,12 @@ export class AgentSession implements SettingsScope {
 		});
 	}
 
-	async #emitAgentEndNotification(messages: AgentMessage[], options?: { willContinue?: boolean }): Promise<void> {
+	async #emitAgentEndNotification(messages: AgentMessage[], options?: AgentEndSettleOptions): Promise<void> {
 		await this.#extensionRunner?.emit({
 			type: "agent_end",
 			messages,
 			willContinue: options?.willContinue,
+			...(options?.willContinue === true && options.awaitingAsyncWork === true ? { awaitingAsyncWork: true } : {}),
 		});
 	}
 

@@ -48,6 +48,7 @@ export type KnownProvider =
 	| "openrouter"
 	| "qianfan"
 	| "sakana"
+	| "sambanova"
 	| "siliconflow"
 	| "siliconflow-cn"
 	| "singularityapi-dev"

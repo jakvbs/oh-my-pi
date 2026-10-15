@@ -1,6 +1,6 @@
 # wait
 
-> Block until the next background job result, service exit, or steering interrupt when there is no other work to do.
+> Block until the next background job result, a new error line or a stall in a running bash job's output, a service exit, or a steering interrupt when there is no other work to do.
 
 ## Source
 - Entry: `packages/coding-agent/src/tools/wait.ts`
@@ -12,11 +12,15 @@
 
 ## Behavior
 - Returns on the first settled caller-owned job or owned-service exit. Job results delivered by this call are consumed so no duplicate async-result follows.
+- A running bash job wakes the wait when its output gains a line shaped like a failure (`error:`, `error[E…]:`, `error TS…:`, `FAIL`/`FAILED`, `(fail)`, `panicked at`, a Python traceback, `npm ERR!`, `##[error]`, `Segmentation fault`). Each distinct error line wakes once per job: a status watcher that reprints the same table every interval (`gh run watch` off a terminal) does not wake again for a line it repeats. Owner: `packages/coding-agent/src/async/output-alert.ts`.
+- Silence wakes the wait only as evidence of a stall: the job's output must have changed at least twice while watched, and the silence must last 5 minutes and three times the job's longest gap between changes. A job silent by design (output redirected to `/dev/null`, a quiet build step) never stall-wakes; neither does a watcher that keeps redrawing. Each silent stretch wakes once and re-arms after new output.
+- An output alert leads the result with an `## Output alert` section quoting the triggering lines, followed by the jobs snapshot; the job keeps running.
 - A steering/tool interrupt returns `Wait interrupted by message.` with `details.interrupted=true`; other aborts propagate. Handle the incoming notice before calling `wait` again.
-- An owned-job or owned-service wait has a 30-minute safety cap. There is no caller-selectable timeout; hitting the cap returns a notice to read `proc://` for status.
+- An owned-job or owned-service wait has a 30-minute safety cap. There is no caller-selectable timeout. Hitting the cap returns a result that starts with `## Wait limit reached`, states how long each running job has run and whether its output changed recently or ever, and then lists the jobs snapshot, so it never reads like a wait that returned at once.
 - If no owned job or service is running, the call fails with `Nothing to wait for`.
 - With no owned jobs, a service finishing returns a notice directing the caller to `proc://` for status/output; with jobs, the call returns their current snapshot/result instead.
 - Results also auto-deliver without calling `wait`. Continue useful work instead of polling.
+- A job result longer than 12,000 characters, recovered here or auto-delivered, is replaced by a 4 KB preview (first 1 KB, last 3 KB) and `Full output: artifact://<id>`, pointing at the raw capture when the tool kept one. Read or grep the artifact for the middle. Owner: `formatBackgroundResult` in `packages/coding-agent/src/session/async-job-delivery.ts`.
 - Already-settled but undelivered owned jobs are returned without another wait.
 - Job waits emit progress snapshots every 500 ms when an update callback is present. Job results/snapshots use `details: { op: "wait", jobs: ... }`.
 

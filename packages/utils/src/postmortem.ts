@@ -218,9 +218,7 @@ function runCleanup(reason: Reason, keepAlive = false): Promise<void> {
 	return cleanupPromise;
 }
 
-// Register signal and error event handlers to trigger cleanup before exit.
-// Main thread: full signal handling (SIGINT, SIGTERM, SIGHUP) + exceptions + exit
-// Worker thread: exit only (workers use self.addEventListener for exceptions)
+let signalHandlersRegistered = false;
 let inspectorOpened = false;
 
 /** Origin of an EPIPE raised by a process communication channel. */
@@ -560,11 +558,22 @@ export async function fatal(error: unknown): Promise<never> {
 	return exitAfterFatal(output, "Fatal error", err, Reason.UNHANDLED_REJECTION);
 }
 
-if (Bun.isMainThread) {
+/** CLI process owners opt in; SDK imports must not preempt an embedder's async signal teardown. */
+export function registerProcessSignalHandling(): void {
+	if (!Bun.isMainThread || signalHandlersRegistered) return;
+	signalHandlersRegistered = true;
 	process
 		.on("SIGINT", async () => {
 			await runCleanup(Reason.SIGINT);
 			exitProcess(130); // 128 + SIGINT (2)
+		})
+		.on("SIGTERM", async () => {
+			await runCleanup(Reason.SIGTERM);
+			exitProcess(143); // 128 + SIGTERM (15)
+		})
+		.on("SIGHUP", async () => {
+			await runCleanup(Reason.SIGHUP);
+			exitProcess(129); // 128 + SIGHUP (1)
 		})
 		.on("SIGUSR1", async () => {
 			if (inspectorOpened) return;
@@ -574,7 +583,11 @@ if (Bun.isMainThread) {
 			inspector.open(undefined, undefined, false);
 			const url = inspector.url();
 			process.stderr.write(`Inspector opened: ${url}\n`);
-		})
+		});
+}
+
+if (Bun.isMainThread) {
+	process
 		.on("uncaughtException", async thrown => {
 			// Expected cleanup is safe globally; unrelated synchronous errors stay fatal.
 			if (hasExpectedCleanupMarker(thrown)) {
@@ -638,14 +651,6 @@ if (Bun.isMainThread) {
 		})
 		.on("exit", async () => {
 			void runCleanup(Reason.EXIT); // fire and forget (exit imminent)
-		})
-		.on("SIGTERM", async () => {
-			await runCleanup(Reason.SIGTERM);
-			exitProcess(143); // 128 + SIGTERM (15)
-		})
-		.on("SIGHUP", async () => {
-			await runCleanup(Reason.SIGHUP);
-			exitProcess(129); // 128 + SIGHUP (1)
 		});
 } else {
 	// Worker thread: only register exit handler for cleanup.

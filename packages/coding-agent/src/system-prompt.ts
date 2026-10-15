@@ -192,8 +192,13 @@ export async function resolvePromptInput(input: string | undefined, description:
 
 /** `--system-prompt` value: a readable file stays a reference so a resume re-reads it; anything else is the text. */
 export async function systemPromptSourceOf(input: string): Promise<SystemPromptSource> {
-	if (input.includes("\n") || !(await Bun.file(input).exists())) return { text: input };
-	return { path: path.resolve(input) };
+	if (input.includes("\n")) return { text: input };
+	try {
+		return (await Bun.file(input).exists()) ? { path: path.resolve(input) } : { text: input };
+	} catch (error) {
+		if (hasFsCode(error, "ENAMETOOLONG") || isEnoent(error)) return { text: input };
+		throw error;
+	}
 }
 
 /** Policy text of a recorded source; a recorded file that is gone fails instead of silently dropping the override. */

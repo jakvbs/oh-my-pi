@@ -73,6 +73,12 @@ export class ExtensionUiController {
 	#dialogActive = false;
 	#dialogQueue: Array<() => void> = [];
 	/**
+	 * The queued steering (chip texts) when a steer last denied an approval. Steering waits for
+	 * the tool batch to end, so while the queue still starts with it, later approvals of that
+	 * batch (an exclusive call asks only after the denied one settles) are denied by it as well.
+	 */
+	#denyingSteering: readonly string[] | undefined;
+	/**
 	 * Built once in `initHooksAndCustomTools()`. Reused directly by `/tree`
 	 * `ask` re-answer (issue #5642) to drive a standalone `AskTool.execute()`
 	 * call with the same picker/dialog primitives a live tool call would get.
@@ -125,6 +131,7 @@ export class ExtensionUiController {
 			editor: (title, prefill, dialogOptions, editorOptions) =>
 				this.showHookEditor(title, prefill, dialogOptions, editorOptions),
 			addAutocompleteProvider: factory => this.ctx.addAutocompleteProvider(factory),
+			getEditorComponent: () => this.ctx.getEditorComponent(),
 			get theme() {
 				return theme;
 			},
@@ -572,33 +579,60 @@ export class ExtensionUiController {
 	}
 
 	async showApproval(prompt: ExtensionApprovalPrompt, dialogOptions?: ExtensionUIDialogOptions): Promise<boolean> {
-		const choice = await this.#presentDialog(dialogOptions?.signal, settle => {
-			const callHidden = this.ctx.hideToolActivity;
-			const dialog = new ApprovalDialogComponent(
-				callHidden ? prompt.full : prompt.compact,
-				{ onApprove: () => settle(APPROVE_OPTION), onDeny: () => settle(DENY_OPTION) },
-				{
-					tui: this.ctx.ui,
-					wrapDetails: callHidden,
-					timeout: dialogOptions?.timeout,
-					onTimeout: dialogOptions?.onTimeout,
-					onTimeoutStart: dialogOptions?.onTimeoutStart,
-					onTimeoutReset: dialogOptions?.onTimeoutReset,
-				},
-			);
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(dialog);
-			this.ctx.ui.setFocus(dialog);
-			this.ctx.ui.requestRender();
-			return () => {
-				dialog.dispose();
-				this.ctx.editorContainer.clear();
-				this.ctx.editorContainer.addChild(this.ctx.editor);
-				this.ctx.ui.setFocus(this.ctx.editor);
-				this.ctx.ui.requestRender();
-			};
+		const session = this.ctx.session;
+		const queued = session.getQueuedMessages().steering;
+		const denying = this.#denyingSteering;
+		if (denying && denying.length <= queued.length && denying.every((text, i) => text === queued[i])) return false;
+		this.#denyingSteering = undefined;
+		const steered = new AbortController();
+		let steeringBaseline = queued.length;
+		const unsubscribe = session.subscribe(event => {
+			if (event.type !== "queue_update") return;
+			if (event.steering.length > steeringBaseline) {
+				this.#denyingSteering = event.steering;
+				steered.abort();
+			} else steeringBaseline = event.steering.length;
 		});
-		return choice === APPROVE_OPTION;
+		const signal = dialogOptions?.signal ? AbortSignal.any([dialogOptions.signal, steered.signal]) : steered.signal;
+		try {
+			const choice = await this.#presentDialog(signal, settle => {
+				const editor = this.ctx.editor;
+				const dialog = new ApprovalDialogComponent(
+					prompt.compact,
+					{ onApprove: () => settle(APPROVE_OPTION), onDeny: () => settle(DENY_OPTION) },
+					{
+						tui: this.ctx.ui,
+						fullPrompt: prompt.full,
+						timeout: dialogOptions?.timeout,
+						onTimeout: dialogOptions?.onTimeout,
+						onTimeoutStart: dialogOptions?.onTimeoutStart,
+						onTimeoutReset: dialogOptions?.onTimeoutReset,
+						draft: {
+							hasDraft: () =>
+								editor.getText().length > 0 || editor.pendingImages.length > 0 || editor.pasteInFlight,
+							handleInput: keyData => editor.handleDraftEdit(keyData),
+						},
+					},
+				);
+				this.ctx.editorContainer.clear();
+				this.ctx.editorContainer.addChild(dialog);
+				this.ctx.editorContainer.addChild(editor);
+				this.ctx.ui.setFocus(dialog);
+				// The dialog owns focus but forwards typing: keep the composer's cursor visible.
+				editor.focused = true;
+				this.ctx.ui.requestRender();
+				return () => {
+					dialog.dispose();
+					this.ctx.editorContainer.clear();
+					this.ctx.editorContainer.addChild(editor);
+					this.ctx.ui.setFocus(editor);
+					this.ctx.ui.requestRender();
+				};
+			});
+			return choice === APPROVE_OPTION;
+		} finally {
+			unsubscribe();
+		}
 	}
 	async showAskDialog(
 		questions: ExtensionAskDialogQuestion[],

@@ -86,6 +86,13 @@ describe("system prompt CLI resolution", () => {
 
 		expect(options.systemPromptSource).toEqual({ path: profile });
 	});
+
+	it("accepts a single-line --system-prompt longer than a filesystem path component", async () => {
+		const prompt = "A single-line agent role. ".repeat(200);
+		const options = await buildPromptOptions(process.cwd(), ["--system-prompt", prompt]);
+
+		expect(options.systemPromptSource).toEqual({ text: prompt });
+	});
 });
 
 function createMode(options?: { pendingStart?: boolean; skillCommands?: Map<string, Skill> }) {

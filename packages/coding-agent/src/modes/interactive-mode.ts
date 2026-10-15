@@ -763,6 +763,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	#todoAutoClearTimer: NodeJS.Timeout | undefined;
 	#todoAutoClearGeneration = 0;
 	#modelCycleClearTimer: NodeJS.Timeout | undefined;
+	#editorComponentFactory:
+		| ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor)
+		| undefined;
 	#composerStatusPersistTimer: NodeJS.Timeout | undefined;
 	readonly #downloadActivityHud = new DownloadActivityHud(() => this.ui.requestRender());
 	#nextAppearanceRequestToken = 1;
@@ -4520,6 +4523,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		const nextEditor = factory
 			? factory(this.ui, getEditorTheme(), this.keybindings)
 			: new CustomEditor(getEditorTheme());
+		this.#editorComponentFactory = factory;
 		nextEditor.setUseTerminalCursor(this.ui.getShowHardwareCursor());
 		nextEditor.setImeSafeCursorLayout(cfgTuiImeSafeCursor.get(this.settings));
 		this.#applyVimMode(nextEditor);
@@ -4571,6 +4575,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		this.#syncVimStatus(nextEditor);
 		this.ui.requestRender();
+	}
+
+	getEditorComponent(): ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined {
+		return this.#editorComponentFactory;
 	}
 
 	// UI helpers
@@ -4638,15 +4646,16 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	showJobsSheet(): void {
 		if (this.#jobsSheetHandle) return;
-		if (!this.session.getAsyncJobSnapshot()) {
+		const session = this.session;
+		if (!session.getAsyncJobSnapshot()) {
 			this.showWarning("Async background jobs are unavailable in this session.");
 			return;
 		}
 		const sheet = new JobsSheet({
-			load: () => this.session.getAsyncJobSnapshot({ recentLimit: 5 }) ?? { running: [], recent: [] },
-			inspect: id => this.session.inspectAsyncJob(id),
+			load: () => session.getAsyncJobSnapshot({ recentLimit: 5 }) ?? { running: [], recent: [] },
+			inspect: id => session.inspectAsyncJob(id),
 			cancel: id => {
-				this.session.cancelAsyncJob(id);
+				session.cancelAsyncJob(id);
 				this.ui.requestRender();
 			},
 			close: () => this.#hideJobsSheet(),

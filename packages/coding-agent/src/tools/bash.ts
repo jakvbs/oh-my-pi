@@ -16,7 +16,7 @@ import type {
 	ToolTier,
 } from "@oh-my-pi/pi-agent-core";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+import { countNewlines, isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
 import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
 import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
 import type { Settings } from "../config/settings";
@@ -34,13 +34,15 @@ import { DEFAULT_MAX_BYTES, enforceInlineByteCap, OutputSink } from "@oh-my-pi/p
 import { resolveCliEntryCmd } from "../subprocess/worker-client";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import type { ToolSession } from ".";
-import { type ApprovalDetailsOptions, truncateApprovalDetail } from "./approval";
+import { truncateForPrompt } from "./approval";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
+import { foldRedraws, formatRedrawNotice } from "./bash-redraw";
+import { longestSleepSeconds } from "./bash-sleep-guard";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
-import { startService, type ServiceReady } from "../launch/services";
+import { serviceLogs, startService, type ServiceReady } from "../launch/services";
 import { isFindEnabled } from "./jfind";
 import { formatOutputNotice } from "@oh-my-pi/pi-tui/tools/output-meta";
 import {
@@ -50,13 +52,14 @@ import {
 	resolveOutputSinkHeadBytes,
 } from "./output-meta";
 import { resolveToCwd } from "./path-utils";
+import { hasWaitTool } from "./wait";
 import { extractLeadingCdTarget, extractLiteralAndChainSegments, tokenizeShellSegments } from "./shell-tokenize";
 import { ToolAbortError } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, TOOL_TIMEOUTS } from "./tool-timeouts";
 
-import { cfgAsyncEnabled, cfgGlobEnabled, cfgGrepEnabled, cfgLaunchEnabled, cfgToolsMaxTimeout } from "./settings";
+import { cfgGlobEnabled, cfgGrepEnabled, cfgLaunchEnabled, cfgToolsMaxTimeout } from "./settings";
 import {
 	cfgBashAllowCompoundCommands,
 	cfgBashAutoBackgroundEnabled,
@@ -320,14 +323,6 @@ const bashSchemaBase = type({
 	"pty?": "boolean",
 });
 
-const bashSchemaWithAsync = type({
-	command: "string",
-	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
-	"cwd?": "string",
-	"pty?": "boolean",
-	"async?": "boolean",
-});
-
 const bashSchemaWithService = type({
 	command: "string",
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
@@ -342,26 +337,7 @@ const bashSchemaWithService = type({
 	}),
 });
 
-const bashSchemaWithAsyncAndService = type({
-	command: "string",
-	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
-	"cwd?": "string",
-	"pty?": "boolean",
-	"async?": "boolean",
-	"name?": "string <= 48",
-	"ready?": type({
-		"log?": "string",
-		"port?": "number",
-		"host?": "string",
-		"timeout?": "number",
-	}),
-});
-
-type BashToolSchema =
-	| typeof bashSchemaBase
-	| typeof bashSchemaWithAsync
-	| typeof bashSchemaWithService
-	| typeof bashSchemaWithAsyncAndService;
+type BashToolSchema = typeof bashSchemaBase | typeof bashSchemaWithService;
 
 export interface BashToolInput {
 	command: string;
@@ -369,7 +345,6 @@ export interface BashToolInput {
 	cwd?: string;
 	name?: string;
 	ready?: ServiceReady;
-	async?: boolean;
 	pty?: boolean;
 }
 
@@ -573,17 +548,16 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 		return "exec";
 	};
-	readonly formatApprovalDetails = (args: unknown, options?: ApprovalDetailsOptions): string[] => {
+	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const rawCommand = (args as Partial<BashToolInput>).command;
 		const command = typeof rawCommand === "string" ? rawCommand : "(missing)";
-		return [`Command: ${truncateApprovalDetail(command, options)}`];
+		return [`Command: ${truncateForPrompt(command)}`];
 	};
 	readonly label = "Bash";
 	readonly loadMode = "essential";
 	get description(): string {
 		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
 		return prompt.render(bashDescription, {
-			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			// The deadline an omitted `timeout` resolves to, after the `tools.maxTimeout` cap.
 			defaultTimeoutSec: clampTimeout("bash", undefined, cfgToolsMaxTimeout.get(this.session.settings)),
 			autoBackgroundEnabled: cfgBashAutoBackgroundEnabled.get(this.session.settings),
@@ -603,11 +577,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			isWindows: process.platform === "win32",
 		});
 	}
-	/** Schema variant for the live `async.enabled` and `launch.enabled` settings. */
+	/** Schema variant for the live `launch.enabled` setting. */
 	get parameters(): BashToolSchema {
-		const asyncEnabled = cfgAsyncEnabled.get(this.session.settings);
-		if (this.#launchEnabled) return asyncEnabled ? bashSchemaWithAsyncAndService : bashSchemaWithService;
-		return asyncEnabled ? bashSchemaWithAsync : bashSchemaBase;
+		return this.#launchEnabled ? bashSchemaWithService : bashSchemaBase;
 	}
 	// Non-pty calls run alongside each other (the executor isolates overlapping
 	// runs on the same shell session); pty takes over the terminal UI and must
@@ -680,8 +652,22 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		const exitCode = status.kind === "exited" ? status.exitCode : undefined;
 		const failedExit = exitCode !== undefined && exitCode !== 0;
 
+		// The shown text is then one contiguous tail, so the truncation notice
+		// describes it as a tail range of the full output.
+		const redraws = result.truncated ? foldRedraws(result.output) : undefined;
+		if (redraws) {
+			result = {
+				...result,
+				output: redraws.text,
+				outputLines: countNewlines(redraws.text) + 1,
+				outputBytes: Buffer.byteLength(redraws.text, "utf-8"),
+				elidedBytes: undefined,
+				elidedLines: undefined,
+			};
+		}
+
 		const outputLines = [this.#formatResultOutput(result), "", formatBashCaptureNotice(capture)];
-		const notices: string[] = [];
+		const notices: string[] = redraws ? [formatRedrawNotice(redraws)] : [];
 		const wallTimeMs = options.wallTimeMs;
 		const wallTimeNoticeEmitted = wallTimeMs !== undefined && wallTimeMs >= WALL_TIME_NOTICE_MIN_MS;
 		if (wallTimeNoticeEmitted) {
@@ -930,15 +916,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 	async execute(
 		_toolCallId: string,
-		{
-			command: rawCommand,
-			timeout: rawTimeout,
-			cwd,
-			name: rawName,
-			ready: rawReady,
-			async: rawAsync,
-			pty,
-		}: BashToolInput,
+		{ command: rawCommand, timeout: rawTimeout, cwd, name: rawName, ready: rawReady, pty }: BashToolInput,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<BashToolDetails>,
 		ctx?: AgentToolContext,
@@ -959,28 +937,17 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 		// Mode selection runs on normalized fields: a caller that materializes
 		// every optional argument with empty or placeholder values still asked
-		// for a plain command. Only `async: true` is an async request, a blank
-		// `name` is no service name, and service-only fields with nothing in
-		// them are not a service request.
+		// for a plain command. A blank `name` is no service name, and
+		// service-only fields with nothing in them are not a service request.
 		//
 		// Conflicting fields degrade instead of failing: running the command
-		// the caller did ask for beats rejecting the call. `async: true` is the
-		// stronger signal (a finite job the caller wants to wait on later), so
-		// it wins over `name`/`ready`; a bare `timeout` next to `name` keeps the
-		// service and is dropped, because services have no deadline. A
-		// rejection here used to send models into a retry loop that re-sent the
-		// same arguments with `ready.timeout` added.
-		let name = blankToUndefined(rawName);
-		let ready = normalizeReady(rawReady);
-		const asyncRequested = rawAsync === true;
+		// the caller did ask for beats rejecting the call. A bare `timeout`
+		// next to `name` keeps the service and is dropped, because services
+		// have no deadline. A rejection here used to send models into a retry
+		// loop that re-sent the same arguments with `ready.timeout` added.
+		const name = blankToUndefined(rawName);
+		const ready = normalizeReady(rawReady);
 		const pendingNotices: string[] = [];
-		if (name !== undefined && asyncRequested) {
-			pendingNotices.push(
-				`Ignored name${ready === undefined ? "" : "/ready"}: \`async\` runs a finite background job, not a service; ran as a background job. Omit \`async\` to start service "${name}".`,
-			);
-			name = undefined;
-			ready = undefined;
-		}
 		if (name !== undefined) {
 			if (!this.#launchEnabled) throw new ToolError("Service launch is disabled in this session.");
 			if (rawTimeout !== undefined)
@@ -989,9 +956,6 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			// Nothing can honour ready without a service to attach it to;
 			// running the command the caller did ask for beats failing the call.
 			pendingNotices.push("Ignored ready: service-only, and no service name was given.");
-		}
-		if (asyncRequested && !cfgAsyncEnabled.get(this.session.settings)) {
-			throw new ToolError("Async bash execution is disabled. Enable async.enabled to use async mode.");
 		}
 
 		// Check both the original command and the cwd-normalized command so
@@ -1008,6 +972,19 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					throw new ToolError(interception.message ?? "Command blocked");
 				}
 			}
+		}
+
+		// A sleep past the auto-background threshold is a poll: it holds the
+		// turn (or a job slot) while `wait` would wake on the event itself.
+		const sleepLimitSec = cfgBashAutoBackgroundThresholdMs.get(this.session.settings) / 1000;
+		const sleepSec = name === undefined ? longestSleepSeconds(command) : 0;
+		if (sleepLimitSec > 0 && sleepSec > sleepLimitSec) {
+			const waitHint = hasWaitTool(this.session)
+				? "then call `wait`, which wakes on completion, an error line in the output, or a stall"
+				: "its result arrives automatically as a follow-up message";
+			throw new ToolError(
+				`Blocked \`sleep ${sleepSec}\`: sleeps over ${sleepLimitSec}s poll instead of waiting. Run the command you are waiting on directly (it moves to the background after ${sleepLimitSec}s) and ${waitHint}.`,
+			);
 		}
 
 		if (cfgWorktreeClone.get(this.session.settings)) {
@@ -1073,6 +1050,8 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		}
 
 		if (name !== undefined) {
+			// Only a readiness wait can outlast a steer; without `ready` the start
+			// returns once the process spawns.
 			const service = await startService(
 				this.session,
 				{
@@ -1083,8 +1062,22 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					ready,
 				},
 				signal,
+				ready === undefined ? undefined : ctx?.toolCall?.steeringSignal,
 			);
 			const daemon = service.daemon;
+			if (service.readyInterrupted) {
+				// A queued message arrived mid-wait: return so it injects promptly.
+				// The broker keeps starting the service, inspectable via proc://.
+				return {
+					content: [
+						{
+							type: "text",
+							text: `${name}: starting${daemon.pid === undefined ? "" : ` pid=${daemon.pid}`}\nReadiness wait interrupted early to handle an incoming message; the service is still starting and keeps running. Read proc://${name} for status.`,
+						},
+					],
+					details: { service: { name, state: daemon.state, ready: false, timedOut: false, pid: daemon.pid } },
+				};
+			}
 			const lines = [
 				`${daemon.name}: ${daemon.state}${daemon.pid === undefined ? "" : ` pid=${daemon.pid}`}${daemon.readyAt === undefined ? "" : " ready"}`,
 			];
@@ -1093,7 +1086,8 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					`NOT ready — readiness timed out after ${ready?.timeout ?? 30}s; process state: ${daemon.state}.`,
 				);
 			if (daemon.exitReason) lines.push(`Reason: ${daemon.exitReason}`);
-			if (service.log) lines.push(service.log);
+			const log = await serviceLogs(this.session, name, signal);
+			if (log) lines.push(log);
 			lines.push(...pendingNotices);
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
@@ -1111,10 +1105,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 		// A timeout of 0 is an explicit long-running-command contract: the user
 		// must still cancel the call or job, but OMP does not impose a deadline.
-		// An explicit `async` job defaults to that contract: a silent default
-		// deadline killed long background jobs (CI watches, audits) mid-run and
-		// skipped their cleanup, and models kept omitting `timeout`.
-		const requestedTimeoutSec = rawTimeout ?? (asyncRequested ? 0 : 300);
+		const requestedTimeoutSec = rawTimeout ?? 300;
 		const timeoutDisabled = requestedTimeoutSec === 0;
 		const maxTimeout = cfgToolsMaxTimeout.get(this.session.settings);
 		const timeoutSec = timeoutDisabled ? undefined : clampTimeout("bash", requestedTimeoutSec, maxTimeout);
@@ -1122,27 +1113,6 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		if (timeoutSec !== undefined) {
 			const timeoutClampNotice = formatTimeoutClampNotice(requestedTimeoutSec, timeoutSec, maxTimeout);
 			if (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);
-		}
-
-		if (asyncRequested) {
-			if (!this.session.asyncJobManager) {
-				throw new ToolError("Async job manager unavailable for this session.");
-			}
-			const job = this.#startManagedBashJob({
-				command,
-				commandCwd,
-				timeoutMs,
-				timeoutSec,
-				requestedTimeoutSec,
-				notices: pendingNotices,
-				onUpdate,
-				foreground: false,
-				approvalTier,
-			});
-			return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
-				requestedTimeoutSec,
-				notices: pendingNotices,
-			});
 		}
 
 		// The client-bridge terminal provides a live terminal card in the editor;

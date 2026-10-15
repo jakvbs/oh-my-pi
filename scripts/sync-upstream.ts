@@ -150,9 +150,24 @@ function releasedBullets(changelog: string): string[] {
 		.filter(line => line.startsWith("- "));
 }
 
+async function requireStagedChanges(unresolved: string[] = []): Promise<void> {
+	const unstaged = (await $`git diff --name-only -z`.quiet().text())
+		.split("\0")
+		.filter(file => file.length > 0 && !unresolved.includes(file));
+	if (unstaged.length === 0) return;
+	console.error("Merge left for manual resolution: tracked files differ from the index:");
+	for (const file of unstaged) console.error(`  ${JSON.stringify(file)}`);
+	console.error(
+		"Review and `git add -- <path>` each resolved file, then run `bun scripts/sync-upstream.ts --continue`.",
+	);
+	process.exit(1);
+}
+
 async function settleMerge(): Promise<void> {
 	const deleted = await dropFilesDeletedByFork();
 	const readded = await dropReaddedRemovedPaths();
+	const unresolved = await lines($`git diff --name-only --diff-filter=U`.quiet());
+	await requireStagedChanges(unresolved);
 	const locks = await regenerateLockfiles();
 	for (const file of deleted) console.log(`dropped (deleted by fork): ${file}`);
 	for (const entry of readded) console.log(`dropped (re-added under removed path): ${entry}`);
@@ -171,6 +186,7 @@ async function settleMerge(): Promise<void> {
 		process.exit(1);
 	}
 
+	await requireStagedChanges();
 	await $`git commit --no-edit`;
 	console.log("Merged upstream/main. Next: `bun run check:ts` and the tests covering the merged areas.");
 }
