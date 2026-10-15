@@ -1072,3 +1072,22 @@ describe("Markdown OSC 8 tail normalization across streaming appends", () => {
 		expect(streaming.render(60)).toEqual(renderCold(`${truncated}|${ST}`, 60));
 	});
 });
+
+describe("Streamed list stable text", () => {
+	function streamTo(streaming: Markdown, text: string): string {
+		streaming.setText(text);
+		streaming.render(60);
+		return streaming.getLastRenderStableText();
+	}
+
+	it("publishes list items once the next item has started", () => {
+		const streaming = new Markdown("", 0, 0, THEME);
+		streaming.transientRenderCache = true;
+		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.")).toBe("Intro.\n\n");
+		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.5 stopni")).toBe("Intro.\n\n1. a\n");
+		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.5 stopni\n3. c")).toBe("Intro.\n\n1. a\n2. b\n3.5 stopni\n");
+		expect(streamTo(streaming, "Intro.\n\n1. a\n2. b\n3.5 stopni\n3. c\n\n4. d")).toBe(
+			"Intro.\n\n1. a\n2. b\n3.5 stopni\n3. c\n\n",
+		);
+	});
+});

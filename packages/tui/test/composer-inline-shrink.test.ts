@@ -106,6 +106,26 @@ beforeAll(async () => {
 	await initTheme();
 });
 
+function reply(text: string): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [{ type: "text", text }],
+		api: "openai-codex-responses",
+		provider: "openai-codex",
+		model: "gpt-5.6-sol",
+		stopReason: "stop",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		timestamp: 1,
+	};
+}
+
 describe("composer inline shrink (#11007)", () => {
 	it("answers an ask at the reported 54x112 geometry without losing, duplicating or stranding rows", async () => {
 		const h = makeHarness(112, 54);
@@ -399,23 +419,6 @@ describe("composer inline shrink (#11007)", () => {
 		const message = new AssistantMessageComponent();
 		h.transcript.addChild(message);
 		h.hud.rows = 2; // the working loader, up for the whole turn
-		const reply = (text: string): AssistantMessage => ({
-			role: "assistant",
-			content: [{ type: "text", text }],
-			api: "openai-codex-responses",
-			provider: "openai-codex",
-			model: "gpt-5.6-sol",
-			stopReason: "stop",
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			timestamp: 1,
-		});
 		let text = "";
 		for (let p = 0; p < 12; p++) {
 			const words = Array.from({ length: 25 + (p % 4) * 10 }, (_, w) => `p${p}w${w}`).join(" ");
@@ -480,6 +483,29 @@ describe("composer inline shrink (#11007)", () => {
 			await h.scheduler.settle(h.terminal);
 			const buffer = h.terminal.getScrollBuffer().map(row => Bun.stripANSI(row).trimEnd());
 			for (const row of card) if (buffer.filter(line => line === row).length !== 1) missing.push(`${step}: ${row}`);
+		}
+		expect(missing).toEqual([]);
+		h.composer.stop();
+	});
+
+	it("keeps a streamed list's finished items in scrollback or on screen while it streams", async () => {
+		const h = makeHarness(COLUMNS, 15, 0);
+		await h.scheduler.settle(h.terminal);
+		const message = new AssistantMessageComponent();
+		h.transcript.addChild(message);
+		h.hud.rows = 2;
+		const missing: string[] = [];
+		let text = "";
+		for (let item = 1; item <= 40; item++) {
+			text += `${item}. Weather in city ${item} stays mild.\n`;
+			message.updateContent(reply(text), { transient: true });
+			h.composer.ui.requestRender();
+			await h.scheduler.settle(h.terminal);
+			const buffer = h.terminal.getScrollBuffer().map(row => Bun.stripANSI(row));
+			for (let seen = 1; seen <= item; seen++) {
+				const count = buffer.filter(row => row.includes(`city ${seen} stays`)).length;
+				if (count !== 1) missing.push(`${item}: city ${seen} x${count}`);
+			}
 		}
 		expect(missing).toEqual([]);
 		h.composer.stop();
