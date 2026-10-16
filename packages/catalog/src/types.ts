@@ -1281,6 +1281,14 @@ export type ResolvedGoogleCompat = Required<
 	maxImagePayloadBytes?: number;
 };
 
+/** Ollama chat history compatibility resolved by the catalog. */
+export interface OllamaCompat {
+	/** Omit assistant thinking when the deployment rejects it in history. */
+	stripThinkingHistory?: boolean;
+}
+
+export type ResolvedOllamaCompat = Required<OllamaCompat>;
+
 /** Sparse, user-authored compat overrides for a given API (models.json / config vocabulary). */
 export type CompatConfigOf<TApi extends Api> = TApi extends
 	| "openai-completions"
@@ -1295,7 +1303,9 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 			? BedrockCompat
 			: TApi extends "google-generative-ai" | "google-vertex"
 				? GoogleCompat
-				: undefined;
+				: TApi extends "ollama-chat"
+					? OllamaCompat
+					: undefined;
 
 /** Resolved compat for a given API: complete record, materialized once by `buildModel`. */
 export type CompatOf<TApi extends Api> = TApi extends "openrouter"
@@ -1310,7 +1320,9 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 					? ResolvedBedrockCompat
 					: TApi extends "google-generative-ai" | "google-vertex"
 						? ResolvedGoogleCompat
-						: undefined;
+						: TApi extends "ollama-chat"
+							? ResolvedOllamaCompat
+							: undefined;
 
 /** Provider-native compaction endpoint configuration for one model. */
 export interface RemoteCompactionConfig<TApi extends Api = Api> {
@@ -1446,6 +1458,8 @@ export interface Model<TApi extends Api = Api> {
 	 * inferring it from the transport API.
 	 */
 	requiresGlyphTokenization?: boolean;
+	/** Whether advertised tool schemas occupy every model request's context (false for deferred catalogs). */
+	toolSchemasInContext?: boolean;
 	/** Whether this model requires tool-result images hoisted into sibling user content blocks. */
 	requiresToolResultImageHoisting?: boolean;
 	/**
@@ -1677,6 +1691,7 @@ export interface ModelSpec<TApi extends Api = Api> extends Omit<
 	| "identity"
 	| "compatConfig"
 	| "requiresGlyphTokenization"
+	| "toolSchemasInContext"
 	| "requiresToolResultImageHoisting"
 	| "supportsAssistantPrefill"
 	| "supportsComputerUseConfig"

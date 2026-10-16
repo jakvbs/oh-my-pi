@@ -19,7 +19,14 @@ export type AxisShape = "scalar" | "array" | "object";
 export type AxisSet = "wire" | "thinking" | "catalog";
 
 /** Resolved compat record families a wire axis may be assigned onto. */
-export type CompatRecordName = "openai" | "openai-responses" | "anthropic" | "bedrock" | "google" | "request";
+export type CompatRecordName =
+	| "openai"
+	| "openai-responses"
+	| "anthropic"
+	| "bedrock"
+	| "google"
+	| "request"
+	| "ollama";
 
 /** One axis definition: resolved key, namespace, shape, and applicability. */
 export interface AxisDef {
@@ -235,7 +242,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 	"requires-thinking-enabled": wire("requiresThinkingEnabled", ["anthropic"]),
 	"requires-tool-result-id": wire("requiresToolResultId", ["anthropic"]),
 	"signing-endpoint": wire("signingEndpoint", ["anthropic"]),
-	"strip-thinking-history": wire("stripThinkingHistory", ["anthropic"]),
+	"strip-thinking-history": wire("stripThinkingHistory", ["anthropic", "ollama"]),
 	"supports-context-management": wire("supportsContextManagement", ["anthropic"]),
 	"supports-output-effort": wire("supportsOutputEffort", ["anthropic"]),
 	"supports-eager-tool-input-streaming": wire("supportsEagerToolInputStreaming", ["anthropic"]),
@@ -316,6 +323,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 		shape: "scalar",
 		values: ["freeform", "function"],
 	},
+	"tool-schemas-in-context": { key: "toolSchemasInContext", set: "catalog", shape: "scalar", values: [true, false] },
 	"requires-tool-free-history-for-tool-opt-out": {
 		key: "requiresToolFreeHistoryForToolOptOut",
 		set: "catalog",
@@ -497,6 +505,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 
 /** Records applicable to each API family; used by `resolve.ts` when applying wire axes. */
 export const API_COMPAT_RECORDS: Readonly<Record<string, readonly CompatRecordName[]>> = {
+	"ollama-chat": ["ollama"],
 	"openai-completions": ["openai"],
 	openrouter: ["openai", "openai-responses"],
 	"openai-responses": ["openai-responses"],

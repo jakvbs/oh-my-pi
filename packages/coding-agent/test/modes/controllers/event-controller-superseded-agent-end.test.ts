@@ -94,6 +94,26 @@ describe("EventController superseded agent_end", () => {
 		expect(ctx.loadingAnimation).toBeUndefined();
 	});
 
+	it("keeps the composer busy for idle auto-compaction and releases it at the end", async () => {
+		const { ctx } = createContext();
+		const controller = new EventController(ctx);
+
+		await controller.handleEvent({
+			type: "auto_compaction_start",
+			reason: "idle",
+			action: "context-full",
+		} as unknown as AgentSessionEvent);
+		expect(ctx.composer.setRunActive).toHaveBeenLastCalledWith(true);
+
+		// An aborted compaction leaves no rebuilt transcript to refill the loader's row.
+		await controller.handleEvent({
+			type: "auto_compaction_end",
+			action: "context-full",
+			aborted: true,
+		} as unknown as AgentSessionEvent);
+		expect(ctx.composer.setRunActive).toHaveBeenLastCalledWith(false);
+	});
+
 	it("flushes queued command panels at a non-terminal settle", async () => {
 		const { ctx, streamState } = createContext();
 		const controller = new EventController(ctx);

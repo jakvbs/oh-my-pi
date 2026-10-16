@@ -12,6 +12,7 @@ import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { runPrintMode } from "@oh-my-pi/pi-coding-agent/modes/print-mode";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { SILENT_ABORT_MARKER } from "@oh-my-pi/pi-coding-agent/session/messages";
+import * as telemetryExport from "../src/telemetry-export";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {
@@ -54,16 +55,18 @@ function createMockSession(messages: AssistantMessage[]): AgentSession {
 		prepareForHeadlessAdvisorDrain: () => {},
 		setTextOutputCommitted: () => {},
 		waitForAdvisorCatchup: async () => true,
+		waitForIdle: async () => {},
 		dispose: async () => {},
 	} as unknown as AgentSession;
 }
 
-describe("Print-mode silent-abort regression", () => {
+describe("Print-mode exit status", () => {
 	let exitSpy: Mock<typeof process.exit>;
 	let stderrOutput: string[];
 	let stdoutOutput: string[];
 
 	beforeEach(() => {
+		vi.spyOn(telemetryExport, "flushTelemetryExport").mockResolvedValue();
 		stderrOutput = [];
 		stdoutOutput = [];
 		vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
@@ -134,6 +137,45 @@ describe("Print-mode silent-abort regression", () => {
 		// The caller terminates with the returned code; runPrintMode never exits itself
 		expect(exitCode).toBe(1);
 		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
+	it("returns non-zero for the terminal length-stop error retained after session recovery", async () => {
+		const incomplete = makeAssistantMessage({ content: [], stopReason: "length" });
+		const failure = makeAssistantMessage({
+			content: [],
+			stopReason: "error",
+			errorMessage: "Length-stop recovery gave up",
+		});
+		const session = createMockSession([incomplete]);
+		let settled = false;
+		session.waitForIdle = async () => {
+			await Promise.resolve();
+			settled = true;
+		};
+		vi.spyOn(session, "getLastAssistantMessage").mockImplementation(() => (settled ? failure : incomplete));
+
+		expect(await runPrintMode(session, { mode: "text" })).toBe(1);
+		expect(stderrOutput.join("")).toContain("Length-stop recovery gave up");
+	});
+
+	it("keeps a recovered mid-run API error from failing the one-shot exit", async () => {
+		const retryError = makeAssistantMessage({
+			content: [],
+			stopReason: "error",
+			errorMessage: "Temporary API failure",
+		});
+		const recovered = makeAssistantMessage({ content: [{ type: "text", text: "Recovered" }] });
+		const session = createMockSession([retryError]);
+		let settled = false;
+		session.waitForIdle = async () => {
+			await Promise.resolve();
+			settled = true;
+		};
+		vi.spyOn(session, "getLastAssistantMessage").mockImplementation(() => (settled ? recovered : retryError));
+
+		expect(await runPrintMode(session, { mode: "text" })).toBe(0);
+		expect(stdoutOutput.join("")).toBe("Recovered\n");
+		expect(stderrOutput.join("")).toBe("");
 	});
 
 	it("prints thinking blocks only when printThoughts is enabled", async () => {

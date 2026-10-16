@@ -104,6 +104,7 @@ export const matchesKittySequence = nativeBindings.matchesKittySequence ?? missi
 export const matchesLegacySequence = nativeBindings.matchesLegacySequence ?? missingNativeExport("matchesLegacySequence");
 export const nodeChainAt = nativeBindings.nodeChainAt ?? missingNativeExport("nodeChainAt");
 export const notebookToEditableText = nativeBindings.notebookToEditableText ?? missingNativeExport("notebookToEditableText");
+export const parseCodeStatus = nativeBindings.parseCodeStatus ?? missingNativeExport("parseCodeStatus");
 export const parseKey = nativeBindings.parseKey ?? missingNativeExport("parseKey");
 export const parseKittySequence = nativeBindings.parseKittySequence ?? missingNativeExport("parseKittySequence");
 export const pdfToMarkdown = nativeBindings.pdfToMarkdown ?? missingNativeExport("pdfToMarkdown");

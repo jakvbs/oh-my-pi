@@ -364,3 +364,7 @@ packages/coding-agent/test/stt-online-worker.test.ts
 packages/coding-agent/test/tan-tool-presentation.test.ts
 packages/coding-agent/test/tools/browser-cmux-page-text.test.ts
 packages/coding-agent/test/tools/browser-run-listeners.test.ts
+packages/coding-agent/test/helpers/artifact-read-bridge.ts
+packages/coding-agent/test/interactive-mode-live-dictation-gate.test.ts
+packages/coding-agent/test/tools/browser-upload-contents.test.ts
+packages/coding-agent/test/input-controller-approval-routing.test.ts
