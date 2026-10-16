@@ -26,6 +26,7 @@ import type {
 	ResolvedAnthropicCompat,
 	ResolvedBedrockCompat,
 	ResolvedGoogleCompat,
+	ResolvedOllamaCompat,
 	ResolvedOpenAICompat,
 	ResolvedOpenAIResponsesCompat,
 	ResolvedOpenAISharedCompat,
@@ -946,6 +947,13 @@ function resolveBedrockPolicy(spec: ModelSpec<"bedrock-converse-stream">, axes: 
 	return compat;
 }
 
+function resolveOllamaPolicy(spec: ModelSpec<"ollama-chat">, axes: ResolvedAxes): ResolvedOllamaCompat {
+	const compat: ResolvedOllamaCompat = { stripThinkingHistory: false };
+	applyWireAxes(compat, axes.wire, "ollama-chat");
+	applyCompatOverrides(compat, spec.compat);
+	return compat;
+}
+
 function resolveGooglePolicy(
 	spec: ModelSpec<"google-generative-ai" | "google-vertex">,
 	axes: ResolvedAxes,
@@ -997,7 +1005,8 @@ function defaultThinkingMode<TApi extends Api>(spec: ModelSpec<TApi>, facts: Ide
 	switch (spec.api) {
 		case "google-generative-ai":
 		case "google-vertex":
-			return facts.is("gemini") && facts.revMajor() === 3 ? "google-level" : "budget";
+			// Gemini 3+ `google-level` is a `thinking-mode` rule in classes/gemini.kdl.
+			return "budget";
 		case "anthropic-messages":
 			if (facts.is("minimax") && facts.family("m2", "m3")) return "anthropic-adaptive";
 			if (facts.is("glm") && facts.revGte("5.2") && (spec.provider === "umans" || spec.provider === "zai")) {
@@ -1328,6 +1337,8 @@ export function resolveModelPolicy(input: ModelSpec<Api>, route?: ResolveRoute):
 		compat = resolveAnthropicPolicy(spec, facts, axes);
 	} else if (specUsesApi(spec, "bedrock-converse-stream")) {
 		compat = resolveBedrockPolicy(spec, axes);
+	} else if (specUsesApi(spec, "ollama-chat")) {
+		compat = resolveOllamaPolicy(spec, axes);
 	} else if (specUsesApi(spec, "google-generative-ai") || specUsesApi(spec, "google-vertex")) {
 		compat = resolveGooglePolicy(spec, axes);
 	} else {

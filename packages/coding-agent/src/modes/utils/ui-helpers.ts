@@ -883,7 +883,7 @@ export class UiHelpers {
 		}
 
 		// Entries still in `pendingTools` are toolCalls whose result never landed
-		// during the replay — with `keepDanglingToolCalls` these are exactly the
+		// during the replay — with `keepInFlightToolCalls` these are exactly the
 		// turn's in-flight calls (assistant turn persisted at message_end, tool
 		// still executing). While the viewed session streams, keep them tracked so
 		// the live event stream routes `tool_execution_update`/`_end` into the
@@ -995,7 +995,7 @@ export class UiHelpers {
 		// Collapsed replay keeps in-flight calls so pending tools remain routable during mid-turn rebuilds.
 		let context = this.ctx.session.buildTranscriptSessionContext({
 			collapseCompactedHistory: cfgDisplayCollapseCompacted.get(settings),
-			keepDanglingToolCalls: this.ctx.session.isStreaming,
+			keepInFlightToolCalls: this.ctx.session.isStreaming,
 		});
 		let replayEntryCount = this.ctx.session.sessionManager.getEntries().length;
 
@@ -1062,7 +1062,7 @@ export class UiHelpers {
 				// more instead of letting a reentrant synchronous rebuild interleave.
 				context = this.ctx.session.buildTranscriptSessionContext({
 					collapseCompactedHistory: cfgDisplayCollapseCompacted.get(settings),
-					keepDanglingToolCalls: this.ctx.session.isStreaming,
+					keepInFlightToolCalls: this.ctx.session.isStreaming,
 				});
 				replayEntryCount = this.ctx.session.sessionManager.getEntries().length;
 				await refreshAssistantMessageLinkTargets(

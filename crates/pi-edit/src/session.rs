@@ -274,10 +274,10 @@ impl Session {
 	/// Stage and apply the finished arguments through `writer`.
 	///
 	/// Order: reread every target fresh, stage all files in memory (any
-	/// failure aborts before the first write), then write in payload order. A writer failure aborts
-	/// the loop; files already written stay written and the error is
-	/// returned verbatim. URL targets never reuse preview-time answers (see
-	/// [`Self::begin_apply_url_targets`]).
+	/// failure aborts before the first write), then write in payload order. A
+	/// writer failure aborts the loop; files already written stay written and
+	/// the error is returned verbatim. URL targets never reuse preview-time
+	/// answers (see [`Self::begin_apply_url_targets`]).
 	///
 	/// # Errors
 	/// Staging failures, all raised before the first write —
@@ -537,16 +537,8 @@ fn prune_snapshots(
 /// errors. Unknown languages never "parse", so they never regress.
 pub fn source_parses(code: &str, path: &str) -> bool {
 	let code = if code.is_empty() { "\n" } else { code };
-	pi_ast::summary::summarize_code(pi_ast::summary::SummaryOptions {
-		code:               code.to_owned(),
-		lang:               None,
-		path:               Some(path.to_owned()),
-		min_body_lines:     None,
-		min_comment_lines:  None,
-		unfold_until_lines: None,
-		unfold_limit_lines: None,
-	})
-	.is_ok_and(|summary| summary.parsed)
+	pi_ast::summary::parse_code_status(code, None, Some(path))
+		.is_ok_and(|language| language.is_some())
 }
 
 /// The persisted bytes differ from what was sent (an editor reformatted on

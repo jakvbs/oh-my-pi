@@ -19,6 +19,7 @@ import {
 } from "@oh-my-pi/pi-ai/utils/schema";
 import { prompt } from "@oh-my-pi/pi-utils";
 import yieldDescription from "../prompts/tools/yield.md" with { type: "text" };
+import yieldDataErrorConflictMessage from "../prompts/tools/yield-data-error-conflict.md" with { type: "text" };
 import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
 
@@ -141,15 +142,50 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Read the optional `error` argument. Strict-mode providers (OpenAI/Codex) send
- * omitted optionals as `null`; non-strict OpenAI-compatible backends routinely
- * fill the optional string with `""` next to a valid `data` payload. Both mean
- * "no error" — an empty string is never a usable failure reason.
+ * Read the optional `error` argument, trimmed. Strict-mode providers (OpenAI/Codex) send
+ * omitted optionals as `null`; non-strict OpenAI-compatible backends routinely fill the
+ * optional string with `""` (or a filler such as `"unused"`) next to a valid `data`
+ * payload. `null`, `undefined` and blank strings mean "no error". When `hasData` is true,
+ * a known filler string (see {@link PLACEHOLDER_YIELD_ERRORS}) also means "no error"; any
+ * other error next to `data` is returned so the caller rejects the conflict.
+ *
+ * Trimming changes two error-only yields on purpose: `{error:"  boom\n"}` now records
+ * `"boom"`, and `{error:"   "}` without data is an empty result that counts toward the
+ * empty-result retry budget (`#emptyResultFailures`) instead of aborting with an
+ * all-whitespace reason.
  */
-function parseYieldError(value: unknown): string | undefined {
-	if (value === undefined || value === null || value === "") return undefined;
-	if (typeof value === "string") return value;
-	throw new Error("error must be a string");
+function parseYieldError(value: unknown, options: { hasData: boolean }): string | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "string") throw new Error("error must be a string");
+	const trimmed = value.trim();
+	if (trimmed.length === 0) return undefined;
+	if (options.hasData && isPlaceholderYieldError(trimmed)) return undefined;
+	return trimmed;
+}
+
+const PLACEHOLDER_YIELD_ERRORS = new Set([
+	"ignore",
+	"ignored",
+	"n/a",
+	"none",
+	"not applicable",
+	"null",
+	"placeholder",
+	"undefined",
+	"unused",
+]);
+
+function isPlaceholderYieldError(value: string): boolean {
+	return PLACEHOLDER_YIELD_ERRORS.has(value.toLowerCase());
+}
+
+function renderDataErrorConflictMessage(errorMessage: string, yieldType: string | undefined): string {
+	return prompt.render(yieldDataErrorConflictMessage, {
+		errorJson: JSON.stringify(errorMessage),
+		failureJson: JSON.stringify({ error: errorMessage }),
+		typeJson: yieldType === undefined ? undefined : JSON.stringify(yieldType),
+		isWorkPool: false,
+	});
 }
 
 function buildYieldParameters(dataSchema: Record<string, unknown>): Record<string, unknown> {
@@ -301,11 +337,11 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 		const yieldType = parseYieldType(raw.type);
 		// Strict-mode providers send omitted optionals as `null`; treat it as absent.
 		let data: unknown = raw.data === null ? undefined : raw.data;
-		const errorMessage = parseYieldError(raw.error);
+		const errorMessage = parseYieldError(raw.error, { hasData: data !== undefined });
 		let useLastTurn = errorMessage === undefined && data === undefined && yieldType !== undefined;
 
 		if (errorMessage !== undefined && data !== undefined) {
-			throw new Error("yield cannot contain both data and error");
+			throw new Error(renderDataErrorConflictMessage(errorMessage, yieldType));
 		}
 		if (errorMessage === undefined && data === undefined && yieldType === undefined) {
 			this.#emptyResultFailures++;

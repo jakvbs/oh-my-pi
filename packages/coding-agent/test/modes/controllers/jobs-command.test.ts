@@ -7,6 +7,7 @@ import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config
 import { CommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/command-controller";
 import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+
 import { AgentSession, type AsyncJobSnapshotItem } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { HistoryStorage } from "@oh-my-pi/pi-coding-agent/session/history-storage";
@@ -29,11 +30,7 @@ async function renderFullJobs(running: AsyncJobSnapshotItem[]): Promise<string[]
 		reportContainer,
 		commandReportRows: () => 200,
 		session: {
-			getAsyncJobSnapshot: () => ({
-				running,
-				recent: [],
-				delivery: { queued: 0, delivering: false, pendingJobIds: [] },
-			}),
+			getAsyncJobTree: () => ({ running, recent: [], agents: [] }),
 		},
 	} as unknown as InteractiveModeContext;
 	await new CommandController(ctx).handleJobsCommand({ full: true });

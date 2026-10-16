@@ -5,7 +5,11 @@ use std::{
 	collections::{BTreeSet, BinaryHeap, HashMap},
 };
 
-use ast_grep_core::{MatchStrictness, matcher::Pattern, tree_sitter::LanguageExt};
+use ast_grep_core::{
+	AstGrep, MatchStrictness,
+	matcher::Pattern,
+	tree_sitter::{LanguageExt, StrDoc},
+};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use pi_ast::{
@@ -247,6 +251,13 @@ fn resolve_supported_lang(value: &str) -> Result<SupportLang> {
 	shared_ops::resolve_supported_lang(value).map_err(|err| Error::from_reason(err.to_string()))
 }
 
+fn has_parse_error(ast: &AstGrep<StrDoc<SupportLang>>) -> bool {
+	// Recovery can insert missing tokens without producing an ERROR node.
+	ast.root()
+		.dfs()
+		.any(|node| node.is_error() || node.is_missing())
+}
+
 fn compile_pattern(
 	pattern: &str,
 	selector: Option<&str>,
@@ -334,7 +345,7 @@ pub fn ast_match(options: AstMatchOptions<'_>) -> task::Promise<AstMatchResult> 
 		let mut match_sequence = 0u64;
 		if !compiled_patterns.is_empty() {
 			let ast = language.ast_grep(&source);
-			if ast.root().dfs().any(|node| node.is_error()) {
+			if has_parse_error(&ast) {
 				parse_errors.push("parse error (syntax tree contains error nodes)".to_string());
 			}
 			for pattern in &compiled_patterns {
@@ -398,6 +409,46 @@ pub fn ast_match(options: AstMatchOptions<'_>) -> task::Promise<AstMatchResult> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	const BROKEN_PYTHON: &str = "def broken(:\n    print(\"BADPY_MARKER\")\n";
+	const VALID_PYTHON: &str = "def working():\n    print(\"BADPY_MARKER\")\n";
+
+	#[test]
+	fn detects_missing_python_token_and_preserves_recovered_matches() {
+		let ast = SupportLang::Python.ast_grep(BROKEN_PYTHON);
+		assert!(!ast.root().dfs().any(|node| node.is_error()));
+		assert!(
+			ast.root()
+				.dfs()
+				.any(|node| node.is_missing() && !node.is_named())
+		);
+		assert!(has_parse_error(&ast));
+		let pattern =
+			compile_pattern("print($A)", None, &MatchStrictness::Smart, SupportLang::Python)
+				.expect("print pattern should compile");
+		let matches: Vec<_> = ast.root().find_all(pattern).collect();
+		assert_eq!(matches.len(), 1);
+		assert_eq!(matches[0].text(), "print(\"BADPY_MARKER\")");
+	}
+
+	#[test]
+	fn valid_python_matches_without_parse_errors() {
+		let ast = SupportLang::Python.ast_grep(VALID_PYTHON);
+		assert!(!has_parse_error(&ast));
+		let pattern =
+			compile_pattern("print($A)", None, &MatchStrictness::Smart, SupportLang::Python)
+				.expect("print pattern should compile");
+		let matches: Vec<_> = ast.root().find_all(pattern).collect();
+		assert_eq!(matches.len(), 1);
+		assert_eq!(matches[0].text(), "print(\"BADPY_MARKER\")");
+	}
+
+	#[test]
+	fn detects_existing_typescript_error_nodes() {
+		let ast = SupportLang::TypeScript.ast_grep("export function broken( { return 1; }");
+		assert!(ast.root().dfs().any(|node| node.is_error()));
+		assert!(has_parse_error(&ast));
+	}
 
 	fn retained_test_match(line: u32) -> RetainedAstFindMatch {
 		RetainedAstFindMatch {

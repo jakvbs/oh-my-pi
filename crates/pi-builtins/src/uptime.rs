@@ -770,9 +770,15 @@ mod tests {
 
 	#[cfg(target_vendor = "apple")]
 	#[test]
-	fn live_since_matches_kern_boottime() {
+	fn live_since_uses_login_boot_record_or_kernel_fallback() {
 		let (host, _) = Host::for_test("uptime", "", std::env::temp_dir());
-		let boot = system_boot_time(&host).expect("kern.boottime");
+		let boot = read_records(&host, &host.resolve(UTMP_FILE))
+			.into_iter()
+			.rev()
+			.find(|record| record.kind == BOOT_TIME)
+			.map(|record| record.seconds)
+			.or_else(|| system_boot_time(&host))
+			.expect("login record or kern.boottime");
 		let (code, out, err) = run_with_env(&[("TZ", "UTC")], &["-s"]);
 		assert_eq!((code, err.as_str()), (0, ""));
 		assert_eq!(out, format!("{}\n", since_line(boot, &utc())));

@@ -192,7 +192,7 @@ import { OmfgController } from "./controllers/omfg-controller";
 import { SelectorController } from "./controllers/selector-controller";
 import { SSHCommandController } from "./controllers/ssh-command-controller";
 import { TodoCommandController } from "./controllers/todo-command-controller";
-import { imageReferenceHyperlink } from "@oh-my-pi/pi-tui/prompt/image-references";
+import { imageReferenceHyperlink, setImageBlobWriter } from "@oh-my-pi/pi-tui/prompt/image-references";
 import { describeLoopCondition, evaluateLoopCondition, type LoopConditionVerdict } from "./loop-condition";
 import {
 	consumeLoopLimitIteration,
@@ -767,6 +767,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		| ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor)
 		| undefined;
 	#composerStatusPersistTimer: NodeJS.Timeout | undefined;
+	readonly #initialComposerModel: Model | undefined;
 	readonly #downloadActivityHud = new DownloadActivityHud(() => this.ui.requestRender());
 	#nextAppearanceRequestToken = 1;
 	#appearanceRefreshRequest: { token: TerminalAppearanceRequestToken; deadline: number } | undefined;
@@ -945,6 +946,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	#pendingSubmittedInput: SubmittedUserInput | undefined;
 	#pendingSubmissionDispose: (() => void) | undefined;
 	#pendingSubmissionPreservesDraft = false;
+	/** Unregisters this mode's transcript-image blob writer (a later mode's registration survives). */
+	#disposeImageBlobWriter: (() => void) | undefined;
 	#optimisticUserMessageComponents: Component[] = [];
 	#optimisticSkillMessageComponents: Component[] = [];
 	/** True while an optimistically-rendered `/skill:` row awaits its canonical
@@ -1074,6 +1077,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			rules: session.ttsrManager?.getRules(),
 		};
 	}
+
 	get sessionName(): string | undefined {
 		return this.session.sessionName;
 	}
@@ -1113,6 +1117,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#eventBusUnsubscribers: Array<() => void> = [];
 	/** Mirror of `tui.mouse`, read by the TUI's per-frame inline mouse tracking probe. */
 	#mouseCapture = false;
+
 	#mcpStatusOrder: string[] = [];
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
@@ -1134,6 +1139,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.session = session;
 		this.sessionManager = session.sessionManager;
 		this.settings = session.settings;
+		this.#initialComposerModel = session.model;
 		const preferences = {
 			quiet: cfgStartupQuiet.get(settings),
 			composerShape: cfgComposerShape.get(settings),
@@ -1259,6 +1265,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Restored drafts (esc-esc, /tree, branch) re-materialize chip links off the render
 		// path so their chip tokens become clickable again instead of degrading to dead text.
 		this.editor.draftImageLinkMaterializer = images => materializeImageChipLinks(images, this.sessionManager);
+		// Transcript images without a file of their own (pasted, tool-produced, rendered figures)
+		// link to a blob copy of their bytes, the same store that backs composer chips.
+		this.#disposeImageBlobWriter = setImageBlobWriter((data, options) =>
+			this.sessionManager.putBlobSync(data, options),
+		);
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor);
 		this.statusLine = new StatusLineComponent(session, statusLineHost);
@@ -1492,6 +1503,26 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.hookWidgetContainerBelow,
 			],
 			{
+				// Roots that collapse without new transcript output must not raise the
+				// post-run chrome floor: user-driven ones (editor drafts, dialogs and
+				// selectors, staged attachments, reports, queued messages, dismissible
+				// panels and the error banner). Any root listed in neither set counts
+				// as persistent: once it holds its height after a run the floor rises
+				// to it, and its later collapse floats the editor until output fills
+				// in. Classify every new root that can collapse on its own.
+				transientChrome: [
+					this.editorContainer,
+					this.attachmentChipsContainer,
+					this.reportContainer,
+					this.pendingMessagesContainer,
+					this.btwContainer,
+					this.omfgContainer,
+					this.errorBannerContainer,
+				],
+				// HUDs that clear themselves on a timer or registry change (todos,
+				// background subagents, model cycle, progress). Their first paint can be
+				// their tallest (a restored todo list on resume), so it is never a baseline.
+				selfClearingChrome: [this.todoContainer, this.modelCycleContainer, this.progressHudContainer],
 				// Natively the HUD pills lead the dock, queued messages sit between
 				// the working row and the composer, and the attachment chips live
 				// inside the composer.
@@ -2897,7 +2928,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#persistComposerStatus(): void {
 		if (!this.sessionManager.getSessionFile()) return;
-		const model = this.session.model;
+		// Role changes affect the next fresh launch; session-only switches do not.
+		const initialModel = this.#initialComposerModel ?? this.session.model;
+		const model = this.settings.getModelRole("default")
+			? (this.session.resolveRoleModelWithThinking("default").model ?? initialModel)
+			: initialModel;
 		// Recover the border's ANSI wrapper by coloring a sentinel and splitting around it.
 		const marker = "\0";
 		const colored = this.editor.borderColor(marker);
@@ -2916,7 +2951,8 @@ export class InteractiveMode implements InteractiveModeContext {
 				model,
 				thinkingLevel: this.session.thinkingLevel,
 				autoThinking: this.session.isAutoThinking,
-				fastMode: this.session.isFastModeActive(),
+				// A fresh session derives tiers from settings, not this session's `/fast` toggles.
+				fastMode: model ? this.session.isFastModeConfiguredFor(model) : false,
 				usingSubscription: model ? this.session.modelRegistry.isUsingOAuth(model) : false,
 				autoCompactEnabled: this.session.autoCompactionEnabled,
 				compactionBoundaries: model?.contextWindow
@@ -2964,6 +3000,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
+
 	 * What the TSP composer shows: the draft's shell mode, the effort chip
 	 * (the viewed agent's, like the model chip beside it) or the model chip's
 	 * effort icon, the tok/s readout after it, send vs Stop, and the session
@@ -4257,6 +4294,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		// InteractiveMode instance (e.g. test harnesses, headless re-init).
 		setAutoQaConsentHandler(null, null);
 		setCfgApprovalHost(null);
+		this.#disposeImageBlobWriter?.();
+		this.#disposeImageBlobWriter = undefined;
 		this.#hideSessionInfo();
 		if (this.#ownsStartedUi) {
 			this.ui.stop();
@@ -4647,12 +4686,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	showJobsSheet(): void {
 		if (this.#jobsSheetHandle) return;
 		const session = this.session;
-		if (!session.getAsyncJobSnapshot()) {
+		if (!session.getAsyncJobTree()) {
 			this.showWarning("Async background jobs are unavailable in this session.");
 			return;
 		}
 		const sheet = new JobsSheet({
-			load: () => session.getAsyncJobSnapshot({ recentLimit: 5 }) ?? { running: [], recent: [] },
+			load: () => session.getAsyncJobTree() ?? { running: [], recent: [], agents: [] },
 			inspect: id => session.inspectAsyncJob(id),
 			cancel: id => {
 				session.cancelAsyncJob(id);
