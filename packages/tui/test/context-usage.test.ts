@@ -180,7 +180,7 @@ describe("renderContextUsage snapcompact section", () => {
 });
 
 describe("deferred tool schema accounting", () => {
-	it("does not let Cursor's server-side MCP catalog force compaction below provider usage", () => {
+	it("does not let schemas excluded by model policy force compaction below provider usage", () => {
 		const spec: ModelSpec<"anthropic-messages"> = {
 			id: "claude-opus-5-5",
 			name: "Claude Opus",
@@ -194,7 +194,7 @@ describe("deferred tool schema accounting", () => {
 			maxTokens: 8192,
 		};
 		const directModel = buildModel(spec);
-		const cursorModel = buildModel({ ...spec, api: "cursor-agent", provider: "cursor" });
+		const deferredModel: Model = { ...directModel, toolSchemasInContext: false };
 		const tools = Array.from({ length: 200 }, (_, index) => ({
 			name: `mcp__service__tool_${index}`,
 			description: `Search records ${"search account records with detailed query filters and output metadata ".repeat(110)}`,
@@ -209,11 +209,11 @@ describe("deferred tool schema accounting", () => {
 		const direct = computeNonMessageTokens(session, tokenizer);
 		expect(shouldCompact(compactionContextTokens(9000, direct), 100_000, DEFAULT_COMPACTION_SETTINGS)).toBe(true);
 
-		session.model = cursorModel;
-		const cursor = computeNonMessageTokens(session, tokenizer);
-		expect(cursor).toBe(tokenizer.countTokens(systemPrompt));
+		session.model = deferredModel;
+		const deferred = computeNonMessageTokens(session, tokenizer);
+		expect(deferred).toBe(tokenizer.countTokens(systemPrompt));
 		expect(computeNonMessageBreakdown(session, tokenizer).toolsTokens).toBe(0);
-		expect(shouldCompact(compactionContextTokens(9000, cursor), 100_000, DEFAULT_COMPACTION_SETTINGS)).toBe(false);
+		expect(shouldCompact(compactionContextTokens(9000, deferred), 100_000, DEFAULT_COMPACTION_SETTINGS)).toBe(false);
 
 		session.model = directModel;
 		expect(computeNonMessageTokens(session, tokenizer)).toBe(direct);
