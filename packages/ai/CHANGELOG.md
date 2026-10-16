@@ -15,6 +15,7 @@
 - Removed the Kilo, ClinePass and Apple Foundation Models providers (`kilo`, `cline-pass`, `apple`, `apple-foundation-models` API) with the `reference-isolated-providers` and `automatic-default` catalog axes they alone used.
 ### Fixed
 
+- Fixed Codex treating optional tool arguments as required when an extension leaves strict mode unset. Function tools now explicitly disable strict mode unless their schema was adapted for it.
 - Fixed broker-backed auth-gateway processes retaining a cache entry for every distinct client session indefinitely under sustained traffic ([#15841](https://github.com/can1357/oh-my-pi/issues/15841)).
 - Fixed turns ending on a pinned error when a provider reports "temporarily unavailable" or finishes with an `unknown`, `other` or `unspecified` finish reason: these now retry automatically ([#15424](https://github.com/can1357/oh-my-pi/pull/15424) by [@lockwo](https://github.com/lockwo))
 

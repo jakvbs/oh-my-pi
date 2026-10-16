@@ -63,6 +63,7 @@ describe("openai-codex tool schemas", () => {
 			name: "list_outgoing_messages",
 			description: "List outgoing messages",
 			parameters: { type: "object", properties: {} },
+			strict: false,
 		});
 	});
 	it("strips MCP regex lookaround patterns from function parameters", () => {
@@ -86,6 +87,7 @@ describe("openai-codex tool schemas", () => {
 			type: "function",
 			name: "get_design_context",
 			description: "Get Figma design context",
+			strict: false,
 			parameters: {
 				type: "object",
 				properties: {
@@ -117,6 +119,7 @@ describe("openai-codex tool schemas", () => {
 			type: "function",
 			name: "read_dynamic_values",
 			description: "Read dynamic values",
+			strict: false,
 			parameters: {
 				type: "object",
 				patternProperties: {
@@ -154,7 +157,7 @@ describe("openai-codex tool schemas", () => {
 		expect(converted[0]).toMatchObject({ type: "function", name: "search", strict: false });
 	});
 
-	it("omits strict when the tool leaves it unset (#4336)", () => {
+	it("disables implicit provider strict mode so optional arguments can be omitted", () => {
 		const tools: Tool[] = [
 			{
 				name: "search",
@@ -162,18 +165,14 @@ describe("openai-codex tool schemas", () => {
 				parameters: {
 					type: "object",
 					additionalProperties: false,
-					properties: { name: { type: "string" } },
+					properties: { name: { type: "string" }, resumeFrom: { type: "string" } },
 					required: ["name"],
 				},
 			},
 		];
 
 		const converted = convertOpenAICodexResponsesTools(tools, createCodexModel("gpt-5.5"));
-		const payload = converted[0] as { strict?: boolean };
-
-		// Codex responses only enforces strict when the tool opts in; leaving
-		// `strict` unset MUST NOT synthesize the field either way.
-		expect(payload.strict).toBeUndefined();
+		expect(converted[0]).toMatchObject({ strict: false, parameters: { required: ["name"] } });
 	});
 });
 

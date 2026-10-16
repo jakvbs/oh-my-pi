@@ -5225,7 +5225,7 @@ export function convertOpenAICodexResponsesTools(
 			name: tool.name,
 			description: tool.description || "",
 			parameters,
-			...(effectiveStrict ? { strict: true } : !NO_STRICT && tool.strict === false ? { strict: false } : {}),
+			strict: effectiveStrict,
 		});
 	}
 	return payloads;
