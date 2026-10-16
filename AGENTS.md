@@ -8,10 +8,10 @@ Upstream is integrated by merge, never by rebase: `bun run sync:upstream` (`scri
 
 | Rule | Enforced by |
 | --- | --- |
-| Removed features stay removed after an upstream merge | `scripts/check-fork-removed.ts` in `check:tools`; `sync:upstream` deletes re-added files |
+| Removed features stay removed after an upstream merge | `scripts/check-fork-removed.ts` in `check:tools`; `sync:upstream` deletes re-added files; `scripts/check-fork-removed.test.ts` in the shared local/CI `test:scripts` suite restores a task install smoke against the actual removal manifest |
 | Docs never name a removed path | `scripts/check-fork-removed.ts` in `check:tools` scans tracked Markdown except changelogs; `scripts/check-fork-removed.test.ts` |
 | Discovery never reads another agent harness's config (`.claude`, `.codex`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, …); delete foreign paths instead of gating them | `scripts/check-no-foreign-config.ts` in `check:tools` |
-| `exports` never point at deleted files | `scripts/check-package-exports.ts` in `check:tools` |
+| `exports` never point at deleted files | `scripts/check-package-exports.ts` in `check:tools`; `scripts/check-package-exports.test.ts` in `test:scripts` rejects the deleted agentic-commit and stats targets and accepts nested wildcard targets |
 | Scoped and CI checks preserve failures and use the same typecheck and lint policy | `check:scope` selects the owning TypeScript project for `--file`; `--tools` and CI use `check:types:tools`; all lint scopes use `lint:tools` and `.oxlintrc.json`; CLI regressions in `scripts/check-scope.test.ts` |
 | Native declarations and generated exports match the source and built addon | `bun run --cwd packages/natives build:bindings --check` in CI; `test/bindings-contract.test.ts` rejects removed exports |
 | Line-count reports identify both endpoint commits and distinguish removals from net change | `bun run diff:stats BASE HEAD`; `scripts/diff-stats.test.ts` checks +15/-4232 = -4217 and excludes intermediate churn |
