@@ -2002,6 +2002,9 @@ mod tests {
 		// Git for Windows' system `core.autocrlf=true` would rewrite them as
 		// CRLF. `patch_apply_under_autocrlf_matches_git` covers conversion.
 		git(temp.path(), &["config", "core.autocrlf", "false"]);
+		let attributes = temp.path().join(".git/test-attributes");
+		fs::write(&attributes, "").expect("empty attributes");
+		git(temp.path(), &["config", "core.attributesFile", attributes.to_str().unwrap()]);
 		for (path, bytes) in files {
 			let absolute = temp.path().join(path);
 			if let Some(parent) = absolute.parent() {
@@ -2333,6 +2336,9 @@ mod tests {
 		git(temp.path(), &["config", "user.name", "Patch Test"]);
 		git(temp.path(), &["config", "user.email", "patch@example.com"]);
 		git(temp.path(), &["config", "core.autocrlf", "false"]);
+		let attributes = temp.path().join(".git/test-attributes");
+		fs::write(&attributes, "").expect("empty attributes");
+		git(temp.path(), &["config", "core.attributesFile", attributes.to_str().unwrap()]);
 		for (path, bytes) in files {
 			fs::write(temp.path().join(path), bytes).expect("write fixture");
 		}

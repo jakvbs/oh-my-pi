@@ -2035,6 +2035,9 @@ mod tests {
 		// `core.autocrlf=true` would check them out as CRLF. Tests covering
 		// line-ending conversion opt back in explicitly.
 		git(temp.path(), &["config", "core.autocrlf", "false"]);
+		let attributes = temp.path().join(".git/test-attributes");
+		fs::write(&attributes, "").unwrap();
+		git(temp.path(), &["config", "core.attributesFile", attributes.to_str().unwrap()]);
 		fs::write(temp.path().join("a"), "one\n").unwrap();
 		fs::write(temp.path().join("b"), "two\n").unwrap();
 		git(temp.path(), &["add", "."]);
